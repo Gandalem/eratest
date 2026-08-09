@@ -1,0 +1,90 @@
+name: Build runnable Korean package
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/build-runnable-korean.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean translation branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          path: translated
+          fetch-depth: 1
+          lfs: false
+
+      - name: Clone eraNAS original with real LFS files
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch dev/omogatari-kai https://gitgud.io/mrpopsalot/pops-tw.git game
+          rm -rf game/.git
+
+      - name: Overlay Korean text and scripts without replacing LFS binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          rsync -a translated/ game/ \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='*.exe' \
+            --exclude='*.png' \
+            --exclude='*.jpg' \
+            --exclude='*.jpeg' \
+            --exclude='*.webp' \
+            --exclude='*.ogg' \
+            --exclude='*.m4a' \
+            --exclude='*.wav' \
+            --exclude='*.flac' \
+            --exclude='*.mp3' \
+            --exclude='*.aac' \
+            --exclude='*.psd' \
+            --exclude='*.kra' \
+            --exclude='*.7z' \
+            --exclude='*.rar' \
+            --exclude='*.zip' \
+            --exclude='*.gz' \
+            --exclude='*.bz2' \
+            --exclude='*.xz' \
+            --exclude='*.zst' \
+            --exclude='*.bin' \
+            --exclude='*.wasm' \
+            --exclude='translation_remaining_sample.tsv' \
+            --exclude='translation_remaining_by_file.tsv' \
+            --exclude='TRANSLATION_STATUS.md' \
+            --exclude='UI_KOREAN_PASS.md'
+
+          test -s game/LazyLoadingV26.exe
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('game/LazyLoadingV26.exe')
+          b=p.read_bytes()[:32]
+          if b.startswith(b'version https://git-lfs.github.com/spec/v1'):
+              raise SystemExit('LazyLoadingV26.exe is still an LFS pointer')
+          if b[:2] != b'MZ':
+              raise SystemExit(f'Unexpected EXE header: {b[:8]!r}')
+          print('Verified real Windows EXE:', p.stat().st_size, 'bytes')
+          PY
+
+      - name: Create ZIP
+        shell: bash
+        run: |
+          mv game eraNAS-Korean
+          zip -qr eraNAS-Korean-runnable.zip eraNAS-Korean
+
+      - name: Upload runnable package
+        uses: actions/upload-artifact@v4
+        with:
+          name: eraNAS-Korean-runnable
+          path: eraNAS-Korean-runnable.zip
+          compression-level: 0
+          retention-days: 14
