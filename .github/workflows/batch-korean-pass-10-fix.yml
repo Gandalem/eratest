@@ -1,0 +1,107 @@
+name: Batch Korean pass 10 fix
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/batch-korean-pass-10-fix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 1
+          lfs: false
+
+      - name: Translate weapon and attachment UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          total = 0
+          def patch(path, replacements):
+              global total
+              raw = path.read_bytes()
+              bom = raw.startswith(b'\xef\xbb\xbf')
+              text = raw.decode('utf-8-sig')
+              for old, new in replacements:
+                  c = text.count(old)
+                  if c:
+                      text = text.replace(old, new)
+                      total += c
+                      print('REPLACED', c, path, old[:80])
+              out = text.encode('utf-8')
+              path.write_bytes((b'\xef\xbb\xbf' + out) if bom else out)
+
+          patch(Path('ERB/TRANSLATION/OMOGATARI/ITEM/Omogatari_Armory.ERB'), [
+              ('PRINTFORM %"Damage",20,LEFT% ', 'PRINTFORM %"피해량",20,LEFT%'),
+              ('PRINTFORM %"Penetration",20,LEFT% ', 'PRINTFORM %"관통력",20,LEFT%'),
+              ('PRINTFORM %"Firing Speed",20,LEFT% ', 'PRINTFORM %"발사 속도",20,LEFT%'),
+              ('PRINTFORM %"Effective Range",20,LEFT% ', 'PRINTFORM %"유효 사거리",20,LEFT%'),
+              ('PRINTFORM %"Accuracy",20,LEFT% ', 'PRINTFORM %"명중률",20,LEFT%'),
+              ('PRINTFORM %"Loudness",20,LEFT% ', 'PRINTFORM %"소음",20,LEFT%'),
+              ('PRINTFORM %"MP Cost",20,LEFT% ', 'PRINTFORM %"MP 소모",20,LEFT%'),
+              ('PRINTFORM %"Explosive Damage",20,LEFT% ', 'PRINTFORM %"폭발 피해",20,LEFT%'),
+              ('PRINTFORM %"Explosion",20,LEFT% ', 'PRINTFORM %"폭발",20,LEFT%'),
+              ('PRINTFORM %"Explosive Size",20,LEFT% ', 'PRINTFORM %"폭발 범위",20,LEFT%'),
+              ('PRINTFORM %"Explosive Penet.",20,LEFT% ', 'PRINTFORM %"폭발 관통력",20,LEFT%'),
+              ('PRINTFORM %"Fragment Damage",20,LEFT% ', 'PRINTFORM %"파편 피해",20,LEFT%'),
+              ('PRINTFORM %"Fragmentation",20,LEFT% ', 'PRINTFORM %"파편화",20,LEFT%'),
+              ('PRINTFORM %"Fragmentation Size",20,LEFT% ', 'PRINTFORM %"파편 범위",20,LEFT%'),
+              ('PRINTFORM  (\\@ LOCAL:8 > 0 ? + #\\@{LOCAL:8}/shot)', 'PRINTFORM  (\\@ LOCAL:8 > 0 ? + #\\@{LOCAL:8}/발)'),
+              ('PRINTFORM  (\\@ LOCAL:8 > 0 ? + #  \\@{LOCAL:8}/pellet)', 'PRINTFORM  (\\@ LOCAL:8 > 0 ? + #  \\@{LOCAL:8}/탄환)'),
+              ('PRINTFORM  (\\@ LOCAL:8 > 0 ? + #\\@{LOCAL:8}/pellet)', 'PRINTFORM  (\\@ LOCAL:8 > 0 ? + #\\@{LOCAL:8}/탄환)'),
+              ('(%GET_STR(MASTER, "Hediff", WEAP_DAMAGE_TYPE(ARG), "名前")%)', '(%GET_STR(MASTER, "Hediff", WEAP_DAMAGE_TYPE(ARG), "FullName")%)'),
+              ('(%GET_STR(MASTER, "Hediff", WeaponStatsTemp:26:0, "名前")%)', '(%GET_STR(MASTER, "Hediff", WeaponStatsTemp:26:0, "FullName")%)'),
+              ('(%GET_STR(MASTER, "Hediff", WeaponStatsTemp:17:0, "名前")%)', '(%GET_STR(MASTER, "Hediff", WeaponStatsTemp:17:0, "FullName")%)'),
+          ])
+
+          patch(Path('ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Omogatari_Attatchments.ERB'), [
+              ('RETURNF "Receiver"', 'RETURNF "리시버"'), ('RETURNF "Grip"', 'RETURNF "그립"'),
+              ('RETURNF "Foregrip"', 'RETURNF "전방 그립"'), ('RETURNF "Sight"', 'RETURNF "조준경"'),
+              ('RETURNF "Stock"', 'RETURNF "개머리판"'), ('RETURNF "Barrel"', 'RETURNF "총열"'),
+              ('RETURNF "Barrel Extension"', 'RETURNF "총구 부착물"'), ('RETURNF "Tactical"', 'RETURNF "전술 장비"'),
+              ('RETURNF "Magazine"', 'RETURNF "탄창"'), ('RETURNF "Ammo"', 'RETURNF "탄약"'),
+              ('RETURNF "Blade"', 'RETURNF "날"'), ('RETURNF "Spring"', 'RETURNF "스프링"'),
+              ('RETURNF "String"', 'RETURNF "현"'),
+              ('REUSELASTLINE "Incompatible attachment."', 'REUSELASTLINE "호환되지 않는 부착물입니다."'),
+              ('%"Ammo",16,LEFT%', '%"탄약",16,LEFT%'),
+          ])
+
+          patch(Path('ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Foregrips.ERB'), [
+              ('RK-0 foregrip can be installed on the lower part of handguards with a \\"WEAVER\\" rail. It provides better operational control of weapon during fire.', 'RK-0 전방 그립은 \\"WEAVER\\" 레일이 있는 핸드가드 하단에 장착할 수 있습니다. 사격 중 무기를 더 안정적으로 제어할 수 있게 해 줍니다.'),
+          ])
+
+          if total < 30:
+              raise SystemExit(f'Too few replacements: {total}')
+          print('TOTAL_REPLACEMENTS', total)
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          ! git diff -U0 -- 'ERB/TRANSLATION/OMOGATARI/ITEM/Omogatari_Armory.ERB' | grep -E '^[+-].*RESULTS:2.*(Damage|Penetration|Accuracy|Range|Loudness|MP Cost|Fragmentation|Explosive)' || { echo 'Internal weapon stat key changed'; exit 1; }
+          ! git diff -U0 -- 'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Omogatari_Attatchments.ERB' | grep -E '^[+-].*RETURNF "Weapon(Receiver|Ammo|Spring|String|Blade|BarrelBody|Barrel|Grip|Foregrip|Sight|Stock|Mag|Tactical)"' || { echo 'Internal attachment type changed'; exit 1; }
+          git diff --stat
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Gandalem'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'ERB/TRANSLATION/OMOGATARI/ITEM/Omogatari_Armory.ERB' 'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Omogatari_Attatchments.ERB' 'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Foregrips.ERB'
+          git commit -m '무기 및 부착물 UI 한글화 10차'
+          git push origin HEAD:korean
