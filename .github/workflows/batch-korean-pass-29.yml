@@ -1,0 +1,120 @@
+name: Batch Korean pass 29
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/batch-korean-pass-29.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 1
+          lfs: false
+
+      - name: Translate weapon type and class display
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Omogatari_Armory.ERB')
+          raw = p.read_bytes()
+          bom = raw.startswith(b'\xef\xbb\xbf')
+          text = raw.decode('utf-8-sig')
+
+          marker = '@WeaponDescription(ARG,TempAttachment = -1,TempAttachmentType = "")'
+          if marker not in text:
+              raise SystemExit('WeaponDescription marker not found')
+
+          if '@WeaponTypeDisplay(RawType)' not in text:
+              helper = '\n'.join([
+                  '@WeaponTypeDisplay(RawType)',
+                  '#FUNCTIONS',
+                  '#DIMS RawType',
+                  'SELECTCASE RawType',
+                  '\tCASE "Firearm"', '\t\tRETURNF "화기"',
+                  '\tCASE "Explosive"', '\t\tRETURNF "폭발 무기"',
+                  '\tCASE "Youjutsu"', '\t\tRETURNF "요술"',
+                  '\tCASE "Melee"', '\t\tRETURNF "근접 무기"',
+                  '\tCASEELSE', '\t\tRETURNF RawType',
+                  'ENDSELECT',
+                  '',
+                  '@WeaponClassDisplay(RawClass)',
+                  '#FUNCTIONS',
+                  '#DIMS RawClass',
+                  'SELECTCASE RawClass',
+                  '\tCASE "1H Blunt"', '\t\tRETURNF "한손 둔기"',
+                  '\tCASE "2H Blunt"', '\t\tRETURNF "양손 둔기"',
+                  '\tCASE "1H Blade"', '\t\tRETURNF "한손 도검"',
+                  '\tCASE "2H Blade"', '\t\tRETURNF "양손 도검"',
+                  '\tCASE "Throwing"', '\t\tRETURNF "투척 무기"',
+                  '\tCASE "Pistol"', '\t\tRETURNF "권총"',
+                  '\tCASE "Automatic Pistol"', '\t\tRETURNF "자동권총"',
+                  '\tCASE "Rifle"', '\t\tRETURNF "소총"',
+                  '\tCASE "Semi-Automatic Rifle"', '\t\tRETURNF "반자동 소총"',
+                  '\tCASE "Assault Rifle"', '\t\tRETURNF "돌격소총"',
+                  '\tCASE "Bolt-Action Rifle"', '\t\tRETURNF "볼트액션 소총"',
+                  '\tCASE "Sniper Rifle"', '\t\tRETURNF "저격소총"',
+                  '\tCASE "Anti-Material Rifle"', '\t\tRETURNF "대물 소총"',
+                  '\tCASE "Shotgun"', '\t\tRETURNF "산탄총"',
+                  '\tCASE "Sub-Machine Gun"', '\t\tRETURNF "기관단총"',
+                  '\tCASE "Light Machine Gun"', '\t\tRETURNF "경기관총"',
+                  '\tCASE "Medium Machine Gun"', '\t\tRETURNF "중형 기관총"',
+                  '\tCASE "Heavy Machine Gun"', '\t\tRETURNF "중기관총"',
+                  '\tCASE "Flamethrower"', '\t\tRETURNF "화염방사기"',
+                  '\tCASE "Bow"', '\t\tRETURNF "활"',
+                  '\tCASEELSE', '\t\tRETURNF RawClass',
+                  'ENDSELECT',
+                  '',
+              ])
+              text = text.replace(marker, helper + marker, 1)
+
+          old = '\tPRINTFORM  %GET_STR(MASTER, "Weapon", ARG, "Type")% - %GET_STR(MASTER, "Weapon", ARG, "Class")% - '
+          new = '\tPRINTFORM  %WeaponTypeDisplay(GET_STR(MASTER, "Weapon", ARG, "Type"))% - %WeaponClassDisplay(GET_STR(MASTER, "Weapon", ARG, "Class"))% - '
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'Unexpected Type/Class display count: {count}')
+          text = text.replace(old, new, 1)
+
+          out = text.encode('utf-8')
+          if bom:
+              out = b'\xef\xbb\xbf' + out
+          p.write_bytes(out)
+          print('TYPE_CLASS_DISPLAY_REPLACEMENTS', count)
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE='ERB/TRANSLATION/OMOGATARI/ITEM/Omogatari_Armory.ERB'
+          git diff --check
+          grep -Fq '@WeaponTypeDisplay(RawType)' "$FILE"
+          grep -Fq '@WeaponClassDisplay(RawClass)' "$FILE"
+          grep -Fq 'GET_STR(MASTER, "Weapon", ARG, "Type")' "$FILE"
+          grep -Fq 'GET_STR(MASTER, "Weapon", ARG, "Class")' "$FILE"
+          if git diff -U0 -- "$FILE" | grep -E '^[+-].*CASE "名前"|^[+-].*@Weapon_ID'; then
+            echo 'Internal weapon identifier structure changed'; exit 1
+          fi
+          git diff --stat
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Gandalem'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'ERB/TRANSLATION/OMOGATARI/ITEM/Omogatari_Armory.ERB'
+          git commit -m '무기 설명 타입 및 클래스 표시 한글화 29차'
+          git push origin HEAD:korean
