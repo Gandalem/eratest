@@ -48,12 +48,13 @@ jobs:
 
           roots = [Path('ERB'), Path('CSV')]
           exts = {'.ERB','.ERH','.CSV','.TXT'}
-          # Focus on text that is likely rendered to the player. Comments and declarations are intentionally excluded.
           output_cmd = re.compile(r'^\s*(PRINT(?:FORM|FORML|FORMLW|FORMW|L|W|V|SINGLE|PLAIN|PLAINFORM|BUTTON|DATA)?|DRAWLINE|REUSELASTLINE|INPUTS?|TINPUTS?|ONEINPUTS?|TONEINPUTS?)\b', re.I)
           english = re.compile(r'[A-Za-z]{3,}')
           code_only = re.compile(r'^\s*[@#;]')
           rows=[]
           files=set()
+          per_file={}
+          total=0
           for root in roots:
             if not root.exists():
               continue
@@ -66,17 +67,21 @@ jobs:
                 try: text=p.read_text(encoding='cp932')
                 except Exception: continue
               for n,line in enumerate(text.splitlines(),1):
-                if code_only.match(line):
-                  continue
-                if not english.search(line):
+                if code_only.match(line) or not english.search(line):
                   continue
                 if output_cmd.match(line) or ('"' in line and any(k in line.upper() for k in ('PRINT','BUTTON','HTML','STRDATA','DATALIST'))):
-                  s=line.strip()
-                  if len(s)>500: s=s[:500]+'…'
-                  rows.append((str(p),n,s))
-                  files.add(str(p))
-          Path('translation_remaining.tsv').write_text('file\tline\ttext\n' + ''.join(f'{f}\t{n}\t{s}\n' for f,n,s in rows), encoding='utf-8')
-          Path('/tmp/remain_count').write_text(str(len(rows)))
+                  total += 1
+                  fp=str(p)
+                  files.add(fp)
+                  per_file[fp]=per_file.get(fp,0)+1
+                  if len(rows) < 5000:
+                    s=line.strip().replace('\t',' ')
+                    if len(s)>500: s=s[:500]+'…'
+                    rows.append((fp,n,s))
+          Path('translation_remaining_sample.tsv').write_text('file\tline\ttext\n' + ''.join(f'{f}\t{n}\t{s}\n' for f,n,s in rows), encoding='utf-8')
+          ranked=sorted(per_file.items(), key=lambda x:(-x[1],x[0]))[:1000]
+          Path('translation_remaining_by_file.tsv').write_text('count\tfile\n' + ''.join(f'{c}\t{f}\n' for f,c in ranked), encoding='utf-8')
+          Path('/tmp/remain_count').write_text(str(total))
           Path('/tmp/remain_files').write_text(str(len(files)))
           PY
 
@@ -89,7 +94,7 @@ jobs:
             echo '- 한국어 참고본: `TakenTextbung/eranaskr`'
             echo '- 공통 경로 파일 수: '"$COMMON_COUNT"
             echo '- 최신 원본에만 있어 추가한 파일 수: '"$MAIN_ONLY_COUNT"
-            echo '- 영어 화면 출력 후보 줄 수: '"$REMAIN_COUNT"
+            echo '- 영어 화면 출력 후보 줄 수(자동 탐지, 오탐 포함): '"$REMAIN_COUNT"
             echo '- 영어 화면 출력 후보가 있는 파일 수: '"$REMAIN_FILES"
             echo
             echo '## 병합 원칙'
@@ -97,7 +102,8 @@ jobs:
             echo '1. 공통 파일은 기존 한국어 번역을 우선 보존합니다.'
             echo '2. 최신 원본에만 존재하는 파일은 원본에서 추가합니다.'
             echo '3. 변수명, 함수명, 라벨, ERB 명령어 등 실행 식별자는 번역하지 않습니다.'
-            echo '4. `translation_remaining.tsv`는 추가 번역이 필요한 화면 출력 후보 목록입니다.'
+            echo '4. `translation_remaining_sample.tsv`는 최대 5,000줄의 표본입니다.'
+            echo '5. `translation_remaining_by_file.tsv`는 영어 후보가 많은 파일 상위 1,000개입니다.'
           } > TRANSLATION_STATUS.md
 
           git add -A
