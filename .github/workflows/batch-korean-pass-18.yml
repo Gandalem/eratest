@@ -1,0 +1,110 @@
+name: Batch Korean pass 18
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/batch-korean-pass-18.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 1
+          lfs: false
+
+      - name: Translate muzzle and tactical UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          ui = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Omogatari_Attatchments.ERB')
+          raw = ui.read_bytes(); bom = raw.startswith(b'\xef\xbb\xbf'); text = raw.decode('utf-8-sig')
+
+          if '\tCASE "WeaponTactical"\n\t\tSELECTCASE RawName' in text:
+              raise SystemExit('WeaponTactical display mapping already exists')
+          if '\tCASE "WeaponBarrel"\n\t\tSELECTCASE RawName' in text:
+              raise SystemExit('WeaponBarrel display mapping already exists')
+
+          lines = [
+              '\tCASE "WeaponTactical"',
+              '\t\tSELECTCASE RawName',
+              '\t\t\tCASE "KappaArmory Light Show Tactical Device"', '\t\t\t\tRETURNF "KappaArmory Light Show 전술 장치"',
+              '\t\t\tCASE "Lunar Nights Baldr Pro tactical flashlight with laser"', '\t\t\t\tRETURNF "Lunar Nights Baldr Pro 레이저 전술 손전등"',
+              '\t\t\tCASE "Omotics Perst-3 tactical device"', '\t\t\t\tRETURNF "Omotics Perst-3 전술 장치"',
+              '\t\t\tCASE "Omotics Klesch-2P flashlight with laser"', '\t\t\t\tRETURNF "Omotics Klesch-2P 레이저 손전등"',
+              '\t\t\tCASE "AN/PEQ-15 tactical device"', '\t\t\t\tRETURNF "AN/PEQ-15 전술 장치"',
+              '\t\t\tCASE "LA-5B/PEQ tactical device"', '\t\t\t\tRETURNF "LA-5B/PEQ 전술 장치"',
+              '\t\t\tCASE "NovelTooling X400 Ultra tactical flashlight with laser"', '\t\t\t\tRETURNF "NovelTooling X400 Ultra 레이저 전술 손전등"',
+              '\t\t\tCASE "Gensou-chan ALSA Aim Assister"', '\t\t\t\tRETURNF "Gensou-chan ALSA 조준 보조기"',
+              '\t\tENDSELECT',
+              '\tCASE "WeaponBarrel"',
+              '\t\tSELECTCASE RawName',
+              '\t\t\tCASE "Threaded barrel"', '\t\t\t\tRETURNF "나사산 총열"',
+              '\t\t\tCASE "MR-70 Final Extensions Phantom 5.56x45 flash hider"', '\t\t\t\tRETURNF "MR-70 Final Extensions Phantom 5.56x45 소염기"',
+              '\t\t\tCASE "Phantom Dynamics MMS 5.56x45 3-Prong Flash Eliminator"', '\t\t\t\tRETURNF "Phantom Dynamics MMS 5.56x45 3갈래 소염기"',
+              '\t\t\tCASE "NovelTooling Solitary 5.56x45 blast regulator"', '\t\t\t\tRETURNF "NovelTooling Solitary 5.56x45 블라스트 조절기"',
+              '\t\t\tCASE "MR-107 Final Extensions Key 7.62x51 muzzle brake"', '\t\t\t\tRETURNF "MR-107 Final Extensions Key 7.62x51 총구 제동기"',
+              '\t\t\tCASE "MR-107 HGA SF-38 7.62x51 muzzle brake"', '\t\t\t\tRETURNF "MR-107 HGA SF-38 7.62x51 총구 제동기"',
+              '\t\t\tCASE "MR-70 HGA SF-23 5.56x45 muzzle brake"', '\t\t\t\tRETURNF "MR-70 HGA SF-23 5.56x45 총구 제동기"',
+              '\t\t\tCASE "Phantom Dynamics MMS 7.62x51 Muzzle Brake Kit"', '\t\t\t\tRETURNF "Phantom Dynamics MMS 7.62x51 총구 제동기 키트"',
+              '\t\tENDSELECT',
+          ]
+          block = '\n'.join(lines) + '\n'
+          marker = '\tCASE "WeaponBarrelBody"\n'
+          if marker not in text:
+              raise SystemExit('WeaponBarrelBody marker not found')
+          text = text.replace(marker, block + marker, 1)
+          out = text.encode('utf-8'); ui.write_bytes((b'\xef\xbb\xbf'+out) if bom else out)
+
+          tactical = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Tactical.ERB')
+          raw = tactical.read_bytes(); bom = raw.startswith(b'\xef\xbb\xbf'); text = raw.decode('utf-8-sig')
+          reps = [
+              ('Underbarrel-mounted LED flashlight \\\"2P Klesch + LCU\\\" produced by Omotics.', 'Omotics에서 생산한 총열 하부 장착형 LED 손전등 \\\"2P Klesch + LCU\\\"이다.'),
+          ]
+          n = 0
+          for old,new in reps:
+              c = text.count(old)
+              if c:
+                  text = text.replace(old,new); n += c; print('TACTICAL_DESC', c, old)
+          if n != 1:
+              raise SystemExit(f'Unexpected tactical description replacements: {n}')
+          out = text.encode('utf-8'); tactical.write_bytes((b'\xef\xbb\xbf'+out) if bom else out)
+          print('DONE')
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          for f in \
+            'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Tactical.ERB' \
+            'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Barrel Extensions.ERB'; do
+            if git diff -U0 -- "$f" | grep -E '^[+-][[:space:]]*CASE "名前"|^[+-].*@(WeaponTactical_ID|WeaponBarrel_ID)'; then
+              echo "Internal attachment identifier structure changed in $f"; exit 1
+            fi
+          done
+          git diff --stat
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Gandalem'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Omogatari_Attatchments.ERB' \
+            'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Tactical.ERB'
+          git commit -m '총구 부착물 및 전술 장비 한글화 18차'
+          git push origin HEAD:korean
