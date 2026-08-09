@@ -1,0 +1,95 @@
+name: Korean UI safe pass
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/ui-korean-pass.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean working branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/korean-localization
+          fetch-depth: 0
+
+      - name: Apply safe UI translations
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          exts={'.ERB','.ERH'}
+          changed=[]
+          replacements={
+              'Invalid Input':'잘못된 입력',
+              'Normal Peasant':'일반 소작농',
+              'Hardcore Peasant':'고난도 소작농',
+              'Extreme Peasant':'극한 소작농',
+              'The loan has a {INT_NOUMIN(FLAG:地主, "金利")}％ interest rate.':'대출 이자율은 {INT_NOUMIN(FLAG:地主, "金利")}％이다.',
+              '%NAME_地主% proposes to lend some gardening tools.':'%NAME_地主%는 원예 도구를 빌려주겠다고 제안한다.',
+              "...It seems you aren't allowed to refuse.":'...거절할 수는 없는 것 같다.',
+          }
+          labels={
+              'No':'아니요','Yes':'예','Back':'뒤로','Next':'다음','Previous':'이전',
+              'Exit':'종료','Cancel':'취소','Confirm':'확인','Save':'저장','Load':'불러오기',
+              'Settings':'설정','Options':'옵션','Return':'돌아가기','Close':'닫기','Continue':'계속',
+          }
+          # Only touch ERB output lines. Code declarations, conditions, identifiers and comments stay intact.
+          output=re.compile(r'^(\s*(?:PRINT\w*|REUSELASTLINE)\b)(.*)$',re.I)
+          bracket_label=re.compile(r'^(\s*\[[^\]]+\]\s*)([A-Za-z]+)(\s*)$')
+          plain_label=re.compile(r'^(\s*)([A-Za-z]+)(\s*)$')
+
+          for p in Path('ERB').rglob('*'):
+              if not p.is_file() or p.suffix.upper() not in exts: continue
+              raw=p.read_bytes()
+              enc=None
+              for e in ('utf-8-sig','utf-8','cp932'):
+                  try:
+                      text=raw.decode(e); enc=e; break
+                  except UnicodeDecodeError: pass
+              if enc is None: continue
+              original=text
+              lines=[]
+              for line in text.splitlines(keepends=True):
+                  body=line.rstrip('\r\n'); nl=line[len(body):]
+                  m=output.match(body)
+                  if m:
+                      prefix,tail=m.group(1),m.group(2)
+                      for a,b in replacements.items():
+                          if a in tail: tail=tail.replace(a,b)
+                      bm=bracket_label.match(tail)
+                      if bm and bm.group(2) in labels:
+                          tail=bm.group(1)+labels[bm.group(2)]+bm.group(3)
+                      else:
+                          pm=plain_label.match(tail)
+                          if pm and pm.group(2) in labels:
+                              tail=pm.group(1)+labels[pm.group(2)]+pm.group(3)
+                      body=prefix+tail
+                  lines.append(body+nl)
+              text=''.join(lines)
+              if text!=original:
+                  # Normalize changed script files to UTF-8 BOM, matching the Korean reference style.
+                  p.write_text(text,encoding='utf-8-sig',newline='')
+                  changed.append(str(p))
+          Path('UI_KOREAN_PASS.md').write_text(
+              '# 안전 UI 한글화 패스\n\n'
+              '코드 식별자를 건드리지 않고 PRINT/REUSELASTLINE 출력 문맥의 단독 메뉴 단어와 검증된 문구만 치환했습니다.\n\n'
+              f'- 변경 파일 수: {len(changed)}\n\n'
+              '## 변경 파일\n\n'+'\n'.join(f'- `{x}`' for x in changed[:500])+'\n',encoding='utf-8')
+          print('changed files:',len(changed))
+          PY
+          git add ERB UI_KOREAN_PASS.md
+          git commit -m "진행 관련 영어 UI 안전 한글화" || true
+          git push origin agent/korean-localization
