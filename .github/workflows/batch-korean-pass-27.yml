@@ -1,0 +1,177 @@
+name: Batch Korean pass 27
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/batch-korean-pass-27.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 1
+          lfs: false
+
+      - name: Translate weapon creation and holster UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def read_text(path):
+              raw = path.read_bytes()
+              return raw.startswith(b'\xef\xbb\xbf'), raw.decode('utf-8-sig')
+
+          def write_text(path, bom, text):
+              out = text.encode('utf-8')
+              if bom:
+                  out = b'\xef\xbb\xbf' + out
+              path.write_bytes(out)
+
+          # ------------------------------------------------------------
+          # Item Modding / custom weapon creation UI
+          # ------------------------------------------------------------
+          p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Item Modding.ERB')
+          bom, text = read_text(p)
+          basic = [
+              ('"「How do you want to change it?」"', '"「어떻게 바꾸고 싶어?」"'),
+              ('@"%"Add all of them",30,LEFT%"', '@"%"전부 추가",30,LEFT%"'),
+              ('#DIMS CAW_TYPE_LABELS = "Type", "Form", "Tech Level", "Action"', '#DIMS CAW_TYPE_LABELS = "무기 종류", "형태", "기술 수준", "작동 방식"'),
+              ('PRINTFORML %CAW_TYPE_LABELS:CAW_RESULT%를 선택한다.', 'PRINTFORML %CAW_TYPE_LABELS:CAW_RESULT%을(를) 선택한다.'),
+              ('PRINTFORML [901] 기지로 돌아가다', 'PRINTFORML [901] 기본 설정으로 돌아가기'),
+              ('PRINTFORML [999] 리턴', 'PRINTFORML [999] 돌아가기'),
+          ]
+          basic_count = 0
+          for old, new in basic:
+              c = text.count(old)
+              if c:
+                  text = text.replace(old, new)
+                  basic_count += c
+                  print('ITEM_UI', c, old)
+
+          start = text.find('@CAW_STRINGS(ARG,ARG:1,ARG:2)')
+          end = text.find(';NAS code for having an input for pay in charisma', start)
+          if start < 0 or end < 0:
+              raise SystemExit('CAW_STRINGS section not found')
+          section = text[start:end]
+          long_forms = {
+              'Rifle': '소총',
+              'Pistol': '권총',
+              'Shotgun': '산탄총',
+              'Blunt Melee': '둔기',
+              'Sharp Melee': '도검',
+              'Launcher': '발사기',
+              'Heavy Support': '중지원화기',
+              'Vehicle Weapon': '차량 탑재 무기',
+              'Throwable': '투척 무기',
+              'Youjutsu': '요술',
+              'Select a weapon type': '무기 종류 선택',
+              'Pistol caliber': '권총탄 구경',
+              'Intermediate caliber': '중간탄 구경',
+              'Full caliber': '전위력 소총탄 구경',
+              'Magnum caliber': '매그넘 구경',
+              'Anti-Material caliber': '대물용 구경',
+              'Muzzle loading': '전장식',
+              'Airgun': '공기총',
+              'Short Form': '단형',
+              'Long Form': '장형',
+              'Battery operated': '배터리 구동',
+              'Uses Youjutsu': '요술 사용',
+              'Anti-Tank': '대전차',
+              'Select a weapon form': '무기 형태 선택',
+              'Single shot': '단발',
+              'Manual action': '수동 작동',
+              'Revolving double-action': '더블액션 리볼버',
+              'Semi-auto': '반자동',
+              'Automatic/Select-Fire': '자동/선택사격',
+              'Select a weapon operation': '작동 방식 선택',
+          }
+          caw_count = 0
+          for old, new in long_forms.items():
+              pat = f'RETURNF "{old}"'
+              c = section.count(pat)
+              if c != 1:
+                  raise SystemExit(f'Unexpected CAW display count for {old!r}: {c}')
+              section = section.replace(pat, f'RETURNF "{new}"', 1)
+              caw_count += 1
+          text = text[:start] + section + text[end:]
+          write_text(p, bom, text)
+
+          # ------------------------------------------------------------
+          # Holster / weapon selection UI
+          # ------------------------------------------------------------
+          h = Path('ERB/TRANSLATION/OMOGATARI/ITEM/HolsterMenu.ERB')
+          bom, text = read_text(h)
+          holster_reps = [
+              ('#DIMS CONST DISP_MEMO = "Rank", "Damage", "Acc.", "Penetr.", "Range", "Burst", "Ammunition", "Attachments"', '#DIMS CONST DISP_MEMO = "등급", "피해", "명중", "관통", "사거리", "연사", "탄약", "부착물"'),
+              ('PRINTFORML [998] - 난마쿠로 전환', 'PRINTFORML [998] - 탄막으로 전환'),
+              ('PRINTFORMW %PARSE("You",,,C_ID)%단막으로 전환한다.', 'PRINTFORMW %PARSE("You",,,C_ID)% 탄막으로 전환한다.'),
+              ('PRINTFORMW %PARSE("You",,,C_ID)%으로 전환한다. %PARSE("your",5,,C_ID)% 주먹을.', 'PRINTFORMW %PARSE("You",,,C_ID)% 주먹으로 전환한다.'),
+              ('PRINTFORML [999] 신경 쓰지 마', 'PRINTFORML [999] 돌아가기'),
+              ('PRINTFORMDL %PARSE("You holster")% 그 %CLOTHES_TR(CLOTHNAME(24, EQUIP:C_ID:Weapon))%.', 'PRINTFORMDL %PARSE("You",,,C_ID)% %CLOTHES_TR(CLOTHNAME(24, EQUIP:C_ID:Weapon))%을(를) 홀스터에 넣는다.'),
+              ('PRINTFORM %PARSE("You",,,C_ID)%둘 중 하나일 수 있다 ', 'PRINTFORM %PARSE("You",,,C_ID)% 다음 무기 중 하나로 전환할 수 있다: '),
+              ('PRINTSL LIST_IN_STRING(LOCALS,," or")', 'PRINTSL LIST_IN_STRING(LOCALS,," 또는 ")'),
+          ]
+          holster_count = 0
+          for old, new in holster_reps:
+              c = text.count(old)
+              if c:
+                  text = text.replace(old, new, 1)
+                  holster_count += 1
+                  print('HOLSTER_UI', old)
+          if holster_count < 8:
+              raise SystemExit(f'Too few holster replacements: {holster_count}')
+          write_text(h, bom, text)
+
+          if basic_count < 6 or caw_count != len(long_forms):
+              raise SystemExit(f'Unexpected counts basic={basic_count}, caw={caw_count}')
+          print('ITEM_UI_REPLACEMENTS', basic_count)
+          print('CAW_DISPLAY_REPLACEMENTS', caw_count)
+          print('HOLSTER_REPLACEMENTS', holster_count)
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+
+          ITEM='ERB/TRANSLATION/OMOGATARI/ITEM/Item Modding.ERB'
+          HOLSTER='ERB/TRANSLATION/OMOGATARI/ITEM/HolsterMenu.ERB'
+
+          # Internal CAW codes construct the lookup key and must remain English/abbreviated.
+          for code in R P S B K L H V T Y PC IN FC MC AM ML OH SF LF LI MP AV SS MA RV SA AT; do
+            grep -Fq "RETURNF \"$code\"" "$ITEM" || { echo "Missing CAW internal code: $code"; exit 1; }
+          done
+          grep -Fq 'CAW_STRING += CAW_STRINGS(LOCAL,CAW_PARTS:LOCAL,1)' "$ITEM"
+          grep -Fq 'CAW_BASE = CLOTHES_ID("Weapon", CAW_STRING)' "$ITEM"
+
+          # Weapon category identifiers used by CHECK_WEAPON/SORT_LIST_WEAPON stay untouched.
+          for key in 'CASE "Rifles"' 'CASE "Pistols"' 'CASE "Shotguns"' 'CASE "Machine Guns"' 'CASE "Explosives"' 'CASE "Youjutsu"' 'CASE "Hybrid"'; do
+            grep -Fq "$key" "$HOLSTER" || { echo "Missing internal weapon category: $key"; exit 1; }
+          done
+          grep -Fq '#DIMS CONST DISP_MEMO = "Rank", "Damage", "Accuracy", "Penetration", "Range", "Burst", "Ammunition", "Attachments"' "$HOLSTER"
+
+          git diff --stat
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Gandalem'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            'ERB/TRANSLATION/OMOGATARI/ITEM/Item Modding.ERB' \
+            'ERB/TRANSLATION/OMOGATARI/ITEM/HolsterMenu.ERB'
+          git commit -m '무기 생성 및 홀스터 UI 한글화 27차'
+          git push origin HEAD:korean
