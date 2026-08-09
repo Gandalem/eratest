@@ -1,0 +1,142 @@
+name: Batch Korean pass 13
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/batch-korean-pass-13.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 1
+          lfs: false
+
+      - name: Translate shotgun display names and descriptions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Armory/300 Firearms/500 Shotguns.ERB')
+          raw = p.read_bytes()
+          bom = raw.startswith(b'\xef\xbb\xbf')
+          text = raw.decode('utf-8-sig')
+
+          def case_payloads(src, case_name):
+              lines = src.splitlines()
+              out = []
+              active = False
+              for line in lines:
+                  s = line.strip()
+                  if s == f'CASE "{case_name}"':
+                      active = True
+                      continue
+                  if active and s.startswith('CASE '):
+                      active = False
+                  if active:
+                      out.append(line)
+              return out
+
+          protected = ['名前', 'Type', 'Class', 'Platform', 'Tags', 'Ammo', 'Research Required']
+          before_protected = {k: case_payloads(text, k) for k in protected}
+
+          full_names = {
+              'Kappa Armory Pump-Action Shotgun「Attorney」': 'Kappa Armory 펌프액션 산탄총「Attorney」',
+              'pump-action shotgun': '펌프액션 산탄총',
+              "Rika's Arms Volley Rifle「Sweet Sixteen」": "Rika's Arms 일제사격 소총「Sweet Sixteen」",
+              'volley rifle': '일제사격 소총',
+              'Gabe Hubert Semi-Automatic Shotgun「GH512」': 'Gabe Hubert 반자동 산탄총「GH512」',
+              'semi-automatic shotgun': '반자동 산탄총',
+              'Klimovsk High-Bore Shotgun「VS-23」': 'Klimovsk 대구경 산탄총「VS-23」',
+              'high-bore shotgun': '대구경 산탄총',
+              'Akatsuki Shotgun Musket「Raiken」': 'Akatsuki 산탄 머스킷「Raiken」',
+              'shotgun musket': '산탄 머스킷',
+              'Kappa Armory Automatic Shotgun「Lawyer」': 'Kappa Armory 자동 산탄총「Lawyer」',
+              'automatic shotgun': '자동 산탄총',
+              'Nizhny Novgorod Illumination and Signal Pistol「OSP-81」': 'Nizhny Novgorod 조명·신호 권총「OSP-81」',
+              'flare gun': '신호탄 권총',
+          }
+
+          descs = {
+              'The VS-23 (Special Rifle - 23mm) is a Russian shotgun, although because it uses a rifled barrel it is officially designated by the Russian military as a rifle. VS stands for Vintovka Spetsialniy, \\"Special Rifle\\". It is renowned for its large caliber, firing a 23 mm round, equating to 6.27 gauge using the British and American standards of shotgun gauges and approximately 4 gauge using the current European standards (based on the metric CIP tables), making it the largest-bore shotgun in use today.':
+              'VS-23(특수 소총 - 23mm)은 러시아제 산탄총이지만 강선 총열을 사용하기 때문에 러시아군에서는 공식적으로 소총으로 분류한다. VS는 Vintovka Spetsialniy, 즉 \\"특수 소총\\"의 약자다. 23mm 탄을 사용하는 대구경 무기로 유명하며, 영미식 산탄총 규격으로는 약 6.27게이지, 현행 유럽식 기준으로는 약 4게이지에 해당한다. 현재 운용되는 산탄총 가운데 가장 큰 구경에 속한다.',
+              'The Raiken (Japanese for \\"Thunder Pipe\\") is a firearm with a short, large caliber barrel which is flared at the muzzle and frequently throughout the entire bore, and used with shot and other projectiles of relevant quantity or caliber. The Raiken is commonly considered to be an early predecessor of the modern shotgun, with similar military and defensive use. It was effective only at short range, lacking accuracy at long distances. A shotgun musket in handgun form was called a dragon, and it is from this that the term dragoon evolved.':
+              'Raiken은 일본어로 \\"천둥 관\\"이라는 뜻의 화기로, 짧고 큰 구경의 총열과 넓게 벌어진 총구를 갖고 산탄이나 여러 형태의 투사체를 발사한다. 현대 산탄총의 초기 선조에 해당하는 무기로 여겨지며 군용과 방어용으로 비슷한 역할을 했다. 근거리에서는 효과적이지만 장거리 명중률은 낮다. 권총 형태의 산탄 머스킷은 드래곤이라 불렸으며, 여기에서 드라군이라는 명칭이 유래했다.',
+              'The OSP-81 (\\"Signal pistol model 1981\\") is a Soviet/Russian flare gun, developed in 1980 and adopted in 1981, produced by the Nizhny Novgorod Arms Plant. Created as a replacement for the SP-44, it actually represents its more compact version. It is also worth noting that the SP-81 was one of the few flare guns that had a combat version. In 1994, by special permission of the MAI, for truckers transporting especially valuable cargo, a version with an elongated heavy barrel, adapted for VS-23 charges, was released.':
+              'OSP-81(\\"1981년형 신호 권총\\")은 1980년에 개발되어 1981년에 채택된 소련/러시아제 신호탄 권총으로, Nizhny Novgorod 조병창에서 생산되었다. SP-44를 대체하기 위해 만들어졌으며 보다 작고 간결한 형태로 설계되었다. 전투용 파생형이 존재했던 몇 안 되는 신호탄 권총이기도 하다. 1994년에는 귀중품을 운송하는 운전자들을 위해 MAI의 특별 허가 아래, VS-23 탄약을 사용할 수 있도록 길고 무거운 총열을 단 버전도 출시되었다.',
+          }
+
+          lines = text.splitlines(True)
+          mode = None
+          total = 0
+          rx = re.compile(r'^(\s*CALLF MAKE_STR\(V_NAME,\s*)"((?:\\.|[^"\\])*)"(\)\s*)$')
+          for i, line in enumerate(lines):
+              nl = '\r\n' if line.endswith('\r\n') else ('\n' if line.endswith('\n') else '')
+              core = line[:-len(nl)] if nl else line
+              s = core.strip()
+              if s == 'CASE "FullName"':
+                  mode = 'FullName'
+                  continue
+              if s == 'CASE "描写"':
+                  mode = '描写'
+                  continue
+              if s.startswith('CASE '):
+                  mode = None
+                  continue
+              if mode not in ('FullName', '描写'):
+                  continue
+              m = rx.match(core)
+              if not m:
+                  continue
+              val = m.group(2)
+              mapping = full_names if mode == 'FullName' else descs
+              if val in mapping:
+                  lines[i] = m.group(1) + '"' + mapping[val] + '"' + m.group(3) + nl
+                  total += 1
+                  print(mode, val[:100], '->', mapping[val][:100])
+
+          text2 = ''.join(lines)
+          after_protected = {k: case_payloads(text2, k) for k in protected}
+          if before_protected != after_protected:
+              raise SystemExit('Protected internal fields changed')
+          if total < 15:
+              raise SystemExit(f'Too few replacements: {total}')
+
+          out = text2.encode('utf-8')
+          if bom:
+              out = b'\xef\xbb\xbf' + out
+          p.write_bytes(out)
+          print('TOTAL_REPLACEMENTS', total)
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          if git diff -U0 -- 'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/300 Firearms/500 Shotguns.ERB' | grep -E '^[+-][[:space:]]*CASE "(名前|Type|Class|Platform|Tags|Ammo|Research Required)"'; then
+            echo 'Protected case structure changed'; exit 1
+          fi
+          git diff --stat
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Gandalem'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/300 Firearms/500 Shotguns.ERB'
+          git commit -m '산탄총 표시명 및 설명 한글화 13차'
+          git push origin HEAD:korean
