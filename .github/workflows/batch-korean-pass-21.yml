@@ -1,0 +1,200 @@
+name: Batch Korean pass 21
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/batch-korean-pass-21.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 1
+          lfs: false
+
+      - name: Translate spell card UI and safe clothing descriptions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          spell = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Omogatari_SpellCards.ERB')
+          raw = spell.read_bytes()
+          bom = raw.startswith(b'\xef\xbb\xbf')
+          text = raw.decode('utf-8-sig')
+
+          if '@SpellCardDisplayName(CHARA,Card)' in text:
+              raise SystemExit('SpellCardDisplayName already exists')
+
+          display_names = {
+              '「King Crimson」': '「킹 크림슨」',
+              'Dream Sign 「Duplex Barrier」': '몽부 「이중결계」',
+              'Moon Sign 「Moonlight Ray」': '월부 「문라이트 레이」',
+              'Ice Sign 「Icicle Fall」': '빙부 「아이시클 폴」',
+              'Fire Sign 「Agni Shine」': '화부 「아그니 샤인」',
+              'Spirit Sign 「Dream Seal -Spread-」': '영부 「몽상봉인 -산-」',
+              'Darkness Sign 「Demarcation」': '암부 「디마케이션」',
+              'Freeze Sign 「Perfect Freeze」': '동부 「퍼펙트 프리즈」',
+              'Conjuring 「Mesmerizing Misdirection」': '기예 「메스머라이징 미스디렉션」',
+              'Wood Sign 「Sylphy Horn」': '목부 「실피 혼」',
+              'Rainbow Sign 「Colorful Rainbow Wind Chime」': '홍부 「채홍의 풍령」',
+              'Divine Treasure 「Brilliant Dragon Barrette」': '신보 「브릴리언트 드래곤 바렛」',
+              'Scattered Spirit 「Dream Seal -Worn-」': '산령 「몽상봉인 -마모-」',
+          }
+
+          descriptions = {
+              '「King Crimson」': '『킹 크림슨』의 능력이 발동하는 동안 이 세계의 시간은 사라지고, 그 시간 속에서 자신이 했던 행동을 누구도 기억하지 못한다!',
+              'Dream Sign 「Duplex Barrier」': '탄막은 직선으로 날아가지만 결계가 그 궤도를 비튼다. 두 결계 사이의 빈 공간을 머릿속으로 채워 생각하면 의외로 피하기 쉬운 스펠카드다.',
+              'Moon Sign 「Moonlight Ray」': '사용자가 작은 탄환 고리를 연속으로 발사하고 그중 하나는 목표를 조준한다. 동시에 두꺼운 레이저 두 줄이 양옆에서 좁혀 오며, Mystic Square의 Sara 최종 패턴과 비슷하게 전개된다.',
+              'Ice Sign 「Icicle Fall」': 'Cirno가 양옆으로 얼음 파편 같은 탄막을 발사한 뒤 호를 그리며 떨어뜨린다. 이 스펠은 이지 모드에서 Cirno 바로 앞에 큰 안전지대가 있는 것으로 유명하다. 노멀에서는 플레이어를 노리는 5방향 황색탄이 추가되지만, 캐릭터의 피탄 판정을 Cirno의 머리 위에 겹치면 다시 회피할 수 있다.',
+              'Fire Sign 「Agni Shine」': 'Patchouli가 자신을 중심으로 회전하는 화염탄의 파동을 만든 뒤 각도를 바꾸어 원을 바깥쪽으로 확장시킨다.',
+              'Spirit Sign 「Dream Seal -Spread-」': '가장 정공법에 가까운 패턴이다. 시간이 지날수록 %HE_SHE(ARG,1)%가 더 많은 탄환을 쏘기 때문에 생각보다 쉽게 당할 수 있다.',
+              'Darkness Sign 「Demarcation」': '사용자가 파란색, 초록색, 빨간색 탄환 고리를 발사한다. 탄환은 잠시 멈춘 뒤 급격히 방향을 틀어 원을 넓히며, 홀수 탄은 오른쪽으로 짝수 탄은 왼쪽으로 이동한다. 이어서 목표를 노린 파란 탄환 덩어리를 발사한다.',
+              'Freeze Sign 「Perfect Freeze」': 'Cirno가 무지갯빛 탄환을 무작위 방향으로 흩뿌린다. 공격을 멈추면 화면에 남은 탄환이 하얗게 얼어붙고, 이어서 조준형 파란 탄막을 발사한다. 이후 얼어붙었던 각 탄환이 제각기 무작위 방향으로 움직이며 스펠이 끝날 때까지 이 패턴을 반복한다.',
+              'Conjuring 「Mesmerizing Misdirection」': '「Misdirection」과 매우 비슷하지만 쿠나이가 벽에 닿으면 튕겨 나오며, 화면 아래쪽을 통과해야만 사라진다.',
+              'Wood Sign 「Sylphy Horn」': 'Patchouli가 자신에게서 초록 탄환을 발사해 왼쪽 아래로 떨어뜨리는 동안 화면 오른쪽에서도 같은 방향으로 움직이는 초록 탄환이 추가로 생성된다.',
+              'Rainbow Sign 「Colorful Rainbow Wind Chime」': 'Meiling이 자신을 중심으로 복잡하게 회전하는 탄막을 발사한다. 각 파동마다 비슷한 타이밍에 좌우로 조금씩 움직이면 비교적 단순하게 피할 수 있다. 공격 중에는 화면 위쪽에서 중앙 부근까지 중간 속도로 내려온다.',
+              'Divine Treasure 「Brilliant Dragon Barrette」': '용의 눈이 붉어지면 쓰나미가 온다고 흔히들 말한다. 하지만 옛날에는 정말 쓰나미보다 용이 더 자주 나타났던 걸까?',
+              'Scattered Spirit 「Dream Seal -Worn-」': '%CALLNAME:ARG%은 상대를 제대로 보지도 않고 마구 쏘아대고 있다. 마치 아이들끼리 아무렇게나 손을 휘두르며 싸우는 것 같다.',
+          }
+
+          helper_lines = [
+              '@SpellCardDisplayName(CHARA,Card)',
+              '#FUNCTIONS',
+              '#DIM CHARA',
+              '#DIM Card',
+              '#DIMS RawName',
+              'RawName = %GET_STR(CHARA, "SpellCard", Card, "名前")%',
+              'SELECTCASE RawName',
+          ]
+          for old, new in display_names.items():
+              helper_lines += [f'\tCASE "{old}"', f'\t\tRETURNF "{new}"']
+          helper_lines += ['ENDSELECT', 'RETURNF RawName', '']
+          helper = '\n'.join(helper_lines) + '\n'
+
+          marker = '@SpellCardList(CHARA,ifButton = 0)'
+          if marker not in text:
+              raise SystemExit('SpellCardList marker not found')
+          text = text.replace(marker, helper + marker, 1)
+
+          old1 = 'PRINTBUTTON @"%GET_STR(CHARA, "SpellCard", LOCAL, "名前"), 80, LEFT%", LOCAL'
+          new1 = 'PRINTBUTTON @"%SpellCardDisplayName(CHARA, LOCAL), 80, LEFT%", LOCAL'
+          old2 = 'PRINTFORM %GET_STR(CHARA, "SpellCard", LOCAL, "名前"), 80, LEFT%'
+          new2 = 'PRINTFORM %SpellCardDisplayName(CHARA, LOCAL), 80, LEFT%'
+          hooks = 0
+          for old, new in [(old1,new1),(old2,new2)]:
+              c = text.count(old)
+              if c:
+                  text = text.replace(old,new)
+                  hooks += c
+          if hooks != 2:
+              raise SystemExit(f'Unexpected display hook count: {hooks}')
+
+          lines = text.splitlines(True)
+          current_name = None
+          mode = None
+          desc_count = 0
+          rx = re.compile(r'^(\s*CALLF MAKE_STR\(V_NAME,\s*@?)"((?:\\.|[^"\\])*)"(\)\s*)$')
+          for i, line in enumerate(lines):
+              nl = '\r\n' if line.endswith('\r\n') else ('\n' if line.endswith('\n') else '')
+              core = line[:-len(nl)] if nl else line
+              s = core.strip()
+              if s == 'CASE "名前"':
+                  mode = 'name'
+                  continue
+              if s == 'CASE "Description"':
+                  mode = 'desc'
+                  continue
+              if s.startswith('CASE ') and s not in ('CASE "名前"','CASE "Description"'):
+                  mode = None
+                  continue
+              m = rx.match(core)
+              if not m:
+                  continue
+              val = m.group(2)
+              if mode == 'name':
+                  current_name = val
+                  mode = None
+              elif mode == 'desc':
+                  if current_name in descriptions and val:
+                      lines[i] = m.group(1) + '"' + descriptions[current_name] + '"' + m.group(3) + nl
+                      desc_count += 1
+                      print('SPELL_DESC', current_name)
+                  mode = None
+
+          text = ''.join(lines)
+          if desc_count < 12:
+              raise SystemExit(f'Too few spell descriptions translated: {desc_count}')
+
+          out = text.encode('utf-8')
+          if bom:
+              out = b'\xef\xbb\xbf' + out
+          spell.write_bytes(out)
+
+          clothing = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Clothing/Omogatari_Clothing.ERB')
+          raw = clothing.read_bytes()
+          bom = raw.startswith(b'\xef\xbb\xbf')
+          text = raw.decode('utf-8-sig')
+          reps = [
+              ('Suioto Reference-Grade In-Ear Monitors「SI-α901」', 'Suioto 레퍼런스급 인이어 모니터「SI-α901」'),
+              ('Studio-grade in-ear headphones for monitoring audio during live recordings, commonly referred to as in-ear monitors or IEMs. Improved sound quality compared to typical earbuds with better fit.', '라이브 녹음 중 음향을 모니터링하기 위한 스튜디오급 인이어 헤드폰이다. 보통 인이어 모니터 또는 IEM이라 부르며, 일반 이어버드보다 착용감과 음질이 뛰어나다.'),
+              ('A fancy little headdress with jewlery on it.', '보석 장식이 달린 작고 화려한 머리 장식이다.'),
+              ('A light motorcycle helmet made for protecting the rider from light blows.', '가벼운 충격으로부터 운전자의 머리를 보호하기 위한 경량 오토바이 헬멧이다.'),
+              ('ArmTeck Filtered Oxygen Mask「AEF-120」', 'ArmTeck 여과식 산소 마스크「AEF-120」'),
+              ('A gas mask, helps filter out dirty air and bad smells.', '오염된 공기와 악취를 걸러 주는 방독면이다.'),
+              ('A headscarf, wrapped around the head and neck, covering the hair, neck, and ears but leaving the face visible. The use of the hijab has been on the rise worldwide since the 1970s and is viewed by many Muslims as expressing modesty and faith.', '머리와 목을 감싸 머리카락, 목, 귀를 가리되 얼굴은 드러내는 두건이다. 히잡은 1970년대 이후 전 세계적으로 사용이 늘었으며 많은 무슬림에게 정숙함과 신앙을 표현하는 의복으로 여겨진다.'),
+              ('LUNINCO Ballistic Pants「PlasShort」', 'LUNINCO 방탄 바지「PlasShort」'),
+              ('Pants made with a ballistic plasteel weave, keeping style while also acting as intermediate ballistic protection. Not piddle nor blort retardant.', '방탄 플라스틸 직조 소재로 만든 바지로, 외형을 유지하면서 중간 수준의 탄도 방호 성능을 제공한다. 방수 기능은 없다.'),
+          ]
+          cloth_count = 0
+          for old,new in reps:
+              c = text.count(old)
+              if c:
+                  text = text.replace(old,new)
+                  cloth_count += c
+                  print('CLOTHING', c, old[:90])
+          if cloth_count < 9:
+              raise SystemExit(f'Too few clothing replacements: {cloth_count}')
+          out = text.encode('utf-8')
+          if bom:
+              out = b'\xef\xbb\xbf' + out
+          clothing.write_bytes(out)
+          print('SPELL_DESCRIPTIONS', desc_count)
+          print('CLOTHING_REPLACEMENTS', cloth_count)
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          if git diff -U0 -- 'ERB/TRANSLATION/OMOGATARI/ITEM/Omogatari_SpellCards.ERB' | grep -E '^[+-][[:space:]]*CASE "名前"|^[+-].*@SpellCard[0-9]+\('; then
+            echo 'Internal spell-card identifier structure changed'; exit 1
+          fi
+          if git diff -U0 -- 'ERB/TRANSLATION/OMOGATARI/ITEM/Clothing/Omogatari_Clothing.ERB' | grep -E '^[+-][[:space:]]*CASE "名前"|^[+-].*@(頭装備|ワンピース|ズボン|スカート|上半身上着)[^ ]*\('; then
+            echo 'Internal clothing identifier structure changed'; exit 1
+          fi
+          git diff --stat
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Gandalem'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            'ERB/TRANSLATION/OMOGATARI/ITEM/Omogatari_SpellCards.ERB' \
+            'ERB/TRANSLATION/OMOGATARI/ITEM/Clothing/Omogatari_Clothing.ERB'
+          git commit -m '스펠카드 및 일반 의류 설명 한글화 21차'
+          git push origin HEAD:korean
