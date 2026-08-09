@@ -1,0 +1,121 @@
+name: Scan remaining English latest
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/scan-remaining-english-latest.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 1
+          lfs: false
+
+      - name: Scan likely visible English
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          from collections import Counter, defaultdict
+
+          roots = [Path('ERB/TRANSLATION'), Path('ERB/NEWGAME'), Path('ERB/MOVEMENTS')]
+          exts = {'.ERB', '.ERH'}
+          quoted = re.compile(r'"((?:\\.|[^"\\])*)"')
+          ascii_word = re.compile(r'[A-Za-z]{2,}')
+          hangul = re.compile(r'[가-힣]')
+          visible_tokens = ('RETURNF', 'RESULTS:', 'PRINT', 'HTML', 'BUTTON', 'LOCALS', 'MAKE_STR', 'ASK_', 'TITLE', 'DESC', 'MESSAGE')
+          skip_exact = {'eng','TW','ATW','NAS','TOTAL','GENERAL','SEX','FUNNY','CHARACTER','COMBAT','EXCRETE'}
+          skip_re = re.compile(r'^[A-Z0-9_./:+-]+$')
+
+          by_file = Counter()
+          samples = defaultdict(list)
+          total = 0
+          for root in roots:
+              if not root.exists():
+                  continue
+              for p in root.rglob('*'):
+                  if p.suffix.upper() not in exts:
+                      continue
+                  try:
+                      lines = p.read_text(encoding='utf-8-sig').splitlines()
+                  except Exception:
+                      continue
+                  for lineno, line in enumerate(lines, 1):
+                      s = line.lstrip()
+                      if s.startswith(';'):
+                          continue
+                      if not any(tok in line for tok in visible_tokens):
+                          continue
+                      for m in quoted.finditer(line):
+                          val = m.group(1).strip()
+                          if not val or val in skip_exact:
+                              continue
+                          if hangul.search(val):
+                              continue
+                          if not ascii_word.search(val):
+                              continue
+                          if val.startswith(('@','#','%')):
+                              continue
+                          if skip_re.fullmatch(val) and ' ' not in val:
+                              continue
+                          # Avoid obvious function/format fragments and paths.
+                          if any(x in val for x in ('%PRINT_', '%HE_', '%HIM_', '%HIS_', '%TOUPPER(', 'CASE ', '@')) and len(val) < 40:
+                              continue
+                          by_file[str(p)] += 1
+                          total += 1
+                          if len(samples[str(p)]) < 4:
+                              samples[str(p)].append((lineno, val[:180]))
+
+          print(f'TOTAL_LIKELY_VISIBLE_ENGLISH={total}')
+          print('TOP_FILES_BEGIN')
+          for path, count in by_file.most_common(40):
+              print(f'{count}\t{path}')
+              for lineno, val in samples[path]:
+                  print(f'  L{lineno}: {val}')
+          print('TOP_FILES_END')
+
+          targets = [
+              'Western', 'This map has more than one room choice.', 'Hakurei Shrine',
+              'Moriya Shrine Branch', "Aunn's Abode", 'Myouren Temple',
+              'Scarlet Devil Mansion', 'Sanzu River', 'Youkai Mountain',
+              'Dream World', 'sex_frustratedPushDown', 'Sexual #', 'TIP #',
+              'robust penis', "Men's clothing"
+          ]
+          print('TARGETED_REMAINDERS_BEGIN')
+          for target in targets:
+              found = []
+              for root in roots:
+                  if not root.exists():
+                      continue
+                  for p in root.rglob('*'):
+                      if p.suffix.upper() not in exts:
+                          continue
+                      try:
+                          for lineno, line in enumerate(p.read_text(encoding='utf-8-sig').splitlines(),1):
+                              if target in line and not line.lstrip().startswith(';'):
+                                  found.append(f'{p}:{lineno}: {line.strip()[:220]}')
+                                  if len(found) >= 8:
+                                      break
+                      except Exception:
+                          pass
+                      if len(found) >= 8:
+                          break
+                  if len(found) >= 8:
+                      break
+              print(f'[{target}] {len(found)}')
+              for row in found:
+                  print('  '+row)
+          print('TARGETED_REMAINDERS_END')
+          PY
