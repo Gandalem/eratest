@@ -1,0 +1,142 @@
+name: Batch Korean pass 28
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/batch-korean-pass-28.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 1
+          lfs: false
+
+      - name: Translate development and attachment UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def load(path):
+              raw = path.read_bytes()
+              return raw.startswith(b'\xef\xbb\xbf'), raw.decode('utf-8-sig')
+
+          def save(path, bom, text):
+              out = text.encode('utf-8')
+              path.write_bytes((b'\xef\xbb\xbf' + out) if bom else out)
+
+          item = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Item Modding.ERB')
+          bom, text = load(item)
+
+          replacements = [
+              ('#DIMS TD_CAT_NAME = "Weapons", "Attachments", "Inventory"', '#DIMS TD_CAT_NAME = "무기", "부착물", "인벤토리"'),
+              ('PRINTL [997] - 무기 생성', 'PRINTL [997] - 무기 제작'),
+              ('PRINTL [998] - 매력(Charisma) 100 기부', 'PRINTL [998] - 카리스마(Charisma) 100 기부'),
+              ('PRINT [999] 신경 쓰지 마', 'PRINT [999] 돌아가기'),
+              ('PRINTFORML [0] 반환', 'PRINTFORML [0] 돌아가기'),
+              ('PRINTFORML [9] 반환한다', 'PRINTFORML [9] 돌아가기'),
+              ('PRINTFORML [999] - 반환', 'PRINTFORML [999] - 돌아가기'),
+              ('PRINTPLAINFORM [900] 이 사양의 무기는 발견되지 않았습니다.', 'PRINTPLAINFORM [900] 이 사양에 맞는 무기를 찾을 수 없습니다.'),
+              ('PRINTPLAINFORM [900] 템플릿이 개발되지 않았다.', 'PRINTPLAINFORM [900] 템플릿이 아직 개발되지 않았습니다.'),
+              ('PRINTFORML [902] 개발 템플릿(%金額表示(weaponPrice(CAW_BASE))%)', 'PRINTFORML [902] 템플릿 개발 (%金額表示(weaponPrice(CAW_BASE))%)'),
+              ('PRINTFORML [900] 부속품으로 이동한다.', 'PRINTFORML [900] 부착물 설정으로 이동'),
+              ('PRINTFORML [900] 생성!', 'PRINTFORML [900] 제작!'),
+              ('PRINTFORML 이 무기를 만들까요?', 'PRINTFORML 이 무기를 제작할까요?'),
+              ('PRINTFORMW 무기가 생성되었다!', 'PRINTFORMW 무기를 제작했다!'),
+              ('PRINTFORML 몇 레벨을 올리고 싶으신가요 (레벨당 100CM)?', 'PRINTFORML 연구 레벨을 얼마나 올릴까요? (레벨당 100 CM)'),
+              ('PRINTFORMW {TD_LEVELING}만큼 레벨이 증가했다!', 'PRINTFORMW 연구 레벨이 {TD_LEVELING}만큼 증가했다!'),
+              ('HTML_PRINT MO_TALENT(@"[ X ] \\@ STRLENS (NAS_UPGRADE_DESC:2) ? %NAS_UPGRADE_DESC:2% # ?????\\@")', 'HTML_PRINT MO_TALENT(@"[ X ] \\@ STRLENS (NAS_UPGRADE_DESC:2) ? %NAS_UPGRADE_DESC:2% # 잠김\\@")'),
+          ]
+
+          ui_count = 0
+          for old, new in replacements:
+              c = text.count(old)
+              if c:
+                  text = text.replace(old, new)
+                  ui_count += c
+                  print('UI', c, old)
+
+          display_reps = [
+              ('PRINTFORML [%TOSTR(TD_ATTACH_LIST:LOCAL+1000,"0000")%] (%LOCALS:1,5,LEFT%) %GET_STR(, GetAttachmentType(TD_SubPage), TD_ATTACH_LIST:LOCAL, "名前")%',
+               'PRINTFORML [%TOSTR(TD_ATTACH_LIST:LOCAL+1000,"0000")%] (%LOCALS:1,5,LEFT%) %AttachmentDisplayName(0, GetAttachmentType(TD_SubPage), TD_ATTACH_LIST:LOCAL)%'),
+              ('PRINTFORML ・%GET_STR(, GetAttachmentType(LOCAL), LOCAL:1, "名前")% (%金額表示(GET_INT(, GetAttachmentType(LOCAL), LOCAL:1, "Price"))%)',
+               'PRINTFORML ・%AttachmentDisplayName(0, GetAttachmentType(LOCAL), LOCAL:1)% (%金額表示(GET_INT(, GetAttachmentType(LOCAL), LOCAL:1, "Price"))%)'),
+              ('PRINTFORML 개발하다 %GET_STR(, GetAttachmentType(TD_SubPage), ITEM_PICKED, "名前")%?',
+               'PRINTFORML %AttachmentDisplayName(0, GetAttachmentType(TD_SubPage), ITEM_PICKED)%을(를) 개발할까?'),
+              ('PRINTFORML %GET_STR(, GetAttachmentType(TD_SubPage), ITEM_PICKED, "名前")%!을 개발했다.',
+               'PRINTFORML %AttachmentDisplayName(0, GetAttachmentType(TD_SubPage), ITEM_PICKED)%을(를) 개발했다!'),
+              ('PRINTBUTTON @"%GetAttachmentType(LOCAL,1),16,LEFT%: %GET_STR(MASTER, GetAttachmentType(LOCAL,0), DT_CELL_GET("WeaponInventory", CAW_WEAPON, GetAttachmentType(LOCAL,0), 1), "名前")%", LOCAL',
+               'PRINTBUTTON @"%GetAttachmentType(LOCAL,1),16,LEFT%: %AttachmentDisplayName(MASTER, GetAttachmentType(LOCAL,0), DT_CELL_GET("WeaponInventory", CAW_WEAPON, GetAttachmentType(LOCAL,0), 1))%", LOCAL'),
+          ]
+
+          display_count = 0
+          for old, new in display_reps:
+              c = text.count(old)
+              if not c:
+                  raise SystemExit(f'Missing attachment display target: {old[:100]}')
+              text = text.replace(old, new)
+              display_count += c
+              print('DISPLAY', c, old[:90])
+
+          if ui_count < 17:
+              raise SystemExit(f'Too few UI replacements: {ui_count}')
+          if display_count < 6:
+              raise SystemExit(f'Too few attachment display replacements: {display_count}')
+
+          save(item, bom, text)
+
+          armory = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Omogatari_Armory.ERB')
+          bom, text = load(armory)
+          old = 'PRINTFORML %GET_STR(MASTER, TempAttachmentType, TempAttachment, "名前")%로 미리 보기'
+          new = 'PRINTFORML %AttachmentDisplayName(MASTER, TempAttachmentType, TempAttachment)% 미리 보기'
+          c = text.count(old)
+          if c != 1:
+              raise SystemExit(f'Unexpected armory preview target count: {c}')
+          text = text.replace(old, new, 1)
+          save(armory, bom, text)
+
+          print('UI_REPLACEMENTS', ui_count)
+          print('ATTACHMENT_DISPLAY_REPLACEMENTS', display_count)
+          print('ARMORY_PREVIEW_REPLACEMENTS', c)
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+
+          ITEM='ERB/TRANSLATION/OMOGATARI/ITEM/Item Modding.ERB'
+          ARMORY='ERB/TRANSLATION/OMOGATARI/ITEM/Omogatari_Armory.ERB'
+          HELPER='ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Omogatari_Attatchments.ERB'
+
+          grep -Fq '@AttachmentDisplayName(Owner, AttachmentType, Attachment)' "$HELPER"
+          grep -Fq 'CAW_STRING += CAW_STRINGS(LOCAL,CAW_PARTS:LOCAL,1)' "$ITEM"
+          grep -Fq 'CAW_BASE = CLOTHES_ID("Weapon", CAW_STRING)' "$ITEM"
+          grep -Fq 'SETVAR @"Developed%GetAttachmentType(TD_SubPage)%:{ITEM_PICKED}", 1' "$ITEM"
+          grep -Fq '@Weapon_ID(ARG:0, ARGS:0, V_NAME)' "$ARMORY"
+
+          git diff --stat
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Gandalem'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            'ERB/TRANSLATION/OMOGATARI/ITEM/Item Modding.ERB' \
+            'ERB/TRANSLATION/OMOGATARI/ITEM/Omogatari_Armory.ERB'
+          git commit -m '무기 개발 및 부착물 개발 UI 한글화 28차'
+          git push origin HEAD:korean
