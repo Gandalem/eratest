@@ -1,0 +1,187 @@
+name: Apply screenshot Korean pass
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/apply-screenshot-korean-pass.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 1
+          lfs: false
+
+      - name: Apply Korean UI translations
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          changed = []
+
+          def patch(path, replacements):
+              p = Path(path)
+              s = p.read_text(encoding='utf-8-sig')
+              old_s = s
+              for old, new in replacements:
+                  if old in s:
+                      s = s.replace(old, new)
+              if s != old_s:
+                  p.write_text(s, encoding='utf-8-sig')
+                  changed.append(path)
+
+          # Title: translate edition line and remove fixed-width English padding that mis-centers Hangul.
+          patch('ERB/TRANSLATION/OMOGATARI/Title.ERB', [
+              ('Gensokyo Xtreme Fighter Edition (Stage 1 Part 2 Hotfix 2)', '환상향 익스트림 파이터 에디션 (스테이지 1 파트 2 핫픽스 2)'),
+              ('titleNASTextFormatted \'= @"%CENTER(@"[%TITLE_NAS_STR(titleNASText)%]",30)%"', 'titleNASTextFormatted \'= @"[%TITLE_NAS_STR(titleNASText)%]"'),
+              ('titleNASTextFormatted \'= @"%CENTER(@"> [%TITLE_NAS_STR(titleNASText)%] <",30)%"', 'titleNASTextFormatted \'= @"> [%TITLE_NAS_STR(titleNASText)%] <"'),
+          ])
+
+          # Reverse character creation choices.
+          patch('ERB/TRANSLATION/OMOGATARI/REVERSE CHARAMAKE/Reverse Charamake.ERB', [
+              ('「I already got my ideal look, just hold on for a minute」 (Custom Character)', '「이미 원하는 외형이 있으니 잠깐만 기다려 줘」 (커스텀 캐릭터)'),
+              ("「I'll choose from a few presets」", '「몇 가지 프리셋 중에서 고를래」'),
+              ('CALL ASK_CHOICES(choices, 100, "Finished")', 'CALL ASK_CHOICES(choices, 100, "완료")'),
+          ])
+
+          # Character creator visible labels and tabs. Internal name-format values (Western/Japanese) stay untouched.
+          patch('ERB/TRANSLATION/OMOGATARI/NewCharaCreator.ERB', [
+              ('#DIMS CONST DISP_NAME = "Name", "Base", "Body", "Talents", "Abilities", "Experience", "Conquest", "Portraits", "Skills", "Equipment", "World", "Body Parts", "Info"',
+               '#DIMS CONST DISP_NAME = "이름", "기본", "신체", "재능", "능력", "경험", "정복", "초상화", "기술", "장비", "세계", "신체 부위", "정보"'),
+              ('<font color=\'#70C070\'>[Change]</font>', '<font color=\'#70C070\'>[변경]</font>'),
+              ('"First Name: "', '"이름: "'),
+              ('"Last Name: "', '"성: "'),
+              ('"Middle Name: "', '"중간 이름: "'),
+              ('"Call Name: "', '"호칭: "'),
+              ('"Bloodline: "', '"혈통: "'),
+              ('"Prefix: "', '"접두어: "'),
+              ('"Suffix: "', '"접미어: "'),
+              ('"Name Format: "', '"이름 형식: "'),
+              ('CALL ASK_YN(@"네", "No")', 'CALL ASK_YN(@"네", "아니요")'),
+          ])
+
+          # New-game UI visible in screenshots.
+          patch('ERB/NEWGAME/NEWGAME.ERB', [
+              ('Gods, ghosts, and fairies can die, but they\'ll resurrect the day after', '신, 유령, 요정은 죽을 수 있지만 다음 날 다시 부활한다'),
+              ('CALL ASK_CHOICES(choices, 100, "Finished")', 'CALL ASK_CHOICES(choices, 100, "완료")'),
+          ])
+          patch('ERB/NEWGAME/NEWGAME_BONUS.ERB', [
+              ('Select New Game Bonus', '새 게임 보너스 선택'),
+              ('Start with a ship enabling access to the Moon and Makai', '달과 마계로 이동할 수 있는 함선을 가지고 시작한다'),
+          ])
+          patch('ERB/NEWGAME/NEWGAME_MAKE.ERB', [
+              ('RETURNF "Men\'s clothing"', 'RETURNF "남성용 의상"'),
+              ('CALL ASK_YN("네","No")', 'CALL ASK_YN("네","아니요")'),
+              ('CALL ASK_YN("예","No")', 'CALL ASK_YN("예","아니요")'),
+          ])
+          patch('ERB/NEWGAME/NEWGAME_VIRGINITY.ERB', [
+              ('CALL ASK_CHOICES(choices, 100, "Finished")', 'CALL ASK_CHOICES(choices, 100, "완료")'),
+          ])
+          patch('ERB/NEWGAME/強くてニューゲーム_特典.ERB', [
+              ('CALL ASK_CHOICES(choices, 100, "Finished")', 'CALL ASK_CHOICES(choices, 100, "완료")'),
+          ])
+          patch('ERB/TRANSLATION/LIST.ERB', [
+              ('LOCALS = Men\'s clothing', 'LOCALS = 남성용 의상'),
+          ])
+
+          # A known remaining Yes button in the update menu.
+          patch('ERB/TRANSLATION/NEW_UPDATE/UpdateMenus.ERB', [
+              ('PRINTBUTTON_EX("[Yes]",0,)', 'PRINTBUTTON_EX("[예]",0,)'),
+              ('PRINTBUTTON_EX("[No]",1,)', 'PRINTBUTTON_EX("[아니요]",1,)'),
+          ])
+
+          # Display-only map/location translation dictionary. Do not touch movement PNAME logic.
+          patch('ERB/TRANSLATION/STR.ERB', [
+              ('LOCALS = Storeroom', 'LOCALS = 창고'),
+              ('LOCALS = Bath', 'LOCALS = 목욕탕'),
+              ('LOCALS = Small Closet', 'LOCALS = 작은 옷장'),
+              ('LOCALS = Closet', 'LOCALS = 옷장'),
+              ('LOCALS = Large Closet', 'LOCALS = 큰 옷장'),
+              ('LOCALS = Worn-out Hut', 'LOCALS = 낡은 오두막'),
+              ('LOCALS = Three Fairies House・Entrance', 'LOCALS = 세 요정의 집・입구'),
+              ('LOCALS = Three Fairies House・Hall', 'LOCALS = 세 요정의 집・홀'),
+              ('LOCALS = Three Fairies House・Stairs', 'LOCALS = 세 요정의 집・계단'),
+              ('LOCALS = Three Fairies House・Kitchen', 'LOCALS = 세 요정의 집・주방'),
+              ('LOCALS = Three Fairies House・Bath', 'LOCALS = 세 요정의 집・목욕탕'),
+              ('LOCALS = Three Fairies House・Upstairs hallway', 'LOCALS = 세 요정의 집・2층 복도'),
+              ('LOCALS = Three Fairies House・Upstairs Hallway', 'LOCALS = 세 요정의 집・2층 복도'),
+              ('LOCALS = Three Fairies House・Basement', 'LOCALS = 세 요정의 집・지하실'),
+              ('LOCALS = Fantasy Ruins・Approach', 'LOCALS = 환상 유적・진입로'),
+              ('LOCALS = Fantasy Ruins・1F passage', 'LOCALS = 환상 유적・1층 통로'),
+              ('LOCALS = Fantasy Ruins・1F Passage', 'LOCALS = 환상 유적・1층 통로'),
+              ('LOCALS = Fantasy Ruins・Washroom', 'LOCALS = 환상 유적・세면실'),
+              ('LOCALS = Fantasy Ruins・Bathroom', 'LOCALS = 환상 유적・욕실'),
+              ('LOCALS = Fantasy Ruins・Toilet', 'LOCALS = 환상 유적・화장실'),
+              ('LOCALS = Fantasy Ruins・Dining hall and lounge', 'LOCALS = 환상 유적・식당 및 휴게실'),
+              ('LOCALS = Fantasy Ruins・Dining Hall and Lounge', 'LOCALS = 환상 유적・식당 및 휴게실'),
+              ('LOCALS = Fantasy Ruins・Kitchen', 'LOCALS = 환상 유적・주방'),
+              ('LOCALS = Fantasy Ruins・Stairs', 'LOCALS = 환상 유적・계단'),
+              ('LOCALS = Fantasy Ruins・2F passage', 'LOCALS = 환상 유적・2층 통로'),
+              ('LOCALS = Fantasy Ruins・2F Passage', 'LOCALS = 환상 유적・2층 통로'),
+              ('LOCALS = Fantasy Ruins・Bridge', 'LOCALS = 환상 유적・다리'),
+              ('LOCALS = Fantasy Ruins・First data room', 'LOCALS = 환상 유적・제1 자료실'),
+              ('LOCALS = Fantasy Ruins・First Data Room', 'LOCALS = 환상 유적・제1 자료실'),
+              ('LOCALS = Fantasy Ruins・Lab', 'LOCALS = 환상 유적・연구실'),
+              ('LOCALS = Fantasy Ruins・Second data room', 'LOCALS = 환상 유적・제2 자료실'),
+              ('LOCALS = Fantasy Ruins・Second Data Room', 'LOCALS = 환상 유적・제2 자료실'),
+              ('LOCALS = Fantasy Ruins・Warehouse', 'LOCALS = 환상 유적・창고'),
+              ('LOCALS = Human Village', 'LOCALS = 인간 마을'),
+              ('LOCALS = Bamboo Forest of the Lost', 'LOCALS = 미혹의 죽림'),
+              ('LOCALS = Forest of Magic', 'LOCALS = 마법의 숲'),
+              ('LOCALS = Underworld', 'LOCALS = 지저'),
+              ('LOCALS = Makai', 'LOCALS = 마계'),
+              ('LOCALS = Fantasy Ruins', 'LOCALS = 환상 유적'),
+              ('LOCALS = Public Bath', 'LOCALS = 대중목욕탕'),
+          ])
+
+          # Hakurei Shrine special room display names.
+          patch('ERB/MOVEMENTS/物件関連/00神社/MAP_COMM_00.ERB', [
+              ('"Three Fairies House・" + CALLNAME:MASTER + "\'s Room"', '"세 요정의 집・" + CALLNAME:MASTER + "의 방"'),
+              ('"Three Fairies House・Basement"', '"세 요정의 집・지하실"'),
+              ('"Fantasy Ruins・" + CALLNAME:MASTER + "\'s Room"', '"환상 유적・" + CALLNAME:MASTER + "의 방"'),
+              ('"Fantasy Ruins・Warehouse"', '"환상 유적・창고"'),
+              ('CALLNAME:(FLAG:住み込みキャラ) + "\'s Worn-out Hut"', 'CALLNAME:(FLAG:住み込みキャラ) + "의 낡은 오두막"'),
+              ('RETURNF "Worn-out Hut"', 'RETURNF "낡은 오두막"'),
+          ])
+
+          # Room selection ownership labels.
+          patch('ERB/MOVEMENTS/物件関連/MAP_MANAGE.ERB', [
+              ('Landlord:%CALLNAME:CHARA', '집주인:%CALLNAME:CHARA'),
+              ('（Default room）', '（기본 방）'),
+              ('(Default room)', '(기본 방)'),
+          ])
+
+          # Finish labels in other early character setup screens.
+          patch('ERB/TRANSLATION/OMOGATARI/EZB/EZB_Charamake.ERB', [
+              ('CALL ASK_CHOICES(choices, 100, "Finished")', 'CALL ASK_CHOICES(choices, 100, "완료")'),
+          ])
+
+          if not changed:
+              raise SystemExit('No files changed')
+          print('Changed files:')
+          for f in changed:
+              print(' -', f)
+          PY
+
+          git config user.name "OpenAI Korean Localization"
+          git config user.email "actions@users.noreply.github.com"
+          git add ERB
+          git commit -m "스크린샷 기준 초반 UI 한글화"
+          git push origin HEAD:korean
+
+      - name: Verify target strings
+        shell: bash
+        run: |
+          echo '=== Remaining targeted English (informational) ==='
+          grep -RInE --include='*.ERB' 'I already got my ideal look|I.ll choose from a few presets|First Name:|Last Name:|Middle Name:|Call Name:|Bloodline:|Prefix:|Suffix:|Name Format:|Select New Game Bonus|Gods, ghosts, and fairies can die|CALL ASK_CHOICES\(choices, 100, "Finished"\)' ERB/NEWGAME 'ERB/TRANSLATION/OMOGATARI/NewCharaCreator.ERB' 'ERB/TRANSLATION/OMOGATARI/REVERSE CHARAMAKE/Reverse Charamake.ERB' || true
