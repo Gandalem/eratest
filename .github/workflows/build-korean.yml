@@ -1,0 +1,105 @@
+name: Build Korean working branch
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/build-korean.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build Korean branch from reference
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin kr-reference:refs/remotes/origin/kr-reference
+
+          git ls-tree -r --name-only main | LC_ALL=C sort > /tmp/main_files.txt
+          git ls-tree -r --name-only origin/kr-reference | LC_ALL=C sort > /tmp/kr_files.txt
+          comm -23 /tmp/main_files.txt /tmp/kr_files.txt > /tmp/main_only_all.txt
+          grep -v '^\.github/' /tmp/main_only_all.txt > /tmp/main_only.txt || true
+
+          MAIN_ONLY_COUNT=$(wc -l < /tmp/main_only.txt | tr -d ' ')
+          COMMON_COUNT=$(comm -12 /tmp/main_files.txt /tmp/kr_files.txt | wc -l | tr -d ' ')
+
+          git checkout -B agent/korean-localization origin/kr-reference
+
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            git checkout main -- "$f"
+          done < /tmp/main_only.txt
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          roots = [Path('ERB'), Path('CSV')]
+          exts = {'.ERB','.ERH','.CSV','.TXT'}
+          # Focus on text that is likely rendered to the player. Comments and declarations are intentionally excluded.
+          output_cmd = re.compile(r'^\s*(PRINT(?:FORM|FORML|FORMLW|FORMW|L|W|V|SINGLE|PLAIN|PLAINFORM|BUTTON|DATA)?|DRAWLINE|REUSELASTLINE|INPUTS?|TINPUTS?|ONEINPUTS?|TONEINPUTS?)\b', re.I)
+          english = re.compile(r'[A-Za-z]{3,}')
+          code_only = re.compile(r'^\s*[@#;]')
+          rows=[]
+          files=set()
+          for root in roots:
+            if not root.exists():
+              continue
+            for p in root.rglob('*'):
+              if not p.is_file() or p.suffix.upper() not in exts:
+                continue
+              try:
+                text=p.read_text(encoding='utf-8-sig')
+              except UnicodeDecodeError:
+                try: text=p.read_text(encoding='cp932')
+                except Exception: continue
+              for n,line in enumerate(text.splitlines(),1):
+                if code_only.match(line):
+                  continue
+                if not english.search(line):
+                  continue
+                if output_cmd.match(line) or ('"' in line and any(k in line.upper() for k in ('PRINT','BUTTON','HTML','STRDATA','DATALIST'))):
+                  s=line.strip()
+                  if len(s)>500: s=s[:500]+'…'
+                  rows.append((str(p),n,s))
+                  files.add(str(p))
+          Path('translation_remaining.tsv').write_text('file\tline\ttext\n' + ''.join(f'{f}\t{n}\t{s}\n' for f,n,s in rows), encoding='utf-8')
+          Path('/tmp/remain_count').write_text(str(len(rows)))
+          Path('/tmp/remain_files').write_text(str(len(files)))
+          PY
+
+          REMAIN_COUNT=$(cat /tmp/remain_count)
+          REMAIN_FILES=$(cat /tmp/remain_files)
+          {
+            echo '# eraNAS 한국어화 작업 현황'
+            echo
+            echo '- 기준 원본: `mrpopsalot/pops-tw` `dev/omogatari-kai`'
+            echo '- 한국어 참고본: `TakenTextbung/eranaskr`'
+            echo '- 공통 경로 파일 수: '"$COMMON_COUNT"
+            echo '- 최신 원본에만 있어 추가한 파일 수: '"$MAIN_ONLY_COUNT"
+            echo '- 영어 화면 출력 후보 줄 수: '"$REMAIN_COUNT"
+            echo '- 영어 화면 출력 후보가 있는 파일 수: '"$REMAIN_FILES"
+            echo
+            echo '## 병합 원칙'
+            echo
+            echo '1. 공통 파일은 기존 한국어 번역을 우선 보존합니다.'
+            echo '2. 최신 원본에만 존재하는 파일은 원본에서 추가합니다.'
+            echo '3. 변수명, 함수명, 라벨, ERB 명령어 등 실행 식별자는 번역하지 않습니다.'
+            echo '4. `translation_remaining.tsv`는 추가 번역이 필요한 화면 출력 후보 목록입니다.'
+          } > TRANSLATION_STATUS.md
+
+          git add -A
+          git commit -m "기존 한글판에 최신 원본 신규 파일 병합" || true
+          git push -f origin agent/korean-localization
