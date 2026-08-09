@@ -1,0 +1,142 @@
+name: Batch Korean pass 14
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/batch-korean-pass-14.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 1
+          lfs: false
+
+      - name: Translate other weapon display names and descriptions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Armory/300 Firearms/700 Others.ERB')
+          raw = p.read_bytes()
+          bom = raw.startswith(b'\xef\xbb\xbf')
+          text = raw.decode('utf-8-sig')
+
+          def case_payloads(src, case_name):
+              lines = src.splitlines()
+              out = []
+              active = False
+              for line in lines:
+                  s = line.strip()
+                  if s == f'CASE "{case_name}"':
+                      active = True
+                      continue
+                  if active and s.startswith('CASE '):
+                      active = False
+                  if active:
+                      out.append(line)
+              return out
+
+          protected = ['名前', 'Type', 'Class', 'Platform', 'Tags', 'Ammo', 'Research Required']
+          before_protected = {k: case_payloads(text, k) for k in protected}
+
+          full_names = {
+              'self bow': '셀프 보우',
+              'Crossbow': '크로스보우',
+              'Phantom Dynamics Compound Bow「Demi」': 'Phantom Dynamics 컴파운드 보우「Demi」',
+              'compound bow': '컴파운드 보우',
+              'composite recurve bow': '복합 리커브 보우',
+              'Akatsuki Repeating Crossbow「Zhugekyu」': 'Akatsuki 연발 크로스보우「Zhugekyu」',
+              'repeating crossbow': '연발 크로스보우',
+              'Phantom Dynamics Machine Crossbow「Adder」': 'Phantom Dynamics 자동 크로스보우「Adder」',
+              'machine crossbow': '자동 크로스보우',
+              'Daikyuu': '다이큐',
+              "Vatican's Society Longbow「Typus-ANDREAS」": "Vatican's Society 장궁「Typus-ANDREAS」",
+              'longbow': '장궁',
+              'spacer yumi': '스페이서 유미',
+              'Unconscious third-eye': '무의식의 제3의 눈',
+              'Gensou-chan Personal Planet Destroyer 「Harbinger 2 Destruction」': 'Gensou-chan 개인용 행성 파괴기 「Harbinger 2 Destruction」',
+              'antimatter laser': '반물질 레이저',
+              'LUNINCO Magic Fan「LAC360」': 'LUNINCO 마법 부채「LAC360」',
+              'magic fan': '마법 부채',
+          }
+
+          descs = {
+              'The Zhugekyu, or \\"Zhuge\'s Bow\\" is a classical form of crossbow that can be fired repeatedly without needing it to be reloaded. Fired from the hip, the bolts were fired in sequence from pumping the cocking lever forward and backward, arming and releasing in a continuous cyclic process until the magazine was emptied. This rocking action did not allow for precise firing, nor the ability to sight along the barrel as in a crossbow or a modern gun.':
+              'Zhugekyu, 즉 \\"제갈의 활\\"은 재장전 없이 연속으로 발사할 수 있는 고전식 연발 쇠뇌다. 허리 높이에서 조작 레버를 앞뒤로 움직이면 장전과 발사가 연속적으로 이루어져 탄창이 빌 때까지 화살이 차례로 발사된다. 이런 왕복 동작 때문에 정밀 사격은 어렵고, 일반 쇠뇌나 현대 총기처럼 총열을 따라 조준하기도 힘들다.',
+          }
+
+          lines = text.splitlines(True)
+          mode = None
+          total = 0
+          rx = re.compile(r'^(\s*CALLF MAKE_STR\(V_NAME,\s*)"((?:\\.|[^"\\])*)"(\)\s*)$')
+          for i, line in enumerate(lines):
+              nl = '\r\n' if line.endswith('\r\n') else ('\n' if line.endswith('\n') else '')
+              core = line[:-len(nl)] if nl else line
+              s = core.strip()
+              if s == 'CASE "FullName"':
+                  mode = 'FullName'
+                  continue
+              if s == 'CASE "描写"':
+                  mode = '描写'
+                  continue
+              if s.startswith('CASE '):
+                  mode = None
+                  continue
+              if mode not in ('FullName', '描写'):
+                  continue
+              m = rx.match(core)
+              if not m:
+                  continue
+              val = m.group(2)
+              mapping = full_names if mode == 'FullName' else descs
+              if val in mapping:
+                  lines[i] = m.group(1) + '"' + mapping[val] + '"' + m.group(3) + nl
+                  total += 1
+                  print(mode, val[:100], '->', mapping[val][:100])
+
+          text2 = ''.join(lines)
+          after_protected = {k: case_payloads(text2, k) for k in protected}
+          if before_protected != after_protected:
+              raise SystemExit('Protected internal fields changed')
+          if total < 18:
+              raise SystemExit(f'Too few replacements: {total}')
+
+          out = text2.encode('utf-8')
+          if bom:
+              out = b'\xef\xbb\xbf' + out
+          p.write_bytes(out)
+          print('TOTAL_REPLACEMENTS', total)
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          if git diff -U0 -- 'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/300 Firearms/700 Others.ERB' | grep -E '^[+-][[:space:]]*CASE "(名前|Type|Class|Platform|Tags|Ammo|Research Required)"'; then
+            echo 'Protected case structure changed'; exit 1
+          fi
+          git diff --stat
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Gandalem'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/300 Firearms/700 Others.ERB'
+          git commit -m '기타 무기 표시명 및 설명 한글화 14차'
+          git push origin HEAD:korean
