@@ -1,0 +1,113 @@
+name: Batch Korean pass 24
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/batch-korean-pass-24.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 1
+          lfs: false
+
+      - name: Translate mid-late spell card names and descriptions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Omogatari_SpellCards.ERB')
+          raw = p.read_bytes()
+          bom = raw.startswith(b'\xef\xbb\xbf')
+          text = raw.decode('utf-8-sig')
+
+          display = {
+              'Moon 「Apollo Reflection Mirror」': '월 「아폴로 반사경」',
+              "Otherworld 「Hell's Non-Ideal Danmaku」": '이계 「지옥의 비이상 탄막」',
+              'Dream Sign 「Evil-Sealing Circle」': '몽부 「봉마진」',
+              'Metal Sign 「Metal Fatigue」': '금부 「메탈 퍼티그」',
+              'Divine Treasure 「Buddhist Diamond」': '신보 「부디스트 다이아몬드」',
+              'Earth 「Rain Falling in Hell」': '대지 「지옥에 내리는 비」',
+              'Divine Arts 「Omnidirectional Dragon-Slaying Circle」': '신기 「팔방용살진」',
+          }
+
+          helper_end = 'ENDSELECT\nRETURNF RawName\n\n@SpellCardList(CHARA,ifButton = 0)'
+          if helper_end not in text:
+              raise SystemExit('SpellCardDisplayName end marker not found')
+          cases = []
+          added = 0
+          for old, new in display.items():
+              case = f'\tCASE "{old}"\n\t\tRETURNF "{new}"'
+              if case in text:
+                  continue
+              if f'\tCASE "{old}"\n' in text.split('@SpellCardList',1)[0]:
+                  raise SystemExit(f'Display case already exists with unexpected translation: {old}')
+              cases.append(case)
+              added += 1
+          if cases:
+              block = '\n'.join(cases) + '\n'
+              text = text.replace(helper_end, block + helper_end, 1)
+
+          descs = [
+              ('A spell that seals the opponent using enchanted amulets. If you die, getting your items back will be a pain. Counterattack with your bombs! (no actually don\'t)',
+               '부적의 힘으로 상대를 봉인하는 술법이다. 여기서 쓰러지면 아이템을 되찾기가 꽤 번거로워진다. 폭탄으로 반격하자! …아니, 그러지는 말자.'),
+              ('She spawns large yellow bullets in a circle around her, and those first generation bullets in turn spawn bullets of the same kind around themselves. The second generation bullets won\'t reproduce. This gives the illusion that Patchouli is spinning bullets around herself and repelling them.',
+               'Patchouli가 자신의 주위에 큰 노란 탄환을 원형으로 생성한다. 첫 세대 탄환은 다시 주변에 같은 종류의 탄환을 만들어 내지만, 두 번째 세대 탄환은 더 이상 증식하지 않는다. 그 결과 Patchouli가 탄환을 몸 주위에서 회전시키다가 바깥으로 밀어내는 것처럼 보인다.'),
+              ("Why did Kaguya want something like this at all? I can't help but imagine a 'bibimbap' sort of thing.",
+               'Kaguya는 대체 왜 이런 걸 원했던 걸까? 아무리 생각해도 왠지 비빔밥 같은 모습만 떠오른다.'),
+              ("You can't watch how these amulets are moving at all while playing. Who's %HE_SHE(ARG)% even trying to show the amulets' beautiful movement to?",
+               '실전 중에는 이 부적들이 어떻게 움직이는지 제대로 볼 여유조차 없다. %HE_SHE(ARG)%는 대체 누구에게 이 아름다운 부적의 움직임을 보여 주려는 걸까?'),
+          ]
+
+          desc_count = 0
+          for old, new in descs:
+              c = text.count(old)
+              if c:
+                  text = text.replace(old, new)
+                  desc_count += c
+                  print('DESC', c, old[:100])
+
+          if added < 7:
+              raise SystemExit(f'Too few display cases added: {added}')
+          if desc_count < 4:
+              raise SystemExit(f'Too few descriptions translated: {desc_count}')
+
+          out = text.encode('utf-8')
+          if bom:
+              out = b'\xef\xbb\xbf' + out
+          p.write_bytes(out)
+          print('DISPLAY_CASES', added)
+          print('DESCRIPTION_REPLACEMENTS', desc_count)
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          if git diff -U0 -- 'ERB/TRANSLATION/OMOGATARI/ITEM/Omogatari_SpellCards.ERB' | grep -E '^[+-][[:space:]]*CASE "名前"|^[+-].*@SpellCard[0-9]+\('; then
+            echo 'Internal spell-card identifier structure changed'; exit 1
+          fi
+          git diff --stat
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Gandalem'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'ERB/TRANSLATION/OMOGATARI/ITEM/Omogatari_SpellCards.ERB'
+          git commit -m '스펠카드 중후반 설명 한글화 24차'
+          git push origin HEAD:korean
