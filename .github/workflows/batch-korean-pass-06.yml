@@ -1,0 +1,85 @@
+name: Batch Korean pass 06
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/batch-korean-pass-06.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 1
+          lfs: false
+
+      - name: Translate Human Village late posts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('ERB/TRANSLATION/OMOGATARI/EZB/Danmaku World/Human Village.ERB')
+          raw = p.read_bytes()
+          bom = raw.startswith(b'\xef\xbb\xbf')
+          text = raw.decode('utf-8-sig')
+
+          reps = [
+            ('>This new %PRINT_MALE("guy",MASTER)% kicked our asses back to the daycare!<br> Anyone at Toddle-chan\'s going to fucking *destroy* you Turn 1.', '>이 새로운 %PRINT_MALE("guy",MASTER)% 때문에 우리가 유치원으로 되돌아간 기분이야!<br> Toddle-chan 쪽 애들이면 1턴 만에 널 *박살* 낼걸.'),
+            ('uhhhh hi', '어어어 안녕'),
+            ('plz challenge me in human village', '인간 마을에서 나한테 도전해 줘'),
+            ('Genesis R, years in the making', '수년간 갈고닦은 Genesis R'),
+            ('Darkness Seven, leader of Genesis R speaking. We are fighters from Nagoya with years of experience in our belt. If you want a good fight, meet us at the Human Village and we\'ll let you fight us.', 'Genesis R의 리더 Darkness Seven이다. 우리는 나고야에서 수년간 싸워 온 베테랑 팀이야. 제대로 된 승부를 원한다면 인간 마을로 와. 상대해 주지.'),
+            ('Bringing your @-tention to NEW RAVES!', 'NEW RAVES에 주목해 줘!'),
+            ('We got some new songs and remixes cooking over at the human village. If you guys want to have a listen, head over there. Listening with your computer speakers doesn\'t do these justice.', '인간 마을에서 새 곡과 리믹스를 준비 중이야. 듣고 싶으면 직접 와 봐. 컴퓨터 스피커로만 듣기엔 이 곡들이 아깝거든.'),
+            ('Looking forward to Gensokyo', '환상향이 기대돼'),
+            ('After dominating pretty much every in the Nagoya area, we\'ve decided to try out luck in Gensokyo. If you want to see if you can beat us at our own game, head to the Human Vilalge', '나고야 일대에서 거의 모든 상대를 이긴 뒤, 이번에는 환상향에서 실력을 시험해 보기로 했어. 우리 방식으로 우리를 이길 수 있는지 보고 싶다면 인간 마을로 와.'),
+            ('Taking a little break from coding', '코딩하다 잠깐 쉬는 중'),
+            ('As a team of software and bussiness people over at the Bashi area, we\'re fighting in Gensokyo as a break from the coding that we all do. Anyone interested on fighting us can head over the the Human Village.', '바시 지역에서 소프트웨어와 비즈니스를 하는 사람들로 이루어진 팀이야. 늘 하던 코딩에서 잠깐 벗어나려고 환상향에서 싸우고 있어. 우리와 겨뤄 보고 싶다면 인간 마을로 와.'),
+            ('Looking for swordplay enthusiests', '검술 애호가를 찾습니다')
+          ]
+
+          total = 0
+          for old, new in reps:
+              c = text.count(old)
+              if c:
+                  text = text.replace(old, new)
+                  total += c
+                  print('REPLACED', c, old[:90])
+
+          if total < 10:
+              raise SystemExit(f'Too few replacements: {total}')
+
+          out = text.encode('utf-8')
+          if bom:
+              out = b'\xef\xbb\xbf' + out
+          p.write_bytes(out)
+          print('TOTAL', total)
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          ! git diff -U0 | grep -E '^[-+].*@DanmakuWorldEntry_' || { echo 'Function declaration changed'; exit 1; }
+          git diff --stat
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Gandalem'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'ERB/TRANSLATION/OMOGATARI/EZB/Danmaku World/Human Village.ERB'
+          git commit -m 'Human Village 후반부 한글화 6차'
+          git push origin HEAD:korean
