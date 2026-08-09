@@ -1,0 +1,161 @@
+name: Batch Korean pass 20
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/batch-korean-pass-20.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 1
+          lfs: false
+
+      - name: Translate late armor and battle dress descriptions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Omogatari_Armors.ERB')
+          raw = p.read_bytes()
+          bom = raw.startswith(b'\xef\xbb\xbf')
+          text = raw.decode('utf-8-sig')
+
+          full_names = {
+              '11.2 Tactical Minimal Plate Carrier「MPC Hex」': '11.2 Tactical 경량 플레이트 캐리어「MPC Hex」',
+              'Gryzov Group Heavy Integrated Carrier「KBS-22」': 'Gryzov Group 중형 통합 캐리어「KBS-22」',
+              'integrated carrier': '통합 방탄 캐리어',
+              '『Vatican Society of Jesus』 Crusader plate armor': '『Vatican Society of Jesus』 크루세이더 판금 갑옷',
+              '『Vatican Society of Jesus』 Valkyrie plate armor': '『Vatican Society of Jesus』 발키리 판금 갑옷',
+              'Gensou-chan Scout Ground Protection Top「GPT 7B」': 'Gensou-chan 정찰용 지상 방호복「GPT 7B」',
+              'ultratech scout armor': '울트라테크 정찰 방어구',
+              'Gensou-chan Light Ground Protection Top 「GPT 14B」': 'Gensou-chan 경량 지상 방호복 「GPT 14B」',
+              'ultratech light armor': '울트라테크 경량 방어구',
+              'Gensou-chan Light Powered Ground Protection Top「GPT 32B」': 'Gensou-chan 경량 파워 지상 방호복「GPT 32B」',
+              'ultratech light power armor': '울트라테크 경량 파워 아머',
+              'Gensou-chan Powered Ground Protection Top「GPT 72B」': 'Gensou-chan 파워 지상 방호복「GPT 72B」',
+              'ultratech power armor': '울트라테크 파워 아머',
+              'LUNINCO Battle Dress 「PlasSuit」': 'LUNINCO 전투 드레스 「PlasSuit」',
+          }
+
+          lines = text.splitlines(True)
+          mode = None
+          rx = re.compile(r'^(\s*CALLF MAKE_STR\(V_NAME,\s*@?)"((?:\\.|[^"\\])*)"(\)\s*)$')
+          name_count = 0
+          for i, line in enumerate(lines):
+              nl = '\r\n' if line.endswith('\r\n') else ('\n' if line.endswith('\n') else '')
+              core = line[:-len(nl)] if nl else line
+              s = core.strip()
+              if s == 'CASE "FullName"':
+                  mode = 'FullName'
+                  continue
+              if s.startswith('CASE '):
+                  mode = None
+                  continue
+              if mode != 'FullName':
+                  continue
+              m = rx.match(core)
+              if not m:
+                  continue
+              val = m.group(2)
+              if val in full_names:
+                  lines[i] = m.group(1) + '"' + full_names[val] + '"' + m.group(3) + nl
+                  name_count += 1
+                  print('FULLNAME', val, '->', full_names[val])
+
+          text = ''.join(lines)
+
+          descs = [
+              ('ArmTeck ballistic helmet model 11 Composite is popular in special forces all around the world. Can be modified with different components. Comes in black and tan.',
+               'ArmTeck 11형 복합소재 방탄 헬멧으로, 전 세계 특수부대에서 널리 사용된다. 다양한 부품으로 개조할 수 있으며 검정색과 탄색으로 제공된다.'),
+              ('The \\\"Altyn\\\" helmets passed real combat tests in Afghanistan and Chechnya and are still in service with the Ministry of Internal Affairs of the Russian Federation and the army special forces. Can be equipped with an armored faceshield visor.',
+               '\\\"Altyn\\\" 헬멧은 아프가니스탄과 체첸에서 실전 검증을 거쳤으며 현재도 러시아 연방 내무부와 군 특수부대에서 사용된다. 장갑형 안면 보호 바이저를 장착할 수 있다.'),
+              ('The GShZ-AS LShZ-5 high-level protection helmet is intended for use in a set of combat equipment with circular 13-class (European VPAM) head protection from medium to heavy projectiles.',
+               'GShZ-AS LShZ-5 고등급 방호 헬멧은 전투 장비 세트의 일부로 사용되며, 중형에서 중대형 탄체에 대해 머리 전체를 유럽 VPAM 13등급 수준으로 보호하도록 설계되었다.'),
+              ('The MPC Hex plate carrier with smooth ergonomic access that allows comfortable movement, intended for use with chest rigs. Manufactured by 11.2 Tactical.',
+               'MPC Hex 플레이트 캐리어는 인체공학적 구조로 편안한 움직임을 제공하며 체스트 리그와 함께 사용하도록 설계되었다. 11.2 Tactical에서 제조했다.'),
+              ('The KBS-22 full protection assault body armor equipped with soft and hard armor elements to protect against shrapnel and bullets of pistol and rifle calibers. Manufactured by Gryzov Group.',
+               'KBS-22 완전 방호 돌격용 방탄복은 연질 및 경질 방호재를 함께 사용해 파편과 권총탄, 소총탄으로부터 착용자를 보호한다. Gryzov Group에서 제조했다.'),
+              ('An exquisite set of armor draped in runeweave, bestowed upon those that survive the trails of the exalted and become Crusaders of the divine order.\\n\\nBy the power of a sacred tablet, this armor has received a blessing and will improve the melee proficiency of the wearer.',
+               '룬 직조물로 감싼 정교한 갑옷으로, 숭고한 시련을 견디고 성스러운 기사단의 크루세이더가 된 이들에게 수여된다.\\n\\n성스러운 석판의 힘으로 축복받은 갑옷이며 착용자의 근접전 숙련도를 향상시킨다.'),
+              ('An exquisite set of armor draped in runeweave, bestowed upon those that survive the trails of the exalted and become Valkyries of the divine order.\\n\\nUnlike Crusaders, Valkyries are more movement focused and have slightly lighter armor designed for their air-based movements.',
+               '룬 직조물로 감싼 정교한 갑옷으로, 숭고한 시련을 견디고 성스러운 기사단의 발키리가 된 이들에게 수여된다.\\n\\n크루세이더와 달리 발키리는 기동성을 중시하며 공중 기동에 맞춰 조금 더 가볍게 설계된 갑옷을 사용한다.'),
+              ("Ground Protection Tops are the Federation's primary protection against damage to its infantry. They cover the whole body (excluding head), unlike other armor solutions. The 11B is rated to stop against VPAM 7-rated threats, such as 7.62x39mm and 5.45x39mm, and gives nearly no movement penalty.  It can be put on like a pair of pajamas with metal snaps all of the way. from the legs to the collar.",
+               'Ground Protection Top은 연방 보병의 주력 방호 장비로, 다른 방어구와 달리 머리를 제외한 전신을 보호한다. 이 모델은 7.62x39mm 및 5.45x39mm 같은 VPAM 7등급 위협을 막을 수 있으면서 기동성 저하가 거의 없다. 다리부터 목깃까지 이어지는 금속 스냅을 이용해 작업복처럼 쉽게 착용할 수 있다.'),
+              ("Ground Protection Tops are the Federation's primary protection against damage to its infantry. They cover the whole body (excluding head), unlike other armor solutions. The 14B is rated to stop against VPAM 14-rated threats, including 12.7x99mm, and is extremely light compared to its class. It can be put on like a pair of pajamas with metal snaps all of the way. from the legs to the collar.",
+               'Ground Protection Top은 연방 보병의 주력 방호 장비로 머리를 제외한 전신을 보호한다. 14B는 12.7x99mm를 포함한 VPAM 14등급 위협을 막을 수 있으며 동급 장비에 비해 매우 가볍다. 다리부터 목깃까지 이어지는 금속 스냅을 이용해 작업복처럼 쉽게 착용할 수 있다.'),
+              ("Ground Protection Tops are the Federation's primary protection against damage to its infantry. They cover the whole body (excluding head), unlike other armor solutions. The 32B is a light pair of power armor designed to be easily to put on, enhances mobility, and while only requiring a small amount of the user's Youjutsu energy to keep itself running. It uses ultratech plating to keep the user safe from even explosives such as the AImthropic Jericho.",
+               'Ground Protection Top은 연방 보병의 주력 방호 장비로 머리를 제외한 전신을 보호한다. 32B는 쉽게 착용할 수 있는 경량 파워 아머로 기동성을 높이며, 작동 유지에 필요한 사용자의 요술 에너지도 적다. 울트라테크 장갑재를 사용해 AImthropic Jericho 같은 폭발물로부터도 착용자를 보호한다.'),
+              ("Ground Protection Tops are the Federation's primary protection against damage to its infantry. The 72B is a pair of power armor designed to be easily to put on, enhances mobility, and while only requiring a small amount of the user's Youjutsu energy to keep itself running. It uses ultratech plating to keep the user safe from what could penetrate even the best of armors.",
+               'Ground Protection Top은 연방 보병의 주력 방호 장비다. 72B는 쉽게 착용할 수 있도록 설계된 파워 아머로 기동성을 강화하고, 작동 유지에 필요한 사용자의 요술 에너지도 적다. 울트라테크 장갑재를 사용해 최고급 방어구조차 관통할 수 있는 위협으로부터 착용자를 보호한다.'),
+              ('A knee-length dress made with a ballistic plasteel weave, keeping style while also acting as intermediate ballistic protection.',
+               '방탄 플라스틸 직조 소재로 만든 무릎 길이 드레스로, 스타일을 유지하면서 중간 수준의 탄도 방호 성능도 제공한다.'),
+              ('Battle dress with markings typically used by regular soldiers for the Anti-Incident Advisory division of the World of Fantasies.',
+               '환상향 Anti-Incident Advisory 부서의 일반 병력이 사용하는 표식이 들어간 전투 드레스다.'),
+              ('Battle dress with markings typically used for the Youkai Correction Unit division of the World of Fantasies.',
+               '환상향 Youkai Correction Unit 부서에서 사용하는 표식이 들어간 전투 드레스다.'),
+              ("Battle dress with markings typically used by firemages for the Major Incident Kounter Office division of the World of Fantasies' Anti-Incident Advisory. This outfit has accents of fire orange to indicate their status.",
+               '환상향 Anti-Incident Advisory 산하 Major Incident Kounter Office의 화염 마법사가 사용하는 표식이 들어간 전투 드레스다. 신분을 나타내기 위해 불꽃빛 주황색 포인트가 들어가 있다.'),
+              ("Battle dress with markings typically used by electrovests for the Major Incident Kounter Office division of the World of Fantasies' Anti-Incident Advisory. This outfit has accents of bright yellow to indicate their status.",
+               '환상향 Anti-Incident Advisory 산하 Major Incident Kounter Office의 전격 요원이 사용하는 표식이 들어간 전투 드레스다. 신분을 나타내기 위해 밝은 노란색 포인트가 들어가 있다.'),
+              ("Battle dress with markings typically used by frostshapers for the Major Incident Kounter Office division of the World of Fantasies' Anti-Incident Advisory. This outfit has accents of bright teal to indicate their status.",
+               '환상향 Anti-Incident Advisory 산하 Major Incident Kounter Office의 냉기 요원이 사용하는 표식이 들어간 전투 드레스다. 신분을 나타내기 위해 밝은 청록색 포인트가 들어가 있다.'),
+              ("Battle dress with markings typically used by empaths for the Major Incident Kounter Office division of the World of Fantasies' Anti-Incident Advisory. This outfit has accents of dark purple to indicate their status.",
+               '환상향 Anti-Incident Advisory 산하 Major Incident Kounter Office의 감응 요원이 사용하는 표식이 들어간 전투 드레스다. 신분을 나타내기 위해 짙은 보라색 포인트가 들어가 있다.'),
+              ('The \\\"ZhP\\\" body armor is designed for the police special forces. The bulletproof vest provides circular protection of the human torso. Elements of the damper provide ventilation of the under armor space and reduce the blunt damage.',
+               '\\\"ZhP\\\" 방탄복은 경찰 특수부대를 위해 설계되었다. 상체를 둘러싸는 전방위 방호를 제공하며, 완충 구조가 방탄복 내부의 통풍을 돕고 둔상 피해를 줄여 준다.'),
+              ('The \\\"Zh-3\\\" main armored vest for personnel of combat units of the ground forces, airborne troops, marines, etc. The vest is designed to protect vital organs from being hit by firearms, shell fragments, mines, grenades, and cold weapons, reducing the severity of armor contusion injury when performing combat missions.',
+               '\\\"Zh-3\\\"은 지상군 전투부대, 공수부대, 해병대 등에서 사용하는 주력 방탄 조끼다. 총탄, 포탄 파편, 지뢰, 수류탄, 냉병기로부터 주요 장기를 보호하고 전투 임무 중 발생하는 장갑 충격 손상의 정도를 줄이도록 설계되었다.'),
+          ]
+
+          desc_count = 0
+          for old, new in descs:
+              c = text.count(old)
+              if c:
+                  text = text.replace(old, new)
+                  desc_count += c
+                  print('DESC', c, old[:90])
+
+          total = name_count + desc_count
+          if total < 30:
+              raise SystemExit(f'Too few replacements: {total} (names={name_count}, desc={desc_count})')
+
+          out = text.encode('utf-8')
+          if bom:
+              out = b'\xef\xbb\xbf' + out
+          p.write_bytes(out)
+          print('TOTAL_REPLACEMENTS', total)
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          if git diff -U0 -- 'ERB/TRANSLATION/OMOGATARI/ITEM/Omogatari_Armors.ERB' | grep -E '^[+-][[:space:]]*CASE "名前"|^[+-].*@(頭装備|外衣|ワンピース)[0-9]+\('; then
+            echo 'Internal armor function or identifier structure changed'; exit 1
+          fi
+          git diff --stat
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Gandalem'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'ERB/TRANSLATION/OMOGATARI/ITEM/Omogatari_Armors.ERB'
+          git commit -m '방어구 후반부 및 전투복 한글화 20차'
+          git push origin HEAD:korean
