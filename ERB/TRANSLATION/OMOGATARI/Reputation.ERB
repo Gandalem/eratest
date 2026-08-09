@@ -1,0 +1,1896 @@
+@NEWSPAPER_CONDITION
+#DIM RandomArticle
+#DIM GetRep
+#DIM Rep
+
+;SIF !FLAG:新聞購読 && StateOfEmergency < 3
+;	RETURN -1
+SIF IsDead:29:0 && DAY-DeathDay:29:0 > 1
+	RETURN -1
+
+CALL NEWSPAPER_HEADER
+
+;bunbunmaru closure
+SIF IsDead:29:0
+	CALL NEWSPAPER_CLOSURE
+
+;incidents
+CALL NEWSPAPER_DEATH_INCIDENT
+
+;deaths
+CALL NEWSPAPER_DEATHS
+;resurrections
+CALL NEWSPAPER_RESURRECT
+;reputation
+CALL NEWSPAPER_REP
+;shitpost articles
+CALL FISHER_YATES_SHAFFLE(VARSIZE("NEWSPAPER_DISABLE"))
+FOR GetRep, 0, VARSIZE("NEWSPAPER_DISABLE")
+	Rep = SHAFFLE_ARRAY:(GetRep)
+	SIF NEWSPAPER_DISABLE:Rep
+		CONTINUE
+	VARSET NEWSPAPER_AD_CANDO
+	TRYCALLFORMF NEWSPAPER_{REP}_INFO
+	IF NEWSPAPER_AD_CANDO
+		TRYCALLFORM NEWSPAPER_{Rep}
+		SIF RESULT > 0
+			BREAK
+	ENDIF
+NEXT
+;weather
+CALL NEWSPAPER_WEATHER
+;charisma
+CALL NEWSPAPER_CHARISMA
+;weapons
+CALL NEWSPAPER_RIKA
+;memes
+SIF !IsDead:42:0 && GETBIT(NASFeature,11)
+CALL NEWSPAPER_MEME
+;missing people
+CALL NEWSPAPER_MISSING
+
+@NEWSPAPER_HEADER
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTFORML  Bunbunmaru
+PRINTFORML  %ORDINAL(DAY:3)% of %GET_MONTH(,1)%, Year {(DAY:0 / 125) + 1} (%GET_DAY_TR()%) 
+FONTREGULAR
+
+
+[SKIPSTART]
+Shooting in Hakurei Shrine Leaves 1 Dead!
+
+We have confirmed reports that Hatate Himekaidou was found dead in the Hakurei Shrine yesterday. Upon examination of the corpse, we have discovered that she was shot to death by a high-caliber rifle
+
+There were not witnesses to the crime, No suspect has been identified. The Anti Incident Advisory have noted that this is the not the first time someone has been shot to death recently. They have also discovered that the same weapon was used for 3 of these murders.  
+
+--------------
+
+T-NC Raid on Human Village Repelled by Residents
+
+The terrorist group known as the Treaty of Non Compliance has attempted to raid the Human Village, but to no avail.
+
+-------------
+Terrorist Slays 8 in Human Village!
+
+We have confirmed reports multiple were killed during a mass shooting in in the Human Village yesterday. Many of the victims were shot by an intermediate caliber rifle. 
+
+The suspect has been identified as a 21 year old male named Player. He is currently on the run from authorities and was last seen at the Hakurei Shrine. Residents in the area have reported that they heard a succession of gunshots and saw a him wielding an AK-12. 
+
+Among the others killed include Mike Goutokuji, Takane Yamashiro, Sannyo Komakusa, Misumaru Tamatsukuri, Tsukasa Kudamaki, Megumu Iizunamaru, Chimata Tenkyuu, and Momoyo Himemushi.
+
+Reimu Hakurei, Shrine Maiden of the Hakurei Shrine had this to say:
+「This is absolutely unacceptable for one of our residents to be conducting this behavior. We'll have the suspect exterminated in no time.」
+[SKIPEND]
+
+@NEWSPAPER_DEATH_INCIDENT
+#DIM DeathCount
+#DIM nIncidentTarget
+VARSET DeathCount
+
+
+CALL FISHER_YATES_SHAFFLE(CHARANUM)
+FOR LOCAL, 0, CHARANUM 
+	IF IsDead:LOCAL:0 && DAY-KnowsDeadBodies:29:LOCAL <= 1 && KnowsDeadBodies:29:LOCAL && DeathDay:LOCAL:0 != -99
+		DeathCount ++
+		nIncidentTarget = LOCAL
+	ENDIF
+NEXT
+
+IF DeathCount
+	;header
+	PRINTFORML ───────────────────────────────
+	FONTBOLD
+	SELECTCASE DeathCount
+	CASE 1
+		SELECTCASE LastHediff:nIncidentTarget % 100
+		CASE 1
+			PRINTFORML %GET_MAPNAME(CFLAG:nIncidentTarget:300/100)% %PRINT_MALE("man", nIncidentTarget)% Fatally Shot
+		CASE 2
+			PRINTFORML %GET_MAPNAME(CFLAG:nIncidentTarget:300/100)% %PRINT_MALE("man", nIncidentTarget)% Stabbed to Death
+		CASE 3
+			PRINTFORML Targeted Fire Kills %SpeciesSTR(nIncidentTarget)% %PRINT_MALE("man", nIncidentTarget)%
+		CASE 4
+			PRINTFORML Chemical Burn Mortally Wounds %SpeciesSTR(nIncidentTarget)%.
+		CASE 5
+			PRINTFORML %GET_MAPNAME(CFLAG:nIncidentTarget:300/100)% %PRINT_MALE("man", nIncidentTarget)% Beaten to Death
+		CASE 6
+			PRINTFORML %GET_MAPNAME(CFLAG:nIncidentTarget:300/100)% %SpeciesSTR(nIncidentTarget)% Electrocuted
+		CASEELSE
+			PRINTFORML %SpeciesSTR(nIncidentTarget)% Found Dead in %GET_MAPNAME(CFLAG:nIncidentTarget:300/100)%
+		ENDSELECT
+	CASEELSE
+		PRINTFORML Template Article (Incident involving Death)
+	ENDSELECT
+	FONTREGULAR
+	PRINTFORML ───────────────────────────────
+	SETFONT "ＭＳ Ｐゴシック"
+	FONTITALIC
+	;intro line
+	SELECTCASE DeathCount
+	CASE 1
+		IF nIncidentTarget == 42
+			PRINTFORML An article where someone has died.
+			PRINTFORML - %NAME:29%
+			FONTREGULAR
+			SETFONT
+			RETURN
+		ELSE
+			PRINTFORML We have confirmed reports that %NAME:nIncidentTarget% was found dead in the %GET_MAPNAME(CFLAG:nIncidentTarget:300/100)% yesterday.
+			;cause
+		ENDIF
+	CASEELSE
+		PRINTFORML Template Article (Incident involving Death)
+	ENDSELECT
+
+	;witnesses and suspect
+
+	;victims
+
+	;quotes
+	
+	PRINTFORML - %NAME:29%
+	FONTREGULAR
+	SETFONT
+ENDIF
+
+@NEWSPAPER_DEATHS
+#DIM DeathCount
+VARSET DeathCount
+
+
+CALL FISHER_YATES_SHAFFLE(CHARANUM)
+FOR LOCAL, 0, CHARANUM 
+	IF IsDead:LOCAL:0 && DAY-KnowsDeadBodies:29:LOCAL <= 1 && KnowsDeadBodies:29:LOCAL && DeathDay:LOCAL:0 != -99
+		DeathCount ++
+	ENDIF
+NEXT
+
+SIF StateOfEmergency
+	TRYCALLFORM NEWSPAPER_StateOfEmergency_{StateOfEmergency}
+
+IF DeathCount && !IsDead:29:0
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM  Rest in Peace
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML	We are here to commemorate those who have fallen yesterday in Gensokyo
+FOR LOCAL, 0, CHARANUM 
+	IF IsDead:LOCAL:0 && DAY-KnowsDeadBodies:29:LOCAL <= 1 && KnowsDeadBodies:29:LOCAL
+		CALL PRINT_FACE, LOCAL, "通常", "服"
+		PRINTFORML %NAME:LOCAL%
+	ENDIF
+NEXT
+
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+ENDIF
+
+@NEWSPAPER_RESURRECT
+#DIM ExpectedResurrectCount
+#DIM UnexpectedResurrectCount
+VARSET ExpectedResurrectCount
+VARSET UnexpectedResurrectCount
+
+CALL FISHER_YATES_SHAFFLE(CHARANUM)
+FOR LOCAL, 0, CHARANUM 
+	IF DeathDay:LOCAL:0 && DAY-ResurrectDay:LOCAL:0 <= 1 && ResurrectDay:LOCAL:0 && AutoReviveCondition(LOCAL)
+		ExpectedResurrectCount++
+	ELSEIF DeathDay:LOCAL:0 && DAY-ResurrectDay:LOCAL:0 <= 1 && ResurrectDay:LOCAL:0
+		UnexpectedResurrectCount++
+	ENDIF
+NEXT
+
+
+IF (ExpectedResurrectCount || UnexpectedResurrectCount) && !IsDead:29:0
+PRINTFORML ───────────────────────────────
+FONTBOLD
+CALL PRINT_RAINBOWL("Resurrection Index")
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+IF UnexpectedResurrectCount
+CALL BIGPRINT_RAINBOWL("Unexpected Resurrections")
+PRINTFORML We've got reports that the reported deceased or missing following were sighted walking around. 
+PRINTFORML No warnings due to the persons' known power.
+
+FOR LOCAL, 0, CHARANUM 
+	IF DeathDay:LOCAL:0 && DAY-ResurrectDay:LOCAL:0 <= 1 && ResurrectDay:LOCAL:0 && !AutoReviveCondition(LOCAL)
+		CALL PRINT_FACE, LOCAL, "通常", "服"
+		PRINTFORML %NAME:LOCAL%
+	ENDIF
+NEXT
+PRINTFORML
+ENDIF
+
+PRINTFORML Expected Resurrections
+FOR LOCAL, 0, CHARANUM 
+	IF DeathDay:LOCAL:0 && DAY-ResurrectDay:LOCAL:0 <= 1 && ResurrectDay:LOCAL:0 && AutoReviveCondition(LOCAL)
+		CALL PRINT_FACE, LOCAL, "通常", "服"
+		PRINTFORML %NAME:LOCAL%
+	ENDIF
+NEXT
+
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+ENDIF
+
+@NEWSPAPER_REP
+#DIM GetRep
+#DIM RepKnow
+#DIM Rep
+#DIM SortRep
+
+
+
+IF DidFakeNews
+CALL NEWSPAPER_FAKENEWS
+DidFakeNews = 0
+	RETURN
+ENDIF
+
+IF DisregardRep != -1
+	TRYCALLFORM NEWSPAPER_DISREGARD_{DisregardRep}
+	DisregardRep = -1
+	SIF RESULT > 0
+		RETURN
+ENDIF
+
+CALL FISHER_YATES_SHAFFLE(REP_NUM)
+FOR GetRep, 0, REP_NUM 
+	Rep = SHAFFLE_ARRAY:(GetRep)
+	VARSET RepKnow
+	;addition custom code
+	FOR LOCAL, 1, CHARANUM
+		SIF GETBIT(ReputationKnow:LOCAL:0,Rep)
+			RepKnow ++
+	NEXT
+
+	SIF RepKnow >= CHARANUM-10 || RepKnow == 0 || AyaRepSpread:Rep
+		CONTINUE
+	SIF !GETBIT(ReputationKnow:29:0,Rep)
+		CONTINUE
+	SIF TALENT:[[文]]:恋人 && GET_INT(29, "Reputation", Rep, "Score") < 0 ;don't punish the player if in love with aya, she wouldn't publish this, right?
+		CONTINUE
+
+	TRYCALLFORM NEWSPAPER_REP_{Rep}
+	IF RESULT > 0
+		;bug fix
+		AyaRepSpread:Rep = 1
+		BREAK
+	ENDIF
+NEXT
+
+@NEWSPAPER_MEME
+#DIM nImageCount
+#DIMS nPick
+nImageCount = ENUMFILES("RESOURCES/OMOGATARI/Shitposts/")
+
+FONTBOLD
+PRINTFORML  Daily Comic
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+SETCOLOR C_RED
+PRINTFORML All pictures listed in the daily comics are fictitious and are not representations of reality.
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+nPick '= RESULTS:RAND(0,nImageCount)
+nPick '= SUBSTRING(nPick, 10)
+CALL EasyImage(@"nDailyMeme{RAND(__INT_MAX__)}",nPick,,1200,800,,1)
+PRINTFORML ───────────────────────────────
+SETCOLOR C_RED
+PRINTFORML All pictures listed in the daily comics are fictitious and are not representations of reality.
+RESETCOLOR
+PRINTFORML - %NAME:42%
+FONTREGULAR
+SETFONT
+
+@NEWSPAPER_WEATHER
+IF GET_WEATHER_TR() == "Pink Wind"
+CALL NEWSPAPER_StateOfEmergency_PinkWind
+ELSE
+FONTBOLD
+PRINTFORML  Celestrial Weather Service
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML	Today will be %GET_WEATHER_TR()%.
+PRINTFORML - %NAME:34%
+FONTREGULAR
+SETFONT
+ENDIF
+
+@NEWSPAPER_CHARISMA
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTFORML  Charisma
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+CALL SHOW_CHARISMA
+PRINTFORML - Scarlet Casino
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+
+@NEWSPAPER_MISSING
+#DIM MissingCount
+VARSET MissingCount
+
+CALL FISHER_YATES_SHAFFLE(CHARANUM)
+FOR LOCAL, 0, CHARANUM 
+	SIF IsDead:LOCAL:0 && !KnowsDeadBodies:29:LOCAL
+		MissingCount ++
+NEXT
+
+IF MissingCount && !IsDead:29:0
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM  Have You Seen This Person?
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML	These people are currently reported as missing.
+PRINTFORML If you know where they are, please contact %NAME:29% at the Youkai Mountain.
+PRINTFORML If you don't, try contacting %CALLNAME:39% at the %MyouTempleName()% Temple.
+FOR LOCAL, 0, CHARANUM 
+	IF IsDead:LOCAL:0 && !KnowsDeadBodies:29:LOCAL
+		CALL PRINT_FACE, LOCAL, "通常", "服"
+		PRINTFORML %NAME:LOCAL%
+		PRINTFORML Last seen in %GET_MAPNAME(GET_MAPID(CFLAG:LOCAL:現在位置))% on %PRINT_DATE_F(DeathDay:LOCAL:0,2)%
+	ENDIF
+NEXT
+
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+ENDIF
+
+
+@NEWSPAPER_REP_0
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM Timestopping is Terorism
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML The effects of time stop are undeniably extremely negative.
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(0)
+
+RETURN 1
+
+@NEWSPAPER_REP_1
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM Slut Watch
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+PRINTFORML An extremely detailed photo of you from the front, shot from ground level. 
+PRINTFORML You currently picking up the reporter.
+FONTITALIC
+PRINTFORML
+PRINTDATAL
+	DATAFORM Be on the look-out for this disgusting pervert! Punish %HIM_HER(MASTER)% on sight!
+	DATAFORM Slut Watch: If you see this %PRINT_MALE("boy",MASTER)%, just say the word and %HE_SHE(MASTER)% will happily let you fuck %HIS_HER(MASTER)% ass.
+ENDDATA
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(1)
+TALENT:MASTER:ヤリマン = 1
+
+RETURN 1
+
+
+
+@NEWSPAPER_REP_2
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM Keep Your Panties Safe
+	DATAFORM Panty Thief on the Run
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML %NAME:MASTER% stealing panties from a random Gensokyo girl.
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(2)
+
+RETURN 1
+
+@NEWSPAPER_REP_3
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM Keep Your Panties Safe
+	DATAFORM Panty Thief on the Run
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML %NAME:MASTER% stealing panties from a random Gensokyo girl.
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(3)
+
+RETURN 1
+
+@NEWSPAPER_REP_4
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM Rapist on the Loose
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML %NAME:MASTER% stealing panties from a random Gensokyo girl.
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(4)
+
+RETURN 1
+
+
+@NEWSPAPER_REP_5
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM Pregnancy Rates on the Rise!
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML Gensokyo's pregnancy and population rates have been negative for years, but we can thank %CALLNAME:MASTER% to offset this. 
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(5)
+
+RETURN 1
+
+@NEWSPAPER_REP_6
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM The %TNAME(MASTER)% Still Needs %HIS_HER(MASTER)% Diapers!
+	DATAFORM Bedwetter!
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML %NAME:MASTER% sleeping in %HIS_HER(MASTER)% pee-soaked bed.
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(6)
+
+RETURN 1
+
+@NEWSPAPER_REP_7
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM Can't Stay Dry
+	DATAFORM Naughty Piss Slut
+	DATAFORM Pathetic \@ GETBIT(nScat,2) ? Poopypants # Pottypants\@
+	DATAFORM Toilet Training?
+	DATAFORM Attention Whore \@ nOmutsu ? Diaper # Pee\@ %PRINT_MALE("Boy",MASTER)%
+	DATAFORM Disgraceful
+	DATAFORM Piss Pervert
+	DATAFORM Caught In The Act
+	DATAFORM Ene-Misshap
+	DATAFORM Fountain of Shame
+	DATAFORM Piddle Pants
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+PRINTFORML An extremely detailed photo of you from the front, shot from ground level.
+PRINTFORML You are standing with your knees slightly bent, very visibly wetting yourself.
+PRINTFORML
+FONTITALIC
+PRINTDATAL
+	DATAFORM %CALLNAME:MASTER% is so pathetic that %HE_SHE(MASTER)% went number \@ GETBIT(nScat,2) ? two # one\@ in %HIS_HER(MASTER)% own pants!
+	DATAFORM Shocking evidence that this little %CALLNAME:MASTER% can't even control %HIS_HER(MASTER)% own bladder!
+	DATAFORM Shocking evidence that %CALLNAME:MASTER% gets turned on by pissing %HIMSELF_HERSELF(MASTER)%.
+	DATAFORM I'm a little peepot, whimper and pout. Here is my \@ nOmutsu ? diapee # panties\@ I cry about. When I get all fussy I wail and shout. Check my \@ nOmutsu ? diaper # underwear \@ and change me out
+	DATAFORM There's nothing quite like the risk of being caught in the act.
+	DATAFORM An attention starved \@ nOmutsu ? pamp # piss \@ slut demands an audience.
+	DATAFORM Getting used to %HIS_HER(MASTER)% new life in \@ nOmutsu ? diapers # wet underwear \@.
+	DATAFORM Learning to love %HIS_HER(MASTER)% \@ nOmutsu ? diapers # wet underwear \@, one day at a time.
+	DATAFORM Uh-oh, someone needs an urgent change!
+	DATAFORM This is why mommy wanted to put you in diapers, dearie.
+	DATAFORM A public disgrace.
+	DATAFORM A well trained piss slave.
+	DATAFORM Not %CALLNAME:MASTER%'s proudest moment.
+	DATAFORM Caught in the act! What a pervert.
+	DATAFORM Use a toilet, you filthy slut!
+	DATAFORM Someone didn't make it to the toilet in time!
+	DATAFORM Only a baby would make this kind of mess!
+	DATAFORM An adult baby demonstrating how difficult it can be to find a potty in time.
+	DATAFORM Dumb baby doesn't know what a toilet looks like!
+ENDDATA
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(7)
+
+RETURN 1
+
+@NEWSPAPER_REP_8
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM Public Disgrace
+	DATAFORM Shameless
+	DATAFORM Attention Whore
+	DATAFORM Ultimate Disgrace
+	DATAFORM \@ nOmutsu ? I Love My Padding # I Love My Panties \@	
+	DATAFORM Put %CALLNAME:MASTER% In Chastity
+	DATAFORM Not As Discreet As You Thought
+	DATAFORM Orgasm Addict
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+PRINTFORML An extremely detailed photo of you from the front, shot from ground level. 
+PRINTFORML You are very visibly having sex outside.
+FONTITALIC
+PRINTFORML
+
+PRINTDATAL
+	DATAFORM %CALLNAME:MASTER% tries to claim %HE_SHE(MASTER)%'s not a slut, but enjoys an audience when wanking! Someone's in denial.
+	DATAFORM %CALLNAME:MASTER% prefers when there's an audience.
+	DATAFORM Look at the lengths %CALLNAME:MASTER% will go to get attention.
+	DATAFORM Be on the look-out for this exhibitionist masturbating pervert! Punish %HIM_HER(MASTER)% on sight!
+	DATAFORM Little %CALLNAME:MASTER% proves there are no limits to %HIS_HER(MASTER)% depravity.
+	DATAFORM \@ nOmutsu ? 「My thick padding feels sooo good I just can't help but cum in them again and again!」 # 「Look at me doing grown-up things in my big %PRINT_MALE("boy",MASTER)% panties!」 \@	
+	DATAFORM Only the naughtiest %PRINT_MALE("boy",MASTER)%s have a danger wank in public!
+	DATAFORM There are no prudes, only people who try and pretend they're not nymphomaniacs in private.
+	DATAFORM Giving into the urges.
+ENDDATA
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(8)
+
+RETURN 1
+
+@NEWSPAPER_REP_9
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM The Legendary Danmaku Master %CALLNAME:MASTER%!
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+PRINTFORML An extremely detailed photo of you from the front, shot from the sky. 
+PRINTFORML You are in the mist of a dankamu battle.
+FONTITALIC
+PRINTFORML
+PRINTDATAL
+DATAFORM Having already defeated {弾幕勝負勝利カウント()} others in Danmaku, %CALLNAME:MASTER% is hailed to be one of the greatest of all time.
+ENDDATA
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(9)
+
+RETURN 1
+
+@NEWSPAPER_REP_10
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM Public Disgrace
+	DATAFORM \@ nOmutsu ? I Love My Padding # I Love My Panties \@
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+PRINTFORML An extremely detailed photo of you from the front, shot from ground level. 
+PRINTFORML You are very visibly pleasuring yourself through your clothing.
+FONTITALIC
+PRINTFORML
+PRINTDATAL
+	DATAFORM \@ nOmutsu ? 「My thick padding feels sooo good I just can't help but cum in them again and again!」 # 「Look at me doing grown-up things in my big %PRINT_MALE("boy",MASTER)% panties!」 \@	
+	DATAFORM Be on the look-out for this disgusting pervert! Punish %HIM_HER(MASTER)% on sight!
+	DATAFORM Daddy's little %PRINT_MALE("boy",MASTER)% is all grown up!
+	DATAFORM As much as %CALLNAME:MASTER% tell you %HE_SHE(MASTER)% hates it right now, we know %HE_SHE(MASTER)%'ll be back for more.
+	DATAFORM The only way to beat %CALLNAME:MASTER%'s addiction is to feed it!
+ENDDATA
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(10)
+
+RETURN 1
+
+@NEWSPAPER_REP_13
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM Childcaring %CALLNAME:MASTER%
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML So sweet of %NAME:MASTER% to be taking care of a youngster.
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(13)
+RETURN 1
+
+@NEWSPAPER_REP_14
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM Questions? Requests? Consult %CALLNAME:MASTER%!
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML Providing free request fulfillment since a few days ago.
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(14)
+RETURN 1
+
+@NEWSPAPER_REP_15
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM The Peak of Community Service
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML %NAME:MASTER% just loves to clean Gensokyo from filfth. We've heard that %HE_SHE(MASTER)% sweeps rooms cleaner much faster than anyone else!
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(15)
+RETURN 1
+
+@NEWSPAPER_REP_16
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM Primiative mind manipulation?
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML Does hypnosis give an advantage in the cruel World of Fantasies? We interview %NAME:MASTER% to find out!
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(16)
+RETURN 1
+
+@NEWSPAPER_REP_17
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM Termination of %NAME:MASTER% from Bubunmaru Services
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML We have notice %NAME:MASTER% repeatibly gaming our interviewing services to gain an unfair advantage against others.
+PRINTFORML At Bunbunmaru, integrity is our #1 priority in our reporting. Our interviews are designed bring attention to the interviewee, and such behavior will not be tolerated.
+PRINTFORML As such, we will be terminating %CALLNAME:MASTER%'s privlages from any more interviewing services and deleting all articles mentioning %CALLNAME:MASTER%.  
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(17)
+RETURN 1
+
+@NEWSPAPER_REP_18
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM Serial Killer on the Run
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML Be on the look-out for this disgusting killer! Punish %HIM_HER(MASTER)% on sight!
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(18)
+RETURN 1
+
+@NEWSPAPER_REP_19
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM Corpse Fucker on the Run
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML Be on the look-out for this disgusting slut! Punish %HIM_HER(MASTER)% on sight!
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(19)
+RETURN 1
+
+@NEWSPAPER_REP_21
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM %CALLNAME:MASTER%'s Terrible Cooking Linked to Sperm in Food
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML We have uncovered %CALLNAME:MASTER% putting semen in food to attempt to get them into CEI.
+PRINTFORML This behavior is not tolerated. We advise to not eat any food that seems suspisciously moist. 
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(21)
+RETURN 1
+
+@NEWSPAPER_REP_22
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM Terrorists Theat Confirmed
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML Threats of violent crime from %NAME:MASTER% are confirmed to be real, according to the World of Fantasies' Anti-Incident Advisory.
+PRINTFORML The AIA advises our readers to do the following to stay us safe:
+PRINTFORML ・Stay indoors
+PRINTFORML ・Report any sign of suspiscious activity to an AIA agent
+PRINTFORML ・Don't engage with the suspect
+PRINTFORML ・Wait for an all clear before going out
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(22)
+RETURN 1
+
+@NEWSPAPER_REP_23
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM Graves unlawfully dug up, foul play suspected.
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML World of Fantasies' Anti-Incident Advisory suspects %NAME:MASTER% as grave digger.
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(23)
+RETURN 1
+
+
+@NEWSPAPER_DISREGARD_0
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM  No Links Between %CALLNAME:MASTER% and Time Stop
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML Our fact checkers have throughly proven that there no evidence of %NAME:MASTER% using any form of "time stop". 
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(0,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_2
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM %CALLNAME:MASTER% doesn't snatch panties!
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML We interviewed %NAME:MASTER% and found out the panties that were in %HIS_HER(MASTER)% hands were store bought and not stolen.
+PRINTFORML 
+PRINTFORML 
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(2,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_3
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM %CALLNAME:MASTER% doesn't flip skirts!
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML There is no concrete evidence that %NAME:MASTER% flips skirts. 
+PRINTFORML The picture was from a staged performance from consenting actors, none of which are %CALLNAME:MASTER%.  
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(3,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_4
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM %CALLNAME:MASTER% is not a rapist
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML There is no concrete evidence that %NAME:MASTER% is a rapist.   
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(4,,1,1)
+RETURN 1
+
+
+@NEWSPAPER_DISREGARD_6
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM Fact Check: %CALLNAME:MASTER% never wet the bed
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML The bed simply had stains from the previous owner and %CALLNAME:MASTER% simply forgot to clean it. 
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(6,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_7
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM %CALLNAME:MASTER% was Never Diapered nor Needed Any
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML We do not have any proof that %CALLNAME:MASTER% has had an accident or peed outside.
+PRINTFORML The images used to spread this rumor are from a completely different person.
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(7,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_8
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM Apology from Bunbunmaru
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML Hello all Bunbunmaru readers, we are deeply sorry about the accusations of %NAME:MASTER% being exposed going out naked.
+PRINTFORML One of our reportes were using X-Ray vision to see through clothing, ultimately capturing the picture used.
+PRINTFORML We are deeply sorry that this faked picture was used to spread bad rumors.
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(8,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_10
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM %CALLNAME:MASTER% is totally sexually sane.
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML There is no concrete evidence that %NAME:MASTER% has masturbated in front of others.   
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(10,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_17
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM False God? Certainly not for %CALLNAME:MASTER%
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML There is no concrete evidence that %NAME:MASTER% is using our system to gain fame.   
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(17,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_18
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM %CALLNAME:MASTER% doesn't kill people
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML There is no concrete evidence that %NAME:MASTER% is a murderer.   
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(18,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_19
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM %CALLNAME:MASTER% doesn't rape corpses
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML There is no concrete evidence that %NAME:MASTER% is a rapist.   
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(19,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_21
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM %CALLNAME:MASTER% doesn't put semen in food!
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML %NAME:MASTER% reports the off taste as having cooked the food wrong, not spiking it with any reproductive fluids.
+PRINTFORML %CALLNAME:MASTER% appologizes for the inconvenience caused by this. 
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(21,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_22
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM Terrorism Threats Are False
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML This is a staged act done by consenting individuals and done with video editing.
+PRINTFORML Please do not use entertainment to accuse someone of crimes like this.
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(22,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_23
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM Graves ravaged by natural disasters, not by a forigen authority.
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML There is no concrete evidence that there has been foul play about the grave uncovering.   
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(23,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_24
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM Age is just a numbers
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML It doesn't matter that.. Actually we don't have any evidence that this girl was underage, so there's that.   
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(24,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_26
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM %CALLNAME:MASTER% Criminal Records Expunged!
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML We have cleared all criminal records from %NAME:MASTER%!. %CALLNAME:MASTER% is now a free man!   
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(26,,1,1)
+CALL SET_REP_ALL(27,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_27
+CALL NEWSPAPER_DISREGARD_26
+
+@NEWSPAPER_FAKENEWS
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM  The Wonderful %CALLNAME:MASTER%
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML	%NAME:MASTER% is such a great person to meet up and talk to.
+PRINTFORML We had one of our reporters talk to %HIM_HER(MASTER)% and responded with the following:
+PRINTFORML 「Yea, I'm a really good person!」
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+FOR LOCAL,1,CHARANUM
+	CFLAG:LOCAL:好感度 = MAX(CFLAG:LOCAL:好感度 + (500), 0)
+	CFLAG:LOCAL:信頼度 = MAX(CFLAG:LOCAL:信頼度 + (200), 0)
+NEXT
+CALL COLORMESSAGE(@"Everyone's favorability and reliability has increased by 500 and 250 respectively...",C_YELLOW,1,1)
+RETURN 1
+
+ 
+@NEWSPAPER_StateOfEmergency_1
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM  A death?
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML	%BREAKENG(@"We have received the news that someone has died. Currently, we do not know what caused this.")%
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+RETURN 1
+
+@NEWSPAPER_StateOfEmergency_2
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM  Mysterious Disappearances?
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML	%BREAKENG(@"We have seen a unusually high amount of people disappearing lately. We currently do not have a cause of these occurrences, but the tengus will now be doing searches on demand.")%
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+RETURN 1
+
+@NEWSPAPER_StateOfEmergency_3
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTFORML  HAKUREI SHRINE ANTI-INCIDENT ADVISORY
+SETCOLOR C_YELLOW
+PRINTFORML  ELEVATED ALERT
+RESETCOLOR
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML	%BREAKENG(@"THE HAKUREI SHRINE MAIDEN HAS ISSUED AN ANTI-INCIDENT ADVISORY (AIA) ALERT DUE TO AN ELEVATED THREAT AGASINT RESIDENTS IN GENSOKYO")%
+PRINTFORML
+PRINTFORML	%BREAKENG(@"Due to an unprecedented crime in the area, we have initiated the 「Paranoid Mind Reading Act」.")%
+PRINTFORML	%BREAKENG(@"Searches will be more frequent, and mind readers have been deployed investigating everyone in Gensokyo to find a lead.")%
+PRINTFORML	%BREAKENG(@"Remember to stay vigilant and to report any and all suspicious activity.")%
+PRINTFORML
+SETCOLOR C_RED
+PRINTFORML If You See Something, Say Something. Report suspicious activity to %NAME:1% or %NAME:29%.
+PRINTFORML THIS ALERT WILL EXPIRE IN {DaysUntilCrisisDown()} DAYS.
+RESETCOLOR
+PRINTFORML - %NAME:26%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+RETURN 1
+
+
+@NEWSPAPER_StateOfEmergency_4
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTFORML  HAKUREI SHRINE ANTI-INCIDENT ADVISORY
+SETCOLOR C_ORANGE
+PRINTFORML  INTERMEDIATE ALERT
+RESETCOLOR
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML	%BREAKENG(@"THE HAKUREI SHRINE MAIDEN HAS ISSUED AN ANTI-INCIDENT ADVISORY (AIA) ALERT DUE TO AN INTERMEDIATE THREAT AGASINT RESIDENTS IN GENSOKYO")%
+PRINTFORML
+PRINTFORML	%BREAKENG(@"REPEATED DISAPPERANCES LINKED TO %TOUPPER(NAME:MASTER)%")%
+PRINTFORML	%BREAKENG(@"LAST SEEN IN %TOUPPER(GET_MAPNAME(GET_MAPID(CFLAG:MASTER:現在位置)))%")%
+PRINTFORML %BREAKENG(@"DO NOT PURSURE UNLESS NECESEARY")%
+PRINTFORML
+SETCOLOR C_RED
+PRINTFORML If You See Something, Say Something. Report suspicious activity to %NAME:1% or %NAME:29%.
+PRINTFORML THIS ALERT WILL EXPIRE IN {DaysUntilCrisisDown()} DAYS.
+RESETCOLOR
+PRINTFORML - %NAME:26%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+RETURN 1
+
+@NEWSPAPER_StateOfEmergency_5
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTFORML  HAKUREI SHRINE ANTI-INCIDENT ADVISORY
+SETCOLOR C_D_RED
+PRINTFORML  IMMINENT ALERT
+RESETCOLOR
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML	%BREAKENG(@"THE HAKUREI SHRINE MAIDEN HAS ISSUED AN ANTI-INCIDENT ADVISORY (AIA) ALERT DUE TO AN IMMINENT THREAT AGASINT RESIDENTS IN GENSOKYO")%
+PRINTFORML
+PRINTFORML	%BREAKENG(@"WANTED: %TOUPPER(NAME:MASTER)%")%
+PRINTFORML	%BREAKENG(@"LAST SEEN IN %TOUPPER(GET_MAPNAME(GET_MAPID(CFLAG:MASTER:現在位置)))%")%
+PRINTFORML	%BREAKENG(@"STAY IN SHELTER UNTIL PROPER AUTHORITIES HAVE NEUTRALIZED THE THREAT")%
+PRINTFORML %BREAKENG(@"LETHAL FORCE AUTHORIZED. WANTED DEAD OR ALIVE")%
+PRINTFORML
+SETCOLOR C_RED
+PRINTFORML If You See Something, Say Something. Report suspicious activity to %NAME:1% or %NAME:29%.
+PRINTFORML THIS ALERT WILL EXPIRE IN {DaysUntilCrisisDown()} DAYS.
+RESETCOLOR
+PRINTFORML - %NAME:26%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+RETURN 1
+
+
+@NEWSPAPER_StateOfEmergency_6
+
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTFORML  HAKUREI SHRINE ANTI-INCIDENT ADVISORY
+SETCOLOR C_D_RED
+PRINTFORML  ACTIVE INCIDENT ALERT
+RESETCOLOR
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML	%BREAKENG(@"THE HAKUREI SHRINE MAIDEN HAS ISSUED AN ANTI-INCIDENT ADVISORY (AIA) ALERT DUE TO AN ACTIVE INCIDENT AGASINT RESIDENTS IN GENSOKYO")%
+PRINTFORML
+PRINTFORML	%BREAKENG(@"ACTIVE TERRORIST THREAT")%
+PRINTFORML	%BREAKENG(@"IDENTIFIED AS: %TOUPPER(NAME:MASTER)%")%
+PRINTFORML	%BREAKENG(@"LAST SEEN IN %TOUPPER(GET_MAPNAME(GET_MAPID(CFLAG:MASTER:現在位置)))%")%
+PRINTFORML %BREAKENG(@"WEAPONS FREE. KILL ON SIGHT")%
+PRINTFORML
+PRINTFORML	%BREAKENG(@"STAY IN SHELTER UNTIL PROPER AUTHORITIES HAVE NEUTRALIZED THE THREAT")%
+PRINTFORML
+SETCOLOR C_RED
+PRINTFORML If You See Something, Say Something. Report suspicious activity to %NAME:1% or %NAME:29%.
+PRINTFORML THIS ALERT WILL EXPIRE IN {DaysUntilCrisisDown()} DAYS.
+RESETCOLOR
+PRINTFORML - %NAME:26%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+FOR LOCAL,1,CHARANUM
+	CALL SET_REP(LOCAL,22)
+	;CALL GET_ANGRY(LOCAL, MARK:LOCAL:反発刻印 + 3)
+NEXT
+;SETCOLOR 247,171,166
+;PRINTFORM Everyone's face distorts in rage
+;PRINTFORML  as they arm up to kill you...
+;PRINTFORMW Everyone got Hate Mark Lv3
+;FLAG:POSTAL = 1
+RESETCOLOR
+RETURN 1
+
+@NEWSPAPER_StateOfEmergency_999
+
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTFORML  HAKUREI SHRINE ANTI-INCIDENT ADVISORY
+SETCOLOR C_D_RED
+PRINTFORML  ACTIVE INCIDENT ALERT
+RESETCOLOR
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML	%BREAKENG(@"THE HAKUREI SHRINE MAIDEN HAS ISSUED AN ANTI-INCIDENT ADVISORY (AIA) ALERT DUE TO AN ACTIVE INCIDENT AGASINT RESIDENTS IN GENSOKYO")%
+PRINTFORML
+PRINTFORML	%BREAKENG(@"YUKARI IS DEAD")%
+PRINTFORML	%BREAKENG(@"I REPEAT")%
+PRINTFORML	%BREAKENG(@"YUKARI IS FUCKING DEAD")%
+PRINTFORML
+PRINTFORML	%BREAKENG(@"THIS IS NOT A DRILL")%
+PRINTFORML	%BREAKENG(@"EVACUATE GENSOKYO AS SOON AS POSSIBLE")%
+PRINTFORML
+PRINTFORML	%BREAKENG(@"KILLER IDENTIFIED AS: %TOUPPER(NAME:MASTER)%")%
+PRINTFORML	%BREAKENG(@"LAST SEEN IN %TOUPPER(GET_MAPNAME(GET_MAPID(CFLAG:MASTER:現在位置)))%")%
+PRINTFORML %BREAKENG(@"WEAPONS FREE. KILL ON SIGHT")%
+PRINTFORML
+SETCOLOR C_RED
+PRINTFORML If You See Something, Say Something. Report suspicious activity to %NAME:1% or %NAME:29%.
+RESETCOLOR
+PRINTFORML - %NAME:1%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+FOR LOCAL,1,CHARANUM
+	CALL SET_REP(LOCAL,22)
+	;CALL GET_ANGRY(LOCAL, MARK:LOCAL:反発刻印 + 3)
+NEXT
+;SETCOLOR 247,171,166
+;PRINTFORM Everyone's face distorts in rage
+;PRINTFORML  as they arm up to kill you...
+;PRINTFORMW Everyone got Hate Mark Lv3
+;FLAG:POSTAL = 1
+RESETCOLOR
+RETURN 1
+
+@NEWSPAPER_StateOfEmergency_PinkWind
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTFORML  HAKUREI SHRINE ANTI-INCIDENT ADVISORY
+SETCOLOR C_YELLOW
+PRINTFORML  ELEVATED ALERT
+RESETCOLOR
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML	%BREAKENG(@"THE HAKUREI SHRINE MAIDEN HAS ISSUED AN ANTI-INCIDENT ADVISORY (AIA) ALERT DUE TO AN ELEVATED THREAT AGASINT RESIDENTS IN GENSOKYO")%
+PRINTFORML
+PRINTFORML	%BREAKENG(@"Today's weather will be the infamous Pink Wind.")%
+PRINTFORML	%BREAKENG(@"This will has the effect of making anyone affected unbearably aroused.")%
+PRINTFORML	%BREAKENG(@"Remember to stay inside, keep all doors shut, and to only have sex if you and your partner consents to it.")%
+PRINTFORML
+SETCOLOR C_RED
+PRINTFORML If You See Something, Say Something. Report suspicious activity to %NAME:1% or %NAME:29%.
+PRINTFORML THIS ALERT WILL EXPIRE IN 1 DAY.
+RESETCOLOR
+PRINTFORML - %NAME:26%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+RETURN 1
+
+@NEWSPAPER_CLOSURE
+#DIMS CONST YOUBI = "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
+
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTFORML  Termination of the Bunbunmaru Newspaper
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML	%BREAKENG(@"We apologize for the inconvenience, but due to a sudden tragedy that happened to our lead writer, %NAME:29%, we are unfortunately unable to continue our operations.")%
+PRINTFORML %BREAKENG(@"Bunbunmaru will be permanently shutting down in %YOUBI:(DAY % 7)%, %ORDINAL(DAY:3)% of %GET_MONTH(,1)% ")%
+PRINTL
+PRINTFORML %BREAKENG(@"We thank everyone for their patronage, and wish all of our reporters and writers a happy thank you for all of the time we served you.")%
+PRINTFORML %BREAKENG(@"All current subscriptions will be refunded and further purchases of a subscription will not be possible.")%
+PRINTFORML - Everyone in Bunbunmaru
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+RETURN 1
+
+
+@PRINT_REP(C_ID)
+#DIM C_ID
+#DIM LINE_BREAK
+LINE_BREAK = 0
+;Custom code, prevents you from seeing your own knowledge of your relationships
+SIF C_ID == MASTER
+	RETURN
+SIF !GETBIT(NASFeature,10)
+	RETURN
+CALL PRINTBUTTON_EX(@"%CALLNAME:C_ID%'s knowledge of %PARSE("your")% reputation （Yellow means allowed）", 168, TFLAG:168, , , 1)
+IF !TFLAG:浮気歴表示
+	PRINTFORML 
+	FOR LOCAL,0,REP_NUM
+		IF GETBIT(ReputationKnow:C_ID:0, LOCAL)
+			SIF GETBIT(ReputationAccept:C_ID:0, LOCAL) == 2
+				SETCOLOR C_YELLOW
+			SIF LINEISEMPTY()
+				PRINT 　
+			PRINTFORMLC %GET_STR(C_ID, "Reputation", LOCAL, "Name")%
+			LINE_BREAK ++
+			SIF LINE_BREAK % (PRINTCPERLINE() - 1) == 0
+				PRINTL 
+		ENDIF
+		RESETCOLOR
+	NEXT
+	SIF LINE_BREAK % (PRINTCPERLINE() - 1) != 0
+		PRINTL 
+ENDIF
+
+
+@SET_REP(ARG, Rep, IsAccept, ShowRep)
+#DIM Rep
+#DIM IsAccept
+#DIM RepColor
+#DIM ShowRep
+
+SIF ARG == MASTER
+	RETURN
+SIF IS_BABY(ARG)
+	RETURN
+SIF !GETBIT(NASFeature,10)
+	RETURN
+SIF GETBIT(ReputationKnow:ARG:0, Rep) && !IsAccept
+	RETURN
+
+SELECTCASE GET_INT(ARG, "Reputation", Rep, "Score")
+CASE IS > 0
+RepColor = C_GREEN
+CASE 0
+RepColor = C_YELLOW
+CASE IS < 0
+RepColor = C_RED
+ENDSELECT
+
+IF IsAccept
+	SETBIT ReputationKnow:ARG:0, Rep
+	SETBIT ReputationAccept:ARG:0, Rep
+	SIF ShowRep
+	CALL COLORMESSAGE(@"%CALLNAME:ARG% now accepts you as a 【%GET_STR(ARG, "Reputation", Rep, "Label")%】", C_GREEN, 2, 1)
+ELSE
+	SIF GETBIT(ReputationKnow:ARG:0, Rep)
+		RETURN
+
+	SETBIT ReputationKnow:ARG:0, Rep
+	IF ShowRep
+		CALL COLORMESSAGE(@"%CALLNAME:ARG% now knows you as a 【%GET_STR(ARG, "Reputation", Rep, "Label")%】", RepColor, 2, 1)
+		IF GET_INT(ARG, "Reputation", Rep, "Score")
+			CALL CHANGE_CFLAG(2, ARG, (50*GET_INT(ARG, "Reputation", Rep, "Score")))
+			CALL CHANGE_CFLAG(4, ARG, (25*GET_INT(ARG, "Reputation", Rep, "Score")))
+		ENDIF
+	ELSE
+		CFLAG:ARG:好感度 = MAX(CFLAG:ARG:好感度 + (50*GET_INT(ARG, "Reputation", Rep, "Score")), 0)
+		CFLAG:ARG:信頼度 = MAX(CFLAG:ARG:信頼度 + (25*GET_INT(ARG, "Reputation", Rep, "Score")), 0)
+	ENDIF
+ENDIF
+
+SIF ShowRep
+	CALL KOJO_MESSAGE_SEND("EVENT",104,ARG,Rep,IsAccept-1)
+
+@SET_REP_ALL(Rep, IsAccept, ShowRep, isDisregard = 0)
+#DIM Rep
+#DIM IsAccept
+#DIM RepColor
+#DIM ShowRep
+#DIM isDisregard
+
+IF isDisregard
+	FOR LOCAL,1,CHARANUM
+		SIF GETBIT(ReputationKnow:LOCAL:0, Rep)
+		INVERTBIT ReputationKnow:LOCAL:0, Rep
+	NEXT
+	CALL COLORMESSAGE(@"Everyone now forgot you were a 【%GET_STR(29, "Reputation", Rep, "Name")%】", C_GREEN, 2, 1)
+	RETURN 1
+ENDIF
+
+SELECTCASE GET_INT(29, "Reputation", Rep, "Score")
+CASE IS > 0
+RepColor = C_GREEN
+CASE 0
+RepColor = C_YELLOW
+CASE IS < 0
+RepColor = C_RED
+ENDSELECT
+
+SKIPDISP 1
+FOR LOCAL,1,CHARANUM
+	IF !GETBIT(ReputationKnow:LOCAL:0,Rep)
+	;CALL SET_REP(LOCAL, Rep, IsAccept)
+	CALL SET_REP(LOCAL, Rep, IsAccept,1)
+	ENDIF
+NEXT
+SKIPDISP 0
+
+SIF GET_INT(29, "Reputation", Rep, "Score")
+CALL COLORMESSAGE(@"Everyone's favorability and reliability has \@ GET_INT(29, "Reputation", Rep, "Score") > 0 ? increased # decreased \@ by up to {ABS((50*GET_INT(29, "Reputation", Rep, "Score")))} and {ABS(25*GET_INT(29, "Reputation", Rep, "Score"))} respectively...",C_YELLOW,1,1)
+CALL COLORMESSAGE(@"Everyone now knows you as a 【%GET_STR(29, "Reputation", Rep, "Name")%】", RepColor, 2, 1)
+
+@Reputation_Spread
+#DIMS DYNAMIC strArr, 100
+#DIM nTemp
+#DIM GetRep
+#DIM RepKnow
+#DIM Rep
+#DIM SortRep
+#DIM DYNAMIC GotRep, キャラクタ数上限 
+#DIM RS_CAN_SPREAD
+#DIM RS_SPREAD_CHANCE
+VARSET GotRep
+
+SIF !GETBIT(NASFeature,10)
+	RETURN 0
+
+;seek characters who had enough favor gain to spread rumors
+FOR LOCAL,1,CHARANUM
+	SIF TALENT:LOCAL:行きずり ;ignore randoms
+		CONTINUE
+	SIF CFLAG:LOCAL:出禁 ;ignore banned and dead characters
+		CONTINUE
+	SIF GotRep:LOCAL ; already has gotten a reputation in this day
+		CONTINUE
+	CALL FISHER_YATES_SHAFFLE(REP_NUM)
+	FOR GetRep, 0, REP_NUM
+		Rep = SHAFFLE_ARRAY:(GetRep)
+		RS_SPREAD_CHANCE = 8
+	IF GET_INT(LOCAL, "Reputation", Rep, "Score") < 0
+		RS_CAN_SPREAD = (GETBIT(ReputationKnow:LOCAL:0,Rep) && !TALENT:LOCAL:恋慕 && GETBIT(ReputationAccept:LOCAL:0,Rep))
+		SIF TALENT:LOCAL:8
+			RS_SPREAD_CHANCE = 20
+	ELSE
+		RS_CAN_SPREAD = GETBIT(ReputationKnow:LOCAL:0,Rep)
+	ENDIF
+
+	IF RS_CAN_SPREAD && !RAND:RS_SPREAD_CHANCE
+		SIF GETBIT(ReputationKnow:29:0,Rep)
+			CONTINUE
+		SIF GETBIT(ReputationAccept:29:0,Rep)
+			CONTINUE
+		DEBUGPRINTFORML --------
+		;this is much simpler, we find all friends of this character and sour the favor with you because ruining relationships is much easier
+		LOCALS '= Add_Rumor_Spread(LOCAL, "neg")
+		DEBUGPRINTFORML Reputation: %GET_STR(LOCAL, "Reputation", Rep, "Name")%, List: %LOCALS%
+		SIF !STRLENS(LOCALS)
+			CONTINUE
+		CALL COLORMESSAGE(@"%CALLNAME:LOCAL% spreads a rumor about you being a【%GET_STR(LOCAL, "Reputation", Rep, "Name")%】to %HIS_HER(LOCAL)% friends...",C_YELLOW,2,1)
+		SPLIT LOCALS, ":", strArr
+		FOR LOCAL:1, 0, RESULT
+			nTemp = TOINT(strArr:(LOCAL:1))
+			SIF nTemp == 0
+				CONTINUE
+			SIF TALENT:nTemp:恋慕
+				CONTINUE
+			SIF IsDead:nTemp:0
+				CONTINUE
+			CALL SET_REP(nTemp,Rep,,1)
+			GotRep:nTemp = 1
+			;FavorGainTracker:nTemp:0 = 0 ;reset negative rumor (does only once, too easy, no impact)
+		NEXT
+		BREAK
+	ENDIF	
+	NEXT	
+NEXT
+
+;smuggling?
+;i think i also have a way to explain the outside stuff
+;shinki, keiki, and others with teleportation or creation powers could be a middleman between outsider manufacturers and the world of fantasy
+
+; So basically super smugglers and super local manufacturers
+; Oh right
+; Smuggling is incredibly risky, since it could give the real world reason to start believing in the supernatural again
+; Thus inducing a critical cascading failure for the barrier
+; If you were to do a mass smuggling
+; How long can the super smugglers keep it up until they slip up?
+; Whether by their own fault
+; or sheer coincidence
+
+[SKIPSTART]
+Anatomy of a Makai Soldier:
+The Federation Of Makai, or MKFed has a robust military, which includes extremely skilled infantry units. They are notorious to kill as they're a combination of magic and technology.
+
+- Most soldiers are created on demand, not recruited.
+- Makai soldiers can be identified by their cutesy look, all female cast, and a patch containing the emblem of the Federation of Makai.
+- Soldier uniforms are black with red accents.
+
+# Units
+Units in Makai are generally separated into 5 levels:
+
+MB1: These are your basic, newly minted and recruited soldiers. You don't see a lot of them, as most of them are fasttracked to MB2. They generally wield a pistol such as the XD or PLA and wear the onesie and the 7B suit.
+MB2: This is the rank that most soldiers are in. The 14B suit gives them a good amount of protection and generally wield the MARLin rifle.
+MB3: Higher skilled members wearing the 14B suits and better weaponry.
+OF1: At the officer levels, you will find the MKUltra soldiers. These are soldiers augmented with bionics and are EXTREME threats to anyone that notices them. They have extremely high skills, wear the 72B armor suit, and have pure ultratech weaponry.
+OF2: These are like OF1s, but have maxxed out skills, making them a death sentence for anyone trying to face them.
+
+# Equipment
+- All equipment on a Makai soldier is created by Gensou-chan, which is the general name the Makai creator goes by.
+
+## Weapons
+- MARLins are the bread and butter of a Makai soldier's arsenal. They look like regular MR-70s, but are extremely sophisticated on the inside.
+- PLAs are the main sidearm that they use. They use a heated thermal beam to cleanly pass through ballistic protection.
+
+## Armor
+- GPT, or Ground Protection Tops are the main outer clothing and serve as an armor suit for their whole body, excluding their head. They come in 4 sizes, 7B, 14B, 32B, and 72B, where each provides more and more protection. Their level is roughly equivalent to their VPAM protection level.
+    - Use 5.56x45mm or 7.62x51mm against the 7B suit.
+    - Use 12.7x99mm on the 14B
+    - Avoid aiming at the torso on those wearing the 32B and 72B as they will block most armor piercing bullets. You can however use ESPKill on them, which will cleanly penetrate their armor.
+- Underwear supports (UWSupp) are worn over their underwear. These are a second form of defense and are worn by every single soldier. This is a onesie that covers the torso and groin.
+    - This onesie is generally rated to stop VPAM level 7 threats.
+    - They also provide support for the wearer's absorbent underwear, which are explained below
+- Finally, a soldier will wear one of many pairs of absorbent underwear, which include those from the FantastaBab, Dai-Diaper, or Pantoons line.
+    - Most Makai soldiers are incontinent, hence the diaper dependency.
+    - They also provide armor on the groin area, albeit not a lot.
+
+
+# How to Neutralize
+- Aim for the head. They generally leave them unprotected.
+- Groin shots should very much be avoided. There are three layers of protection from your bullet to hitting their body (outer armor, bodysuit, thick underwear).
+- Buff your Pierce stat and put defense debuffs on them with either Tarunda or use excretion spells like Oureindyne to make them hyperwet/hypermess, which will also make them decrease their Defense and Evasion
+- Their diapers still work like regular diapers, and diapers leak after enough accidents. Making them have a blowout is generally easier than making them leak pee. Use Coprodyne a lot to make them have a blowout and a subsequent diaper rash, which will damage them unless they get changed.
+[SKIPEND]
+
+[SKIPSTART]
+Vore Youjutsu:
+Vore is a type of Combat Youjutsu that specializes on eating people. They are notably very destructive and can cripple or kill power armored targets with their magic enhanced bites.
+
+- Most vore spells are melee range only.
+- "Chomp" is a form of "hard vore", where gore and permamant body harm occurr.
+- "Vore" is "soft vore", where the target is swallowed whole.
+- WEAR A THICK DIAPER (or better). You will be shitting a lot after voring someone and it will come quickly.
+	- Open defecation uses turns and soiling yourself unpadded also causes you to lose turns.
+
+# Spells
+Nibble: Does light Tearing damage.
+	- MP Usage: None
+	- Rank: G
+Chomp: Takes out a limb from your target.
+	Goes for limbs first. Could also go for the neck or genitals. Counts as tearing damage.
+	- MP Usage: Light.
+	- Rank: C
+Vore: Attempt to consume the target whole.
+	Will put the target in your stomach. Target must run out of STA before being digested. Will kill the target.
+	Your Vore Youjutsu level will affect how much STA is taken per turn when voring. A higher level means more STA damage done to the target per turn.
+	Voring people means that your food intake will shoot through the roof
+	- MP Usage: Medium
+	- Rank: A
+Asset Flip: A combination of Vore with a little bit of Mudo.
+	Takes every piece of gear that the target have and equips them to the vorer, including their gun and diaper. 
+	Kills the target immediately. 
+	- MP Usage: Heavy
+	- Rank: Extra
+
+# How to Neutralize
+- The best tool against those that want to make you their next meal are ranged weapons. An assault rifle like the Broughton M602 can pick out an assaliant before they can Vore you.
+- If you have been Vored, use a sharp melee weapon or even a laser blade like the LAC358 to cut your way through their stomach. This will destroy the vorer's stomach and allow you to escape
+- Artifical body parts aren't known for tasting good.
+- You can sack someone who you don't care about to the Vorer, and let them eat them. Turn stall after, letting the target poop themselves until they have a blowout in their underwear, causing subsequent diaper rash, which will damage them unless they get changed.
+[SKIPEND]
+
+
+[SKIPSTART]
+* iNgenunity AIXPro Epsion hits production. 
+[SKIPEND]
+
+
+[SKIPSTART]
+Some diapers feature wetness indicators. These indicators change color or disappear when the wearer pees inside of them, allowing caregivers to instantly see when the diaper needs changing.
+
+# List of diaper brands:
+
+## Both Tape-on and Pull-up
+- Otonaman (Unimu)
+	- New adult diapers to compete with Gensou-chan's offerings. 
+- Omuman (Unimu)
+	- Youth diapers
+- Maximum Absorbency Garment (East Seihou Continence)
+
+## Tape-on Only
+- FantastaBab (Gensou-chan MakaiTech)
+- Care Form (Carwell)
+- ComfiDry (LastLeak)
+
+## Pull-up Only
+- Printy-Ups (Gensou-chan MakaiTech)
+- Care Pant (Carwell)
+- Secreta (LastLeak)
+- Piddle Retardant (BeeDee)
+
+
+[SKIPEND]
+
+
+[SKIPSTART]
+
+
+Instructor: Did you know that despite movie depictions of gun-loving police officers...
+... approximately 75% of officers never fire their weapon in the line of duty?
+But that doesn't mean they shouldn't be prepared to do so...
+... as skilfully, and as efficiently as possible.
+I'm Haul Parrel, former chief of the Louisville Police Department...
+... and today I'm going to show you the basics of handling firearms.
+
+The Windurger S380 .38 Special revolver is a common and reliable sidearm.
+Unlike magazine-based weapons, revolvers are far less likely to jam.
+The S380 is lightweight and easy to handle even for an amateur.
+Let's fire a few rounds. Align the sight with the target, and squeeze the trigger...
+
+*gunshots*
+
+Instructor: Reloading a revolver is slower than using a magazine...
+... first open the cylinder using this button, then pull out the spent cartridges...
+... or press this lever at the back to eject all of the cartridges.
+
+*shell casings fall onto the floor*
+
+The DD17 semi-auto pistol is a magazine-fed weapon that fires 9mm rounds.
+It holds 17 rounds in it's..
+*magazine insertion*
+...easily swapable magazine.
+Remember to rack your DD17 before firing.
+
+*slide racks*
+*gunshots*
+
+Instructor: The S333 is a meatier revolver chambered in .357 Magnum.
+The increased recoil means you'll have to be ready for the kick to your arm.
+
+*loud gunshots*
+
+But also means much higher stopping power than the 9mm or .38 Special.
+
+Instructor: Finally, hope you never come up against these. A PSB machine pistol and a .44 Magnum.
+Let's fire them both together while diving through the air...
+
+*screaming, extremely loud gunshots*
+
+That was for demonstration purposes only. Do not try this in the line of duty.
+
+----
+
+Instructor: When your service weapon runs dry, or if you're facing an extended amount of shooters...
+... you'll have to step up and use these bad boys.
+They may seen intimidating at first, but train well...
+... and you'll be downing Gryzov-brandishing terrorists in no time.
+I'm Haul Parrel, former chief of the Louisville Police Department...
+... and today we are going to talk about long guns.
+
+The tried and tested Broughton M921 assault rifle is the main service rifle of our military...
+... but that doesn't mean that law enforcement doesn't deserve such firepower.
+First, insert a 30-round magazine into the rifle...
+*magazine insertion*
+... then pull the bolt using this straight T-pull
+*slide racks*
+Change the fire mode to Semi using this safety switch
+*gunshots*
+Semi-auto fires one shot with a trigger pull.
+You can switch instead to Auto, which will fire continuously.
+*repeated gunshots*
+Until you release the trigger, or the magazine runs empty.
+
+If you want to down up to 5 targets with one blast up at chose range, the Maestro SS4 is your friend.
+Insert 7 shells into the tube magazine, and rack the bolt.
+*round insertion*
+Remember to rack your SS4 before firing.
+*slide racks*
+*loud gunshots*
+The SS4 is semi-automatic, so you don't even have to pump it to chamber a new round.
+
+Instructor: For anti-material and anti-armor use, nothing beats the 12.7x99mm Brennan LRS-46.
+I have a level 4 plate on this target that neither the M921 or the SS4 has yet penetrated.
+Watch the LRS go through this plate like it's paper.
+
+*extremely loud gunshot*
+
+Remember to rack the bolt to load a new round in.
+
+Instructor: Finally, if you're dealing with a ton of enemies and are weapons free, you can use this...
+... the ArmTeck DGL-103. 40mm grenade launcher full of high-explosive.
+If it doesn't kill, it'll severely hurt or knock them unconscious.
+I even had to move to a new set in the desert for this shot because of the destructive power.
+
+*explosion*
+
+Be aware that it can and will destroy everything in its path
+... so use alternative ammunition for it such as sleeping gas when there's civilians.
+This weapon is also good for anti-riot use with rubber bullets.
+[SKIPEND]

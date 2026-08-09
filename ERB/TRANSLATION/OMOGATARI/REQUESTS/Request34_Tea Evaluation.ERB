@@ -1,0 +1,184 @@
+;---------------------------------------
+;Tea Evaluation Request
+;2hus with D or higher cooking can give you a request to try out their tea
+;the tea may be spiked with a diuretic or laxative depending on your fetish settings
+;Aphrodisiac if they want the D in more than just cooking.
+;Sleeping medicine if they want to rape you. Or kidnap you
+;---------------------------------------
+;存否関数
+;F関数はTRYCALL系が使えないので通常関数で存否配列を作っちゃう
+@EXIST_一般依頼34
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+;オブジェクト本体
+;ここでARGで渡されるのはCLIENT_IDです
+@一般依頼34(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+
+SELECTCASE O_DATA
+CASE "依頼名"
+
+	CALLF MAKE_STR(V_NAME, @"Tea Evaluation")
+CASE "依頼内容表示"
+		LOCALS '= @"Taste %CALLNAME:ARG%'s tea."
+
+	CALLF MAKE_STR(V_NAME, @"%LOCALS%")
+CASE "依頼報酬表示"
+	CALLF MAKE_STR(V_NAME, @"Favor")
+CASE "依頼実行コマンド名"
+	CALLF MAKE_STR(V_NAME, "Drink Tea")
+CASE "依頼内容"
+    CALLF MAKE_INT(V_NAME, MAKE_IRAI_DATA(TARGET, "person"))
+CASE "依頼サブ"
+CASE "依頼期限"
+;発生時ではなく受託時に確定します
+	CALLF MAKE_INT(V_NAME, 0)
+CASE "依頼発生率"
+;これは他の一般依頼との相対確率なんで10％ではありません
+;percentage change of being shown. (set to 100 to always show)
+	;CALLF MAKE_INT(V_NAME, 100)
+	CALLF MAKE_INT(V_NAME, 50)
+CASE "依頼発生条件"
+		CALLF MAKE_INT(V_NAME, 1)
+CASE "依頼受託可能条件"
+;あなたの戦闘能力が1以上
+	SIF ABL:ARG:料理技能 >= UniversalRank("D")
+		CALLF MAKE_INT(V_NAME, 1)
+CASE "依頼実行可能条件"
+	CALLF MAKE_INT(V_NAME, 1)
+;成功/失敗処理はCARRYOUTで直接書く
+;SOURCEやITEM入手、消費が煩雑になるので
+CASE "依頼消滅条件"
+	SIF Add_Request_Should_Discard(ARG)
+		CALLF MAKE_INT(V_NAME, 1)
+CASE "依頼人連れ出し可能"
+ENDSELECT
+
+@IRAI_一般34(CHARA, IRAI_ID, SCENE)
+#DIM  CHARA
+#DIM  IRAI_ID
+#DIMS SCENE
+#DIM  CLIENT_ID
+#DIM  CHK_SLOT
+#DIM  OPPONENT_REMAIN
+#DIM SPIKE_THRESHOLD
+CLIENT_ID = IRAI_ID_TO_CLIENT(IRAI_ID)
+CHK_SLOT  = SEARCH_IRAI_SLOT(IRAI_ID)
+SELECTCASE SCENE
+CASE "依頼条件表示"
+;何か専用の表示情報を設けたい時用
+;受託済みの依頼表示で使用されます
+;
+;PRINT系だけでSOURCEとかは入れちゃダメ、WAITも無しで
+;ここ以外の表示項目は
+;PRINTFORML 　　　　　：
+;となっているのでスペースを揃えたほうが見栄えが良いです
+
+CASE "依頼実行時"
+;このCASEに限り、RESULTが意味を持ちます
+;依頼実行時のRESULTにはIRAI_CONST_RESULT()を使用してください
+;可能な引数は"キャンセル", "実行して成功", "実行して失敗", "実行して未解決"です
+;独自処理を仕込みたい時は"実行して未解決"で先延ばしするなりしてください
+;
+;
+	;実行できないパターン
+	;拠点では屋内だとダメ（原作だとめっちゃやってるけど）
+	;ほぼ弾幕勝負のコピペ
+	PRINTFORMDW You take a sip of %CALLNAME:CHARA%'s tea.
+	TARGET = MASTER
+	CALL COM301_1
+	TARGET = CHARA
+	;normal tea
+	LOCAL = RAND(MIN(ABL:CHARA:料理技能*4,100), 101)
+	SELECTCASE LOCAL
+		CASE IS < 30
+			LOCALS = It Sucks!
+		CASE IS < 40
+			LOCALS = Eww!
+		CASE IS < 50
+			LOCALS = Bweh!
+		CASE IS < 60
+			LOCALS = Meh!
+		CASE IS < 70
+			LOCALS = Huh!
+		CASE IS < 75
+			LOCALS = Wow!
+		CASE IS < 80
+			LOCALS = Mmm!
+		CASE IS < 85
+			LOCALS = Nom-Nom!
+		CASE IS < 90
+			LOCALS = Tasty!
+		CASEELSE
+			LOCALS = Yum!
+	ENDSELECT
+	PRINTFORML %"Your Opinion…………", 40, LEFT%{LOCAL, 3} Points (%LOCALS%)
+
+	SPIKE_THRESHOLD = 100
+	SPIKE_THRESHOLD -= (MARK:CHARA:3*20)
+	;apathethic
+	SIF TALENT:CHARA:21 == 1
+		SPIKE_THRESHOLD -= 30
+	;virtuous
+	IF TALENT:CHARA:30 == 1
+		SPIKE_THRESHOLD += 40
+	;unchastate
+	ELSEIF TALENT:CHARA:30 == -1
+		SPIKE_THRESHOLD -= 30
+	ENDIF
+	;defiant
+	SIF TALENT:CHARA:11 == 1
+		SPIKE_THRESHOLD -= 30
+	;fairy
+	SIF TALENT:CHARA:妖精
+		SPIKE_THRESHOLD /= 2
+	;psycho would want to see you suffer
+	SIF TALENT:CHARA:21 == 2
+		SPIKE_THRESHOLD = 0
+
+	SELECTCASE RAND(100)
+	CASE IS < SPIKE_THRESHOLD
+	CASEELSE
+		;drugged
+		$DrugPick
+		SELECTCASE RAND:5
+		CASE 0
+			PRINTFORML %PARSE("Your")% cheeks blush as %PARSE("you let",1)% out a quiet moan.
+			TCVAR:MASTER:媚薬 += 210
+		CASE 1
+			SIF !GETBIT(nScat,2)
+				GOTO DrugPick
+			PRINTFORML You start rubbing your thighs together, not being able to think about anything but the emerging need to pee.
+			TCVAR:MASTER:利尿剤 += 210
+		CASE 2
+			PRINTFORML You start looking over at %CALLNAME:CHARA% with an entranced look on your face.
+			TCVAR:MASTER:惚れ薬 += 210
+		CASE 3
+			PRINTFORML You stifle a yawn, fighting the drowsiness that is suddenly attacking you.
+			TCVAR:MASTER:睡眠薬強度 = 2
+		CASE 4
+			SIF !GETBIT(nScat,2)
+				GOTO DrugPick
+			PRINTFORML You grip your arms on your tummy, the sudden cramping of your bowels taking you over.
+			DrugStats:MASTER:LaxativeTime += 210
+		ENDSELECT
+
+	ENDSELECT
+	RETURN IRAI_CONST_RESULT("実行して成功")
+CASE "依頼成功時"
+;成功報告時の報酬など
+	SOURCE:歓楽 = 3000
+	CALL CHANGE_CFLAG(2, TARGET, (LOCAL/3) + RAND:5)
+	CALL CHANGE_CFLAG(4, TARGET, (LOCAL/3) + RAND:5)
+CASE "依頼失敗時"
+;失敗報告時の処理
+;過酷な依頼なので少しだけ
+	PRINTFORML %CALLNAME:TARGET% seems upset that the negotiations didn't end well.
+	CALL CHANGE_CFLAG(2, TARGET, -3)
+	CALL CHANGE_CFLAG(4, TARGET, -2)
+ENDSELECT

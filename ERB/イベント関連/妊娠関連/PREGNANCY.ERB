@@ -1,0 +1,494 @@
+;一日の終わりに呼び出される関数
+@GET_CHILD(ARG, ARG:1 = -1)
+#DIM 妊娠必要値
+#DIM 中毒補正
+#DIM 妊娠精液判定
+	;Addition custom code.
+#DIM DYNAMIC ConceptionCount
+
+;default inseminator to MASTER
+SIF ARG:1 == -1
+	ARG:1 = MASTER
+;invalid character
+SIF ARG >= CHARANUM || ARG:1 >= CHARANUM
+	RETURN
+; 	;Custom code, don't process if the character's womb or nest is at the child limit.
+; SIF CFLAG:ARG:WithChildCount >= MAXCHILD
+; 	RETURN
+
+SELECTCASE ABL:ARG:膣射中毒
+	CASE 0 TO 2
+		中毒補正 = 5
+	CASE 3 TO 5
+		中毒補正 = 4
+	CASEELSE
+		中毒補正 = 2
+ENDSELECT
+
+EX:ARG:子宮内精液 += EX:ARG:膣内精液 / 中毒補正
+
+;1≦出産経過日≦59の場合、子宮内精液リセット処理を追記
+SIF ((TALENT:ARG:幼稚 || CharaAge:ARG:0 < 13) && !TALENT:ARG:初潮 && TCVAR:ARG:FertilityMagicDid < 2) || QOL_IS_IN_RECOVERY(ARG) ;qol custom code
+	RETURN
+	; EX:ARG:子宮内精液 = 0
+;NAS:
+SIF !HAS_VAGINA(ARG) || (nInsemination:ARG:(ARG:1) <= 0) ;bug fix - don't process characters without semen in their womb
+	RETURN
+;Sterilized
+SIF TALENT:(ARG:1):濃厚精液 == -1
+	EX:ARG:子宮内精液 = 0
+;===============
+
+;custom code so matching races give out the impreg bonuses
+IF !TALENT:(ARG:1):万能孕ませ
+
+	IF CHECK_CHARA(ARG, "鬼")
+		妊娠必要値 = 10000 - 3000 * (TALENT:(ARG:1):鬼孕ませ + CHECK_CHARA(ARG:1, "鬼")) - 1000 * TALENT:(ARG:1):妖怪孕ませ
+		;no more of this 5 or more prayers needed bullshit
+		;SIF CFLAG:ARG:子宝補正 >= 5
+			妊娠必要値 = 妊娠必要値 * MAX(120 - 4 * CFLAG:ARG:子宝補正, 5) / 100
+	ELSEIF CHECK_CHARA(ARG, "天狗")
+		妊娠必要値 = 5000 - 2000 * (TALENT:(ARG:1):天狗孕ませ + CHECK_CHARA(ARG:1, "天狗")) - 1000 * TALENT:(ARG:1):妖怪孕ませ
+		;SIF CFLAG:ARG:子宝補正 >= 5
+			妊娠必要値 = 妊娠必要値 * MAX(60 - 4 * CFLAG:ARG:子宝補正, 5) / 40
+	ELSEIF CHECK_CHARA(ARG, "妖精")
+		妊娠必要値 = 4000 - 1500 * TALENT:(ARG:1):妖精孕ませ
+		;SIF CFLAG:ARG:子宝補正 >= 5
+			妊娠必要値 = 妊娠必要値 * MAX(60 - 4 * CFLAG:ARG:子宝補正, 5) / 40
+	ELSEIF CHECK_CHARA(ARG, "神霊")
+		妊娠必要値 = 20000 - 15000 * TALENT:(ARG:1):神霊孕ませ
+		;SIF CFLAG:ARG:子宝補正 >= 5
+			妊娠必要値 = 妊娠必要値 * MAX(100 - 4 * CFLAG:ARG:子宝補正, 5) / 100
+	ELSEIF CHECK_CHARA(ARG, "付喪神")
+	;基本必要値は妖精より高いが道具使用経験によって下がる
+		妊娠必要値 = MAX(5000 - EXP:(ARG:1):道具使用経験 * (1 + (TALENT:(ARG:1):付喪神孕ませ + CHECK_CHARA(ARG:1, "付喪神"))), 2000)
+		;SIF CFLAG:ARG:子宝補正 >= 5
+			妊娠必要値 = 妊娠必要値 * MAX(60 - 4 * CFLAG:ARG:子宝補正, 5) / 40
+	ELSEIF CHECK_CHARA(ARG, "蓬莱人")
+	;願掛けによる影響が相対的にでかい
+		妊娠必要値 = 200000
+		SIF TALENT:(ARG:1):蓬莱孕ませ || CHECK_CHARA(ARG:1, "蓬莱人")
+			妊娠必要値 /= 10
+		;SIF CFLAG:ARG:子宝補正 >= 5
+			妊娠必要値 = 妊娠必要値 * MAX(50 - 2 * CFLAG:ARG:子宝補正, 1) / 100
+	ELSEIF CHECK_CHARA(ARG, "幽霊")
+		妊娠必要値 = 150000
+		SIF TALENT:(ARG:1):幽霊孕ませ || CHECK_CHARA(ARG:1, "幽霊")
+			妊娠必要値 /= 10
+		;SIF CFLAG:ARG:子宝補正 >= 5
+			妊娠必要値 = 妊娠必要値 * MAX(60 - 2 * CFLAG:ARG:子宝補正, 1) / 100
+	ELSEIF CHECK_CHARA(ARG, "人形")
+		妊娠必要値 = 150000
+		SIF TALENT:(ARG:1):人形孕ませ || CHECK_CHARA(ARG:1, "人形")
+			妊娠必要値 /= 10
+		;SIF CFLAG:ARG:子宝補正 >= 5
+			妊娠必要値 = 妊娠必要値 * MAX(60 - 2 * CFLAG:ARG:子宝補正, 1) / 100
+	ELSEIF CHECK_CHARA(ARG, "妖怪")
+		妊娠必要値 = MAX(3000 - CFLAG:ARG:子宝補正 * 10 - 1000 * (TALENT:(ARG:1):妖怪孕ませ || CHECK_CHARA(ARG:1, "妖怪")), 500)
+	ELSEIF CHECK_CHARA(ARG, "仙人") || CHECK_CHARA(ARG, "天人") || CHECK_CHARA(ARG, "月人") || CHECK_CHARA(ARG, "魔界人")
+		妊娠必要値 = MAX(2400 - CFLAG:ARG:子宝補正 * 10, 500)
+	;その他人間
+	ELSE
+		妊娠必要値 = MAX(2000 - CFLAG:ARG:子宝補正 * 10, 500)
+	ENDIF
+	SIF CHECK_CHARA(ARG, "半人間")
+		妊娠必要値 = (妊娠必要値 + MAX(2000 - CFLAG:ARG:子宝補正 * 10, 500)) / 2
+ELSE
+	妊娠必要値 = MAX(2000 - CFLAG:ARG:子宝補正 * 12, 100)
+ENDIF
+SIF TCVAR:ARG:祝福
+	妊娠必要値 = 妊娠必要値 * 95 / 100
+SIF FLAG:抱負 == 6
+	妊娠必要値 = 妊娠必要値 / 2
+SIF FLAG:抱負 == 9
+	妊娠必要値 = 妊娠必要値 * 9 / 10
+;qol custom code, apply racial bonuses
+CALL QOL_RACIAL_PREGNANCY_BONUS(妊娠必要値, ARG)
+; SIF TALENT:ARG:人間 == 1
+; 	妊娠必要値 /= 2
+;give the mob pregnancy bonus to the player since NPCS can't use prayers
+SIF TALENT:ARG:行きずり || ARG == MASTER
+	妊娠必要値 /= 4
+SIF TALENT:(ARG:1):濃厚精液 > 0
+	妊娠必要値 /= 4
+SIF TALENT:ARG:妊娠願望
+	妊娠必要値 = 妊娠必要値 * 8 / 10
+		;Custom code, bonus while hyperfertile for second child with normal pregnancy type or under 7 children with litter type.
+SIF TALENT:ARG:HYPERFERTILE && ((TALENT:ARG:PREGNANCY_TYPE == PREGNANCY_NORMAL && CFLAG:ARG:WithChildCount == 1) || (TALENT:ARG:PREGNANCY_TYPE == PREGNANCY_LITTERS && CFLAG:ARG:WithChildCount < 7)) ;qol custom code
+	妊娠必要値 = 妊娠必要値 * 9 / 10
+
+;addition custom code
+SIF 充填率(ARG,4,ARG:1) > 20
+	TRYCALL COM616_PREGBONUS(妊娠必要値)
+
+IF 充填率(ARG,4,ARG:1) > 20
+	DRAWLINE
+	SETCOLOR C_CREAM
+	PRINTFORML Inside %PARSE("your",,,ARG)% womb filled with %PARSE("your",,,ARG:1)% semen...
+	IF !FLAG:画像表示
+		SETFONT CHKFONTNAME("ＭＳ Ｐゴシック")
+		PRINTL 　　　　　　　　　　　}　}　　　　　　　　　　　　 　 　 （
+		PRINTL ヽ.__　　　　　　　　　',　',　_　　　　　　　　　　　　　　）　　　　　　　　　　　　　　 　 　 　 　 　 , --､
+		PRINTL 　(　｀ヽ　　　　　　　 ヽ ﾉ　 ヽ　　　　　　　　　　　　0　　　　　　　　　　　　　　　　　　＿__ ノノ⌒＼
+		PRINTL 　　ー '　　　　　　　　　乂 ＿}　　　　　　　　　　 　 ...........　　　　　　 /⌒´　　/ ￣ ｀ヾ⌒ ´
+		PRINTL 　　　　　　　｀⌒ヽ.. ＿　　　　　 　 ⌒).　　　　　,..::::::::::::::::.:..　　 (__メ　　　　　乂＿__ノ
+		PRINTL 　　　　　　　　　　 乂＿） 　 　　　　　ー(__)　　.j::::'´　 ｀ ::::〔
+		PRINTL 　　　　　⌒ー（⌒）　　　　　　　　　　　　- ､ 　 〕::::.　　 ..:::::{　　　　　　　　　 -― - ､
+		PRINTL 　　　　　　　　　　　---　､ 　 　　　　　乂_ノ　　ﾍ::::.::::::.::::::ﾒ　　　　　　　 （　　　　　　｀￣ ｀ヽ
+		PRINTL 　　　　　　　　　 /　　　 　 ＼ 　　ー ´　-､_○　　｀~~~~~´　, -- ､　　　　　　ー　⌒´￣￣）　}
+		PRINTL 　　＿　　　　　 人　　　　　　 ',　　　　/　　　　　　　　　　　乂__ノ⌒ヽ　　　　　　　　　　 （　（
+		PRINTL ´　　　　 ＼　　{　 }　　　　　　 }　　　　　　　　　　 0　　　　　　　　　　 ー　　 ＿　　　　　　 ー―
+		PRINTL 　　 -- ､　　｀￣ ´ ヽ　　＿ ..ノ　　　　　　　　　　 (　　　　　　　　　　　　　 （　　　｀ヽ
+		PRINTL ／　　　 ＼ _＿　イ｀¨¨´　--､　　　--､　　　　　　′　　　　　　　　　　　　　＼　＿ メ
+		PRINTL 　 　　（⌒）　　　　　　__/ 　　　ー乂__ノ　 _　　　　　　(⌒ ）　　---　､　　　　　　　　　 ＼
+		PRINTL ー'⌒´　　　　　　　　　　　　　　　　　　　（__）　　　　　 ⌒ヽ /　　　　　＼　　　　　　　　　 ー ⌒
+		PRINTL 　　　　　　　　　　　　　　　　＿　　　　　 ノ　　　-､　　　　　.′　　　　　　＼
+		PRINTL 　　　　　　　　　　　　　 ／　　　 ヽ　　.〃　　 （__ノ　　　　　　　　　　　　　　 ､
+		PRINTL 　　　　　　　　　　　　 /　　　　　　}　　{{　　　（　　　　　　　i
+		PRINTL 　　　　　　　　　　　　.{　　　　　　ﾉ　　 j　　　　）　　　--､　{　　　　　　　　　　 ',
+		PRINTL 　　　-――　､　　　ノ 乂 　　 ／　　 /　　　　　　　 {　　 }　',　　　　　　　 　 　 }
+		PRINTL ／　　――　､ ｀￣　 ）-- ⌒´　　　　　　　　　　　　 乂__ !.　ヽ　　　　　　　　　 ,
+		PRINTL 　 ／　　　　　 ｀￣￣　　　　　　　　　　　　　　　　　　　　}}　　 ＼　　　　　　　/
+		PRINTW ／　　　　　　　　　　　　　　　　　　　　　　　　 　 　 　 　 {{　　　　　ー―　､　 {
+	ELSE
+		;custom code
+		CALL PRINT_IMAGE_ANIMATION("受精",0,7,5,1)
+		CALL PRINT_IMAGE_ANIMATION("受精",0,3,1,0)
+		CALL PRINT_IMAGE("受精2")
+		WAIT
+	ENDIF
+ENDIF
+;Custom code - split MIN(充填率(ARG,4),100) * REAL_ESTRUS_CYCLE(ARG) / 100 < RAND:妊娠必要値 to 2 variables
+;LOCAL:50 = MIN(充填率(ARG,4),100) * REAL_ESTRUS_CYCLE(ARG) / 100
+
+;fuck your maximum filling rate
+LOCAL:50 = 充填率(ARG,4,ARG:1) * REAL_ESTRUS_CYCLE(ARG) / 100
+LOCAL:51 = RAND:妊娠必要値
+IF FLAG:PREG_PROB_MULT
+	LOCAL:51 /= FLAG:PREG_PROB_MULT
+	SIF LOCAL:51 < 1
+		LOCAL:51 = 1
+ENDIF
+
+;more custom bonus which increases semen density based off impregnator's race
+;human is 1x
+IF CHECK_CHARA(ARG:1, "神霊")
+	LOCAL:50 *= 20
+ELSEIF CHECK_CHARA(ARG:1, "蓬莱人")
+	LOCAL:50 *= 20	
+ELSEIF CHECK_CHARA(ARG:1, "幽霊")
+	LOCAL:50 *= 15
+ELSEIF CHECK_CHARA(ARG:1, "鬼")
+	LOCAL:50 *= 10
+ELSEIF CHECK_CHARA(ARG:1, "天狗")
+	LOCAL:50 *= 5
+ELSEIF CHECK_CHARA(ARG:1, "付喪神")
+	LOCAL:50 *= 5	
+ELSEIF CHECK_CHARA(ARG:1, "妖精")
+	LOCAL:50 *= 4
+ELSEIF CHECK_CHARA(ARG:1, "妖怪") || CHECK_CHARA(ARG:1, "仙人") || CHECK_CHARA(ARG:1, "天人") || CHECK_CHARA(ARG:1, "月人") || CHECK_CHARA(ARG:1, "魔界人")
+	LOCAL:50 *= 2
+ENDIF
+
+;Custom code
+IF (FLAG:PREG_SHOW_PROB || nSpoilerMode || ABL:MASTER:教養 >= UniversalRank("A")) && nInsemination:ARG:(ARG:1)
+	SETCOLOR 0xAA77AA
+	PRINTFORML Pregnancy chance with %CALLNAME:ARG%:
+	
+	PRINTFORML   %CALLNAME:(ARG:1)% poured {nInsemination:ARG:(ARG:1)}ml of cum into %HIM_HER(ARG)% (filling rate: {充填率(ARG,4,ARG:1)}\%)
+	PRINTFORML   Points      : {LOCAL:50}
+	PRINTFORML   Needed      : {LOCAL:51} (max is: {妊娠必要値})
+	RESETCOLOR
+ENDIF
+SETFONT
+;Custom code
+IF LOCAL:50 > LOCAL:51
+	DRAWLINE
+	CFLAG:ARG:妊娠経過日数 = 1
+	;NAS customs, set flag if raped and impregnated inside.
+	SIF TCVAR:ARG:TCVAR_CUMIN_RAPE
+		SETBIT FALL_RAPE:ARG:0, 4
+
+	SIF FLAG:抱負 == 6
+		FLAG:抱負 = 9
+	;Custom code, increase the number of unborn children, with a chance for twins or triplets if it's a live birth. Maximum of ten at one time, except for egg layers.
+	ConceptionCount += CONCEPTION_COUNT(ARG,ConceptionCount)
+	CALL ADD_PREGNANCY_PROGRESS(ARG,ConceptionCount,,ARG:1)
+	IF FLAG:1007 || nSpoilerMode
+		SETCOLOR C_CREAM
+		PRINTFORML %PARSE("Your",,,ARG:1)% sperm swim around in %PARSE("your",,,ARG)% womb, rushing at the defenseless egg...
+		IF !FLAG:画像表示
+			SETFONT CHKFONTNAME("ＭＳ Ｐゴシック")
+			PRINTL 　　　　　　　　　　　　　　　　..__＿....-------....＿..
+			PRINTL 　　　　　　　　　　　　 .._..-‐'"⌒　　　　　　　　 ｀"'''ゝ､_..
+			PRINTL 　　　　　　　　　　_..‐''´　　　　　　　　　　　　　　　　　"ｰ 、..
+			PRINTL 　　　　　　　　 .:ノ'´　　. .　. 　 .　 . . .. .: . .　.　 ..　　　 　 　 `＼:.
+			PRINTL 　　　　　　　.:ノ′ 　 .　 . .: .:.: .:. .: . .: .: .:. . : .: .:.. : . .　. 　 　 　 ﾞゝ:.　　こ二ﾆ==-‐'´￣｀ヽ、_,
+			PRINTL 　　　　　 .:_／ 　 . ..:..:.:.::;:;;';:;';';.:　'"´　　　　'　　;.:.. : .　.　　　　 　 ＼:.
+			PRINTL 　　　　　.:/′ 　 .. ..:.:.:;:;';;';'.''´　　　　　 　 　 　 　 　 ;.:. . .　　 　 　 ヽ、:.
+			PRINTL 　　　　.:丿　.　.　. ..:.::;';':''　　　　　　　　　 　 　 　 　 　 :.:. : .　　　 　 ヽ::
+			PRINTL 　　　 .:丿　　　..　. ..::;'′　　　　　　　 　 　 　 　 　 　 　 ,:.:.. . .　 　 　 '、::
+			PRINTL 　　　 ::「　　　　.. . .:.;'　　　　　　　　　　　　　　　　　 　 　 :.:.　 . 　 　 .　i、::　　　こ二ﾆ==-‐'⌒丶、＿ノ
+			PRINTL 　　　::||　　　　. . ..:.;　　　　　　　　 　 　 　 　 　 　 　 　 　 ;.: . . .　　 ,::　!::
+			PRINTL 　　　::〕 　 　 　 . ..:;　　　　　　　　　　　　　　　　　　　　 　 :.:. . .　:';';にﾆ==-‐'´￣｀ヽ、_,
+			PRINTL 　　　::|!　　　　　..:.:;　　　　　　　　　　　　　　　　　　　　 　 ;.: :.　　 　｀: .!'::　　　　　　　　"
+			PRINTL 　　　::卜　　　　.. .:.:,　　　　　　　　　　　　　　　　　　　　　.:.:. . .. . 　 　 |::′　[][]/7
+			PRINTL 　　　 ::'、　　　 　 . .::,　　　　　　　　　　　　 　 　 　 　 　 ,:.: . .　　　　 │:: 　 　 //lニ◎
+			PRINTL 　　　 ::弋 　 　 　 .. . :.,　　　　　　　　　　　　　　　　 　 ,.:.: : .　　　 　 丿::　　　　　　// ﾟﾟ〃
+			PRINTL 　　　　 ::ヽ　　 　 　 . . .:...　　　 　 　 　 　 　 　 　 　 ,..: .: . ..　 　 　 _j′　　　　　　　　　´　ﾟ　｡
+			PRINTL 　　　　　':ヽ、　　　　　.　.: :': . ..　　 　 　 　 　 　 ,. .:.: . :　.. 　 　 　 /′　　　　　　　　　 　 　 　 °
+			PRINTL 　　　　　　':ヽ、　　 　 　 ..　. : .: ' : . ...,. .,... . : ' :. : .　.　　　 　 　 _／:'
+			PRINTL 　　　　　　　 ':ヾ 、　　　　　　 ..　:　. .: . . : .　:　.　　　　　　　 _／:'　　　　こ二ﾆ==-‐'⌒丶、＿ノ
+			PRINTL 　　　　　　　　　':ﾞゝ､　　　　　　　　　 .　 .　　　　　　　　　_ノ'´:'
+			PRINTL 　　　　　　　　　　　':ﾞﾞ'ゝ､_ 　　　　　　　　　　　　　　_..-‐'´:'
+			PRINTL 　　　　　　　　　　　　　　':ﾞﾞ'''ｰ-....＿＿____＿....-一"´:'
+			PRINTW 　　　　　　　　　　　　　　　　　　　　 ''￣｀''
+			SETFONT
+		ELSE
+			;custom code
+			CALL PRINT_IMAGE_ANIMATION("受精",0,12,5,0)
+			CALL PRINT_IMAGE("受精11")
+			WAIT
+		ENDIF
+		IF IsDead:ARG:0
+			PRINTFORMW Because %CALLNAME:ARG% is dead, the egg wont develop...
+			PRINTFORMW No baby will be born...
+			CFLAG:ARG:妊娠経過日数 = 0
+			CALL REMOVE_PREGNANCY_PROGRESS(ARG)
+		ELSEIF TALENT:ARG:恋慕 || TALENT:(ARG:1):恋慕
+			PRINTFORMW %PARSE("Your",,,ARG)% body accepts the genes of %PARSE("your",,,ARG:1)% lover willingly...
+		ELSEIF ARG == MASTER && ARG:1 == MASTER
+			PRINTFORMW Your body accepts your own genes whether you want them or not...
+		ELSE
+			PRINTFORMW %PARSE("Your",,,ARG)% body receives %PARSE("your",,,ARG:1)% genes whether %PARSE("you want",,,ARG)% them or not...
+		ENDIF
+		IF TALENT:ARG:行きずり == 1
+			FONTBOLD
+			PRINTFORMW %CALLNAME:ARG% gets impregnated by you whom %HE_SHE(ARG)% just met on the streets...
+			FONTREGULAR
+		ENDIF
+			;Custom code, egg laying.
+		IF GROUPMATCH(TALENT:ARG:PREGNANCY_TYPE, PREGNANCY_EGGS, PREGNANCY_CLUTCH) && FLAG:EGGNANCY ;qol custom code
+			IF TALENT:ARG:PREGNANCY_TYPE == PREGNANCY_CLUTCH
+					;Skip describing the hard shell because clutch layers are bugs and fish.
+				PRINTFORMDW The \@ ConceptionCount > 1 ? eggs gather together in %HIS_HER(ARG)% womb # egg remains in her womb \@...
+			ELSE
+				PRINTFORMDW The \@ ConceptionCount > 1 ? eggs gather together and develop hard shells in %HIS_HER(ARG)% womb # egg develops a hard shell, but remains in her womb \@...
+			ENDIF
+		ELSEIF CFLAG:ARG:WithChildCount > 1
+			PRINTFORMW The egg splits into %NUM_COUNT(CFLAG:ARG:WithChildCount)%, allowing for more children to grow at once...
+		ENDIF
+	ENDIF
+		;Custom code, egg laying.
+	IF GROUPMATCH(TALENT:ARG:PREGNANCY_TYPE, PREGNANCY_EGGS, PREGNANCY_CLUTCH) && !FLAG:EGGNANCY
+		PRINTFORMDW %HE_SHE(ARG,1)% %SPLIT_G(@"lays:lays:lays:pushes out:produces")% \@ ConceptionCount > 1 ? {ConceptionCount} eggs # an egg \@ fertilized with your sperm.
+		LOCAL:52 = 3
+		IF TALENT:ARG:恋慕
+			LOCAL:52 = 1
+		ELSEIF TALENT:ARG:愛欲
+			LOCAL:52 = 2
+		ENDIF
+		CALL KOJO_MESSAGE_SEND("EVENT", 0, ARG, LOCAL:52, ConceptionCount, "LAY_EGG")
+		IF TALENT:ARG:妊娠願望
+			TALENT:ARG:妊娠願望 = 0
+			PRINTFORMW %CALLNAME:ARG% no longer [Desires Pregnancy].
+		ENDIF
+	ENDIF
+	SIF TALENT:ARG:行きずり == 1
+		FLAG:行きずり孕ませ数 ++
+	IF TCVAR:(ARG):種付けられ自覚
+		CFLAG:ARG:身に覚え_母 = 1
+		;PRINTFORML Succeed2
+	ELSE
+		CFLAG:ARG:無自覚妊娠 = 1
+	ENDIF
+ENDIF
+RESETCOLOR
+;妊娠に伴うあれこれ
+@CHANGE_N_STATUS(ARG)
+
+SIF !CFLAG:ARG:回復速度ダウン ;Custom code, ensure no doubling up on slow recovery.
+	RETURN
+CFLAG:ARG:回復速度ダウン = TALENT:ARG:回復速度 + 2
+IF TALENT:ARG:回復速度 > -1
+	DRAWLINE
+	PRINTFORMW %PARSE("You",,,ARG)% will now get tired more quickly.
+	IF MAXBASE:ARG:体力 >= 4000 && MAXBASE:ARG:気力 >= 3000 ;addition custom code, account for Add_ExtraBonus
+		TALENT:ARG:回復速度 = 0
+	ELSE
+	TALENT:ARG:回復速度 = -1
+	ENDIF
+ENDIF
+
+;無自覚への処理
+@PERCIEVE(ARG)
+IF CFLAG:ARG:妊娠経過日数 == 71
+	DRAWLINE
+	PRINTFORMW %CALLNAME:ARG% will give birth soon.
+	PRINTFORMW Intense acts should be avoided...
+	;Custom code
+	IF !nGlobalStableBypass && !TALENT:ARG:HYPERFERTILE ;qol custom code
+		;CFLAG:産休タイプ=-1以外の仕事情報がCSV定義済キャラは産休に入る
+		IF CFLAG:ARG:産休タイプ > -1 && CFLAG:ARG:産休中 == 0 && CSTR:ARG:3 != ""
+			PRINTFORMW Because it might endanger the baby, %HE_SHE(ARG)% has decided to go on maternity leave until it's over...
+			CFLAG:ARG:産休中 = 1
+		ENDIF
+	ENDIF
+		;Custom code, egg laying.
+ELSEIF (CFLAG:ARG:妊娠経過日数 == 60 || TALENT:ARG:NESTING == 60) && (!CFLAG:ARG:出産経過日 || CFLAG:ARG:出産経過日 >= CHILD_離乳)
+	DRAWLINE
+	IF TALENT:ARG:バストサイズ < 2
+		TALENT:ARG:バストサイズ += 1
+		PRINTFORMW %CALLNAME:ARG%'s breasts have grown.
+		CFLAG:ARG:乳ランクアップ ++
+	ENDIF
+	IF !TALENT:ARG:母乳体質
+		PRINTFORMW %CALLNAME:ARG% has started to lactate.
+		TALENT:ARG:母乳体質 = 1
+	ENDIF
+	SIF TALENT:ARG:NESTING
+		RETURN
+	PRINTFORML It's easy to see %CALLNAME:ARG%'s pregnant even from a distance...
+	IF !CFLAG:ARG:無自覚妊娠 && CFLAG:ARG:産休タイプ == 2
+		PRINTFORML %HE_SHE(ARG,1)% is not unreasonably stubborn, so %HE_SHE(ARG)% decides to take a break from work...
+		CFLAG:ARG:産休中 = 1
+	ELSEIF CFLAG:ARG:無自覚妊娠
+		PRINTFORML %CALLNAME:ARG% is tired from the pregnancy %HE_SHE(ARG)% isn't aware of...
+		IF CFLAG:ARG:産休タイプ == 1 || CFLAG:ARG:産休タイプ == 0
+			PRINTFORMW %HE_SHE(ARG,1)% realizes %HE_SHE(ARG)%'s pregnant, and decides to take a break from work...
+			CFLAG:ARG:産休中 = 1
+		ENDIF
+		;自分を騙せずに妊娠していることを自覚する時期とする
+		CFLAG:ARG:妊娠自覚状態 = 1
+	ENDIF
+		
+	BASE:ARG:体力 -= 200
+	MAXBASE:ARG:体力 -= 200
+	BASE:ARG:気力 -= 200
+	MAXBASE:ARG:気力 -= 200	
+
+
+ELSEIF CFLAG:ARG:妊娠経過日数 == 40
+	DRAWLINE
+	PRINTFORML The swelling of %CALLNAME:ARG%'s belly shows she's clearly pregnant...
+	IF !CFLAG:ARG:無自覚妊娠 && CFLAG:ARG:産休タイプ == 1
+		PRINTFORM To avoid burdening her body %CALLNAME:ARG% has decided to stop 
+		IF GROUPMATCH(ARG,96,91,35)
+			PRINTFORM having meetings in Heaven
+		ELSEIF GROUPMATCH(ARG,134,95,94,76,57,31,22,21,20)
+			PRINTFORM %GET_JOBNAME_TR(ARG,1)%
+ 		ELSEIF ARG == 17
+			PRINTFORM hosting puppet shows
+		ELSE
+			PRINTFORM working
+		ENDIF
+		PRINTFORML  for a while...
+		CFLAG:ARG:産休中 = 1
+	ELSEIF CFLAG:ARG:無自覚妊娠
+		PRINTFORML %CALLNAME:ARG% still cannot accept the changes her body is going through.
+	ENDIF
+	BASE:ARG:体力 -= 200
+	MAXBASE:ARG:体力 -= 200
+	BASE:ARG:気力 -= 200
+	MAXBASE:ARG:気力 -= 200
+
+
+ELSEIF CFLAG:ARG:妊娠経過日数 == 30
+	DRAWLINE
+	PRINTFORML The swelling of %CALLNAME:ARG%'s belly is still inconspicuous...
+	;Custom code
+	SIF !nGlobalStableBypass && !TALENT:ARG:HYPERFERTILE ;qol custom code
+	PRINTFORMW %CALLNAME:ARG%'s body has entered the stable period of the pregnancy.
+	IF !CFLAG:ARG:無自覚妊娠 && CFLAG:ARG:産休タイプ == 0 ;qol custom code, handle 0 for 産休タイプ like everything else, following the original documentation
+		PRINTFORM To avoid burdening her body, %CALLNAME:ARG% decides to take a break from 
+		IF ARG == 10 || ARG == 11
+			PRINTFORM training
+		ELSEIF ARG == 87
+			PRINTFORM %GET_JOBNAME_TR(ARG,1)%
+		ELSE
+			PRINTFORM %GET_JOBNAME_TR(ARG,1)%
+		ENDIF
+		PRINTFORML  for a while...
+		CFLAG:ARG:産休中 = 1
+	ELSEIF CFLAG:ARG:無自覚妊娠
+		PRINTFORML %CALLNAME:ARG% feels some physical discomfort, but hasn't noticed her pregnancy yet.
+	ENDIF
+	BASE:ARG:体力 -= 100
+	MAXBASE:ARG:体力 -= 100
+	BASE:ARG:気力 -= 100
+	MAXBASE:ARG:気力 -= 100
+ELSEIF CFLAG:ARG:妊娠経過日数 == 20
+	DRAWLINE
+	PRINTFORMW Something has happened to %PARSE("you",,,ARG)%...
+	PRINTFORML %PARSE("Your",,,ARG)% body now carries %BABYCONDSTR("a ",ARG,1)%%BABYPLNOUN("child",ARG)%.
+	PRINTFORMW %PARSE("You are",,,ARG)% now truly [Pregnant]!
+	TALENT:ARG:妊娠 = 1
+	IF TALENT:ARG:妊娠願望
+		TALENT:ARG:妊娠願望 = 0
+		PRINTFORMW %PARSE("You",,,ARG)% no longer [%PARSE("Desire",,,ARG)% Pregnancy]
+	ENDIF
+	CALL CHANGE_N_STATUS(ARG)
+
+	;自覚で分岐
+	IF CFLAG:ARG:身に覚え_母 == 1 && !CFLAG:ARG:無自覚妊娠
+		PRINTFORML %PARSE("You have",,,ARG)% started feeling some discomfort with %PARSE("your",5,,ARG)% body.
+		;Custom code
+		SIF !nGlobalStableBypass && !TALENT:ARG:HYPERFERTILE ;qol custom code
+			PRINTFORML It would be a good idea to avoid doing reckless things until %PARSE("you've",5,,ARG)% entered the stable period...
+		IF TALENT:ARG:恋慕
+			PRINTFORMW %CALLNAME:ARG% bashfully tells you she's carrying your unborn child.
+			CALL KOJO_MESSAGE_SEND("EVENT",24,ARG,1,0)
+		ELSEIF TALENT:ARG:思慕
+			PRINTFORMW %CALLNAME:ARG% is nervous as she tells you she's carrying your unborn child.
+			CALL KOJO_MESSAGE_SEND("EVENT",24,ARG,2,0)
+			;CFLAG:ARG:妊娠経過日数 = 2
+		ELSE
+			PRINTFORMW %CALLNAME:ARG% shows some confusion and embarrassment as she tells you she's carrying your unborn child.
+			CALL KOJO_MESSAGE_SEND("EVENT",24,ARG,3,0)
+			;CFLAG:ARG:妊娠経過日数 = 1
+		ENDIF
+		;36=お燐 を64=勇儀 に変更。勇儀には産休も設定
+		;SIF ARG == 10 || ARG == 36
+		IF ARG == 10 || ARG == 64
+			PRINTFORMW %CALLNAME:ARG% decides to refrain from drinking until she's given birth...
+			SIF ARG == 64
+				CFLAG:ARG:産休中 = 1
+		ENDIF
+		;自覚射精があるので妊娠していることはすぐに自覚する
+		CFLAG:ARG:妊娠自覚状態 = 1
+	ELSE
+		PRINTFORMW However, %CALLNAME:ARG% is oblivious to what's going on inside her body...
+		CALL KOJO_MESSAGE_SEND("EVENT",24,ARG,4,0)
+	ENDIF
+ENDIF
+
+@MasterPregnancy
+#DIM C_ID
+VARSET LOCAL
+;妊娠オフなら飛ばす
+SIF !nPreggo ; now global
+	RETURN
+;男なら飛ばす
+SIF TALENT:MASTER:性別 == 2
+	RETURN
+;もう妊娠してたら飛ばす
+SIF CFLAG:MASTER:妊娠経過日数
+	RETURN
+;キャラ順ランダマイズ
+CALL FISHER_YATES_SHAFFLE(CHARANUM - 1)
+
+FOR LOCAL , 0 , CHARANUM - 1
+	C_ID = SHAFFLE_ARRAY:LOCAL + 1
+	SIF !nInsemination:MASTER:C_ID
+		CONTINUE
+	SIF TALENT:C_ID:行きずり
+		CONTINUE
+	;ここで妊娠判定、つくってないからコメントアウトしとく。
+	;TCVAR:種付け自覚があったらCFLAG:身に覚え_父 = 1しておいてね。
+	;CALL あなた妊娠判定(C_ID)
+	;↑ので妊娠したらループ中断
+	SIF CFLAG:MASTER:妊娠経過日数
+		BREAK
+	
+	CALL GET_CHILD(MASTER,C_ID)	
+NEXT

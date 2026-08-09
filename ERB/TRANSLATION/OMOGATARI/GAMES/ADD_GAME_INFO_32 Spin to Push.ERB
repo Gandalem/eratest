@@ -1,0 +1,143 @@
+@EXIST_ADD_GAME_INFO32
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+@ADD_GAME_INFO32(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+
+SELECTCASE O_DATA
+	CASE "NAME"
+		CALLF MAKE_STR(V_NAME, "Spin to Push")
+	CASE "DESCRIPTION"
+		CALLF MAKE_STR(V_NAME, "a potty pants session")
+	CASE "MINPLAYERS"
+		CALLF MAKE_INT(V_NAME, 2)
+	CASE "MAXPLAYERS"
+		CALLF MAKE_INT(V_NAME, キャラクタ数上限)
+	CASE "CHECKREQUIREMENTS"
+		SIF GETBIT(nScat, 2)
+			CALLF MAKE_INT(V_NAME, 1)
+	CASE "VALIDBETS"
+		CALLF MAKE_STR(V_NAME, ADD_GAME_STANDARD_BETS())
+	CASE "DURATION"
+		CALLF MAKE_INT(V_NAME, 10)
+ENDSELECT
+
+@ADD_GAME32
+#DIM PlayersLeft
+#DIM SKILL_VALUES, 250
+#DIM IsWet, 250
+#DIM TempTime
+#DIM nLoop
+#DIM nRoll
+#DIM CHARA
+
+VARSET IsWet
+PlayersLeft = ADD_GAME_PARTICIPANT_COUNT
+TempTime = 0
+
+FOR LOCAL, 0, ADD_GAME_PARTICIPANT_COUNT
+	SKILL_VALUES:LOCAL = (PooHold:(ADD_GAME_PARTICIPANTS:LOCAL):2)
+NEXT
+{
+    CALL PRINT_LETTER(
+    @"Spin to Push/
+A messing game by Tea@OmoOrg//
+All players must either need to poop or be on laxatives./
+If any player doesn't feel the need to go, you can put them on castor oil.//
+You will also need a wheel with the numbers:/
+「10」, 「20」, 「30」, 「50」, 「60」 on it./
+Rules://
+Spin the wheel to see what number you get./
+Push your stomach as hard as you can for the allotted amount of time./
+Last all 3 spins without pooping yourself to win.
+    ", , 40)
+}
+PRINTW
+
+FOR nLoop, 1, 4
+PRINTFORMW You roll the spinner...
+
+PRINTL
+REPEAT 8
+REUSELASTLINE %"."*COUNT%
+TWAIT 100, 1
+REND
+
+$RERoll
+nRoll = RAND(1,7)
+SIF GROUPMATCH(nRoll, 5)
+	GOTO RERoll
+PRINTL
+PRINTV nRoll*10
+PRINTW !
+
+PRINTFORML Push!
+PRINTL
+REPEAT nRoll*10
+	REUSELASTLINE {COUNT}
+	FOR LOCAL,0, ADD_GAME_PARTICIPANT_COUNT
+
+		SIF IsWet:LOCAL
+			CONTINUE
+		IF PooHold:(ADD_GAME_PARTICIPANTS:LOCAL):0 >= 6
+			PRINTFORML %CALLNAME:(ADD_GAME_PARTICIPANTS:LOCAL)% is unable to poo and doesn't participate
+			IsWet:LOCAL = nLoop
+			CONTINUE
+		ELSEIF PooHold:(ADD_GAME_PARTICIPANTS:LOCAL):2 <= -5
+			PRINTFORML %CALLNAME:(ADD_GAME_PARTICIPANTS:LOCAL)% is incontinent and doesn't participate
+			IsWet:LOCAL = nLoop
+			CONTINUE
+		ENDIF
+
+		BASE:(ADD_GAME_PARTICIPANTS:LOCAL):Poo += (RAND(2,8))
+		;messing
+		IF PooBarStage(ADD_GAME_PARTICIPANTS:LOCAL) >= 7
+			IF ADD_GAME_PARTICIPANTS:LOCAL == MASTER
+				CALL CAUSE_OMORASHI(MASTER,0,1)
+			ELSE
+			PRINTFORML %CALLNAME:(ADD_GAME_PARTICIPANTS:LOCAL)% %FSYN("poo:ed")% themselves...
+			TRYCALL OMORASHI_END((ADD_GAME_PARTICIPANTS:LOCAL), 0, 1)
+			ENDIF
+			IsWet:LOCAL = nLoop
+			PlayersLeft --
+		ENDIF
+	NEXT
+	TWAIT 100, 1
+REND
+	IF PlayersLeft <= 0
+	PRINTFORML Everyone pooped themselves. 
+	PRINTFORML No one won...
+	BREAK
+	ENDIF
+	
+
+NEXT
+
+LOCALS =
+FOR LOCAL, 0, ADD_GAME_PARTICIPANT_COUNT
+	IF !IsWet:LOCAL
+		LOCALS += @"%CALLNAME:(ADD_GAME_PARTICIPANTS:(LOCAL))%、"
+		ADD_GAME_WINNERS:(ADD_GAME_WINNER_COUNT++) = ADD_GAME_PARTICIPANTS:(LOCAL)
+	ELSE
+		ADD_GAME_LOSERS:(ADD_GAME_LOSER_COUNT++) = ADD_GAME_PARTICIPANTS:(LOCAL)
+	ENDIF
+NEXT
+SIF LOCALS != ""
+	PRINTFORML %LIST_IN_STRING(LOCALS)% all held it for all three spins!
+
+FOR LOCAL:1, 0, 12
+	LOCAL = 12 - LOCAL:1
+	LOCALS =
+	FOR CHARA, 0, ADD_GAME_PARTICIPANT_COUNT
+		IF IsWet:CHARA == LOCAL
+			LOCALS += @"%CALLNAME:(ADD_GAME_PARTICIPANTS:(CHARA))%、"
+		ENDIF
+	NEXT
+	SIF LOCALS != ""
+		PRINTFORML %LIST_IN_STRING(LOCALS)% pooped themselves on the %ORDINAL(LOCAL)% spin!
+NEXT

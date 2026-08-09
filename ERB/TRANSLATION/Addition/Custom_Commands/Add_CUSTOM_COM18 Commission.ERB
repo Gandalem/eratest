@@ -1,0 +1,796 @@
+;Commissions are projects which can be undertaken by characters at the player's behest to grant benefits or create changes in the game world.
+;Each commission has its own associated cost in funds, time, and specific items.
+;There are also random events that may slow the commission's progress or require additional items or funds to continue, or speed it up.
+;Only specific characters can begin a commission, with the individual characters being specific to that work. Only one character can take a given commission at a time.
+;Some characters might have special properties that affect how the work progresses.
+
+;Brief overview of ideas for themes and quirks for specific characters:
+
+;Tewi - Enhancements and miscellaneous services. Cheap and fast compared to other characters, but with a high rate of potentially expensive bad events.
+;Minoriko - Lucrative food-related commissions only available in fall.
+;Nitori - Focused on construction and excavation. Very stable and "normal" for jobs that last four days or less, and has positive events, but longer jobs gain a very high rate of bad events.
+;Takane - Same jobs as Nitori, but slower and more expensive in exchange for greater stability.
+;Yamame - Construction. Extremely fast, but high stall rate and requires medicinal herbs and the like to resolve issues (treating disease).
+;Sumireko - Errands involving the outside world. High event rate, good and bad, with highly random outcomes.
+;Tsukasa - Social engineering, such as temporarily raising acceptance values or making it easier to remove hate marks. Only takes Charisma, no material costs.
+;Momoyo - Excavation and the like. Fast work without problems, but requires extra rare materials such as dragon gems.
+;Yumemi - Wacky high-tech stuff. Extremely expensive, might require rare materials, but very stable.
+
+
+;Below here are some example functions that can be adapted by dialogues.
+;To add a new commission, or to allow a character to be hired for one, use these functions. These can be defined in KOJO files.
+;Each commission needs a unique number between 1 and COMMISSION_MAX. They don't need to be strictly sequential, so they can be added and removed as necessary.
+;These examples create a commission for delivering ingredients that can be accessed by any character with a COMMISSION_ABLE_1_{ID} function in their dialogue.
+;Checking functions with modular names aren't #FUNCTIONs because we can only call them on their own lines and check RESULT.
+
+@COMMISSION_NAME_1
+	;Checks the given commission's name.
+RESULTS = Deliver ingredients
+RETURN 1
+
+@COMMISSION_COST_1(ARG)
+	;Returns an item and quantity thereof in the commission's requirements.
+	;ARG is which item slot the item is in on the cost list when viewing the commission. These start from 1 and must be sequential, but there can be as many as you want.
+	;You can also overwrite the default cost in a character's dialogue by adding the character's ID at the end of the function and using the same ARG. See Tewi's cost function below.
+	;The necessary quantity of the item is returned as RESULT:1.
+SELECTCASE ARG
+		;Each CASE here is one pair of item and quantity. You can add as many CASEs as you want.
+	CASE 0
+			;The item's quantity.
+		RESULT:1 = 25000
+			;The item's ID. You can also return -1 for nothing, -2 for a rotor, -3 for yen, -4 for Charisma, or -5 for lumber.
+		RETURN -3
+ENDSELECT
+
+@COMMISSION_RESOLUTION_COST_1(ARG)
+	;Returns an item and quantity thereof in the commission's resolution requirements. Not required.
+	;When a commission is stalled by an event, the issue can be resolved by paying this cost through the commission menu.
+	;If no cost is given (by not defining this function or by returning 0 on the first case), the commission can never be manually resolved if stalled, and must be resolved through events.
+	;All parameters for this function are the same as the regular cost function. You can make character-specific functions like the regular one, as well.
+SELECTCASE ARG
+	CASE 0
+		RESULT:1 = 500
+		RETURN -3
+ENDSELECT
+
+@COMMISSION_RATE_1
+	;Returns the default rate of progress for the given commission.
+	;1000 progress or more equals completion, so a rate of 500 means it will be done after two days.
+RETURN 500
+
+
+;The below functions are defined in Tewi's dialogue, but are duplicated here for ease of reference. These are the only ones you need to copy if you just want to add a character to a commission.
+;Commission assignments are on a per dialogue basis. If an alternate dialogue has an identifier, it goes after the ID in the function name, for example K51_EGG.
+
+[SKIPSTART]
+@COMMISSION_STATUS_K53
+	;Prints the character's greeting in the main commission window. If a commission is underway, the text should reflect its progress.
+	;If there is no commission underway, the text should give a rough idea of what to expect from the character's service.
+	;If Spoiler Mode is on, it should say outright what their particular quirks are.
+#DIM DYNAMIC Commission
+Commission = COMMISSION_CURRENT(53)
+IF !Commission
+		;Message when there's no commission in progress.
+	PRINTFORML 「Rabbits offer fast service for cheap! Want a whole horde of rabbits at your beck and call? Guaranteed a better price than kappa for any job!」
+	PRINTFORML 「Entrust us with your labor, and get the job done securely and economically!」
+	SIF VAR_OR_DEFAULT("nSpoilerMode")
+		PRINTFORMDL You strongly feel that Tewi is lying, and her services will end up being unreliable...
+ELSE
+	SELECTCASE COMMISSION_PROGRESS:Commission
+		CASE IS < 0
+			PRINTFORML 「Hmm, commission? What's that?～」
+		CASE 1
+			PRINTFORML 「We'll have it done tonight, really!」
+		CASEELSE
+			PRINTFORML 「It's a little delayed, but we'll get to it soon!」
+	ENDSELECT
+ENDIF
+
+@COMMISSION_ABLE_1_K53
+	;Allows the given character to undertake the commission. You can put additional requirements here, as well.
+RETURN 1
+
+@COMMISSION_DESCRIPTION_1_K53
+	;Prints the character's explanation of the commission.
+PRINTFORML 「You want us to pound mochi for you? We can quickly prepare a large order for cheap, and deliver it the very same day!」
+PRINTFORML 「We'll also provide foraged greens and medicinal additives at no extra charge!」
+
+@COMMISSION_ACCEPT_1_K53
+	;Prints the character's dialogue when accepting the given commission. Not required.
+PRINTFORML 「Hehe, smart thinking. We'll have everything ready by the end of the day, don't worry!」
+
+@COMMISSION_RESOLVE_1_K53
+	;Prints the character's dialogue when resolving a stall for the given commission. Not required.
+PRINTFORMW 「When you put it that way, I guess I can move it up the priority list.」
+COMMISSION_PROGRESS:1 = 500
+
+@COMMISSION_CANCEL_1_K53
+	;Prints the character's dialogue when cancelling the given commission. Not required.
+PRINTFORML 「Really? Well, okay!」
+PRINTFORMDW Tewi looks a bit happier...
+
+@COMMISSION_COST_1_K53(ARG)
+	;A character-specific version of the cost function, allowing specific characters to have different item requirements for the same commission. Not required.
+	;Since the item slot in the function name is 0, this will overwrite the default cost defined above if Tewi is the one being commissioned.
+SELECTCASE ARG
+	CASE 0
+			;By listing a smaller quantity for the yen requirement here, Tewi's version of the commission becomes cheaper.
+		RESULT:1 = 5000
+		RETURN -3
+ENDSELECT
+
+@COMMISSION_RATE_1_K53
+	;Returns the rate of progress for the given commission when using the given character.
+	;A rate of 1000 means it will be done at the end of the same day you commission it, unless an event stalls it.
+RETURN 1000
+
+@COMMISSION_WORK_SITE_1_K53(Location)
+	;Prints a description of the rabbits preparing the player's delivery (or not) if the player is in Eientei's backyard area.
+#DIM DYNAMIC Location
+SIF Location != GET_MAP_REPLACEMENT(431)
+	RETURN 0
+IF COMMISSION_PROGRESS:1 < 0
+	PRINTFORMDL Rabbits are lazing around the mochi mortar...
+ELSE
+	PRINTFORMDL Rabbits are pounding mochi for your delivery order...
+ENDIF
+	;Only RETURN 1 if you want to suppress normal mob messages. In this case, the rabbits which would normally be doing generic behavior will instead be on the job.
+RETURN 1
+
+@COMMISSION_EVENT_1_K53
+	;Defines any events that may occur with the given character and commission.
+	;This function is called at the end of each day, and should include event probabilities similar to below.
+	;Events may be positive or negative, and will affect the rate of progress, refund materials, or demand more.
+	;Events are always character-specific, so all characters who can take a commission should have this function.
+IF (!RAND:2 && !(TALENT:53:恋慕 && RAND:3)) || ((MARK:53:反発刻印 || CFLAG:53:ブチギレ) && COMMISSION_PROGRESS:1 == 1001)
+		;50% chance of a negative event, or lower if Tewi has Love. This is the main drawback to using her, despite her lower cost and (in theory) faster delivery.
+	IF (MARK:53:反発刻印 || CFLAG:53:ブチギレ) && COMMISSION_PROGRESS:1 == 1001
+			;If she has a Hate Mark or is angry with the player, the event will stall entirely once per hire.
+		PRINTFORML 「Hmm, was I supposed to do some work for someone today?」
+		PRINTFORML 「...Nah, I don't know anyone who deserves that～」
+		PRINTFORMDW Tewi deliberately forgets about your delivery...
+			;Stall the event.
+		CALL COMMISSION_STALL(1)
+	ELSE
+			;Otherwise, it will merely be delayed.
+		PRINTFORMDL Before you go to sleep, Tewi drops by with some news...
+		PRINTFORML 「About your delivery, %SPLIT_G(@"I forgot to do it:the rabbits wanted to play around today:the rabbits mixed up your order:we ate all the ingredients")%, so %SPLIT_G(@"it'll be a little longer:there'll be a short delay:it may be a bit late:we'll get it for you tomorrow instead")%!」
+		PRINTFORMW 「Please bear with us～」
+			;Set the event back so that it doesn't complete.
+		COMMISSION_PROGRESS:1 = 500
+	ENDIF
+ENDIF
+
+@COMMISSION_COMPLETE_1_K53
+	;Event for when the commission is completed. This is called right after the regular event if progress is 1000 or greater.
+PRINTFORMDL Before you go to sleep, a rabbit drops by with a package.
+IF !RAND:5
+	;20% chance of getting extra.
+	LOCAL = 30+(RAND:11)
+	PRINTFORMDL It's stuffed full of mochi and vegetables!
+ELSE
+	LOCAL = 20+(RAND:11)
+ENDIF
+PRINTFORMDW Received {LOCAL} cheap ingredients.
+ITEM:安物食材 = MIN(ITEM:安物食材+LOCAL,100)
+	;Reset commission progress to 0 so it can be repeated.
+COMMISSION_PROGRESS:1 = 0
+COMMISSION_EXPECTED_PROGRESS:1 = 0
+COMMISSION_CHARACTER:1 = 0
+[SKIPEND]
+
+
+;Below are the core functions that manage the commission system.
+
+@ADD_CUSTOM_COM18
+CALL SET_KOJO_COLOR(TARGET)
+CALL COMMISSION_CHARACTER_MENU(TARGET)
+RESETCOLOR
+RETURN -1
+
+@ADD_CUSTOM_COM_ABLE18
+	;Check to see if the commission command can be used. The target character must be either working on a commission or capable of taking one.
+#DIMS DYNAMIC CharacterID
+SIF !TARGET
+	RETURN 0
+SIF !TFLAG:100
+	RETURN 0
+SIF !SHIRAHU(TARGET)
+	RETURN 0
+SIF CFLAG:MASTER:うふふ
+	RETURN 0
+CharacterID '= @"{TARGET}"
+	;Check if the character is using an alternate dialogue, and if so, get its identifier.
+IF CFLAG:TARGET:口上セレクタ
+	RESULTS =
+	TRYCALLFORM M_KOJO_K{TARGET}_{CFLAG:TARGET:口上セレクタ}
+	CharacterID '= @"{TARGET}%RESULTS%"
+ENDIF
+FOR LOCAL,1,COMMISSION_MAX
+		;Loop through every commission and check to see if the character can take it or is currently working on it.
+	RESULT = 0
+	TRYCALLFORM COMMISSION_ABLE_{LOCAL}_K%CharacterID%
+	IF (RESULT || COMMISSION_PROGRESS:LOCAL) && COMMISSION_PROGRESS:LOCAL < 1000 && (!COMMISSION_PROGRESS:LOCAL || COMMISSION_CHARACTER:LOCAL == TARGET)
+			;Return true if any commission is valid.
+		RETURN 1
+	ENDIF
+NEXT
+RETURN 0
+
+@COMMISSION_CURRENT(Character)
+	;Checks what commission the given character is currently undertaking, if any.
+#FUNCTION
+#DIM DYNAMIC Character
+FOR LOCAL,1,COMMISSION_MAX
+		;Loop through every commission and check to see if it's in progress and assigned to the character.
+	IF COMMISSION_CHARACTER:LOCAL == Character && COMMISSION_PROGRESS:LOCAL && COMMISSION_PROGRESS:LOCAL < 1000
+		RETURNF LOCAL
+	ENDIF
+NEXT
+RETURNF 0
+
+@COMMISSION_CHARACTER_MENU(Character)
+		;The main commissions menu, which can be accessed from any character that has a commission available.
+#DIM DYNAMIC Character
+#DIM DYNAMIC Commission
+#DIMS DYNAMIC CharacterID
+$TOP
+LOCALS =
+	;Set the character's portrait to angry, blushing, or happy as appropriate.
+IF MARK:Character:反発刻印 || CFLAG:Character:ブチギレ
+	LOCALS = 怒り
+ELSEIF (TCVAR:Character:媚薬 || TCVAR:Character:発情) && LS_ACTIVE() == ""
+	LOCALS = 発情
+ELSEIF TALENT:Character:機嫌 > 0
+	LOCALS = 笑顔
+ENDIF
+Commission = COMMISSION_CURRENT(Character)
+CharacterID '= @"{Character}"
+	;Check if the character is using an alternate dialogue, and if so, get its identifier.
+IF CFLAG:Character:口上セレクタ
+	RESULTS =
+	TRYCALLFORM M_KOJO_K{Character}_{CFLAG:Character:口上セレクタ}
+	CharacterID '= @"{Character}%RESULTS%"
+ENDIF
+PRINTL
+CALL PRINT_FACE(Character,LOCALS,"服",,COND_STR("照れ",LS_ACTIVE() != ""))
+RESULT = 0
+	;Call the character's status print function.
+TRYCALLFORM COMMISSION_STATUS_K%CharacterID%
+CALL D_LINE
+PRINTFORMDL
+IF Commission
+		;If a commission is underway.
+	RESULTS = Unknown commission
+	TRYCALLFORM COMMISSION_NAME_{Commission}
+	PRINTFORMDL %RESULTS%
+	LOCAL = COMMISSION_PROGRESS:Commission
+	SIF LOCAL < 0
+		LOCAL *= -1
+	CALL PRINT_COLORBAR(LOCAL,1000,20,UNICODE(0x2584),UNICODE(0x2584),0xC0C0C0,0x404040)
+	PRINTFORMDL
+	PRINTFORMD Status: 
+		;Print the status of the commission based on its expected progress compared with its actual progress.
+	IF COMMISSION_PROGRESS:Commission < 0
+		CALL COLORMESSAGE(@"Stalled",C_RED,1)
+		RESULT = 0
+		TRYCALLFORM COMMISSION_RESOLUTION_COST_{Commission}(0)
+		IF !RESULT
+			CALL COLORMESSAGE(@"Cannot be manually resolved",C_RED,1)
+		ELSE
+			PRINTFORMDL
+			PRINTFORMDL Provide to resolve the issue:
+			PRINTFORMDL
+			LOCAL:1 = 0
+			WHILE 1
+					;Loop through function definitions for the commission's requirements until they run out.
+				RESULT = 0
+				TRYCALLFORM COMMISSION_RESOLUTION_COST_{Commission}_K%CharacterID%(LOCAL:1)
+				LOCAL:2 = RESULT
+				LOCAL:3 = RESULT:1
+				IF !LOCAL:2
+						;If there's no dialogue-specific cost in the slot, check the default.
+					TRYCALLFORM COMMISSION_RESOLUTION_COST_{Commission}(LOCAL:1)
+					LOCAL:2 = RESULT
+					LOCAL:3 = RESULT:1
+				ENDIF
+				SELECTCASE LOCAL:2
+					CASE 0
+							;No requirement.
+						BREAK
+					CASE -1
+							;Nothing.
+							;This is used by dialogues to remove default requirements, so we skip it and move on to the next loop.
+					CASE -2
+							;Rotor.
+						PRINTFORMD 　%@"%三桁区切(LOCAL:3)% %PLURALIZER(ITEMNAME_TR(0),LOCAL:3)%", 20, LEFT%
+						PRINTFORMDL 　%@"(On hand: %三桁区切(ITEM:0)%)", 3, RIGHT%
+					CASE -3
+							;Yen.
+						PRINTFORMD 　%@"%金額表示(LOCAL:3)%", 20, LEFT%
+						PRINTFORMDL 　%@"(On hand: %金額表示(MONEY)%)", 3, RIGHT%
+					CASE -4
+							;Charisma.
+						PRINTFORMD 　%@"%三桁区切(LOCAL:3)%CM", 20, LEFT%
+						PRINTFORMDL 　%@"(On hand: %三桁区切(MONEY:2)%CM)", 3, RIGHT%
+					CASE -5
+							;Lumber.
+						LOCAL:4 = 0
+						LOCAL:5 = 0
+						FOR LOCAL:6, 1, 13
+							LOCAL:4 = MIN(LOCAL:4+LOG_SALES:(LOCAL:6),LOCAL:3)
+							LOCAL:5 += LOG_SALES:(LOCAL:6)
+						NEXT
+						PRINTFORMD 　%@"%三桁区切(LOCAL:3)% lumber", 20, LEFT%
+						PRINTFORMDL 　%@"(On hand: %三桁区切(LOCAL:5)%)", 3, RIGHT%
+					CASEELSE
+							;Any other item.
+						PRINTFORMD 　%@"%三桁区切(LOCAL:3)% %PLURALIZER(ITEMNAME_TR(LOCAL:2),LOCAL:3)%", 20, LEFT%
+						PRINTFORMDL 　%@"(On hand: %三桁区切(ITEM:(LOCAL:2))%)", 3, RIGHT%
+				ENDSELECT
+				LOCAL:1++
+			WEND
+			PRINTFORMDL
+			PRINTFORMDL [0] Resolve
+			PRINTFORMDL [1] Cancel commission
+			PRINTFORMDL [2] Return
+			$LOOP
+			INPUT
+			SELECTCASE RESULT
+				CASE 0
+					CALL COMMISSION_PURCHASE(Commission,Character,1)
+					IF !RESULT
+						PRINTFORMDW You can't afford it.
+						GOTO TOP
+					ENDIF
+					CALL COMMISSION_STALL(Commission)
+					SIF COMMISSION_PROGRESS:Commission > 999
+							;If the project stalled at the very end, set the progress back enough that it will complete that day, negative events notwithstanding.
+						COMMISSION_PROGRESS:Commission = 999
+					TRYCALLFORM COMMISSION_RESOLVE_{Commission}_K%CharacterID%
+					GOTO TOP
+				CASE 1
+					GOTO CANCEL
+				CASE 2
+					RETURN
+				CASEELSE
+					GOTO LOOP
+			ENDSELECT
+		ENDIF
+	ELSEIF COMMISSION_PROGRESS:Commission > COMMISSION_EXPECTED_PROGRESS:Commission
+		CALL COLORMESSAGE(@"Ahead of schedule",C_GREEN,1)
+	ELSEIF COMMISSION_PROGRESS:Commission < COMMISSION_EXPECTED_PROGRESS:Commission
+		CALL COLORMESSAGE(@"Behind schedule",C_YELLOW,1)
+	ELSE
+		CALL COLORMESSAGE(@"On schedule",C_AQUA,1)
+	ENDIF
+	PRINTFORMDL
+	PRINTFORMDL [0] Cancel commission
+	PRINTFORMDL [1] Return
+	$LOOP1
+	INPUT
+	SELECTCASE RESULT
+		CASE 0
+			$CANCEL
+			PRINTFORMDL Are you sure? Your investment will be lost, and the commission's progress will be reset to 0.
+			PRINTFORMDL
+			PRINTFORMDL [0] Cancel commission
+			PRINTFORMDL [1] Return
+			$LOOP2
+			INPUT
+			SELECTCASE RESULT
+				CASE 0
+					TRYCALLFORM COMMISSION_CANCEL_{Commission}_K%CharacterID%
+					COMMISSION_CHARACTER:Commission = 0
+					COMMISSION_PROGRESS:Commission = 0
+					GOTO TOP
+				CASE 1
+					GOTO TOP
+				CASEELSE
+					GOTO LOOP2
+			ENDSELECT
+		CASE 1
+		CASEELSE
+			GOTO LOOP1
+	ENDSELECT
+ELSE
+	PRINTFORMDL Available commissions:
+	PRINTFORMDL
+	FOR LOCAL,1,COMMISSION_MAX
+			;Loop through every commission and check to see if the character can take it.
+		RESULT = 0
+		TRYCALLFORM COMMISSION_ABLE_{LOCAL}_K%CharacterID%
+		IF RESULT && !COMMISSION_PROGRESS:LOCAL
+				;Print the number and name of all valid commissions.
+			RESULTS = Unknown commission
+			TRYCALLFORM COMMISSION_NAME_{LOCAL}
+			PRINTFORMDL [{LOCAL}] %RESULTS%
+		ENDIF
+	NEXT
+	PRINTFORMDL
+	PRINTFORMDL [0] Return
+	$LOOP3
+	INPUT
+	LOCAL = RESULT
+	SELECTCASE LOCAL
+		CASE 0
+		CASEELSE
+				;Check if the input number is a valid commission.
+			RESULT = 0
+			TRYCALLFORM COMMISSION_ABLE_{LOCAL}_K%CharacterID%
+			IF RESULT
+				PRINTL
+				CALL PRINT_FACE(Character,LOCALS,"服",,COND_STR("照れ",LS_ACTIVE() != ""))
+				RESULT = 0
+					;Print the character's description of the commission.
+				TRYCALLFORM COMMISSION_DESCRIPTION_{LOCAL}_K%CharacterID%
+				PRINTFORMDL
+				PRINTFORMDL Commission requirements:
+				PRINTFORMDL
+				LOCAL:1 = 0
+				WHILE 1
+						;Loop through function definitions for the commission's requirements until they run out.
+					RESULT = 0
+					TRYCALLFORM COMMISSION_COST_{LOCAL}_K%CharacterID%(LOCAL:1)
+					LOCAL:2 = RESULT
+					LOCAL:3 = RESULT:1
+					IF !LOCAL:2
+							;If there's no dialogue-specific cost in the slot, check the default.
+						TRYCALLFORM COMMISSION_COST_{LOCAL}(LOCAL:1)
+						LOCAL:2 = RESULT
+						LOCAL:3 = RESULT:1
+					ENDIF
+					SELECTCASE LOCAL:2
+						CASE 0
+								;No requirement.
+							BREAK
+						CASE -1
+								;Nothing.
+								;This is used by dialogues to remove default requirements, so we skip it and move on to the next loop.
+						CASE -2
+								;Rotor.
+							PRINTFORMD 　%@"%三桁区切(LOCAL:3)% %PLURALIZER(ITEMNAME_TR(0),LOCAL:3)%", 20, LEFT%
+							PRINTFORMDL 　%@"(On hand: %三桁区切(ITEM:0)%)", 3, RIGHT%
+						CASE -3
+								;Yen.
+							PRINTFORMD 　%@"%金額表示(LOCAL:3)%", 20, LEFT%
+							PRINTFORMDL 　%@"(On hand: %金額表示(MONEY)%)", 3, RIGHT%
+						CASE -4
+								;Charisma.
+							PRINTFORMD 　%@"%三桁区切(LOCAL:3)%CM", 20, LEFT%
+							PRINTFORMDL 　%@"(On hand: %三桁区切(MONEY:2)%CM)", 3, RIGHT%
+						CASE -5
+								;Lumber.
+							LOCAL:4 = 0
+							LOCAL:5 = 0
+							FOR LOCAL:6, 1, 13
+								LOCAL:4 = MIN(LOCAL:4+LOG_SALES:(LOCAL:6),LOCAL:3)
+								LOCAL:5 += LOG_SALES:(LOCAL:6)
+							NEXT
+							PRINTFORMD 　%@"%三桁区切(LOCAL:3)% lumber", 20, LEFT%
+							PRINTFORMDL 　%@"(On hand: %三桁区切(LOCAL:5)%)", 3, RIGHT%
+						CASEELSE
+								;Any other item.
+							PRINTFORMD 　%@"%三桁区切(LOCAL:3)% %PLURALIZER(ITEMNAME_TR(LOCAL:2),LOCAL:3)%", 20, LEFT%
+							PRINTFORMDL 　%@"(On hand: %三桁区切(ITEM:(LOCAL:2))%)", 3, RIGHT%
+					ENDSELECT
+					LOCAL:1++
+				WEND
+				PRINTFORMDL
+				PRINTFORMDL Commission %CALLNAME:Character% for this job?
+				PRINTFORMDL
+				PRINTFORMDL [0] Yes
+				PRINTFORMDL [1] No
+				$LOOP4
+				INPUT
+				PRINTL
+				SELECTCASE RESULT
+					CASE 0
+						CALL COMMISSION_PURCHASE(LOCAL,Character)
+						IF !RESULT
+							PRINTFORMDW You can't afford it.
+							GOTO TOP
+						ENDIF
+						COMMISSION_CHARACTER:LOCAL = Character
+						COMMISSION_EXPECTED_PROGRESS:LOCAL = 1
+						COMMISSION_PROGRESS:LOCAL = 1
+						TRYCALLFORM COMMISSION_ACCEPT_{LOCAL}_K%CharacterID%
+					CASE 1
+						GOTO TOP
+					CASEELSE
+						GOTO LOOP4
+				ENDSELECT
+			ELSE
+				GOTO LOOP3
+			ENDIF
+	ENDSELECT
+ENDIF
+
+@COMMISSION_PURCHASE(Commission,Character,ARG)
+	;Checks if the player has all of the materials to pay the cost of a commission or resolution, and if so, removes the relevant items from the player's inventory.
+	;ARG = 1 to check the resolution cost instead of the initial cost.
+#DIM DYNAMIC Commission
+#DIM DYNAMIC Character
+#DIMS DYNAMIC CharacterID
+CharacterID '= @"{Character}"
+	;Check if the character is using an alternate dialogue, and if so, get its identifier.
+IF CFLAG:Character:口上セレクタ
+	RESULTS =
+	TRYCALLFORM M_KOJO_K{Character}_{CFLAG:Character:口上セレクタ}
+	CharacterID '= @"{Character}%RESULTS%"
+ENDIF
+LOCAL = 0
+$TOP
+LOCALS =
+SIF ARG
+	LOCALS = _RESOLUTION
+LOCAL:1 = 0
+WHILE 1
+		;Loop through function definitions for the commission's requirements until they run out.
+	RESULT = 0
+	TRYCALLFORM COMMISSION%LOCALS%_COST_{Commission}_K%CharacterID%(LOCAL:1)
+	LOCAL:2 = RESULT
+	LOCAL:3 = RESULT:1
+	IF !LOCAL:2
+			;If there's no dialogue-specific cost in the slot, check the default.
+		TRYCALLFORM COMMISSION%LOCALS%_COST_{Commission}(LOCAL:1)
+		LOCAL:2 = RESULT
+		LOCAL:3 = RESULT:1
+	ENDIF
+	SELECTCASE LOCAL:2
+		CASE 0
+				;No requirement.
+			BREAK
+		CASE -1
+				;Nothing.
+				;This is used by dialogues to remove default requirements, so we skip it and move on to the next loop.
+		CASE -2
+				;Rotor.
+			SIF ITEM:0 < LOCAL:3
+				RETURN 0
+			SIF LOCAL
+				ITEM:0 -= LOCAL:3
+		CASE -3
+				;Yen.
+			SIF MONEY < LOCAL:3
+				RETURN 0
+			SIF LOCAL
+				MONEY -= LOCAL:3
+		CASE -4
+				;Charisma.
+			SIF MONEY:2 < LOCAL:3
+				RETURN 0
+			SIF LOCAL
+				MONEY:2 -= LOCAL:3
+		CASE -5
+				;Lumber.
+			LOCAL:4 = 0
+			FOR LOCAL:5, 1, 13
+				LOCAL:4 = MIN(LOCAL:4+LOG_SALES:(LOCAL:5),LOCAL:3)
+			NEXT
+			SIF LOCAL:4 < LOCAL:3
+				RETURN 0
+			IF LOCAL
+				LOCAL:4 = 0
+				FOR LOCAL:5, 1, 13
+					LOCAL:6 = LOG_SALES:(LOCAL:5)
+					LOG_SALES:(LOCAL:5) -= MIN(LOCAL:3-LOCAL:4,LOG_SALES:(LOCAL:5))
+					LOCAL:4 = MIN(LOCAL:4+LOCAL:6,LOCAL:3)
+				NEXT
+			ENDIF
+		CASEELSE
+				;Any other item.
+			SIF ITEM:(LOCAL:2) < LOCAL:3
+				RETURN 0
+			SIF LOCAL
+				ITEM:(LOCAL:2) -= LOCAL:3
+	ENDSELECT
+	LOCAL:1++
+WEND
+IF !LOCAL
+		;After checking all requirements, loop back to the top and start removing them.
+	LOCAL = 1
+	GOTO TOP
+ENDIF
+RETURN 1
+
+@EVENTEND
+#PRI
+TRYCALL COMMISSION_ADVANCE
+
+@COMMISSION_ADVANCE
+	;Progresses all active commissions, handles commission completion, and triggers events. Called at the end of each day.
+#DIMS DYNAMIC CharacterID
+FOR LOCAL,1,COMMISSION_MAX
+			;Loop through every commission.
+	SIF !COMMISSION_CHARACTER:LOCAL || !(COMMISSION_PROGRESS:LOCAL && COMMISSION_PROGRESS:LOCAL < 1000)
+			;Only process commissions in progress.
+		CONTINUE
+	CharacterID '= @"{COMMISSION_CHARACTER:LOCAL}"
+		;Check if the character is using an alternate dialogue, and if so, get its identifier.
+	IF CFLAG:(COMMISSION_CHARACTER:LOCAL):口上セレクタ
+		RESULTS =
+		TRYCALLFORM M_KOJO_K{COMMISSION_CHARACTER:LOCAL}_{CFLAG:(COMMISSION_CHARACTER:LOCAL):口上セレクタ}
+		CharacterID '= @"{COMMISSION_CHARACTER:LOCAL}_%RESULTS%"
+	ENDIF
+		;Advance the commission.
+	RESULT = 0
+	TRYCALLFORM COMMISSION_RATE_{LOCAL}_K%CharacterID%
+	LOCAL:1 = RESULT
+	IF !LOCAL:1
+		TRYCALLFORM COMMISSION_RATE_{LOCAL}
+		LOCAL:1 = RESULT
+	ENDIF
+	IF COMMISSION_PROGRESS:LOCAL < 0
+			;If the commission is stalled, stop processing it here.
+		COMMISSION_EXPECTED_PROGRESS:LOCAL += LOCAL:1*-1
+		CONTINUE
+	ENDIF
+	COMMISSION_EXPECTED_PROGRESS:LOCAL += LOCAL:1
+	COMMISSION_PROGRESS:LOCAL += LOCAL:1
+		;Trigger any events.
+	CALL SET_KOJO_COLOR(COMMISSION_CHARACTER:LOCAL)
+	TRYCALLFORM COMMISSION_EVENT_{LOCAL}_K%CharacterID%
+	RESETCOLOR
+	IF COMMISSION_PROGRESS:LOCAL > 999
+			;Check if the commission has been completed.
+		TRYCALLFORM COMMISSION_COMPLETE_{LOCAL}_K%CharacterID%
+	ENDIF
+NEXT
+
+@COMMISSION_WORK_SITE(Location)
+	;Prints a description of the work being done if the player is at the relevant location.
+#DIM DYNAMIC Location
+#DIMS DYNAMIC CharacterID
+FOR LOCAL,1,COMMISSION_MAX
+			;Loop through every commission.
+	SIF !COMMISSION_CHARACTER:LOCAL || !(COMMISSION_PROGRESS:LOCAL && COMMISSION_PROGRESS:LOCAL < 1000)
+			;Only process commissions in progress.
+		CONTINUE
+	CharacterID '= @"{COMMISSION_CHARACTER:LOCAL}"
+		;Check if the character is using an alternate dialogue, and if so, get its identifier.
+	IF CFLAG:(COMMISSION_CHARACTER:LOCAL):口上セレクタ
+		RESULTS =
+		TRYCALLFORM M_KOJO_K{COMMISSION_CHARACTER:LOCAL}_{CFLAG:(COMMISSION_CHARACTER:LOCAL):口上セレクタ}
+		CharacterID '= @"{COMMISSION_CHARACTER:LOCAL}_%RESULTS%"
+	ENDIF
+		;Run all work site functions for each commission and character.
+	CALL SET_KOJO_COLOR(COMMISSION_CHARACTER:LOCAL)
+	RESULT = 0
+	TRYCALLFORM COMMISSION_WORK_SITE_{LOCAL}_K%CharacterID%(Location)
+	RESETCOLOR
+	SIF RESULT
+		RETURN 1
+NEXT
+RETURN 0
+
+@COMMISSION_STALL(Commission)
+	;Stalls or unstalls a commission's progress.
+#DIM DYNAMIC Commission
+SIF COMMISSION_PROGRESS:Commission > 999
+		;If it was completed just before stalling, set its progress back so that it doesn't silently complete after unstalling.
+	COMMISSION_PROGRESS:Commission = 999
+COMMISSION_PROGRESS:Commission *= -1
+
+@NG_CUSTOM_RESET_VAR_3
+VARSET COMMISSION_PROGRESS
+VARSET COMMISSION_EXPECTED_PROGRESS
+VARSET COMMISSION_CHARACTER
+
+;Below here are some more default commission definitions.
+
+@COMMISSION_NAME_2
+RESULTS = Build a sawmill near the Hakurei Shrine
+RETURN 1
+
+@COMMISSION_COST_2(ARG)
+SELECTCASE ARG
+	CASE 0
+		RESULT:1 = 80
+		RETURN -5
+	CASE 1
+		RESULT:1 = 1000000
+		RETURN -3
+ENDSELECT
+
+@COMMISSION_RESOLUTION_COST_2(ARG)
+SELECTCASE ARG
+	CASE 0
+		RESULT:1 = 10
+		RETURN -5
+	CASE 1
+		RESULT:1 = 10000
+		RETURN -3
+ENDSELECT
+
+@COMMISSION_RATE_2
+RETURN 150
+
+@COMMISSION_NAME_3
+RESULTS = Build a sawmill in the Bamboo Forest of the Lost
+RETURN 1
+
+@COMMISSION_COST_3(ARG)
+SELECTCASE ARG
+	CASE 0
+		RESULT:1 = 80
+		RETURN -5
+	CASE 1
+		RESULT:1 = 1000000
+		RETURN -3
+ENDSELECT
+
+@COMMISSION_RESOLUTION_COST_3(ARG)
+SELECTCASE ARG
+	CASE 0
+		RESULT:1 = 10
+		RETURN -5
+	CASE 1
+		RESULT:1 = 10000
+		RETURN -3
+ENDSELECT
+
+@COMMISSION_RATE_3
+RETURN 150
+
+@COMMISSION_NAME_4
+RESULTS = Build a sawmill in the Forest of Magic
+RETURN 1
+
+@COMMISSION_COST_4(ARG)
+SELECTCASE ARG
+	CASE 0
+		RESULT:1 = 80
+		RETURN -5
+	CASE 1
+		RESULT:1 = 1000000
+		RETURN -3
+ENDSELECT
+
+@COMMISSION_RESOLUTION_COST_4(ARG)
+SELECTCASE ARG
+	CASE 0
+		RESULT:1 = 10
+		RETURN -5
+	CASE 1
+		RESULT:1 = 10000
+		RETURN -3
+ENDSELECT
+
+@COMMISSION_RATE_4
+RETURN 150
+
+@COMMISSION_NAME_5
+RESULTS = Bless the fall harvest
+RETURN 1
+
+@COMMISSION_COST_5(ARG)
+SELECTCASE ARG
+	CASE 0
+		RESULT:1 = 10
+		RETURN 636
+ENDSELECT
+
+@COMMISSION_RATE_5
+RETURN 500
+
+@COMMISSION_NAME_6
+RESULTS = Upgrade the kappa warehouse with a sawmill and furniture store
+RETURN 1
+
+@COMMISSION_COST_6(ARG)
+SELECTCASE ARG
+	CASE 0
+		RESULT:1 = 20000
+		RETURN -3
+ENDSELECT
+
+@COMMISSION_RESOLUTION_COST_6(ARG)
+SELECTCASE ARG
+	CASE 0
+		RESULT:1 = 1000
+		RETURN -3
+ENDSELECT
+
+@COMMISSION_RATE_6
+RETURN 150

@@ -1,0 +1,165 @@
+@Add_Punishment_Framework(CHARA, AMOUNT) ;select generic punishment from the list
+#DIM CHARA
+#DIM AMOUNT
+IF CFLAG:CHARA:好感度 >= 1500
+	IF TALENT:CHARA:恋慕 && !MARK:CHARA:反発刻印 && RAND:4
+		CALL Add_Forced_Date(CHARA, AMOUNT)
+	ELSE
+		SELECTCASE RAND:2
+			CASE 0
+				CALL Add_Forced_Cleaning(CHARA, AMOUNT, "Afterprank")
+			CASE 1
+				CALL Add_Forced_Chore(CHARA, AMOUNT) ;shopping, fishing, logging, cooking, teaching, drinking, combat training
+			;CASE 2 ;CHARA has you prank someone with whom she has negative RELATION, and then blame everything on you; depending on their relationship their reaction differs, but nothing too overly cruel; probably use revised RAND_HANTING_TR for finding targets for this mechanic
+			;	CALL Add_RevengePrank(CHARA, AMOUNT)
+		ENDSELECT
+	ENDIF
+	PRINTFORMW Afterwards, %CALLNAME:CHARA% seems happier somehow...
+	TALENT:CHARA:機嫌 = 1
+	CFLAG:CHARA:ブチギレ = 0
+	RETURN 1
+ELSE
+	;just challenge the player to a duel or something
+	IF nRyona && Level_To_Rank(GetCombatAbility(CHARA)) >= 3
+		CALL Add_Challenge_Player_Punish(CHARA)
+		RETURN 1
+	ELSE
+	ENDIF
+ENDIF
+
+@Add_Forced_Cleaning(CHARA, AMOUNT, ARGS)
+#DIM CHARA
+#DIM AMOUNT
+#DIM REMAINING_AMOUNT
+#DIM CHARA_ROOM_MAP
+#DIM CLEANING_POWER
+PRINTFORML As punishment, %CALLNAME:CHARA% \@ ARGS == "Afterprank" ? makes you clean up the aftermath of your prank... and the rest of her home area to boot # forces you to clean around her home \@.
+IF CFLAG:CHARA:神社在住 ;lives on home map, perform actual cleaning
+    REMAINING_AMOUNT = AMOUNT
+    ;check valid rooms
+    CHARA_ROOM_MAP = MAP_AREASELECT(MAIN_MAP, CFLAG:CHARA:神社在住)
+    CLEANING_POWER = (2 + ABL:MASTER:清掃技能 + 3 * TALENT:MASTER:清掃中毒)
+	SELECTCASE ITEM:カスタム竹箒
+		CASE 1
+			CLEANING_POWER += 2
+		CASE 2
+			CLEANING_POWER += 3
+		CASE 3
+			CLEANING_POWER += 4
+	ENDSELECT
+	
+	CLEANING_POWER = CLEANING_POWER * (5 - TALENT:MASTER:汚臭耐性) / 5
+
+    ;random to not always clean the same places
+    CALL FISHER_YATES_SHAFFLE(99)
+
+    FOR LOCAL, 0, 99
+        IF MAP_AREASELECT(MAIN_MAP, (MAIN_MAP * 100) + LOCAL) == CHARA_ROOM_MAP
+            ;clean
+            PRINTFORML Cleaning %NAME_FROM_PLACE((MAIN_MAP * 100) + LOCAL)%...
+		    YOGORE:((MAIN_MAP * 100) + LOCAL) = YOGORE:((MAIN_MAP * 100) + LOCAL) / CLEANING_POWER
+            REMAINING_AMOUNT--
+            EXP:MASTER:清掃経験 ++
+            IF REMAINING_AMOUNT <= 0
+                PRINTFORMW Satisfied, %CALLNAME:CHARA% finally lets you go.
+                BREAK
+            ENDIF
+        ENDIF
+    NEXT
+    SIF REMAINING_AMOUNT > 0
+        PRINTFORMW %CALLNAME:CHARA% isn't quite satisfied, but lets you go as there's nowhere else to clean.
+    AMOUNT -= REMAINING_AMOUNT
+ELSE ;flavor only
+    PRINTFORMW You spend quite some time cleaning around %GET_MAPNAME(CFLAG:CHARA:自宅位置 / 100)%.
+    EXP:MASTER:清掃経験 += AMOUNT
+ENDIF
+;reduce stamina, increase time
+DOWNBASE:MASTER:体力 = 40 * AMOUNT
+DOWNBASE:MASTER:気力 = 80 * AMOUNT
+TIME += (AMOUNT * 20)
+
+;fairly simple for now
+@Add_Forced_Chore(CHARA, AMOUNT, ARGS)
+#DIM CHARA
+#DIM AMOUNT
+SELECTCASE RAND:6
+	CASE 0
+		PRINTFORML As punishment, %CALLNAME:CHARA% has you buying all sorts of things for %HIM_HER(CHARA)%.
+		PRINTFORML Supplies, food, clothing... %HE_SHE(CHARA,1)% kept shopping to %HIS_HER(CHARA)% heart's content, knowing that you'll be paying for all of it.
+		PRINTFORML As a result of such reckless shopping spree, you feel like your wallet took quite a hit...
+		DOWNBASE:MASTER:体力 = 40 * AMOUNT
+		DOWNBASE:MASTER:気力 = 80 * AMOUNT
+		TIME += (AMOUNT * 20)
+		CALL PAY_MONEY_YEN(MIN(RAND(1000, 3000)*AMOUNT, MONEY:0/2), 2)
+	CASE 1
+		PRINTFORML As punishment, %CALLNAME:CHARA% has you catching a whole mountain of fish.
+		PRINTFORML It was a lot of work...
+		DOWNBASE:MASTER:体力 = 60 * AMOUNT
+		DOWNBASE:MASTER:気力 = 100 * AMOUNT
+		TIME += (AMOUNT * 30)
+		EXP:MASTER:釣り経験 += AMOUNT
+	CASE 2
+		PRINTFORML As punishment, %CALLNAME:CHARA% has you logging trees for the winter.
+		PRINTFORML It was a lot of work...
+		DOWNBASE:MASTER:体力 = 80 * AMOUNT
+		DOWNBASE:MASTER:気力 = 120 * AMOUNT
+		TIME += (AMOUNT * 40)
+		EXP:MASTER:伐採経験 += AMOUNT
+	CASE 3
+		PRINTFORML As punishment, %CALLNAME:CHARA% has you cooking a huge mountain of food with %HIM_HER(CHARA)%.
+		PRINTFORML ...And then cleanup afterwards.
+		PRINTFORML It was a lot of work...
+		TCVAR:CHARA:空腹時刻 = 1440 * DAY + TIME + 120 ;hunger time
+		DOWNBASE:MASTER:体力 = 60 * AMOUNT
+		DOWNBASE:MASTER:気力 = 100 * AMOUNT
+		TIME += (AMOUNT * 30)
+		EXP:MASTER:清掃経験 += AMOUNT
+		EXP:MASTER:料理経験 += AMOUNT
+		EXP:CHARA:料理経験 += 5 * (ABL:MASTER:料理技能 - ABL:CHARA:料理技能)
+	CASE 4
+		PRINTFORML As punishment, %CALLNAME:CHARA% has you studying with %HIM_HER(CHARA)%.
+		DOWNBASE:MASTER:体力 = 40 * AMOUNT
+		DOWNBASE:MASTER:気力 = 80 * AMOUNT
+		TIME += (AMOUNT * 30)
+		EXP:MASTER:学習経験 += AMOUNT
+		EXP:TARGET:学習経験 += MAX(ABL:TARGET:教養 * 5, 1)
+	CASE 5
+		PRINTFORML As punishment, %CALLNAME:CHARA% has you serving as %HIS_HER(CHARA)% sparring partner.
+		PRINTFORML Forced to only dodge, you do everything in your power as to not get hit, while %CALLNAME:CHARA% seemed like %HE_SHE(CHARA)% was having a lot of fun...
+		LOCAL = TARGET ;store it temporarily
+		TARGET = CHARA
+		CALL IRAI_一般5(CHARA, , "依頼実行時") ;from combat training request
+		TARGET = LOCAL
+		;extra time + exhaustion
+		DOWNBASE:MASTER:体力 = 40 * AMOUNT
+		DOWNBASE:MASTER:気力 = 80 * AMOUNT
+		TIME += (AMOUNT * 5)
+	;CASE 6 ;alcohol drinking is supposed to be here, but it's going to be quite complicated - exclude non-drinkers, choose random alcohol from your item list (exclude sweet sake) AMOUNT times, if there are none then go to the bar instead; set drunk level to near max BASE:CHARA:酒気 = MAXBASE:CHARA:酒気-500; see the end of 酒関連.ERB for picking alcohol
+ENDSELECT
+
+@Add_Forced_Date(CHARA, AMOUNT)
+#DIM CHARA
+#DIM AMOUNT
+PRINTFORML Firmly grasping your hand, %CALLNAME:CHARA% demands you go on a date with %HIM_HER(CHARA)%.
+PRINTFORML It doesn't sound like much of a punishment, but... sure?
+PRINTFORML %HE_SHE(CHARA)% parades you through the entire Gensokyo, smugly showing off %HIS_HER(CHARA)% trophy to everyone around.
+PRINTFORML %BREAKENG(@"Having you buy %HIM_HER(CHARA)% gifts, take %HIM_HER(CHARA)% to the restaurant, and constantly entertain %HIM_HER(CHARA)%, %HE_SHE(CHARA)% doesn't let you get any touchy-feely with %HIM_HER(CHARA)% either.")%
+PRINTFORML After spending the entire day with %CALLNAME:CHARA% in such fashion, you find yourself rather exhausted after the whole ordeal...
+DOWNBASE:MASTER:体力 = 120 * AMOUNT
+DOWNBASE:MASTER:気力 = 180 * AMOUNT
+TIME += 600
+IF TALENT:MASTER:恋人
+	FOR LOCAL, 0, CHARANUM
+		IF TALENT:LOCAL:恋人 && !CHARA
+			PRINTFORML Your sweethearts may not be very pleased with that...
+			BREAK
+		ENDIF
+	NEXT
+	FOR LOCAL, 0, CHARANUM
+		IF TALENT:LOCAL:恋人 && !CHARA
+			CALL CHANGE_CFLAG(2, LOCAL, -10 * AMOUNT) ;set favor penalty
+			CALL CHANGE_CFLAG(4, LOCAL, -3 * AMOUNT) ;set trust penalty
+		ENDIF
+	NEXT
+ENDIF
+CALL CHANGE_CFLAG(2, CHARA, 10 * AMOUNT) ;set favor bonus to the punisher

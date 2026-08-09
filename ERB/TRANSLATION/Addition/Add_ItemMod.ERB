@@ -1,0 +1,772 @@
+;first, add item name in Add_ItemModList to make it available for modding, then specify the mods in the list below, add corresponding effects in the code
+
+@Add_ItemMod(ARG)
+#DIM nItemMod
+#DIM nCostSum
+	;NAS: REPLACED
+	CALL NAS_TOOL_MODS(ARG)
+	RETURN
+SELECTCASE ARG
+CASE GETNUM(ITEM, "保温ジャー")
+	SIF !ITEM:保温ジャー
+		RETURN
+	LOCAL:99 = LINECOUNT
+	DO
+		SIF LINECOUNT - LOCAL:99 > 0
+			CLEARLINE LINECOUNT - LOCAL:99
+		
+		nItemMod = GETBIT(nThermalJarMods, ThermalJar_FreshDisplay) && GETBIT(nThermalJarMods, ThermalJar_FreshUpgrade) && GETBIT(nThermalJarMods, ThermalJar_MoreFreshUpgrade) && GETBIT(nThermalJarMods, ThermalJar_StealProtectionUpgrade)
+		;set initial sum
+		nCostSum = nThermalJarModsCost:0 + nThermalJarModsCost:1 + nThermalJarModsCost:2 + nThermalJarModsCost:3
+		;see if other upgrades purchased
+		nCostSum -= GETBIT(nThermalJarMods, ThermalJar_FreshDisplay) * nThermalJarModsCost:0
+		nCostSum -= GETBIT(nThermalJarMods, ThermalJar_FreshUpgrade) * nThermalJarModsCost:1
+		nCostSum -= GETBIT(nThermalJarMods, ThermalJar_MoreFreshUpgrade) * nThermalJarModsCost:2
+		nCostSum -= GETBIT(nThermalJarMods, ThermalJar_StealProtectionUpgrade) * nThermalJarModsCost:3
+		DRAWLINE
+		CALL SPTALK, [[にとり]], "笑顔", 0, @"「How do you want to change it?」", 1
+		PRINTD Current state: 
+		CALL Add_ItemModList_保温ジャー
+		PRINTL
+		DRAWLINE
+		
+		IF !GETBIT(nThermalJarMods, ThermalJar_FreshDisplay)
+			PRINTFORML [  1] - Food Freshness Display (¥{nThermalJarModsCost:0}): Displays current freshness of food
+		ELSE
+			SETCOLOR C_GRAY
+			PRINTL [ X ] - Food Freshness Display: Displays current freshness of food
+			RESETCOLOR
+		ENDIF
+		IF !GETBIT(nThermalJarMods, ThermalJar_FreshUpgrade)
+			PRINTFORML [  2] - Freshness Upgrade Mk1: (¥{nThermalJarModsCost:1}): Stylish paint job from rare materials, delays food staling process by x5
+		ELSE
+			SETCOLOR C_GRAY
+			PRINTL [ X ] - Freshness Upgrade Mk1: Delays food staling process by x5
+			RESETCOLOR
+		ENDIF
+		IF GETBIT(nThermalJarMods, ThermalJar_FreshUpgrade)
+			IF !GETBIT(nThermalJarMods, ThermalJar_MoreFreshUpgrade)
+				PRINTFORML [  3] - Freshness Upgrade Mk2 (¥{nThermalJarModsCost:2}): Completely remakes the thermal jar from rare heat-retaining alloy (paint-job included), delays food staling process by x10
+			ELSE
+				SETCOLOR C_GRAY
+				PRINTL [ X ] - Freshness Upgrade Mk2: Delays food staling process by x10
+				RESETCOLOR
+			ENDIF
+		ENDIF
+		IF !GETBIT(nThermalJarMods, ThermalJar_StealProtectionUpgrade)
+			PRINTFORML [  4] - Codepad: (¥{nThermalJarModsCost:3}): Prevents unauthorized access
+		ELSE
+			SETCOLOR C_GRAY
+			PRINTL [ X ] - Codepad: Prevents unauthorized access
+			RESETCOLOR
+		ENDIF
+		IF nItemMod == 0
+			PRINTFORML [  5] - Add all of them (¥{nCostSum} in total)
+		ELSE
+			PRINTL 　　　　It can't be modified any more.
+		ENDIF
+		
+		PRINTL [999] - Never mind
+		INPUT
+		SELECTCASE RESULT
+		CASE 999
+			RETURN
+		CASE 1
+			IF !GETBIT(nThermalJarMods, ThermalJar_FreshDisplay) && MONEY >= nThermalJarModsCost:0
+				PRINTL You will now see how fresh your food still is in the jar! (0 means stale)
+				SETBIT nThermalJarMods, ThermalJar_FreshDisplay, 0
+				TIME += 5
+				CALL PAY_MONEY_YEN(nThermalJarModsCost:0, 2)
+			ELSE
+				CONTINUE
+			ENDIF
+		CASE 2
+			IF !GETBIT(nThermalJarMods, ThermalJar_FreshUpgrade) && MONEY >= nThermalJarModsCost:1
+				PRINTL The food will stale slower while in the jar!
+				PRINTL (Note that the effect won't kick in until you make a new dish if there's already one in the jar)
+				SETBIT nThermalJarMods, ThermalJar_FreshUpgrade
+				TIME += 10
+				CALL PAY_MONEY_YEN(nThermalJarModsCost:1, 2)
+			ELSE
+				CONTINUE
+			ENDIF
+		CASE 3
+			IF GETBIT(nThermalJarMods, ThermalJar_FreshUpgrade)
+				IF !GETBIT(nThermalJarMods, ThermalJar_MoreFreshUpgrade) && MONEY >= nThermalJarModsCost:2
+					PRINTL The food will stale even slower while in the jar!
+					SETBIT nThermalJarMods, ThermalJar_MoreFreshUpgrade
+					TIME += 30
+					CALL PAY_MONEY_YEN(nThermalJarModsCost:2, 2)
+				ELSE
+					CONTINUE
+				ENDIF
+			ENDIF
+		CASE 4
+			IF !GETBIT(nThermalJarMods, ThermalJar_StealProtectionUpgrade) && MONEY >= nThermalJarModsCost:3
+				PRINTL People will now think twice than to steal food from you!
+				PRINTL It will make it harder to steal food from you, but it's not impossible.
+				PRINTL (Use Thermal Jar from item menu to enable/disable codepad)
+				SETBIT nThermalJarMods, ThermalJar_StealProtectionUpgrade
+				TIME += 60
+				CALL PAY_MONEY_YEN(nThermalJarModsCost:3, 2)
+			ELSE
+				CONTINUE
+			ENDIF
+		CASE 5
+			IF nItemMod == 0
+				IF !GETBIT(nThermalJarMods, ThermalJar_FreshDisplay) && MONEY >= nThermalJarModsCost:0
+					PRINTL Food Freshness Display installed!
+					PRINTL You will now see how fresh your food still is in the jar! (0 means stale)
+					SETBIT nThermalJarMods, ThermalJar_FreshDisplay, 0
+					TIME += 5
+					CALL PAY_MONEY_YEN(nThermalJarModsCost:0, 2)
+					PRINTL
+				ENDIF
+				
+				IF !GETBIT(nThermalJarMods, ThermalJar_FreshUpgrade) && MONEY >= nThermalJarModsCost:1
+					PRINTL Freshness Upgrade Mk1 installed!
+					PRINTL The food will stale slower while in the jar!
+					PRINTL (Note that the effect won't kick in until you make a new dish if there's already one in the jar)
+					SETBIT nThermalJarMods, ThermalJar_FreshUpgrade
+					TIME += 10
+					CALL PAY_MONEY_YEN(nThermalJarModsCost:1, 2)
+					PRINTL
+				ENDIF
+				
+				IF !GETBIT(nThermalJarMods, ThermalJar_MoreFreshUpgrade) && MONEY >= nThermalJarModsCost:2
+					PRINTL Freshness Upgrade Mk2 installed!
+					PRINTL The food will stale even slower while in the jar!
+					SETBIT nThermalJarMods, ThermalJar_MoreFreshUpgrade
+					TIME += 30
+					CALL PAY_MONEY_YEN(nThermalJarModsCost:2, 2)
+					PRINTL
+				ENDIF
+				
+				IF !GETBIT(nThermalJarMods, ThermalJar_StealProtectionUpgrade) && MONEY >= nThermalJarModsCost:3
+					PRINTL Codepad installed!
+					PRINTL People will now think twice than to steal food from you!
+					PRINTL It will make it harder to steal food from you, but it's not impossible.
+					PRINTL (Use Thermal Jar from item menu to enable/disable codepad)
+					SETBIT nThermalJarMods, ThermalJar_StealProtectionUpgrade
+					TIME += 60
+					CALL PAY_MONEY_YEN(nThermalJarModsCost:3, 2)
+					PRINTL
+				ENDIF
+			ELSE
+				RETURN
+			ENDIF
+		ENDSELECT
+	LOOP 1
+CASE GETNUM(ITEM, "折り畳み傘")
+	SIF !ITEM:折り畳み傘
+		RETURN
+	LOCAL:99 = LINECOUNT
+	DO
+		SIF LINECOUNT - LOCAL:99 > 0
+			CLEARLINE LINECOUNT - LOCAL:99
+		
+		nItemMod = GETBIT(nUmbrellaMods, Umbrella_MoreHealth) && GETBIT(nThermalJarMods, Umbrella_EvenMoreHealth) && GETBIT(nThermalJarMods, Umbrella_Resistance) && GETBIT(nThermalJarMods, Umbrella_Regen) && GETBIT(nThermalJarMods, Umbrella_HPDisplay) && GETBIT(nThermalJarMods, Umbrella_Reconstruction)
+		DRAWLINE
+		;set initial sum
+		nCostSum = nUmbrellaModsCost:0 + nUmbrellaModsCost:1 + nUmbrellaModsCost:2 + nUmbrellaModsCost:3 + nUmbrellaModsCost:4 + nUmbrellaModsCost:5
+		;see if other upgrades purchased
+		nCostSum -= GETBIT(nUmbrellaMods, Umbrella_MoreHealth) * nUmbrellaModsCost:0
+		nCostSum -= GETBIT(nUmbrellaMods, Umbrella_EvenMoreHealth) * nUmbrellaModsCost:1
+		nCostSum -= GETBIT(nUmbrellaMods, Umbrella_Resistance) * nUmbrellaModsCost:2
+		nCostSum -= GETBIT(nUmbrellaMods, Umbrella_Regen) * nUmbrellaModsCost:3
+		nCostSum -= GETBIT(nUmbrellaMods, Umbrella_HPDisplay) * nUmbrellaModsCost:4
+		nCostSum -= GETBIT(nUmbrellaMods, Umbrella_Reconstruction) * nUmbrellaModsCost:5
+		CALL SPTALK, [[にとり]], "笑顔", 0, @"「Don't worry if your Umbrella breaks, it'll retain the mods all the same!」/「Now, how do you want to change it?」", 1
+		PRINTD Current state: 
+		CALL Add_ItemModList_折り畳み傘
+		PRINTL
+		DRAWLINE
+		
+		IF !GETBIT(nUmbrellaMods, Umbrella_MoreHealth)
+			PRINTFORML [  1] - Durability Upgrade Mk1 (¥{nUmbrellaModsCost:0}): The umbrella is remade from special materials, allowing it to take more punishment
+		ELSE
+			SETCOLOR C_GRAY
+			PRINTL [ X ] - Durability Upgrade Mk1: Increases umbrella's health x3
+			RESETCOLOR
+		ENDIF
+		IF GETBIT(nUmbrellaMods, Umbrella_MoreHealth)
+			IF !GETBIT(nUmbrellaMods, Umbrella_EvenMoreHealth)
+				PRINTFORML [  2] - Durability Upgrade Mk2 (¥{nUmbrellaModsCost:1}): The umbrella is remade from extraterrestrial materials, offering the best possible durability
+			ELSE
+				SETCOLOR C_GRAY
+				PRINTL [ X ] - Durability Upgrade Mk2: Increases umbrella's health x5
+				RESETCOLOR
+			ENDIF
+		ENDIF
+		IF !GETBIT(nUmbrellaMods, Umbrella_Resistance)
+			PRINTFORML [  3] - Lightning Rod: (¥{nUmbrellaModsCost:2}): Installs a smart lightning rod that consumes the elements, allowing the umbrella to resist even the harshest weathers more
+		ELSE
+			SETCOLOR C_GRAY
+			PRINTL [ X ] - Lightning Rod: Increases resistance against harsh elements
+			RESETCOLOR
+		ENDIF
+		IF !GETBIT(nUmbrellaMods, Umbrella_Regen)
+			PRINTFORML [  4] - Regeneration: (¥{nUmbrellaModsCost:3}): Coats the umbrella with self-repairing spray, passively keeping up the maintenance
+		ELSE
+			SETCOLOR C_GRAY
+			PRINTL [ X ] - Regeneration: Allows umbrella to self-repair
+			RESETCOLOR
+		ENDIF
+		IF !GETBIT(nUmbrellaMods, Umbrella_HPDisplay)
+			PRINTFORML [  5] - Health Display: (¥{nUmbrellaModsCost:4}): Accurately tracks current condition of the umbrella
+		ELSE
+			SETCOLOR C_GRAY
+			PRINTL [ X ] - Health Display: Accurately tracks current condition of the umbrella
+			RESETCOLOR
+		ENDIF
+		IF !GETBIT(nUmbrellaMods, Umbrella_Reconstruction)
+			PRINTFORML [  6] - Reconstruction: (¥{nUmbrellaModsCost:5}): Brand new self-replicating technology! Allows the umbrella to create a copy of itself once per day in case it breaks
+		ELSE
+			SETCOLOR C_GRAY
+			PRINTL [ X ] - Reconstruction: Allows the umbrella to create a copy of itself once per day in case it breaks
+			RESETCOLOR
+		ENDIF
+		IF nItemMod == 0
+			PRINTFORML [  7] - Add all of them (¥{nCostSum} in total)
+		ELSE
+			PRINTL 　　　　It can't be modified any more.
+		ENDIF
+		
+		PRINTL [999] - Never mind
+		INPUT
+		SELECTCASE RESULT
+		CASE 999
+			RETURN
+		CASE 1
+			IF !GETBIT(nUmbrellaMods, Umbrella_MoreHealth) && MONEY >= nUmbrellaModsCost:0
+				PRINTL The umbrella is more durable now!
+				SETBIT nUmbrellaMods, Umbrella_MoreHealth, 0
+				TIME += 10
+				CALL PAY_MONEY_YEN(nUmbrellaModsCost:0, 2)
+			ELSE
+				CONTINUE
+			ENDIF
+		CASE 2
+			IF GETBIT(nUmbrellaMods, Umbrella_MoreHealth)
+				IF !GETBIT(nUmbrellaMods, Umbrella_EvenMoreHealth) && MONEY >= nUmbrellaModsCost:1
+					PRINTL The umbrella is even more durable now!
+					SETBIT nUmbrellaMods, Umbrella_EvenMoreHealth
+					TIME += 30
+					CALL PAY_MONEY_YEN(nUmbrellaModsCost:1, 2)
+				ELSE
+					CONTINUE
+				ENDIF
+			ENDIF
+		CASE 3
+			IF !GETBIT(nUmbrellaMods, Umbrella_Resistance) && MONEY >= nUmbrellaModsCost:2
+				PRINTL The umbrella is now more resistant against harsh elements! 
+				SETBIT nUmbrellaMods, Umbrella_Resistance
+				TIME += 20
+				CALL PAY_MONEY_YEN(nUmbrellaModsCost:2, 2)
+			ELSE
+				CONTINUE
+			ENDIF
+		CASE 4
+			IF !GETBIT(nUmbrellaMods, Umbrella_Regen) && MONEY >= nUmbrellaModsCost:3
+				PRINTL Self-repairing umbrella, hooray!
+				SETBIT nUmbrellaMods, Umbrella_Regen
+				TIME += 10
+				CALL PAY_MONEY_YEN(nUmbrellaModsCost:3, 2)
+			ELSE
+				CONTINUE
+			ENDIF
+		CASE 5
+			IF !GETBIT(nUmbrellaMods, Umbrella_HPDisplay) && MONEY >= nUmbrellaModsCost:4
+				PRINTL You will now see how much health your umbrella has!
+				SETBIT nUmbrellaMods, Umbrella_HPDisplay
+				TIME += 5
+				CALL PAY_MONEY_YEN(nUmbrellaModsCost:4, 2)
+			ELSE
+				CONTINUE
+			ENDIF
+		CASE 6
+			IF !GETBIT(nUmbrellaMods, Umbrella_Reconstruction) && MONEY >= nUmbrellaModsCost:5
+				PRINTL Your umbrella can now self-replicate! ...Once a day.
+				SETBIT nUmbrellaMods, Umbrella_Reconstruction
+				TIME += 60
+				CALL PAY_MONEY_YEN(nUmbrellaModsCost:5, 2)
+			ELSE
+				CONTINUE
+			ENDIF
+		CASE 7
+			IF nItemMod == 0
+				IF !GETBIT(nUmbrellaMods, Umbrella_MoreHealth) && MONEY >= nUmbrellaModsCost:0
+					PRINTL Durability Upgrade Mk1 installed!
+					PRINTL The umbrella is more durable now!
+					SETBIT nUmbrellaMods, Umbrella_MoreHealth, 0
+					TIME += 10
+					CALL PAY_MONEY_YEN(nUmbrellaModsCost:0, 2)
+					PRINTL
+				ENDIF
+				
+				IF GETBIT(nUmbrellaMods, Umbrella_MoreHealth)
+					IF !GETBIT(nUmbrellaMods, Umbrella_EvenMoreHealth) && MONEY >= nUmbrellaModsCost:1
+						PRINTL Durability Upgrade Mk2 installed!
+						PRINTL The umbrella is even more durable now!
+						SETBIT nUmbrellaMods, Umbrella_EvenMoreHealth
+						TIME += 30
+						CALL PAY_MONEY_YEN(nUmbrellaModsCost:1, 2)
+						PRINTL
+					ENDIF
+				ENDIF
+				
+				IF !GETBIT(nUmbrellaMods, Umbrella_Resistance) && MONEY >= nUmbrellaModsCost:2
+					PRINTL Lightning Rod installed!
+					PRINTL The umbrella is now more resistant against harsh elements! 
+					SETBIT nUmbrellaMods, Umbrella_Resistance
+					TIME += 20
+					CALL PAY_MONEY_YEN(nUmbrellaModsCost:2, 2)
+					PRINTL
+				ENDIF
+				
+				IF !GETBIT(nUmbrellaMods, Umbrella_Regen) && MONEY >= nUmbrellaModsCost:3
+					PRINTL Regeneration installed!
+					PRINTL Self-repairing umbrella, hooray!
+					SETBIT nUmbrellaMods, Umbrella_Regen
+					TIME += 10
+					CALL PAY_MONEY_YEN(nUmbrellaModsCost:3, 2)
+					PRINTL
+				ENDIF
+				
+				IF !GETBIT(nUmbrellaMods, Umbrella_HPDisplay) && MONEY >= nUmbrellaModsCost:4
+					PRINTL Health Display installed!
+					PRINTL You will now see how much health your umbrella has!
+					SETBIT nUmbrellaMods, Umbrella_HPDisplay
+					TIME += 5
+					CALL PAY_MONEY_YEN(nUmbrellaModsCost:4, 2)
+					PRINTL
+				ENDIF
+				
+				IF !GETBIT(nUmbrellaMods, Umbrella_Reconstruction) && MONEY >= nUmbrellaModsCost:5
+					PRINTL Reconstruction installed!
+					PRINTL Your umbrella can now self-replicate! ...Once a day.
+					SETBIT nUmbrellaMods, Umbrella_Reconstruction
+					TIME += 60
+					CALL PAY_MONEY_YEN(nUmbrellaModsCost:5, 2)
+					PRINTL
+				ENDIF
+			ELSE
+				RETURN
+			ENDIF
+		ENDSELECT
+	LOOP 1
+CASE GETNUM(ITEM, "チェーンソー")
+	SIF !ITEM:チェーンソー
+		RETURN
+	LOCAL:99 = LINECOUNT
+	DO
+		SIF LINECOUNT - LOCAL:99 > 0
+			CLEARLINE LINECOUNT - LOCAL:99
+		
+		nItemMod = GETBIT(nChainSawMods, ChainSaw_MiniFanDispenser) && GETBIT(nChainSawMods, ChainSaw_DualSaw) && GETBIT(nChainSawMods, ChainSaw_KickBack) && GETBIT(nChainSawMods, ChainSaw_TreeSeeker) && GETBIT(nChainSawMods, ChainSaw_Flashlight)
+		DRAWLINE
+		;set initial sum
+		nCostSum = nChainSawModsCost:0 + nChainSawModsCost:1 + nChainSawModsCost:2 + nChainSawModsCost:3 + nChainSawModsCost:4
+		;see if other upgrades purchased
+		nCostSum -= GETBIT(nChainSawMods, ChainSaw_MiniFanDispenser) * nChainSawModsCost:0
+		nCostSum -= GETBIT(nChainSawMods, ChainSaw_DualSaw) * nChainSawModsCost:1
+		nCostSum -= GETBIT(nChainSawMods, ChainSaw_KickBack) * nChainSawModsCost:2
+		nCostSum -= GETBIT(nChainSawMods, ChainSaw_TreeSeeker) * nChainSawModsCost:3
+		nCostSum -= GETBIT(nChainSawMods, ChainSaw_Flashlight) * nChainSawModsCost:4
+		CALL SPTALK, [[にとり]], "笑顔", 0, @"「How do you want to change it?」", 1
+		PRINTD Current state: 
+		CALL Add_ItemModList_チェーンソー
+		PRINTL
+		DRAWLINE
+		
+		IF !GETBIT(nChainSawMods, ChainSaw_MiniFanDispenser)
+			PRINTFORML [  1] - Minifan&Water Dispenser (¥{nChainSawModsCost:0}): Equips the Chainsaw with mobile water dispenser to quench thirst and minifan to fight off the exhaustion
+		ELSE
+			SETCOLOR C_GRAY
+			PRINTL [ X ] - Minifan&Water Dispenser: Reduces exhaustion
+			RESETCOLOR
+		ENDIF
+		IF !GETBIT(nChainSawMods, ChainSaw_DualSaw)
+			PRINTFORML [  2] - Dual Saw: (¥{nChainSawModsCost:1}): Double the fun! Makes cutting any tree a piece of cake
+		ELSE
+			SETCOLOR C_GRAY
+			PRINTL [ X ] - Dual Saw: Increases chainsaw effectiveness
+			RESETCOLOR
+		ENDIF
+		IF !GETBIT(nChainSawMods, ChainSaw_KickBack)
+			PRINTFORML [  3] - Kickback Dampener: (¥{nChainSawModsCost:2}): Tired of being worried of the kickback possibility? Install this, and even the biggest trees won't pose any trouble!
+		ELSE
+			SETCOLOR C_GRAY
+			PRINTL [ X ] - Kickback Dampener: Reduces the difficulty of cutting bigger trees
+			RESETCOLOR
+		ENDIF
+		IF !GETBIT(nChainSawMods, ChainSaw_TreeSeeker)
+			PRINTFORML [  4] - Tree Seeker: (¥{nChainSawModsCost:3}): A nifty radar that helps you find more valuable trees no matter the location!
+		ELSE
+			SETCOLOR C_GRAY
+			PRINTL [ X ] - Tree Seeker: Increases the chance of finding more valuable trees
+			RESETCOLOR
+		ENDIF
+		IF !GETBIT(nChainSawMods, ChainSaw_Flashlight)
+			PRINTFORML [  5] - Flashlight: (¥{nChainSawModsCost:4}): Powerful self-charging flashlight that lets you cut trees even in complete darkness!
+		ELSE
+			SETCOLOR C_GRAY
+			PRINTL [ X ] - Flashlight: Allows logging even in the dark
+			RESETCOLOR
+		ENDIF
+		IF nItemMod == 0
+			PRINTFORML [  6] - Add all of them (¥{nCostSum} in total)
+		ELSE
+			PRINTL 　　　　It can't be modified any more.
+		ENDIF
+		
+		PRINTL [999] - Never mind
+		INPUT
+		SELECTCASE RESULT
+		CASE 999
+			RETURN
+		CASE 1
+			IF !GETBIT(nChainSawMods, ChainSaw_MiniFanDispenser) && MONEY >= nChainSawModsCost:0
+				PRINTL You will get less tired while operating the Chainsaw!
+				SETBIT nChainSawMods, ChainSaw_MiniFanDispenser, 0
+				TIME += 15
+				CALL PAY_MONEY_YEN(nChainSawModsCost:0, 2)
+			ELSE
+				CONTINUE
+			ENDIF
+		CASE 2
+			IF !GETBIT(nChainSawMods, ChainSaw_DualSaw) && MONEY >= nChainSawModsCost:1
+				PRINTL Cutting trees will now take less time and effort!
+				SETBIT nChainSawMods, ChainSaw_DualSaw
+				TIME += 10
+				CALL PAY_MONEY_YEN(nChainSawModsCost:1, 2)
+			ELSE
+				CONTINUE
+			ENDIF
+		CASE 3
+			IF !GETBIT(nChainSawMods, ChainSaw_KickBack) && MONEY >= nChainSawModsCost:2
+				PRINTL The difficulty is reduced when cutting bigger trees!
+				SETBIT nChainSawMods, ChainSaw_KickBack
+				TIME += 30
+				CALL PAY_MONEY_YEN(nChainSawModsCost:2, 2)
+			ELSE
+				CONTINUE
+			ENDIF
+		CASE 4
+			IF !GETBIT(nChainSawMods, ChainSaw_TreeSeeker) && MONEY >= nChainSawModsCost:3
+				PRINTL You will find better trees a lot easier!
+				PRINTL They will come bigger in size as well.
+				PRINTL Some say it may even help you strengthen yourself better...
+				SETBIT nChainSawMods, ChainSaw_TreeSeeker
+				TIME += 60
+				CALL PAY_MONEY_YEN(nChainSawModsCost:3, 2)
+			ELSE
+				CONTINUE
+			ENDIF
+		CASE 5
+			IF !GETBIT(nChainSawMods, ChainSaw_Flashlight) && MONEY >= nChainSawModsCost:4
+				PRINTL You will now be able to cut trees during night!
+				SETBIT nChainSawMods, ChainSaw_Flashlight
+				TIME += 10
+				CALL PAY_MONEY_YEN(nChainSawModsCost:4, 2)
+			ELSE
+				CONTINUE
+			ENDIF
+		CASE 6
+			IF nItemMod == 0
+				IF !GETBIT(nChainSawMods, ChainSaw_MiniFanDispenser) && MONEY >= nChainSawModsCost:0
+					PRINTL Minifan&Water Dispenser installed!
+					PRINTL You will get less tired while operating the Chainsaw!
+					SETBIT nChainSawMods, ChainSaw_MiniFanDispenser, 0
+					TIME += 15
+					CALL PAY_MONEY_YEN(nChainSawModsCost:0, 2)
+					PRINTL
+				ENDIF
+				
+				IF !GETBIT(nChainSawMods, ChainSaw_DualSaw) && MONEY >= nChainSawModsCost:1
+					PRINTL Dual Saw installed!
+					PRINTL Cutting trees will now take less time and effort!
+					SETBIT nChainSawMods, ChainSaw_DualSaw
+					TIME += 10
+					CALL PAY_MONEY_YEN(nChainSawModsCost:1, 2)
+					PRINTL
+				ENDIF
+				
+				IF !GETBIT(nChainSawMods, ChainSaw_KickBack) && MONEY >= nChainSawModsCost:2
+					PRINTL Kickback Dampener installed!
+					PRINTL The difficulty is reduced when cutting bigger trees!
+					SETBIT nChainSawMods, ChainSaw_KickBack
+					TIME += 30
+					CALL PAY_MONEY_YEN(nChainSawModsCost:2, 2)
+					PRINTL
+				ENDIF
+				
+				IF !GETBIT(nChainSawMods, ChainSaw_TreeSeeker) && MONEY >= nChainSawModsCost:3
+					PRINTL Tree Seeker installed!
+					PRINTL They will come bigger in size as well.
+					PRINTL Some say it may even help you strengthen yourself better...
+					SETBIT nChainSawMods, ChainSaw_TreeSeeker
+					TIME += 60
+					CALL PAY_MONEY_YEN(nChainSawModsCost:3, 2)
+					PRINTL
+				ENDIF
+				
+				IF !GETBIT(nChainSawMods, ChainSaw_Flashlight) && MONEY >= nChainSawModsCost:4
+					PRINTL Flashlight installed!
+					PRINTL You will now be able to cut trees during night!
+					SETBIT nChainSawMods, ChainSaw_Flashlight
+					TIME += 10
+					CALL PAY_MONEY_YEN(nChainSawModsCost:4, 2)
+					PRINTL
+				ENDIF
+			ELSE
+				RETURN
+			ENDIF
+		ENDSELECT
+	LOOP 1
+CASE GETNUM(ITEM, "釣り竿") ;fishing rod, from Korean version
+	SIF !ITEM:釣り竿
+		RETURN
+	LOCAL:99 = LINECOUNT
+	DO
+		SIF LINECOUNT - LOCAL:99 > 0
+			CLEARLINE LINECOUNT - LOCAL:99
+		
+		nItemMod = GETBIT(nFishingRodMods, FishingRod_Vibration) && GETBIT(nFishingRodMods, FishingRod_Multihook) && GETBIT(nFishingRodMods, FishingRod_Sonar) && GETBIT(nFishingRodMods, FishingRod_Harness)
+		;set initial sum
+		nCostSum = nFishingRodModsCost:0 + nFishingRodModsCost:1 + nFishingRodModsCost:2 + nFishingRodModsCost:3
+		;see if other upgrades purchased
+		nCostSum -= GETBIT(nFishingRodMods, FishingRod_Vibration) * nFishingRodModsCost:0
+		nCostSum -= GETBIT(nFishingRodMods, FishingRod_Multihook) * nFishingRodModsCost:1
+		nCostSum -= GETBIT(nFishingRodMods, FishingRod_Sonar) * nFishingRodModsCost:2
+		nCostSum -= GETBIT(nFishingRodMods, FishingRod_Harness) * nFishingRodModsCost:3
+		DRAWLINE
+		CALL SPTALK, [[にとり]], "笑顔", 0, @"「How do you want to change it?」", 1
+		PRINTD Current state: 
+		CALL Add_ItemModList_釣り竿
+		PRINTL
+		DRAWLINE
+		IF !GETBIT (nFishingRodMods, FishingRod_Vibration)
+			PRINTFORML [  1] - Adjusted Vibration (¥{nFishingRodModsCost:0}): Automatically guides the rod towards a nearby moving fish, increasing the chance of catching it
+		ELSE
+			SETCOLOR C_GRAY
+			PRINTL [ X ] - Adjusted Vibration: Slightly increases the fishing power
+			RESETCOLOR
+		ENDIF
+		IF !GETBIT (nFishingRodMods, FishingRod_Multihook)
+			PRINTFORML [  2] - Multihook (¥{nFishingRodModsCost:1}): Increase the chance of fishing by increasing the number of hooks
+		ELSE
+			SETCOLOR C_GRAY
+			PRINTL [ X ] - Multihook: Moderately increases the fishing power
+			RESETCOLOR
+		ENDIF
+		IF !GETBIT (nFishingRodMods, FishingRod_Sonar)
+			PRINTFORML [  3] - Sonar (¥{nFishingRodModsCost:2}): Detects the sound of a distant fish and automatically moves itself to catch it
+		ELSE
+			SETCOLOR C_GRAY
+			PRINTL [ X ] - Sonar: Greatly increases the fishing power
+			RESETCOLOR
+		ENDIF
+		IF CFLAG:[[わかさぎ姫]]:2 >= 3000 ;3000 favor check for wakasagihime
+			IF !GETBIT (nFishingRodMods, FishingRod_Harness)
+				PRINTFORML [  4] - Mermaid fishing harness (¥{nFishingRodModsCost:3}): Custom-made harness made from the materials that Wakasagihime provided
+			ELSE
+				SETCOLOR C_GRAY
+				PRINTL [ X ] - Mermaid fishing harness: Significantly increases the fishing power
+				RESETCOLOR
+			ENDIF
+		ELSE
+			SETCOLOR C_GRAY
+			PRINTL [ X ] - ?????: Perhaps if you gain the favor of a certain mermaid, then...
+			RESETCOLOR
+		ENDIF
+		IF nItemMod == 0
+			PRINTFORML [  5] - Add all of them (¥{nCostSum} in total)
+		ELSE
+			PRINTL 　　　　It can't be modified any more.
+		ENDIF
+		PRINTL [999]Never mind
+		INPUT
+		SELECTCASE RESULT
+		CASE 999
+			RETURN
+		CASE 1
+			IF !GETBIT (nFishingRodMods, FishingRod_Vibration) && MONEY >= nFishingRodModsCost:0
+				PRINTL Vibration has been added to the fishing rod!
+				SETBIT nFishingRodMods, 0
+				TIME += 5
+				CALL PAY_MONEY_YEN(nFishingRodModsCost:0, 2)
+			ELSE
+				CONTINUE
+			ENDIF
+		CASE 2
+			IF !GETBIT (nFishingRodMods, FishingRod_Multihook) && MONEY >= nFishingRodModsCost:1
+				PRINTL Multiple hooks were added!
+				SETBIT nFishingRodMods, 1
+				TIME += 10
+				CALL PAY_MONEY_YEN(nFishingRodModsCost:1, 2)
+			ELSE
+				CONTINUE
+			ENDIF
+		CASE 3
+			IF !GETBIT (nFishingRodMods, FishingRod_Sonar) && MONEY >= nFishingRodModsCost:2
+				PRINTL A small sonar has been attached to the fishing rod!
+				SETBIT nFishingRodMods, 2
+				TIME += 15
+				CALL PAY_MONEY_YEN(nFishingRodModsCost:2, 2)
+			ELSE
+				CONTINUE
+			ENDIF
+		CASE 4
+			IF CFLAG:[[わかさぎ姫]]:2 >= 3000 ;favor check
+				IF !GETBIT (nFishingRodMods, FishingRod_Harness) && MONEY >= nFishingRodModsCost:3
+					CALL KOJO_MESSAGE_SEND("EVENT", 0, 93, 0, 0, "FISHINGHARNESS_BUY") ;custom code waggy
+					PRINTL The fishing rod is now equipped with the custom-made fishing harness!
+					SETBIT nFishingRodMods, 3
+					TIME += 20
+					CALL PAY_MONEY_YEN(nFishingRodModsCost:3, 2)
+				ELSE
+					CONTINUE
+				ENDIF
+			ENDIF
+		CASE 5
+			IF nItemMod == 0
+				IF !GETBIT (nFishingRodMods, FishingRod_Vibration) && MONEY >= nFishingRodModsCost:0
+					PRINTL Vibration has been added to the fishing rod!
+					SETBIT nFishingRodMods, 0
+					TIME += 5
+					CALL PAY_MONEY_YEN(nFishingRodModsCost:0, 2)
+					PRINTL
+				ENDIF
+				
+				IF !GETBIT (nFishingRodMods, FishingRod_Multihook) && MONEY >= nFishingRodModsCost:1
+					PRINTL Multiple hooks were added!
+					SETBIT nFishingRodMods, 1
+					TIME += 10
+					CALL PAY_MONEY_YEN(nFishingRodModsCost:1, 2)
+					PRINTL
+				ENDIF
+				
+				IF !GETBIT (nFishingRodMods, FishingRod_Sonar) && MONEY >= nFishingRodModsCost:2
+					PRINTL A small sonar has been attached to the fishing rod!
+					SETBIT nFishingRodMods, 2
+					TIME += 15
+					CALL PAY_MONEY_YEN(nFishingRodModsCost:2, 2)
+					PRINTL
+				ENDIF
+				
+				IF CFLAG:[[わかさぎ姫]]:2 >= 3000 ;favor check
+					IF !GETBIT (nFishingRodMods, FishingRod_Harness) && MONEY >= nFishingRodModsCost:3
+						CALL KOJO_MESSAGE_SEND("EVENT", 0, 93, 0, 0, "FISHINGHARNESS_BUY") ;custom code waggy
+						PRINTL The fishing rod is now equipped with the custom-made fishing harness!
+						SETBIT nFishingRodMods, 3
+						TIME += 20
+						CALL PAY_MONEY_YEN(nFishingRodModsCost:3, 2)
+						PRINTL
+					ENDIF
+				ENDIF
+			ENDIF
+		ENDSELECT
+	LOOP 1
+ENDSELECT
+
+;show modded items for item list
+@Add_ShowItemMods
+CALL NAS_ShowItemMods ;NAS: REPLACED
+RETURN RESULT
+FOR LOCAL, 0, VARSIZE("ITEM") ;qol custom code
+	CALL ITEMDATA(LOCAL, "TYPE:改造可能")
+	IF RESULT && ITEM:LOCAL
+		PRINTFORML [{LOCAL, 3}]%ITEMNAME_TR(LOCAL)%: 
+		TRYCALLFORM Add_ItemModList_%ITEMNAME:LOCAL%
+		PRINTFORML
+	ENDIF
+NEXT
+
+@Add_ItemModList_簡易プール
+SIF GETBIT (FLAG:プール, 0)
+	PRINT [Self-perpetuating engine] 
+SIF GETBIT (FLAG:プール, 1)
+	PRINT [Warm Water Function] 
+SIF GETBIT (FLAG:プール, 2)
+	PRINT [Shower] 
+SIF GETBIT (FLAG:プール, 3)
+	PRINT [Mystery Bubbles] 
+
+@Add_ItemModList_保温ジャー
+SIF GETBIT(nThermalJarMods, ThermalJar_FreshDisplay)
+	PRINT [Food Freshness Display] 
+SIF GETBIT(nThermalJarMods, ThermalJar_FreshUpgrade)
+	PRINT [Freshness Upgrade Mk1] 
+SIF GETBIT(nThermalJarMods, ThermalJar_MoreFreshUpgrade)
+	PRINT [Freshness Upgrade Mk2] 
+SIF GETBIT(nThermalJarMods, ThermalJar_StealProtectionUpgrade)
+	PRINT [Codepad] 
+	
+@Add_ItemModList_折り畳み傘
+SIF GETBIT(nUmbrellaMods, Umbrella_MoreHealth)
+	PRINT [Durability Upgrade Mk1] 
+SIF GETBIT(nUmbrellaMods, Umbrella_EvenMoreHealth)
+	PRINT [Durability Upgrade Mk2] 
+SIF GETBIT(nUmbrellaMods, Umbrella_Resistance)
+	PRINT [Lightning Rod] 
+SIF GETBIT(nUmbrellaMods, Umbrella_Regen)
+	PRINT [Regeneration] 
+SIF GETBIT(nUmbrellaMods, Umbrella_HPDisplay)
+	PRINT [Health Display] 
+SIF GETBIT(nUmbrellaMods, Umbrella_Reconstruction)
+	PRINT [Reconstruction] 
+	
+@Add_ItemModList_チェーンソー
+SIF GETBIT(nChainSawMods, ChainSaw_MiniFanDispenser)
+	PRINT [Minifan&Water Dispenser] 
+SIF GETBIT(nChainSawMods, ChainSaw_DualSaw)
+	PRINT [Dual Saw] 
+SIF GETBIT(nChainSawMods, ChainSaw_KickBack)
+	PRINT [Kickback Dampener] 
+SIF GETBIT(nChainSawMods, ChainSaw_TreeSeeker)
+	PRINT [Tree Seeker] 
+SIF GETBIT(nChainSawMods, ChainSaw_Flashlight)
+	PRINT [Flashlight] 
+
+@Add_ItemModList_釣り竿
+SIF GETBIT(nFishingRodMods, FishingRod_Vibration)
+	PRINT [Vibration]
+SIF GETBIT(nFishingRodMods, FishingRod_Multihook)
+	PRINT [Multihook]
+SIF GETBIT(nFishingRodMods, FishingRod_Sonar)
+	PRINT [Sonar]
+SIF GETBIT(nFishingRodMods, FishingRod_Harness)
+	PRINT [Mermaid Harness]
+
+@Add_ThermalJarCodePad
+IF TALENT:TechKnow < 5
+	;nas tech know
+	PRINTFORMW %HE_SHE(TARGET,1)% twists and turns the Thermal Jar in %HIS_HER(TARGET)% hands, but fails no matter how hard %HE_SHE(TARGET)% tries.
+	PRINTFORMW %HE_SHE(TARGET,1)% then discoverers it's protected by a piece of technology that %HE_SHE(TARGET)% can't understand.
+	PRINTFORMW Frustrated, %HE_SHE(TARGET)% lets out a groan and leaves with a puff...
+	CALL KOJO_MESSAGE_SEND("EVENT",14,TARGET,9,0) ;addition custom code
+	RETURN 1
+ELSEIF RAND:500 > ABL:教養*10
+	PRINTFORMW %HE_SHE(TARGET,1)% twists and turns the Thermal Jar in %HIS_HER(TARGET)% hands, trying to bypass the code, but fails no matter how hard %HE_SHE(TARGET)% tries.
+	PRINTFORMW Frustrated, %HE_SHE(TARGET)% lets out a groan and leaves with a puff...
+	CALL KOJO_MESSAGE_SEND("EVENT",14,TARGET,9,0) ;addition custom code
+	RETURN 1
+ELSE
+	PRINTFORMW Though you were confident in the strength of your codepad, %CALLNAME:TARGET% bypasses it in no time!
+	PRINTFORMW How could this be?!
+	CALL KOJO_MESSAGE_SEND("EVENT",14,TARGET,8,0) ;addition custom code
+ENDIF
+
+@Add_UmbrellaMaxHealth ;return max health
+#FUNCTION
+LOCAL = 10000
+IF GETBIT(nUmbrellaMods, Umbrella_EvenMoreHealth)
+	LOCAL = 60000
+ELSEIF GETBIT(nUmbrellaMods, Umbrella_MoreHealth)
+	LOCAL = 30000
+ENDIF
+RETURNF LOCAL
+
+@EVENTTRAIN ;reset umbrella broke status at the start of the day
+Umbrella_Broke = 0

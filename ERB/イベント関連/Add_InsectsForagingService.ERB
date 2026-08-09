@@ -1,0 +1,210 @@
+@UNIQUE_COM_蟲の採集サービス
+#DIM PRICE
+CALL SET_KOJO_COLOR(27)
+IF FLAG:蟲の採集サービス
+    PRINTFORMW 「Do you wanna change your foraging location?」
+    CALL ASK_M("Yeah",1,"Nah",1)
+    SIF RESULT
+        RETURN 1
+    CALL IFS_SELECT_REGION(0)
+ELSE
+    IF FIRSTTIME("ForagingService", 0, [[リグル]])
+        PRINTFORMW 「So here's how this works. You pay me a small fee...」
+        PRINTFORMW 「And in return, once a day for a month, my bug friends will search an area of your choice and bring back anything they find.」
+        PRINTFORMW 「They'll have it waiting for you first thing in the morning.」
+        PRINTFORMW 「Sometimes they won't find anything, though. If that happens, you get a refund for that day.」
+        IF TALENT:[[リグル]]:恋人
+            PRINTFORMW 「But you get the %PRINT_MALE("boy", MASTER)%friend discount of... 100\% off.」
+            PRINTFORMW 「Of course, there's nothing stopping you from showing appreciation in other ways...」
+            PRINTFORMDW %CALLNAME:[[リグル]]% purses %HIS_HER(TARGET)% lips and winks.
+        ENDIF
+    ENDIF
+    IF TALENT:[[リグル]]:恋人
+        PRINTFORMW 「So do you wanna sign up?」
+        PRICE = 0
+    ELSE
+        PRICE = IFS_CALCULATE_PRICE()
+        PRINTFORMW 「So do you wanna sign up? It'll be %金額表示(PRICE)%.」
+    ENDIF
+    CALL ASK_M("Yes please",MONEY >= PRICE,"Don't",1)
+    SELECTCASE RESULT
+        CASE 0
+            CALL IFS_SELECT_REGION(PRICE)
+        CASE 1
+            PRINTFORMW 「Aww man...」
+            PRINTFORMW 「Come back if you change your mind.」
+            RETURN 1
+    ENDSELECT
+ENDIF
+RETURN 1
+
+@IFS_SELECT_REGION(PRICE)
+#DIM PRICE
+#DIM REGION
+PRINTFORMW 「All right, so where do you want my friends to look?」
+$REGION_LIST
+FOR LOCAL, 0, 12
+    ;Skip the Human Village because there aren't any gathering points in it
+    SIF LOCAL == 2
+        CONTINUE
+    PRINTFORMDL [{LOCAL,2}] - %GET_MAPNAME(LOCAL)%
+NEXT
+PRINTFORMDL [100] - Return
+
+DO
+    INPUT
+    SELECTCASE RESULT
+        CASE 0 TO 11
+            REGION = RESULT
+            PRINTFORMW 「%GET_MAPNAME(REGION)%, huh?」
+            PRINTFORMW 「Got it. Now just sit tight while they get to work.」
+            PRINTFORMDL %CALLNAME:[[リグル]]% claps %HIS_HER([[リグル]])% hands, and the sound of buzzing insects fills the air.
+            IF FIRSTTIME("InsectGatheringScene", 0, [[リグル]])
+                PRINTFORMDW A massive swarm is gathering. You can't even hear yourself think over the noise.
+                PRINTFORMDW Flying insects, crawling insects, worms... It's like being in the center of an insect tornado.
+                PRINTFORMDW At least they're polite enough to keep their distance from you.
+                PRINTFORMDW %CALLNAME:[[リグル]]% points, and the insects fly off.
+            ELSE
+                PRINTFORMDW The swarm gathers and flies off just like they did before.
+            ENDIF
+            PRINTFORMW 「Hehe, look at 'em go... aren't they cute?」
+            PRINTFORMDW You decide to not to answer %HIM_HER([[リグル]])%.
+            IF !TALENT:[[リグル]]:恋人 && PRICE > 0
+                PRINTFORMW 「Okay, pay up.」
+                PRINTFORMDL You hand over some cash, and %CALLNAME:[[リグル]]% counts it.
+                PRINTFORMDW When %HE_SHE([[リグル]])%'s sure that it's all there, %HE_SHE([[リグル]])% grins at you.
+                PRINTFORMW 「Pleasure doing business with you.」
+                CALL PAY_MONEY_YEN(PRICE, 2)
+            ENDIF
+            FLAG:蟲の採集サービス = REGION + 1
+            RETURN 1
+        CASE 100
+            RETURN 1
+
+        CASEELSE
+            PRINTFORMW 「Uhh... I don't know where that is.」
+            CONTINUE
+    ENDSELECT
+LOOP 1
+
+;Modified from ShowGatheringSpots
+@IFS_GATHER()
+#DIM cStart
+#DIM cEnd
+#DIM SpotID
+#DIM pCount
+#DIM SelectedSubmap
+#DIM GatheringSpots, 30
+#DIM ItemFound
+#DIM QuantityFound
+#DIM SpotArray
+
+PRINTFORMDL
+PRINTFORMDW There's a package from the Insects' Foraging Service outside your front door.
+PRINTFORMDW You open it...
+
+cStart = 1 + (FLAG:蟲の採集サービス - 1) * 100
+cEnd = 99 + (FLAG:蟲の採集サービス - 1) * 100
+SpotArray = 0
+FOR LOCAL, cStart, cEND
+    SpotID = GATHERING_SPOT(LOCAL, 1)
+    SIF SpotID
+        GatheringSpots:(SpotArray++) = SpotID
+NEXT
+
+DO
+    SelectedSubmap = GatheringSpots:(RAND:10)
+    SIF SelectedSubmap
+        BREAK
+LOOP 1
+
+FOR LOCAL,0,15
+    CALL Gathering_Drawing(SelectedSubmap, (10 + TALENT:[[リグル]]:採集Lv * 10 + ABL:[[リグル]]:教養 * 5 + TFLAG:幸運補正 * 10))
+    ItemFound = RESULT:0
+    QuantityFound = RESULT:1
+    SIF QuantityFound
+        BREAK
+NEXT
+IF !QuantityFound
+    PRINTFORMDW There was a %金額表示(1000)% bill and a note inside.
+    IF ABL:[[リグル]]:教養 >= 3
+            PRINTFORMDL It reads:
+            CALL SET_KOJO_COLOR(27)
+            PRINTFORML Sorry. We couldn't find anything.
+            PRINTFORML Here's some money.
+            PRINTFORMW -Wriggle
+            RESETCOLOR
+    ELSE
+        IF ABL:MASTER:教養 >= 2
+            PRINTFORMDL It reads:
+            CALL SET_KOJO_COLOR(27)
+            PRINTFORML Sorre. We cudn't find nething.
+            PRINTFORML Heres some muny.
+            PRINTFORMW -Rigle
+            RESETCOLOR
+        ELSE
+            PRINTFORMDL You try to read the note, but the handwriting is too messy.
+            PRINTFORMDW It probably says that they couldn't find anything and that they're offering some compensation.
+        ENDIF
+    ENDIF
+    PRINTFORMDL
+    CALL GET_MONEY_YEN(1000, 2)
+ELSE
+    PRINTFORMDW There were some materials inside!
+    PRINTFORMDL
+    SELECTCASE ItemFound
+    CASE 3000 TO 3999
+	CALL GET_WEAPON(ItemFound-3000, TFLAG:194 , 2)	
+    CASEELSE
+    LOCALS = %ITEMNAME:(ItemFound)%
+    CALL GET_ITEM(LOCALS, QuantityFound, 2)
+    ENDSELECT
+ENDIF
+PRINTFORMDL
+
+@IFS_CALCULATE_PRICE
+#FUNCTION
+IF TALENT:[[リグル]]:恋人
+    RETURNF 0
+ELSEIF MARK:[[リグル]]:反発刻印 > 0
+    RETURNF 15000 * MARK:[[リグル]]:反発刻印 + 1
+ELSEIF IS_FALLEN([[リグル]])
+    RETURNF 7500
+ELSE
+    RETURNF 15000
+ENDIF
+
+@IFS_SUBSCRIBE
+#DIM IFS_COST
+IF FLAG:蟲の採集サービス
+    PRINTFORMDL
+    PRINTFORMW The contract with the Insects' Foraging Service has reached its end.
+    PRINTFORMW Send a renewal request?
+    PRINTFORML Money:%金額表示(MONEY)%
+    IFS_COST = IFS_CALCULATE_PRICE()
+    CALL ASK_M("Cancel",1,@"Renew (￥{IFS_COST})",MONEY >= IFS_COST)
+    IF RESULT > 0
+        SELECTCASE RESULT
+            CASE 1
+                MONEY -= IFS_COST
+        ENDSELECT
+        PRINTFORMW The contract has been renewed.
+        PRINTFORMDL
+        PRINTFORML You are currently receiving materials from %GET_MAPNAME(FLAG:蟲の採集サービス - 1)%.
+        PRINTFORMW Speak to %CALLNAME:[[リグル]]% if you want to change this.
+    ELSE
+        FLAG:蟲の採集サービス = 0
+    ENDIF
+    PRINTFORMDL
+ENDIF
+
+;------------------------------------------------------
+;process the extra flags
+;when starting the day
+@EVENTTRAIN
+SIF FLAG:蟲の採集サービス && !inTrain
+    CALL IFS_GATHER
+
+;ng reset
+@NG_CUSTOM_RESET_VAR_2
+FLAG:蟲の採集サービス = 0 ;reset Insect's Foraging Service contract, pr 106

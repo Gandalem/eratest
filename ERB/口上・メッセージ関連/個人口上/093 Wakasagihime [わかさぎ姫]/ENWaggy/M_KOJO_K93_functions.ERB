@@ -1,0 +1,900 @@
+;--------------------------------------------------------------------------------------
+;functions
+;instead of copypasting stuff that shouldn't be copypasted
+;i trust that the game will properly assign talents and not make all of this extremely awkward
+;i have no idea of what i am doing, what the fuck is an arg (update, i now know what an arg is but still not idea of what i'm doing)
+;--------------------------------------------------------------------------------------
+
+;================================================================
+;fall state stuff
+;these ended up more of a gauge of waggy's attitude toward's the player more than fall state checks
+;maybe i should have gone with what parsee does, huh
+;and to think i had absolutely no ambition or high expectation for this dialogue when i first started writing it a full year ago
+;this has truly been a very, very long roundabout path
+;================================================================
+
+@K93_LOVE_LUST_LOVER() ;love or lust or lover
+#FUNCTION
+RETURNF TALENT:93:恋慕 || TALENT:93:愛欲 || TALENT:93:恋人
+
+;------------------------------------------------------------------------
+
+@K93_YEARNING_SEXFRIEND(ARG) ;sexfriend or yearning (plus schizophrenic mechanic that i came up with relating to the uncertainty if she likes you or not at sex friend)
+#FUNCTION
+IF ARG && !(TALENT:93:思慕 || TALENT:93:セフレ == 2) ;arg and doesn't have yearning or mistress, applies randomness
+	IF !RAND:3 ;1/3 chance
+		RETURNF TALENT:93:セフレ || TALENT:93:思慕
+	ELSE
+		RETURNF 0
+	ENDIF
+ELSE ;defaults to if arg empty, non random
+	RETURNF TALENT:93:セフレ || TALENT:93:思慕
+ENDIF
+
+;------------------------------------------------------------------------
+
+@K93_ROMANTIC() ;love or yearning, probably going to go unused
+#FUNCTION
+RETURNF TALENT:93:恋慕 || TALENT:93:思慕
+
+;------------------------------------------------------------------------
+
+@K93_EROTIC() ;sex friend or lust, probably going to go unused as well
+#FUNCTION
+RETURNF TALENT:93:セフレ || TALENT:93:愛欲
+
+;------------------------------------------------------------------------
+
+@K93_FRIENDSHIP() ;she definitely likes you a bit more now, numbers based on grassroots event requirements (this used to be a more complex thing which is why it's a function)
+#FUNCTION
+RETURNF ABL:93:親密 >= 2
+
+;------------------------------------------------------------------------
+
+@K93_UNREQUITED(ARG = 0) ;you have a lover but it's not her, hurts a little
+#FUNCTION
+SIF LOVER_COUNT() > 1 && ARG ;arg is for lines that only makes sense if the player is monogamous
+	RETURNF 0
+RETURNF TALENT:MASTER:恋人 && !TALENT:93:恋人
+
+;------------------------------------------------------------------------
+
+@K93_ISFAUXCONFESSION() ;handles conditions for the faux confession
+#FUNCTION
+RETURNF !VAR_OR_DEFAULT("MORELOVER") && K93_UNREQUITED() ;no morelover enabled, player has a lover that is not waggy
+
+;------------------------------------------------------------------------
+
+@K93_MAD(ARG = 0) ;hatemark 3 (or bigger) or bukigire (just mad at you)
+#FUNCTION
+RETURNF MARK:93:反発刻印 >= 3 || CFLAG:93:ブチギレ
+
+;------------------------------------------------------------------------
+
+@K93_ISLEWD() ;common function used to check for impromptu sex events, only ever present under K93_LOVE_LUST_LOVER checks...
+#FUNCTION
+SIF !K93_LOVE_LUST_LOVER() ;...but a little failsafe has never hurt anyone!
+	RETURNF 0
+SIF BASE:MASTER:精力 == 0 && HAS_PENIS(MASTER) ;if player has penis and has no vig left, that'd just be cock and ball torture but without the balls
+	RETURNF 0
+SIF !(CFLAG:93:既成事実 & 合意_うふふ) ;no consent for sex
+	RETURNF 0
+SIF K93_MAD() ;she won't do it if she's mad
+	RETURNF 0
+SIF TALENT:93:淫乱 || TALENT:93:ヤリマン || TALENT:93:愛欲 ;lewd, slut and lust ignore below requirements with an automatic pass
+	RETURNF 1
+;sexual frustration above 20%, lewd mark 3 and pleasure mark 3 or rape mark 3
+RETURNF CFLAG:93:溜まってる度 >= 200 && MARK:93:不埒刻印 >= 3 && (MARK:93:快楽刻印 >= 3 || MARK:93:時姦刻印 >= 3)
+
+;================================================================
+;for locations, aren't there already functions for this? (all of this is so messy but it JUST works)
+;================================================================
+
+@K93_YOUVISITWAGGY() ;your current location is your hu's starting position
+#FUNCTION
+SIF K93_COHABITATION() ;if live together, return false
+	RETURNF 0
+RETURNF (CFLAG:MASTER:現在位置 == CFLAG:93:初期位置)
+
+@K93_WAGGYVISITYOU() ;hu's current location is your current starting location
+#FUNCTION
+SIF K93_COHABITATION()
+	RETURNF 0
+RETURNF (CFLAG:93:現在位置 == CFLAG:MASTER:初期位置)
+
+@K93_COHABITATION(ARG = 0) ;you two live under the same roof, same room
+#FUNCTION
+IF ARG ;currently in location
+	RETURNF (CFLAG:MASTER:初期位置 == CFLAG:93:初期位置) && (CFLAG:MASTER:現在位置 == CFLAG:93:初期位置)
+ELSE ;not necessarily in location
+	RETURNF CFLAG:MASTER:初期位置 == CFLAG:93:初期位置
+ENDIF
+
+@K93_LIVINGINMISTYLAKE() ;currently lives in misty lake
+#FUNCTION
+RETURNF GROUPMATCH(CFLAG:93:神社在住, 348, 0)
+
+@K93_ISINMISTYLAKE() ;checks if master is in the misty lake's edge, and to fix a mistake, the lakeside too
+#FUNCTION
+IF MAIN_MAP == 3 ;misty lake shore shares the same id as the library if you live in the scarlet mansion i love this game so much
+	RETURNF GROUPMATCH(CFLAG:MASTER:現在位置, 343, 347)
+ELSE
+	RETURNF CFLAG:MASTER:現在位置 == 310
+ENDIF
+
+;================================================================
+;namecalling (honorifics and nickname)
+;================================================================
+
+@K93NICK(ARG = 0) ;her nickname, stops being used on hate mark 3, arg ignores the hate mark mechanic
+#FUNCTIONS
+SIF MARK:93:反発刻印 >= 3 && !ARG
+	RETURNF @"%CALLNAME:93%"
+SELECTCASE CFLAG:93:K93EN_NICKNAME
+CASE 0
+	RETURNF @"%CALLNAME:93%"
+CASE 1
+	RETURNF "Waggy"
+CASE 2
+	RETURNF "Waggysaggy"
+CASE 3
+	RETURNF @"%NICKNAME:93%"
+CASEELSE
+	RETURNF "REPORT THIS"
+ENDSELECT
+
+;------------------------------------------------------------------------
+
+@K93_HONORIFIC(ARG = -1) ;honorifics, comes with names as well
+#FUNCTIONS
+SIF ARG == -1 ;failsafe in case for empty ARG instead of defaulting to MASTER (0)
+	RETURNF "-EMPTY, REPORT THIS"
+
+IF LS_ACTIVE() == "Scarlet" && GETBIT(QUEST_FLAG(LSScarletAlias,QLSScarletEvent),QBitLSScarletWakasagihimeMonsterFishing) ;added LS, calls certain characters certain honorifics after being fished up
+	SELECTCASE ARG
+	CASE 16 ;remilia
+		RETURNF @"%CALLNAME:ARG%-sama"
+	CASE 15, 50, 54, 58, 59 ;sakuya, flandre, patchouli, meiling, koakuma
+		RETURNF @"%CALLNAME:ARG%-san"
+	ENDSELECT
+ENDIF
+
+SELECTCASE ARG
+CASE MASTER
+	IF MARK:93:反発刻印 >= 3 ;hate mark 3, she doesn't respect you anymore
+		RETURNF @"%CALLNAME:MASTER%"
+	ELSE
+		RETURNF @"%CALLNAME:MASTER%-san"
+	ENDIF
+CASE 1 ;reimu, out of fear
+	IF FIRSTTIME("WaggyTalksWithReimu", 1, 93)
+		RETURNF @"%CALLNAME:ARG%-sama"
+	ELSE ;but will reverse to a -san once talked with
+		RETURNF @"%CALLNAME:ARG%-san"
+	ENDIF
+CASE 63, 73 ;kagerou and sekibanki, close friends
+	RETURNF @"%CALLNAME:ARG%-chan"
+CASE 71 ;shinmy, someone she respects
+	RETURNF @"%CALLNAME:ARG%-san"
+CASEELSE ;not listed here
+	IF GET_UWAKI_HISTORY(93, ARG) && (TALENT:ARG:恋慕 || TALENT:ARG:愛欲 || TALENT:ARG:恋人) ;checks for known relationship and (love or lust or lover), respect by association
+		RETURNF @"%CALLNAME:ARG%-san"
+	ELSE
+		RETURNF @"%CALLNAME:ARG%"
+	ENDIF
+ENDSELECT
+
+;------------------------------------------------------------------------
+
+@K93_CHILDHONORIFIC(ARG, ARG:1) ;endearingly refers to children with -chan, even when they're all grown up
+#FUNCTIONS
+SIF !ARG ;if no arg, defaults to TARGET
+	ARG = TARGET
+SIF !ARG:1 ;if no arg:1, get number from the child raising talent
+	ARG:1 = TALENT:ARG:育児中
+RETURNF @"%CHILDNAME:ARG:(ARG:1)%-chan"
+
+;================================================================
+;stuff for the moon river quest/event line (named in development SEE_WORLD)
+;================================================================
+
+@K93_SEEWORLD_EVENTS_TRY() ;checks if you are able to see an event here, holy shit this is (i'm) so retarded
+#FUNCTION
+SIF LS_ACTIVE() == "Scarlet" && !QUEST_FLAG(LSScarletAlias,QLSScarletEnd) ;added, LS check
+	RETURNF 0
+SIF CFLAG:93:K93EN_SEEWORLD >= 8 ;allow me to spare you of all these retarded checks if there is no need for them anymore
+	RETURNF 0
+SIF K93_MAD() || TCVAR:93:泥酔 || CFLAG:93:添い寝中 || !SHIRAHU(93) ;if she is mad, drunk, co-sleeping, unconscious or time stopped, let me stop you right there
+	RETURNF 0
+{
+SIF (!WaggySeenWorld:1 && GROUPMATCH(CFLAG:MASTER:現在位置, 920, 946)) || (!WaggySeenWorld:2 && GROUPMATCH(CFLAG:MASTER:現在位置,  620, 602)) 
+|| (!WaggySeenWorld:3 && GROUPMATCH(CFLAG:MASTER:現在位置, 730, 708)) || (!WaggySeenWorld:4 && GROUPMATCH(CFLAG:MASTER:現在位置, 830, 805)) || 
+(!WaggySeenWorld:5 && GROUPMATCH(CFLAG:MASTER:現在位置, 1090, 1015)) || (!WaggySeenWorld:6 && GROUPMATCH(CFLAG:MASTER:現在位置, 810, 801, 802)) || 
+(!WaggySeenWorld:0 && GROUPMATCH(CFLAG:MASTER:現在位置, 720, 703)) ;pain
+}
+RETURNF 1
+
+;------------------------------------------------------------------------
+
+@K93_WORLDTOSEEINCREASE
+LOCAL = MIN(10, CFLAG:93:好感度 / 10)
+CFLAG:93:好感度 += LOCAL * 2
+CFLAG:93:信頼度 += LOCAL
+PALAM:93:好意 += LOCAL * 10
+TALENT:機嫌 = 1 ;makes her happy as well
+TIME += 15 ;time
+PRINTL
+IF CFLAG:93:K93EN_SEEWORLD == 0 ;you fuck, you actually somehow started this without the introductory text in dating
+	PRINTL
+	PRINTFORMW 「%K93_HONORIFIC(MASTER)%, could I ask you for something?」
+	PRINTFORMDW You turn to face %K93NICK()%, ready to listen to what %HE_SHE(93, 0)% has to say.
+	PRINTFORML 「See, I seldom get to be anywhere that is not the Misty Lake or the Human Village.」
+	IF GETBIT(FLAG:プール, 3) ;has bubble
+		PRINTFORMW 「Even with the gift you gave me, I simply wouldn't know where to go...」
+	ELSE
+		PRINTFORMW 「This body of mine doesn't allow me to come and go freely...」
+	ENDIF
+	PRINTFORMDL %K93NICK()% musters sufficient courage, meeting your eyes %HIS_HER(93, 0)% own.
+	PRINTFORMW 「And so I was wondering, would you kindly take me to more waters like this one.」
+	PRINTFORMW 「I don't have much to offer in return, but it would fill me with joy, to see more of this world I inhabit.」
+	PRINTL
+	CALL K93_E_SEEWORLD_START
+	PRINTL
+	PRINTFORMW 「So if you may, keep this request in mind for our next date, %K93_HONORIFIC(MASTER)%.」
+ENDIF
+CFLAG:93:K93EN_SEEWORLD ++
+FONTITALIC
+PRINTFORMW %CALLNAME:93% has experienced a bit more of the world today...
+IF CFLAG:93:K93EN_SEEWORLD == 8
+	PRINTFORMW Moon River ー All locations visited!
+ELSE
+	PRINTFORMW Moon River ー Locations visited:【{CFLAG:93:K93EN_SEEWORLD - 1}/7】
+ENDIF
+FONTREGULAR
+
+;================================================================
+;things dedicated to her carry mechanic
+;================================================================
+
+@K93_CARRYSTATUS() ;0 is carry (default), 1 is wheelchair, 2 is bubble, used mainly for gameplay related calculations and not the player's choice
+#FUNCTION
+
+SIF GET_MAPID(CFLAG:93:現在位置) == 2 ;human village defaults to wheelchair
+	RETURNF 1
+
+IF K93_MAD() ;refuses to be carried
+	IF GETBIT(FLAG:プール, 3) ;has bubble
+		RETURNF 2
+	ELSE ;no bubble, time to get that upper body strength to work
+		RETURNF 1
+	ENDIF
+ENDIF
+
+IF CFLAG:93:K93EN_WAGGYCARRY == 0 ;carry
+	RETURNF 0
+ELSEIF CFLAG:93:K93EN_WAGGYCARRY == 1 ;wheelchair
+	RETURNF 1
+ELSEIF CFLAG:93:K93EN_WAGGYCARRY == 2 ;bubble
+	RETURNF 2
+ENDIF
+
+;------------------------------------------------------------------------
+
+@K93_CARRYABLE() ;available if in any fall state and mostly a copypaste of the com_able for lead around because the game really didn't let me just check it
+#FUNCTION
+SIF IS_FALLEN(93)
+	RETURNF 1
+SIF FLAG:70
+	RETURNF 0
+SIF !TFLAG:100
+	RETURNF 0
+SIF GLOBAL_COMABLE(351)
+	RETURNF RESULT
+SIF BASE:MASTER:気力 <= 0
+	RETURNF 0
+SIF CFLAG:うふふ
+	RETURNF 0
+SIF COM_351_CONDITION(TARGET) == 0
+	RETURNF 0
+RETURNF 1
+
+;------------------------------------------------------------------------
+
+@K93_CARRYEFFECTS(ARG, ARG:1) ;applies effects, arg and arg:1 are for use in game files
+;there are LOCALs in use where this function is summoned and i have heard enough horror stories about LOCALs so i will use DIMs for once
+;ARG is only ever to be filled if it's used in the game's files for distance processing, ARG:1 is for distance traveled
+#DIM K93_RELATIONSHIP_GAIN
+#DIM K93_STA_DECREASE
+SIF !ARG:1 ;if there's no distance traveled, default to 1 for the sake of multiplications
+	ARG:1 = 1
+SELECTCASE K93_CARRYSTATUS()
+CASE 0 ;CARRY
+	IF SHIRAHU(93)
+		K93_RELATIONSHIP_GAIN = MIN(5, CFLAG:93:好感度 / 200)
+		CFLAG:93:好感度 += K93_RELATIONSHIP_GAIN * 5
+		CFLAG:93:信頼度 += K93_RELATIONSHIP_GAIN
+		PALAM:93:好意 += K93_RELATIONSHIP_GAIN * 10
+	ENDIF
+
+	SIF TALENT:MASTER:力持ち && ABL:MASTER:戦闘能力 <= 3 ;having [strong mooscles] but not high combat lets you skip a bit of effort
+		GOTO MOOSCLES_STAMINA
+
+	SELECTCASE ABL:MASTER:戦闘能力
+	CASE IS <= 0
+		K93_STA_DECREASE = 240
+	CASE 1
+		K93_STA_DECREASE = 130
+	CASE 2
+		K93_STA_DECREASE = 70
+	CASE 3
+		K93_STA_DECREASE = 50
+	CASE 4
+		$MOOSCLES_STAMINA
+		K93_STA_DECREASE = 30
+	CASE 5
+		K93_STA_DECREASE = 20
+	CASE IS >= 6
+		K93_STA_DECREASE = 10
+	ENDSELECT
+	
+	SIF TALENT:MASTER:力持ち && ABL:MASTER:戦闘能力 <= 3
+		GOTO MOOSCLES_TIME
+	
+	IF ARG
+		LOCAL:9 = MIN(K93_STA_DECREASE * ARG:1, 750) ;scales with steps walked, caps at 750 because i'm a good guy
+		[IF_DEBUG]
+			PRINTFORMDW CARRYING WAGGY, STAMINA DECREASING BY {LOCAL:9}
+		[ENDIF]
+		BASE:MASTER:体力 -= LOCAL:9
+		SELECTCASE ABL:MASTER:戦闘能力
+		CASE IS <= 1
+			TIME += 3 * ARG:1
+		CASE 2 TO 3
+			TIME += 2 * ARG:1
+		CASE IS >= 4
+			$MOOSCLES_TIME
+			;no time changes, full throttle despite the added 200lb of fish pussy and ass
+		ENDSELECT
+	ELSE
+		CALL RECOVER(MASTER, -K93_STA_DECREASE,"体力", @"Carrying %CALLNAME:93%")
+	ENDIF
+CASE 1 ;CHAIR
+		SIF ABL:MASTER:戦闘能力 <= 1 && !TALENT:PLAYER:力持ち && ARG ;would basing this on terrain roughness be too much?
+			TIME += 2 * ARG:1
+CASE 2 ;BUBBLE
+	IF SHIRAHU(93)
+		K93_RELATIONSHIP_GAIN = MIN(3, CFLAG:93:好感度 / 500)
+		CFLAG:93:好感度 += K93_RELATIONSHIP_GAIN * 5
+		CFLAG:93:信頼度 += K93_RELATIONSHIP_GAIN
+		PALAM:93:好意 += K93_RELATIONSHIP_GAIN * 10
+	ENDIF
+ENDSELECT
+
+;================================================================
+;misc stuff
+;================================================================
+
+@K93_ISPREGNANCYDESIRABLE() ;checks if having a desire for pregnancy would be the sane thing to do
+#FUNCTION
+SIF CFLAG:93:妊娠自覚状態 || TALENT:93:NESTING || TALENT:93:妊娠 ;failsafe, if already pregnant or nesting then just return 0
+	RETURNF 0
+SIF !FLAG:妊娠スイッチ ;failsafe, if pregnancy is disabled
+	RETURNF 0
+SIF TALENT:93:妊娠願望 ;already desiring for pregnancy
+	RETURNF 0
+SIF !K93_LOVE_LUST_LOVER() ;can only acquire at higher fall states
+	RETURNF 0
+SIF !HAS_PENIS(MASTER) ;if the player doesn't have a penis he can't really impregnate anyone
+	RETURNF 0
+;the check itself, V experience bigger than 200, intimacy bigger or equal to 15 and love exp equal or bigger than 200
+RETURNF EXP:93:Ｖ性交経験 > 200 && ABL:93:親密 >= 15 && EXP:93:愛情経験 >= 200
+
+@K93_MARRYANDREPRODUCE ;applies desire for prengancy and flips the bit for "allows unprotected"
+PRINTL
+FONTITALIC
+PRINTFORMDW ※ %CALLNAME:93% now [Desires Pregnancy]%COND_STR(@", allowing you to have unprotected sex with %HIM_HER(93, 0)% even on dangerous days.", CFLAG:93:生解禁 != 2)%.
+FONTREGULAR
+TALENT:93:妊娠願望 = 1 ;applies desire for pregnancy talent (gets removed on pregnancy acquisition)
+CFLAG:93:生解禁 = 2 ;allows for raw sex (this one gets to stay)
+CFLAG:93:K93EN_DESIRESPREGGO = 1 ;want to track that she had this talent until birth
+
+;------------------------------------------------------------------------
+
+@K93_TIMESTOPCONSENT ;made this into its own thing in case i added alternative means to get tsp consent
+PRINTL
+FONTITALIC
+PRINTFORMDW ※ %CALLNAME:93% now consents to sexual activities during stopped time.
+FONTREGULAR
+CFLAG:93:時間停止バレ = 1 ;tsp awareness
+CALLF FIRSTTIME("WaggyTSPTalk", 0, 93)
+
+;------------------------------------------------------------------------
+
+@K93_CANHUGRECOVER() ;checks if player is eligible for one (1) daily energy recovery hug
+#FUNCTION
+SIF !K93_LOVE_LUST_LOVER() ;failsafe
+	RETURNF 0
+RETURNF ONCE("WaggyHugRecover", 1, 93) && (GETPERCENT(BASE:MASTER:気力, MAXBASE:MASTER:気力) <= 40 || BASE:MASTER:体力 <= 900) ;hasn't happened today, player either has 50% or lower sta, or low ene (player passes out at below 500)
+
+;------------------------------------------------------------------------
+
+@K93_TSPWHOLESOMEGEMGAIN ;for applying tsp wholesome action gains, the numbers came to me through a dream
+LOCAL:1 = 800 + (ABL:93:親密 * 300 + RAND:100)
+LOCAL:2 = (ABL:93:親密 * 2 + RAND:10)
+LOCAL:3 = (ABL:93:親密 * 3 + RAND:10)
+JUEL:93:好意 += LOCAL:1 ;favor juels
+CFLAG:93:好感度 += LOCAL:2 ;favorability
+CFLAG:93:信頼度 += LOCAL:3 ;reliability
+PRINTL
+PRINTFORMDL Favor +{LOCAL:2}
+PRINTFORMDL Trust +{LOCAL:3}
+PRINTFORMDW %PALAM_TR("好意")% +{LOCAL:1}
+
+;------------------------------------------------------------------------
+
+@K93_TIMEPASSDOTS(ARG, ARGS = "w", ARG:1) ;arg is for amount of time, args for text mode
+;minimum of five dots
+LOCALS = .....
+FOR LOCAL, 0, ARG / 3 ;divide time by three, same effect as only count every 3 time
+	SIF LOCAL >= 25 ;limit it to 25 dots
+		BREAK
+	LOCALS += "."
+NEXT
+SELECTCASE ARGS
+CASE "w", "W"
+	PRINTFORMDW %LOCALS%
+CASE "L", "l"
+	PRINTFORMDL %LOCALS%
+CASEELSE
+	PRINTFORMD %LOCALS%
+ENDSELECT
+SIF !ARG:1 ;setting this arg to any value doesn't actually apply time
+	TIME += ARG
+PRINTL
+
+;------------------------------------------------------------------------
+
+@K93_WAGGYKNOWS(ARG = -1)
+#FUNCTION
+SIF ARG == -1 ;if empty, lets just return as to avoid weirdness, function is never supposed to be used without an arg
+	DEBUGPRINTFORML WAGGYKNOWS USED WITHOUT AN ARG
+	RETURNF 0
+SIF GROUPMATCH(ARG, 63, 73) ;kagerou and sekibanki, closest friends
+	RETURNF 1
+SIF GROUPMATCH(ARG, 1, 11, 14, 15, 71) ;reimu, marisa, cirno, sakuya, shinmyoumaru, has canonically or plausibly met (friendly circumstances or not)
+	RETURNF 2
+;SIF ARG == 68 && !FIRSTTIME("WaggyMeetsYuuka", 1, 93) ;yuuka if and when i get to that event
+	;RETURNF 3
+SIF GET_UWAKI_HISTORY(93, ARG) ;has bounded over a common interest, this case the player's cock and balls
+	RETURNF 3
+RETURNF 0
+
+;------------------------------------------------------------------------
+
+@K93_ISYOUKAIFOURSOMENETWORK(ARG = 0) ;checks for relationship permissions on Grassroot Youkai Network members (unused as of now)
+#FUNCTION
+IF !ARG ;mutual allowed relationships on every youkai grassroot member with one another (this one is a clusterfuck, could probably simplify it)
+	;lets make sure that they have no hate marks
+	SIF MARK:93:反発刻印 || MARK:63:反発刻印 || MARK:73:反発刻印
+		RETURNF 0
+	;lets make sure that they are all on least on one of the higher fall states
+	SIF !((TALENT:93:恋慕 || TALENT:93:愛欲 || TALENT:93:恋人) && (TALENT:63:恋慕 || TALENT:63:愛欲 || TALENT:63:恋人) && (TALENT:73:恋慕 || TALENT:73:愛欲 || TALENT:73:恋人))
+		RETURNF 0
+	RETURNF (GET_UWAKI_HISTORY(93, 63) == 2 && GET_UWAKI_HISTORY(63, 93) == 2) && (GET_UWAKI_HISTORY(93, 73) == 2 && GET_UWAKI_HISTORY(73, 93)== 2) && (GET_UWAKI_HISTORY(63, 73) == 2 && GET_UWAKI_HISTORY(73, 63)== 2)
+ELSE ;checks mutual permission only on arg, not necessarily the Grassroot Youkai Network member
+	RETURNF GET_UWAKI_HISTORY(93, ARG) && GET_UWAKI_HISTORY(ARG, 93)
+ENDIF
+
+;------------------------------------------------------------------------
+
+@K93_PRINTBED(ARG = 0, ARG:1 = 0) ;returns as a string what kind of bed should a room have
+#FUNCTIONS
+SIF !ARG ;no arg, lets default to master's current location
+	ARG = CFLAG:MASTER:現在位置
+IF INROOM(ARG) == 2 ;western style
+	LOCALS = bed
+ELSE ;outside or japanese
+	LOCALS = futon
+ENDIF
+SIF ARG:1 ;ARG:1 has any value in it, lets capitalize LOCALS before returning it
+	LOCALS '= @"%CAPITALIZE(LOCALS)%"
+RETURNF LOCALS
+
+;------------------------------------------------------------------------
+
+@K93_CHARA_HPH(ARG, ARGS, MODE = "l")
+#DIMS MODE
+LOCAL = GETCOLOR()
+RESETCOLOR
+SIF FLAG:口上色
+    CALL SET_KOJO_COLOR(ARG)
+CALL HPH_PRINT,@"%ARGS%", MODE
+SETCOLOR LOCAL
+
+;------------------------------------------------------------------------
+
+@K93_PRINT_INSTRUMENT(ARG) ;prints instrument player is using, careful when using it outside of [416] Musical Performance/演奏する!
+#FUNCTIONS
+SELECTCASE TFLAG:使用楽器
+CASE 1
+	LOCALS = keyboard
+CASE 2
+	LOCALS = piano
+CASE 3
+	LOCALS = guitar
+CASE 4
+	LOCALS = trumpet
+CASE 5
+	LOCALS = violin
+CASEELSE
+	LOCALS = INVALID INSTRUMENT, PLEASE REPORT ONEGAI
+	RETURNF LOCALS
+ENDSELECT
+SIF ARG ;arg capitalizes
+	LOCALS '= @"%CAPITALIZE(LOCALS)%"
+RETURNF LOCALS
+
+;------------------------------------------------------------------------
+
+@K93_EVENTCALL(ARG) ;important events that can be called during conversation, ARG (0 = Daily greeting, 1 = Conversation, 2 = Returning from date)
+SIF K93_MAD() || TCVAR:93:泥酔 || !K93_FRIENDSHIP() || CFLAG:93:添い寝中 || !SHIRAHU(93)
+	RETURN 0
+;moon river conclusion
+IF CFLAG:93:K93EN_SEEWORLD == 8 && !(ARG == 1 && CHK_DATENOW(CFLAG:93:デート中))
+	CALL K93_E_SEEWORLD_CONCLUSION(ARG)
+	RETURN 1
+ENDIF
+;faux confession, added LS plug-up
+IF FIRSTTIME("WaggyFauxConfession", 1, 93) && K93_ISFAUXCONFESSION() && K93_LOVE_LUST_LOVER() && NUMBER_OF_PEOPLE() == 1 && LS_LUNATIC_TIME() == 0
+	CALL K93_E_FAUXCONFESSION(ARG)
+	RETURN 1
+ENDIF
+;water sphere
+IF IS_FALLEN(93) && ITEM:避水の玉 == 0
+	CALL K93_E_WATERSPHERERECEIVE(ARG)
+	RETURN 1
+ENDIF
+;you visit her for the first time in misty lake, redundant with 698,部屋に入る
+IF K93_YOUVISITWAGGY() && K93_LIVINGINMISTYLAKE() && ARG != 2 && FIRSTTIME("YouVisitWaggyMistyLake", 1, 93)
+	CALL K93_E_YOUVISITWAGGY(ARG)
+	RETURN 1
+ENDIF
+;you visit her for the first time in her room but she has moved elsewhere, impossible in 698,部屋に入る since that requires you to not share the same map
+IF K93_YOUVISITWAGGY() && !K93_LIVINGINMISTYLAKE() && ARG != 2 && FIRSTTIME("YouVisitWaggyAboveWater", 1, 93)
+	CALL K93_E_YOUVISITWAGGY(ARG)
+	RETURN 1
+ENDIF
+;she visits you, there is no kojo call for this
+IF K93_WAGGYVISITYOU() && FIRSTTIME("WaggyVisitsYou", 1, 93)
+	CALL K93_E_WAGGYVISITSYOU
+	RETURN 1
+ENDIF
+;TSP confession
+IF K93_LOVE_LUST_LOVER() && !CFLAG:93:時間停止バレ && FIRSTTIME("WaggyTSPConfess", 1, 93) && GETBIT(CFLAG:93:既成事実, 1) && ARG == 1 && MAXBASE:MASTER:TSP > 0 && NUMBER_OF_PEOPLE() == 1
+	CALL TSP_E_TIMESTOPCONFESS
+	RETURN 1
+ENDIF
+;TSP rape addressment
+IF K93_LOVE_LUST_LOVER() && !CFLAG:93:時間停止バレ && FIRSTTIME("WaggyTSPTalk", 1, 93) && CFLAG:93:K93EN_TSPSUSPICION >= 100 && GETBIT(CFLAG:93:既成事実, 1) && ARG == 1 && MAXBASE:MASTER:TSP > 0 && NUMBER_OF_PEOPLE() == 1
+	CALL K93_E_TIMESTOPCONFRONT
+	RETURN 1
+ENDIF
+;cheating addressment
+IF !FIRSTTIME("WaggyCheatingNotReally", 1, 93) && FIRSTTIME("WaggyLetsTalkGroupSex", 1, 93) && K93_LOVE_LUST_LOVER() && ARG == 1 && NUMBER_OF_PEOPLE() == 1
+	CALL K93_E_THREESOMETALK
+	RETURN 1
+ENDIF
+;taking with reimu
+IF (K93_LOVE_LUST_LOVER() || CFLAG:93:K93EN_SEEWORLD >= 9) && FIRSTTIME("WaggyTalksWithReimu", 1, 93) && SELECTCOM == 300 && IS_HERE(1)
+	CALL K93_E_WAGGYTALKSWITHREIMU
+	RETURN 1
+ENDIF
+RETURN 0
+;------------------------------------------------------------------------
+
+@K93_GRASSROOTSWHOLESOMEGAIN ;handles favor, trust and care gain on some events involving kagerou and sekibanki
+;sekibanki
+PRINTL
+LOCAL:1 = 800 + (ABL:73:親密 * 8 + RAND:100)
+LOCAL:2 = (ABL:73:親密 * 2 + RAND:10)
+LOCAL:3 = (ABL:73:親密 * 3 + RAND:10)
+JUEL:73:好意 += LOCAL:1
+CFLAG:73:好感度 += LOCAL:2
+CFLAG:73:信頼度 += LOCAL:3
+PRINTFORMDL Favor +{LOCAL:2}
+PRINTFORMDL Trust +{LOCAL:3}
+PRINTFORMDL %PALAM_TR("好意")% +{LOCAL:1}
+;kage
+LOCAL:4 = 800 + (ABL:63:親密 * 8 + RAND:100)
+LOCAL:5 = (ABL:63:親密 * 2 + RAND:10)
+LOCAL:6 = (ABL:63:親密 * 3 + RAND:10)
+JUEL:63:好意 += LOCAL:4
+CFLAG:63:好感度 += LOCAL:5
+CFLAG:63:信頼度 += LOCAL:6
+PRINTFORMDL Favor +{LOCAL:5}
+PRINTFORMDL Trust +{LOCAL:6}
+PRINTFORMDW %PALAM_TR("好意")% +{LOCAL:4}
+
+;------------------------------------------------------------------------
+
+@K93_RANDVAL(ARG:1, ARG:2) ;picks a random value out of given values, can probably be made to handle more than two but i'm currently lazy
+#FUNCTION
+IF RAND:2
+	LOCAL = ARG:1
+ELSE
+	LOCAL = ARG:0
+ENDIF
+RETURNF LOCAL
+
+;------------------------------------------------------------------------
+
+@K93_DAYGREET(ARG = 1)
+#FUNCTIONS
+SELECTCASE TIME:2
+CASE 1,2
+	LOCALS = good morning
+CASE 3,4
+	LOCALS = good afternoon
+CASE 5,6,7
+	LOCALS = good evening
+CASEELSE
+	LOCALS = hello there
+ENDSELECT
+SIF ARG ;if arg, then capitalization (there by default since it's the most common use for me)
+	LOCALS '= @"%CAPITALIZE(LOCALS)%"
+RETURNF LOCALS
+
+;------------------------------------------------------------------------
+
+@K93_ISACCOMPANYING(ARG) ;character is accompanying or dating master, used for a few very niche checks in this dialogue
+#FUNCTION
+SIF !ARG
+	ARG = TARGET
+RETURNF CFLAG:ARG:同行 || CHK_DATENOW(CFLAG:ARG:デート中) ;the second part is a bit redundant, but better safe than sorry
+
+;------------------------------------------------------------------------
+
+@K93_DAYANDNIGHT(ARGS, ARG = 0) ;prints some stuff sensitive to daytime
+#FUNCTIONS
+ARGS = %TOLOWER(ARGS)%
+SELECTCASE ARGS
+CASE "today", "tonight"
+	IF TIME:2 >= 5 ;evening, night, late night
+		LOCALS = tonight
+	ELSE
+		LOCALS = today
+	ENDIF
+CASE "morning", "day", "evening", "night"
+	SELECTCASE TIME:2
+	CASE 1 TO 2 ;early morning and before noon
+		LOCALS = morning
+	CASE 3 ;noon and afternoon
+		LOCALS = day
+	CASE 4 ;evening
+		LOCALS = evening
+	CASEELSE
+		LOCALS = night
+	ENDSELECT
+CASEELSE
+	LOCALS = INVALID PLEASE REPORT
+	RETURNF LOCALS
+ENDSELECT
+SIF ARG ;if arg, capitalize
+	LOCALS '= @"%CAPITALIZE(LOCALS)%"
+RETURNF LOCALS
+
+;------------------------------------------------------------------------
+
+@K93_CANDISCOVERTSP()
+#FUNCTION
+SIF !K93_LOVE_LUST_LOVER()
+	RETURNF 0
+SIF !FIRSTTIME("WaggyTSPDiscovered", 1, 93)
+	RETURNF 0
+SIF !CFLAG:93:時間停止バレ
+	RETURNF 0
+RETURNF CFLAG:93:K93EN_TSPSUSPICION >= 100
+
+;------------------------------------------------------------------------
+
+@K93_CHILDCOLOR(ARG)
+#FUNCTION
+SIF !ARG ;if no arg, then default to childcare talent
+	ARG = TALENT:93:育児中
+IF CHILD_SEX:93:(ARG) == 1 ;fucked up name for a variable now that i think about it
+	RETURNF 0XFFB6C1 ;light pink for girls
+ELSE
+	RETURNF 0XADD8E6 ;light blue for boys
+ENDIF
+
+;------------------------------------------------------------------------
+
+@K93_PRINT_CHILDSEX(ARGS, ARG = -1, ARG:1 = -1) ;PRINT_MALE but for children, structure seized and redistributed from PRINT_MALE function
+#FUNCTIONS
+SIF ARG < 0 ;defaults to target
+	ARG = TARGET
+SIF ARG:1 < 0 ;defaults to childcare talent
+	ARG:1 = TALENT:ARG:育児中
+SIF !STRLENS(ARGS)
+	ARGS = guy
+IF STRFIND(ARGS, "_") >= 0
+	ARGS '= REPLACE(ARGS, "_", "")
+	GOTO CUSTOM
+ENDIF
+SELECTCASE SPLIT_SINGLE(TOLOWER(ARGS))
+CASE "boy"
+	LOCALS '= CHILD_SEX:ARG:(ARG:1) == 2 ? TOLOWER(ARGS) # "girl"
+CASE "man"
+	LOCALS '= CHILD_SEX:ARG:(ARG:1) == 2 ? TOLOWER(ARGS) # "woman"
+CASE "lad"
+	LOCALS '= CHILD_SEX:ARG:(ARG:1) == 2 ? TOLOWER(ARGS) # "lass"
+CASE "guy"
+	LOCALS '= CHILD_SEX:ARG:(ARG:1) == 2 ? TOLOWER(ARGS) # "girl"
+CASE "fellow", "fella"
+	LOCALS '= CHILD_SEX:ARG:(ARG:1) == 2 ? TOLOWER(ARGS) # "gal"
+CASE "male"
+	LOCALS '= CHILD_SEX:ARG:(ARG:1) == 2 ? TOLOWER(ARGS) # "female"
+CASE "mister"
+	LOCALS '= CHILD_SEX:ARG:(ARG:1) == 2 ? TOLOWER(ARGS) # "miss"
+CASE "mr."
+	LOCALS '= CHILD_SEX:ARG:(ARG:1) == 2 ? TOLOWER(ARGS) # "ms."
+CASE "incubus"
+	LOCALS '= CHILD_SEX:ARG:(ARG:1) == 2 ? TOLOWER(ARGS) # "succubus"
+CASE "shota"
+	LOCALS '= CHILD_SEX:ARG:(ARG:1) == 2 ? TOLOWER(ARGS) # "loli"
+CASE "son"
+	LOCALS '= CHILD_SEX:ARG:(ARG:1) == 2 ? TOLOWER(ARGS) # "daughter"
+CASE "sir"
+	LOCALS '= CHILD_SEX:ARG:(ARG:1) == 2 ? TOLOWER(ARGS) # "miss"
+CASE "men"
+	LOCALS '= CHILD_SEX:ARG:(ARG:1) == 2 ? TOLOWER(ARGS) # "women"
+CASE "husband"
+	LOCALS '= CHILD_SEX:ARG:(ARG:1) == 2 ? TOLOWER(ARGS) # "wife"
+CASE "fiancé", "fiance"
+	LOCALS '= CHILD_SEX:ARG:(ARG:1) == 2 ? "fiancé" # "fiancée"
+CASE "papa"
+	LOCALS '= CHILD_SEX:ARG:(ARG:1) == 2 ? TOLOWER(ARGS) # "mama"
+CASE "son"
+	LOCALS '= CHILD_SEX:ARG:(ARG:1) == 2 ? TOLOWER(ARGS) # "daughter"
+CASE "boy"
+	LOCALS '= CHILD_SEX:ARG:(ARG:1) == 2 ? TOLOWER(ARGS) # "girl"
+CASEELSE
+	$CUSTOM
+	LOCALS '= CHILD_SEX:ARG:(ARG:1) == 2 ? SPLIT_SINGLE(TOLOWER(ARGS)) # SPLIT_SINGLE(TOLOWER(ARGS), 1)
+ENDSELECT
+RETURNF IS_CAPITALIZED(ARGS) ? CAPITALIZE(LOCALS) # LOCALS
+
+;------------------------------------------------------------------------
+
+@K93_ISSWIM() ;large enough bodies of water where she will swim in, for danmaku combat
+#FUNCTION
+;list of what she will swim is: deep road to hell, genbu ravine, mountain lake, waterfall of nine heavens (has a basin), and of course misty lake and misty lake lakeside
+;everything that she won't swim is either a pond far too small, filled with frogs, or a river for the dead to cross
+IF MAIN_MAP == 3 && CFLAG:MASTER:現在位置 == 310 ;misty lake shore shares room id with library if you live in the scarlet mansion AUGUEUAGHh
+	RETURNF 0
+ELSE
+	RETURNF GROUPMATCH(CFLAG:MASTER:現在位置, 920, 946, 720, 703, 830, 805, 810, 802, 1090, 1015, 347, 343, 310)
+ENDIF
+;================================================================
+;SEX stuff
+;================================================================
+
+@K93_ISRAPE() ;rape, rape, rape, rape, rape, rape rape rape rape, rape rape
+#FUNCTION
+SIF TCVAR:93:無理矢理 || CFLAG:93:無理矢理膣射 ;conscious rape
+	RETURNF 1
+SIF CFLAG:MASTER:イタズラ == 2 ;sleep rape
+	RETURNF 2
+RETURNF 0
+
+;------------------------------------------------------------------------
+
+@K93_ISNAKED(ARG = -1) ;should definitely make this into a helper function for other writers
+#FUNCTION
+SIF ARG == -1
+	ARG = TARGET
+RETURNF !(EQUIP:ARG:上半身上着１ || EQUIP:ARG:上半身上着２ || EQUIP:ARG:外衣 || EQUIP:ARG:着物 || EQUIP:ARG:ワンピース)
+
+;------------------------------------------------------------------------
+
+@K93_ISNOWAYFISHASSERTIVE()
+#FUNCTION
+SIF !ONCE("WaggyAssertiveFish", 1, 93) ;can only happen once a day
+	RETURNF 0
+;already rejected her once today, did her personal event line, is in heat or above 90% sexual frustration, plus a coin flip for good measure
+RETURNF !ONCE("WaggyNoWayFish", 1, 93) && CFLAG:93:K93EN_SEEWORLD >= 9 && (IN_HEAT(93) || CFLAG:93:溜まってる度 >= 900) && !RAND:2
+
+;------------------------------------------------------------------------
+
+@K93_EROEAR()
+#FUNCTION
+;in heat or sexual frustration above 90% and Csens bigger or equal than 4 and player's finger ability bigger or equal than 4
+RETURNF (IN_HEAT(93) || CFLAG:93:溜まってる度 >= 900) && ABL:93:Ｃ感覚 >= 4 && ABL:MASTER:指 >= 4
+
+;------------------------------------------------------------------------
+
+@K93_REJECTIONCONSEQUENCES()
+BASE:MASTER:勃起 = MAXBASE:MASTER:勃起 ;ERECTION RISING REVENGEANCE
+CFLAG:93:溜まってる度 += 200 ;20%+ sexual frustration
+BASE:93:ムード += 600 ;mood (should be enough for 2 hearts at least?)
+
+;------------------------------------------------------------------------
+
+@K93_PENISSIZE(ARG) ;penis size buy general size, for more generic things
+#FUNCTION
+SIF !ARG
+	ARG = MASTER
+SIF !HAS_PENIS(ARG) ;no penis
+	RETURNF 0
+SELECTCASE TALENT:ARG:形状
+CASE 1, 2 ;childlike and pathetic, small
+	RETURNF 1
+CASE 3 ;robust, a good size
+	RETURNF 2
+CASE 4, 5, 6 ;glowing, bumpy and big, always seem to be described as being on the bigger side
+	RETURNF 3
+CASE 10 ;gigantic, gigantic
+	RETURNF 4
+ENDSELECT
+
+;------------------------------------------------------------------------
+
+@K93_SEXVALRESET
+TCVAR:93:K93EN_WAGGYORGASM = 0
+TCVAR:93:K93EN_CONDOMSUSED = 0
+TCVAR:93:K93EN_PLAYERCAME = 0
+
+;------------------------------------------------------------------------
+
+@K93_TSPVALRESET
+TCVAR:93:K93EN_TSPHEADPAT = 0
+TCVAR:93:K93EN_TSPEMBRACE = 0
+TCVAR:93:K93EN_TSPKISS = 0
+
+;------------------------------------------------------------------------
+
+@K93_SETUP
+IF (TALENT:93:処女 == 0 || TALENT:93:非童貞 == 1) && FIRSTTIME("WaggyIsAPureMaiden", 0, 93) ;borrowed with no intention of returning from the marisa is a pure maiden update thingie
+	PRINTFORMDL Before I forget, it seems that %CALLNAME:93%'s innocence was lost, either due to player actions or by a game setting.
+	PRINTFORMDL This dialogue has no awareness of that, as it's not something that I would enjoy writing.
+	PRINTFORMDW That sounds like it would be a problem, don't you agree?
+	PRINTL
+	PRINTFORMDL Tell me, would you like for me to set %HIS_HER(93, 0)% virginity back to where it belongs?
+	PRINTFORMDL This will only be asked once.
+	PRINTL
+	CALL ASK_YN(@"Sure, set %HIS_HER(93, 0)% virginity proper.", "No, this was a very deliberate decision and I refuse to change it.")
+	IF RESULT == 0
+		SIF HAS_PENIS(93)
+			TALENT:93:非童貞 = 0 ;set male virginity talent (why is it 0)
+		SIF HAS_VAGINA(93)
+			TALENT:93:処女 = 1 ;set vagina virginity to 1
+		EXP:93:キス経験 = 0 ;kiss exp
+		EXP:93:挿入経験 = 0 ;insertion exp
+		EXP:93:手淫経験 = 0 ;handjob exp
+		EXP:93:口淫経験 = 0 ;oral sex exp
+		EXP:93:パイズリ経験 = 0 ;titjob exp
+		EXP:93:肛射経験 = 0 ;anal creampie exp
+		EXP:93:膣射経験 = 0 ;vaginal creampie exp
+		EXP:93:射精経験 = 0 ;ejaculation exp
+		ABL:93:膣 = 0 ;vagina
+		ABL:93:腰 = 0 ;waist
+		EXP:93:Ｖ経験 = 0 ;v exp
+		EXP:93:精液経験 = 0 ;cum experience
+		EXP:93:Ｖ性交経験 = 0 ;v intercourse exp
+		;you think i'm going too hard into this? nah, it's fiiiiine!
+		PRINTFORMDL Alright, thank you.
+		PRINTFORMDW %CALLNAME:93%'s purity is now restored!
+	ELSE
+		PRINTFORMDL I see. Then, I apologize for any inconvenience.
+		PRINTFORMDW You can also just pester me enough and I will add stuff that reflects a past lover.
+	ENDIF
+	PRINTFORMDL And now that we have reached an agreement...
+	PRINTL
+ENDIF
+
+;even if i'm not writing content for these now, doing this will save me from some problems later
+SIF (TALENT:93:処女 == 0 || TALENT:93:非童貞 == 1)
+	CFLAG:93:K93EN_PASTLOVER = 1
+SIF IS_FUTA(93)
+	CFLAG:93:K93EN_BORNTOFUTA = 1
+CFLAG:93:K93EN_WAGGYRESET = 1

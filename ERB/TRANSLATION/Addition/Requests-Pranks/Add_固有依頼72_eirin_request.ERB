@@ -1,0 +1,494 @@
+;if there's ever an Eirin request created in the original, adjust the id and merge this into that, if necessary 
+@固有依頼72(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+#DIM  DESIRED_ITEM
+
+SELECTCASE ARG % 1000
+;ID101：Materials collecting
+CASE 101
+    SELECTCASE O_DATA
+    CASE "依頼名"
+        CALLF MAKE_STR(V_NAME, "Medicine Gathering")
+    CASE "依頼内容表示"
+        CALLF MAKE_STR(V_NAME, @"Obtain the specified materials for %CALLNAME:[[永琳]]%")
+    CASE "依頼報酬表示"
+        CALLF MAKE_STR(V_NAME, @"%金額表示(2000)%")
+    CASE "依頼実行コマンド名"
+        CALLF MAKE_STR(V_NAME, @"Deliver Materials")
+    CASE "依頼内容"
+        CALLF MAKE_INT(V_NAME, MAKE_IRAI_DATA(IRAI_固有72_ITEM(), "調達"))
+    CASE "依頼サブ"
+        CALLF MAKE_INT(V_NAME, 10)
+    CASE "依頼期限"
+        CALLF MAKE_INT(V_NAME, 5)
+    CASE "依頼発生率"
+        CALLF MAKE_INT(V_NAME, 10)
+    CASE "依頼発生条件"
+        CALLF MAKE_INT(V_NAME, 1)
+    CASE "依頼受託可能条件"
+        CALLF MAKE_INT(V_NAME, 1)
+    CASE "依頼実行可能条件"
+        DESIRED_ITEM = IRAI_SLOT_TO_ITEM(SEARCH_IRAI_SLOT(CFLAG:[[永琳]]:依頼内容))
+        SIF ITEM:DESIRED_ITEM >= 10
+            CALLF MAKE_INT(V_NAME, 1)
+    CASE "依頼消滅条件"
+        SIF Add_Request_Should_Discard(ARG)
+            CALLF MAKE_INT(V_NAME, 1)
+	ENDSELECT
+;ID102：Rabbit sex
+CASE 102
+    SELECTCASE O_DATA
+    CASE "依頼名"
+        CALLF MAKE_STR(V_NAME, "Rabbit Stress Relief")
+    CASE "依頼内容表示"
+        CALLF MAKE_STR(V_NAME, @"Satisfy the rabbits at Eientei and relieve their frustration")
+    CASE "依頼報酬表示"
+        CALLF MAKE_STR(V_NAME, @"%金額表示(10000)%")
+    CASE "依頼実行コマンド名"
+        CALLF MAKE_STR(V_NAME, @"Take Care Of The Rabbits")
+    CASE "依頼内容"
+        CALLF MAKE_INT(V_NAME, MAKE_IRAI_DATA(0, "作業"))
+    CASE "依頼サブ"
+        CALLF MAKE_INT(V_NAME, 0)
+    CASE "依頼期限"
+        CALLF MAKE_INT(V_NAME, 0)
+    CASE "依頼発生率"
+        IF FLAG:異常気象 == 8 ;virtually guaranteed during pink wind
+            CALLF MAKE_INT(V_NAME, 10000)
+        ELSEIF DAY:3 == 28 ;more common on bunny day
+            CALLF MAKE_INT(V_NAME, 3)
+        ELSE ;otherwise very rare
+            CALLF MAKE_INT(V_NAME, 1)
+        ENDIF
+    CASE "依頼発生条件"
+        IF !HAS_PENIS(MASTER)
+        ELSEIF IS_DOUTEI(MASTER) ;no virgins to make this easier
+        ELSEIF TALENT:MASTER:キス未経験
+        ELSEIF CFLAG:[[永琳]]:信頼度 < 100
+        ELSE
+            CALLF MAKE_INT(V_NAME, 1)
+        ENDIF
+    CASE "依頼受託可能条件"
+        CALLF MAKE_INT(V_NAME, 1)
+    CASE "依頼実行可能条件"
+        SIF !FLAG:70
+            CALLF MAKE_INT(V_NAME, 1)
+    CASE "依頼消滅条件"
+        SIF Add_Request_Should_Discard(ARG)
+            CALLF MAKE_INT(V_NAME, 1)
+	ENDSELECT
+ENDSELECT
+
+@IRAI_固有72_SET_COLORS(INABA_COLORS)
+#DIM REF INABA_COLORS
+SIF INABA_COLORS:0
+    RETURN
+INABA_COLORS:0 = 0xFF7FBE ;the virgin
+INABA_COLORS:1 = 0xFF00BE ;virgin's friend
+INABA_COLORS:2 = 0xC627BE
+INABA_COLORS:3 = 0xC62733
+INABA_COLORS:4 = 0xDD7433
+
+INABA_COLORS:5 = 0xDBA334
+INABA_COLORS:6 = 0x55A334
+INABA_COLORS:7 = 0x00C934
+INABA_COLORS:8 = 0x00C9A7
+INABA_COLORS:9 = 0x00745D
+
+
+@IRAI_固有72(CHARA, IRAI_ID, SCENE)
+#DIM  CHARA
+#DIM  IRAI_ID
+#DIMS SCENE
+#DIM  CLIENT_ID
+#DIM  DESIRED_ITEM
+#DIM  VALID_SCENARIOS, 20
+#DIM  SELECTED_SCENARIO
+#DIM  SCENARIO_COUNT
+#DIM  INABA_COLORS, 20
+#DIM  SCENE_COUNT
+#DIM  SCENARIO_INDEX
+CLIENT_ID = IRAI_ID_TO_CLIENT(IRAI_ID)
+SELECTCASE STR_DATA_IRAI(IRAI_ID, "依頼名", CLIENT_ID)
+
+;for now, keep it simple, will expand request system later to enable easily setting a desired item and quantity, instead of it having to be a fixed item
+CASE "Medicine Gathering"
+	SELECTCASE SCENE
+	CASE "依頼条件表示"
+	CASE "依頼実行時"
+        DESIRED_ITEM = IRAI_SLOT_TO_ITEM(SEARCH_IRAI_SLOT(CFLAG:[[永琳]]:依頼内容))
+        PRINTFORMW You deliver the %ITEMNAME_TR(DESIRED_ITEM)% to Eirin.
+        CALL LOST_ITEM(ITEMNAME:DESIRED_ITEM, 10, 2)
+        RETURN IRAI_CONST_RESULT("実行して成功")
+	CASE "依頼成功時"
+		SOURCE:歓楽 += 1000
+        PRINTFORML Eirin thanks you for delivering the ingredients to her.
+		CALL CHANGE_CFLAG(2, [[永琳]], 50)
+		CALL CHANGE_CFLAG(4, [[永琳]], 20)
+        CALL GET_MONEY_YEN(1000, 2)
+	CASE "依頼失敗時"
+        PRINTFORML Eirin is disappointed that you didn't complete her task.
+		CALL CHANGE_CFLAG(2, [[永琳]], -5)
+		CALL CHANGE_CFLAG(4, [[永琳]], -3)
+	ENDSELECT
+
+CASE "Rabbit Stress Relief"
+	SELECTCASE SCENE
+	CASE "依頼条件表示"
+	CASE "依頼実行時"
+        VARSET VALID_SCENARIOS, -1
+        CALL IRAI_固有72_SET_COLORS(INABA_COLORS)
+
+        CALL SET_KOJO_COLOR([[永琳]])
+        PRINTFORMDL Eirin leads you to a large room in Eientei.
+        PRINTFORML 「Thank you for doing this. The rabbits have been really restless lately, and without a proper outlet they cannot focus on their duties.」
+        PRINTFORML 「Fortunately, as youkai rabbits, the solution is pretty straightforward.」
+        PRINTFORML 「They've all been given contraceptives and I've prepared some medicine that will help you last long enough to deal with all of them.」
+        PRINTFORMW 「Just make sure not to overdo it. It's important to consider your own health, as well.」
+        PRINTFORMDW As you enter the room, you see the rabbits sitting and lying around restlessly.
+        CALL COLORMESSAGE(@"「Ah, %CALLNAME:MASTER%'s here!」", INABA_COLORS:1, 2)
+        CALL COLORMESSAGE(@"「Finally!」", INABA_COLORS:2, 1)
+        CALL COLORMESSAGE(@"「Let's just get started already.」", INABA_COLORS:5, 1)
+        CALL COLORMESSAGE(@"「Ehehe, this is going to be so much fun.」", INABA_COLORS:1, 2)
+        PRINTFORMDL Before you have a chance to react, the horde of youkai rabbits rushes towards you, rapidly undressing both you and themselves.
+        PRINTFORMDL It doesn't take long before everyone in the room is completely naked.
+        CALL COLORMESSAGE(@"「There, now we're all ready♪」", INABA_COLORS:2, 1)
+        CALL COLORMESSAGE(@"「I hope you're prepared for a loooong day, %CALLNAME:MASTER%. We're going to show you what rabbit mating is all about.」", INABA_COLORS:6, 1)
+
+        PRINTFORMDW You steel yourselves and throw yourself at the girls, not intending to quit until they're all satisfied.
+
+        VALID_SCENARIOS = 0, 1, 2, 3
+        SCENARIO_COUNT = 4
+
+        SIF IRAI_固有72_CHARACTER_VALID([[てゐ]])
+            VALID_SCENARIOS:(SCENARIO_COUNT++) = 21
+            
+        ;SIF IRAI_固有72_CHARACTER_VALID([[鈴仙]])
+        ;     VALID_SCENARIOS:(SCENARIO_COUNT++) = 22
+            
+        ;SIF IRAI_固有72_CHARACTER_VALID([[輝夜]])
+        ;     VALID_SCENARIOS:(SCENARIO_COUNT++) = 23
+            
+        ;SIF IRAI_固有72_CHARACTER_VALID([[永琳]])
+        ;     VALID_SCENARIOS:(SCENARIO_COUNT++) = 24
+
+        ; SIF GETBIT(FLAG_DAILY_EV23, 4)
+        ;     VALID_SCENARIOS:(SCENARIO_COUNT++) = 25
+        
+        ;SIF IRAI_固有72_CHARACTER_VALID([[レイセン]])
+        ;     VALID_SCENARIOS:(SCENARIO_COUNT++) = 24
+
+        SCENE_COUNT = 3 ;vary by max VIG or something?
+
+        FOR LOCAL, 0, SCENE_COUNT
+            IF LOCAL == 0 ;first scene is always a rabbit scene
+                SCENARIO_INDEX = RAND:4
+            ELSE
+                SCENARIO_INDEX = RAND:SCENARIO_COUNT
+            ENDIF
+            SELECTED_SCENARIO = VALID_SCENARIOS:SCENARIO_INDEX
+
+            CALL IRAI_固有72_INABA_SCENARIO(SELECTED_SCENARIO, INABA_COLORS)
+
+            ARRAYREMOVE VALID_SCENARIOS, SCENARIO_INDEX, 1
+            SCENARIO_COUNT--
+        NEXT
+
+        PRINTL
+        PRINTFORMDL Eventually, the rabbits all fall asleep, completely satisfied.
+        PRINTFORMDL Proud of your efforts, you clean yourself up, and leave the room.
+        
+        ;cap reduction to not leave the player empty
+        BASE:MASTER:体力 = MAX(BASE:MASTER:体力-750, 750)
+        BASE:MASTER:気力 = MAX(BASE:MASTER:気力-1000, 0)
+        BASE:MASTER:精力 = 0
+        BASE:MASTER:勃起 = 0
+        nSexDone ++
+
+        TIME += 175
+        RETURN IRAI_CONST_RESULT("実行して成功")
+	CASE "依頼成功時"
+		SOURCE:歓楽 += 3000
+        CALL SET_KOJO_COLOR([[永琳]])
+        PRINTFORMDL %CALLNAME:[[永琳]]% thanks you for dealing with the rabbits.
+        PRINTFORML 「Good work. I appreciate you taking care of this for me.」
+
+		CALL CHANGE_CFLAG(2, [[永琳]], 75)
+		CALL CHANGE_CFLAG(4, [[永琳]], 40)
+        CALL GET_MONEY_YEN(10000, 2)
+	CASE "依頼失敗時"
+	ENDSELECT
+ENDSELECT
+
+@IRAI_固有72_CHARACTER_VALID(ARG)
+#FUNCTION
+RETURNF !CFLAG:ARG:出禁 && CFLAG:ARG:既成事実 & 合意_うふふ && !TALENT:ARG:処女 && IS_FEMALE(ARG)
+
+@IRAI_固有72_INABA_SCENARIO(SCENARIO, INABA_COLORS)
+#DIM SCENARIO
+#DIM REF INABA_COLORS
+#DIM INABA_COLORS_TEMP, 20
+PRINTL
+SELECTCASE SCENARIO
+    CASE 0 ;reverse gangbang
+        PRINTFORMDL A group of rabbits push you down, making you lie down on your back.
+        PRINTFORMDL One of them sits down on your dick, another on your face, and four others sit down on your arms and legs.
+        CALL COLORMESSAGE("「We're going to make ourselves feel good with every part of your body.」", INABA_COLORS:3, 1)
+        CALL COLORMESSAGE("「Just lie down and let us do all the work.」", INABA_COLORS:4, 1)
+        PRINTFORMDL Going along with their desires, you lie there quietly while the girls rub themselves all over you.
+        PRINTFORMDL As you start licking the one on your face, she shoots up with a jolt, apparently coming just from that.
+        CALL COLORMESSAGE(@"「%MOAN()%! Yes, keep going. That spot feels soooo gooood. %MOAN("m")%」", INABA_COLORS:5, 1)
+        PRINTFORMDL %BREAKENG(@"More and more girls pile themselves on top of you, positioning themselves on your chest and along your arms and legs, wherever they can find some space.")%
+        CALL IRAI_固有72_INABA_MOANS(INABA_COLORS, 10, 5, 3, 2, 1)
+        PRINTFORMDL %BREAKENG(@"So many have piled up on you that they're barely even able to move now, but feeling their warmth all over your body, it doesn't take long until you ejaculate.")%
+        CALL COLORMESSAGE(@"「Go ahead, shoot it all inside. Fill me up with your seed♪」", INABA_COLORS:2, 1)
+        CALL IRAI_固有72_INABA_MOANS(INABA_COLORS, 10, 8, 0, 3, 2)
+        PRINTFORMDL The rabbit comes violently, and seeing her pleasured face, the others are pushed to their limits as well, orgasming in sync.
+        PRINTFORMDW As soon as they recover, the rabbits change their positions and continue riding you, not letting you have even a moment of respite...
+    CASE 1 ;reverse lotus (exposure)
+        ;victim is rabbit #8
+        PRINTFORMDL You pick up one of the rabbits, and put her on your lap, exposing her front to the others.
+        CALL COLORMESSAGE(@"「Ehehe, you're so warm, mister %CALLNAME:MASTER%.」", INABA_COLORS:8, 1)
+        CALL COLORMESSAGE(@"「But is this really all that you want to do?」", INABA_COLORS:8, 1)
+        PRINTFORMDL Showing her off, you skillfully caress her cute little breasts and adorable clit, as sweep moans escape her lips.
+        CALL COLORMESSAGE(@"「%MOAN("l")%... It feels so embarrassing to do this in front of the others... %MOAN("l")%...」", INABA_COLORS:8, 1)
+        PRINTFORMDL %BREAKENG("Unconcerned with the girl's embarrassment, you continue to smoothly move your hands all over her body, enjoying her shameful moans as the others look at her with great interest.")%
+        CALL COLORMESSAGE(@"「%MOAN("m")%... Please stop, mister %CALLNAME:MASTER%. %MOAN("m")%... I can't take much more of this... %MOAN("h")%...」", INABA_COLORS:8, 1)
+        PRINTFORMDL %BREAKENG(@"As if heeding her words, you grab the girl by her waist and gently lift her up, before slamming her down onto your erect %FSYN("penis")%. ")%
+        CALL COLORMESSAGE(@"「Eh, what are you- %MOAN("h")%」", INABA_COLORS:8, 1)
+        CALL COLORMESSAGE(@"「%MOAN("r",,4)%」", INABA_COLORS:8, 1)
+        PRINTFORMDL While you continue to slam your member violently into the rabbit from below, you motion for the others to join in.
+        PRINTFORMDL They eagerly help you pleasure the girl on your lap by licking and rubbing her everywhere.
+        PRINTFORMDL With her clit, breasts, lips, and cervix all under constant assault, the girl starts climaxing continuously.
+        CALL COLORMESSAGE(@"「%MOAN("h",,8)%」", INABA_COLORS:8, 1)
+        PRINTFORMDW When you finally let her go, she collapses onto the floor, unable to stand up any more...
+    CASE 2 ;virgin (#0 and #1)
+        VARSET INABA_COLORS_TEMP
+        INABA_COLORS_TEMP:0 = INABA_COLORS:0
+        INABA_COLORS_TEMP:1 = INABA_COLORS:1
+        CALL COLORMESSAGE(@"「Please come over here, %CALLNAME:MASTER%.」", INABA_COLORS:1, 1)
+        PRINTFORMDL As you look over to the source of the voice, you see a small girl seated in the lap of a bigger girl.
+        CALL COLORMESSAGE(@"「This girl is still a virgin, y'know? She was hoping you would take her first time today.」", INABA_COLORS:1, 1)
+        PRINTFORMDL The girl on her lap turns red in the face as soon as you look at her.
+        CALL COLORMESSAGE(@"「Um, %STUTTER("please")% %STUTTER("take")% care of me.」", INABA_COLORS:0, 1)
+        CALL COLORMESSAGE(@"「Isn't she adorable? Make sure to be gentle with her, okay?」", INABA_COLORS:1, 1)
+        PRINTFORMDW %BREAKENG(@"Excited by the prospect of teaching this little rabbit all about the joys of womanhood, you decide to take the rabbit up on her offer.")%
+        PRINTFORMDL The big rabbit spreads the smaller girl's virginal slit for you, giving you a good look at her insides.
+        CALL COLORMESSAGE(@"「%STUTTER("Please")% don't stare at it so much.」", INABA_COLORS:0, 1)
+        PRINTFORMDL ...She says, covering her face with her hands.
+        PRINTFORMDL You carefully lick her clitoris and %FSYN("labia")%, enjoying the sweet squeals of an innocent maiden.
+        CALL COLORMESSAGE(@"「%MOAN("l",,2)%.」", INABA_COLORS:0, 1)
+        PRINTFORMDW The other rabbits have formed a circle around you, clearly enjoying the sight of their friend's first sexual experience.
+        PRINTFORMDL Deciding that the girl is now sufficiently wet, you line up your %FSYN("penis")% with her %FSYN("vagina")%.
+        PRINTFORMDL The other girl spreads her petite friend's legs wide and whispers some encouraging words into her ear.
+        PRINTFORMDL You push your %FSYN("penis")% into her inexperienced slit as deep as you can in one go.
+        CALL COLORMESSAGE(@"「Gyaaaaaaaaaarrgghhhh!」", INABA_COLORS:0, 1)
+        PRINTFORMDL %BREAKENG(@"She cums right away, experiencing her first orgasm as she loses her virginity, letting out a scream filled with a mixture of pain and pleasure.")%
+        PRINTFORMDW %BREAKENG(@"You position yourself directly above her, and start pounding her %FSYN("vagina")% relentlessly, unconcerned with the trickle of blood flowing down her leg.")%
+        PRINTFORMDL Despite only losing her virginity moments ago, you start jackhammering her violently, losing yourself in the pleasure.
+        CALL COLORMESSAGE(@"「%MOAN("l",,4)%.」", INABA_COLORS:0, 1) 
+        PRINTFORMDL %BREAKENG(@"Her moans quickly become ones filled with pleasure, and a blissful expression appears on her face. You can barely remember the shy girl that was here before.")%
+        CALL COLORMESSAGE(@"「Ehehehe, you're just so cute. Aren't you glad that %CALLNAME:MASTER% is your first?」", INABA_COLORS:1, 1)
+        PRINTFORMDL Not satisfied with just the former virgin any more, you bend over and kiss the bigger rabbit on the lips.
+        CALL COLORMESSAGE(@"「Eh? Wait, %CALLNAME:MASTER%. You're supposed to focus on her right now, not-」", INABA_COLORS:1, 1)
+        PRINTFORMDL %BREAKENG(@"Ignoring her protests, you shut her up with another kiss, and start making out with her aggressively while you continue to pound the other one.")%
+        CALL COLORMESSAGE(@"「%MOAN("r",,2)%」", INABA_COLORS:1)
+        CALL COLORMESSAGE(@"「%MOAN("m")%%MOAN("r",,2)%%MOAN("h",,1)%」", INABA_COLORS:0, 1)
+        CALL COLORMESSAGE(@"「Harder! Do it even %SLUR("harder",-3)%!」", INABA_COLORS:0, 1)
+        PRINTFORMDL %BREAKENG("With no trace of embarrassment left, the young rabbit begs you for more, and you put all of your might behind your trusts as you entangle your tongue with that of the bigger girl.")%
+        CALL IRAI_固有72_INABA_MOANS(INABA_COLORS_TEMP, 2, 5, 1, 1, 3)
+        PRINTFORMDW You continue to greedily indulge in the two girls until both of them are completely exhausted...
+    CASE 3 ;tower
+        ;top to bottom: #3, #7, #9
+        VARSET INABA_COLORS_TEMP
+        INABA_COLORS_TEMP:0 = INABA_COLORS:3
+        INABA_COLORS_TEMP:1 = INABA_COLORS:7
+        INABA_COLORS_TEMP:2 = INABA_COLORS:9
+        CALL COLORMESSAGE(@"「Over here, %CALLNAME:MASTER%!」", INABA_COLORS:3, 1)
+        CALL COLORMESSAGE(@"「Have some fun with us♪」", INABA_COLORS:7, 1)
+        PRINTFORMDW Following the sound of the voices, you approach three rabbits stacked on top of each other, asses upwards.
+        CALL COLORMESSAGE(@"「C'mon. Do all three of us at once.」", INABA_COLORS:7, 1)
+        PRINTFORMDL The rabbit on top shakes her adorable butt at you, which makes the tower wobble a little.
+        CALL COLORMESSAGE(@"「Hey! Don't move too much or we'll collapse.」", INABA_COLORS:9, 1)
+        CALL COLORMESSAGE(@"「Whose idea was it to put me at the bottom, anyway?」", INABA_COLORS:9, 1)
+        CALL COLORMESSAGE(@"「It had to be you. You're the strongest of us three, after all♪」", INABA_COLORS:7, 2)
+        CALL COLORMESSAGE(@"「Heeeeey, lets just get started already. I can't wait any more.」", INABA_COLORS:3, 1)
+        PRINTFORMDW Taking them up on their invitation, you walk up to the three rabbits, determined to send them to heaven.
+        PRINTFORMDL You start by %FSYN("gentle:ly")% rubbing the clit of the girl in the middle.
+        CALL COLORMESSAGE(@"「%MOAN("l", , RAND(1, 3))%...」", INABA_COLORS:7, 1)
+        PRINTFORMDL She's already %FSYN("wet")% down there. She must find this position really exciting.
+        PRINTFORMDL While you continue to caress her, you use your other hand to push a finger into the bottom girl's %FSYN("vagina")%.
+        CALL COLORMESSAGE(@"「%MOAN("l", , RAND(1, 2))%...」", INABA_COLORS:9, 1)
+        PRINTFORMDL And finally, you start licking the %FSYN("slit")% of the girl on top, ensuring that none of them are left out.
+        CALL COLORMESSAGE(@"「%MOAN("m", , RAND(1, 2))%...」", INABA_COLORS:3, 1)
+        CALL COLORMESSAGE(@"「%SLUR("Yes")%. %MOAN("r", , RAND(2, 4))%... Keep going, %CALLNAME:MASTER%. Deeper, %SLUR(SLUR("deeper", -4))%...」", INABA_COLORS:9, 1)
+        PRINTFORMDL You continue caressing and fingering the three girls, and it doesn't take long until the bottom rabbit %FSYN("orgasm:s")% powerfully.
+        CALL COLORMESSAGE(@"「%MOAN("r", , RAND(1, 2))%... %MOAN("h", , RAND(3, 4))%... %MOAN("r", , RAND(0, 2))%...」", INABA_COLORS:9, 1)
+        CALL COLORMESSAGE(@"「Aaah, I'm gonna fall, I'm gonna %SLUR("fall", -4)%.」", INABA_COLORS:3, 1)
+        PRINTFORMDW %BREAKENG("The tower starts shaking due to the girl's knees, so you quickly pull out of the girl and use your hand to stabilize them while continuing to pleasure the other two girls with your remaining hand and tongue.")%
+        CALL COLORMESSAGE(@"「Ah... %MOAN("r",, RAND(1, 2))%... good save... %CALLNAME:MASTER% %MOAN("r",, 1)%...」", INABA_COLORS:7, 1)
+        CALL COLORMESSAGE(@"「Ehehe, thank you for... %MOAN("r",, RAND(1, 3))%... saving us...」", INABA_COLORS:3, 1)
+        CALL COLORMESSAGE(@"「It feels so %SLUR("good", -4)%.」", INABA_COLORS:5, 1)
+        PRINTFORMDL While the rabbit on the bottom recovers, the other two %FSYN("orgasm")% at the same time.
+        CALL COLORMESSAGE(@"「%MOAN("h",,RAND(4, 6))%...」", INABA_COLORS:3, 1)
+        CALL COLORMESSAGE(@"「%MOAN("h",,RAND(2, 7))%...」", INABA_COLORS:7, 1)
+        PRINTFORMDW You quickly move to keep them from slipping off, until they all calm down enough to keep themselves steady again.
+        PRINTFORMDL %BREAKENG(@"Figuring that all of them are more than ready now, you grab hold of the bottom girl's thighs, carefully line up your %FSYN("penis")% with her %FSYN("slit")%, and %FSYN("thrust")% it in swiftly and surely.")%
+        CALL COLORMESSAGE(@"「Ah! %MOAN("r",,RAND(1, 4))%...」", INABA_COLORS:9, 1)
+        PRINTFORMDL %BREAKENG(@"You keep %FSYN("thrust2:ing")% into her %FSYN("vagina")% but right when she's at the verge of climax, you pull out of her and insert it into the middle rabbit.")%
+        CALL COLORMESSAGE(@"「%MOAN("r",,RAND(1, 3))%...」", INABA_COLORS:7, 1)
+        CALL COLORMESSAGE(@"「Hey, why did you stop?」", INABA_COLORS:9, 1)
+        CALL COLORMESSAGE(@"「Just... %MOAN("r")%... wait your... %MOAN("r",,2)%... turn. %CALLNAME:MASTER% is here... %MOAN("l")%... for all of us, after all. %MOAN("l",,2)%...」", INABA_COLORS:7, 1)
+        PRINTFORMDL You change girls again, now inserting it into the top-most girl.
+        CALL COLORMESSAGE(@"「%MOAN("r",,RAND(1, 3))%... %MOAN("m",,RAND(2, 3))%...」", INABA_COLORS:3, 1)
+        PRINTFORMDW You keep pistoning the three girls in turn, keeping them all on the edge of climax, until you feel your own rapidly approaching.
+        CALL COLORMESSAGE(@"「Ah, %CALLNAME:MASTER%. Are you about to cum?」", INABA_COLORS:9, 1)
+        CALL COLORMESSAGE(@"「Hey hey. Cum inside me. I'm the cutest one, y'know?」", INABA_COLORS:3, 1)
+        CALL COLORMESSAGE(@"「No, do it inside me. My pussy's the tightest, right?」", INABA_COLORS:7, 1)
+        CALL COLORMESSAGE(@"「I'm the one who's been carrying you two all this time. I'm the one who deserves it the most!」", INABA_COLORS:9, 1)
+        PRINTFORMDL Such a tough decision. But since all three of them worked so hard to pleasure you, there's really only one answer.
+        PRINTFORMDL You speed up your pace and alternate between them with every thrust, using your hands to caress the other two at the same time.
+        CALL IRAI_固有72_INABA_MOANS(INABA_COLORS_TEMP, 3, 7, 0, 2, 3)
+        PRINTFORMDL %BREAKENG(@"Lost in a daze of lewd moans and violent thrusts, you continue switching between them even as you start ejaculating, shooting a massive amount of your %SEMEN(MASTER, 1)% inside each of them.")%
+        PRINTFORMDL As their wombs are filled with your %SEMEN(MASTER)%, the rabbits climax powerfully as well.
+        PRINTFORMDL Due to their violent orgasms, the rabbits collapse onto the ground, and you spray your remaining %SEMEN(MASTER)% all over them.
+        PRINTFORMDW %CAPITALIZE(FSYN("Pant:ing"))%, the three rabbits look at you with a smile, completely satisfied...
+
+    ;other scenarios:
+    ;licking all over
+    ;two face-to-face (lesbianism)
+    ;insemination line
+    ;reckless charge
+    ;bathing
+
+    CASE 21 ;tewi
+        CALL SET_KOJO_COLOR([[てゐ]])
+        PRINTFORMDL As you catch a breather while thinking about what you should do next, you hear the door open.
+        PRINTFORML 「Ah, here you are, %CALLNAME:MASTER%.」
+        PRINTFORMDW Tewi smirks as she sees you surrounded by the naked rabbits.
+        PRINTFORML 「I see you're pretty busy today.」
+        PRINTFORML 「But if Master told you to reward these girls for their hard work, then you should make me feel good, too, right?」
+        PRINTFORMDW "Sure", you say, as you motion for Tewi to join in.
+        PRINTFORMDL Suddenly, Tewi starts shouting orders at the other girls, and they swiftly move to grab you and pin you to the ground. 
+        PRINTFORML 「Hee hee hee, did you forget about who's in charge of these girls?」
+        ;因幡族
+        PRINTFORML 「Today I'll show you what it means to face the undisputed leader of the Inaba family.」
+        PRINTFORMDW Tewi sits down in front of you, her smile never leaving her face.
+        PRINTFORML 「Now, what would be the best way to start things off...」
+        PRINTFORML 「Ah, I know just the thing!」
+        PRINTFORMDL Putting her hands on the ground, Tewi leans backwards and lifts up her feet.
+        PRINTFORML 「For a guy like you, a pair of rabbit feet is surely perfect! Lucky～」
+        PRINTFORMDL Tewi begins rubbing your %FSYN("penis")% with her dainty feet.
+        IF ABL:[[てゐ]]:技巧 < 3
+            PRINTFORMDW Her movements are clumsy and unskilled, but as she continues to tease you, you eventually become erect.
+        ELSE
+            PRINTFORMDW She's unquestionably skilled, and you quickly become erect through her ministrations.
+        ENDIF
+        CALL COLORMESSAGE(@"「Woooooow...」", INABA_COLORS:4, 1)
+        CALL COLORMESSAGE(@"「This is pretty amazing.」", INABA_COLORS:2, 1)
+        CALL COLORMESSAGE(@"「Ehehe, %CALLNAME:MASTER% sure has a really cute look on his face right now.」", INABA_COLORS:5, 1)
+        PRINTFORMDW The rabbits appear to be very interested in watching their leader play around with you, but their grip on you remains firm.
+        PRINTFORML 「Hehe, you seem to be enjoying this quite a bit, %CALLNAME:MASTER%. Are you sure it's not you who's stress is being relieved today?」
+        PRINTFORMDL %BREAKENG(@"As Tewi continues to caress your %FSYN("penis")%, you're no longer able to hold on, and you shoot out a huge load, covering Tewi and the other girls with your %SEMEN(MASTER, 1)%.")%
+        PRINTFORMW 「You sure shot out a lot, %CALLNAME:MASTER%. You must be a real pervert to enjoy having a girl bully you with her feet.」
+        PRINTFORMDL Tewi chuckles as she looks at your face.
+        PRINTFORML 「Well then, since you're still hard, it's your turn to make me feel good now.」
+        PRINTFORMDW Tewi takes off her clothes and moves herself on top of you.
+        PRINTFORMDL She teasingly starts rubbing her %FSYN("crotch")% on your %FSYN("penis")%.
+        PRINTFORML 「Eeeh? You want me to put it in already?」
+        PRINTFORMDL She lines up your penis with her %FSYN("slit")% and slowly lowers her waist, swallowing your erect cock completely.
+        PRINTFORMDL %BREAKENG(@"Tewi loses herself in the pleasure, her movements growing more wild and %FSYN("intense")% every time she slams her hips down onto your %FSYN("penis")%.")%
+        PRINTFORMW 「Come on, come on, shoot it all out into my %FSYN("vagina",, [[てゐ]])%.」
+        PRINTFORMDL Seeing that she's no longer paying attention to anything other than her own pleasure, you decide now is the right time for a counterattack.
+        PRINTFORMDL You begin whispering to the girls pinning down your arms.
+        PRINTFORMDL "Isn't this unfair?"
+        PRINTFORMDL "Why should she be the only one who gets to have fun?"
+        PRINTFORMDL "She's clearly abusing her authority."
+        PRINTFORMDW "Just let go of me and we'll teach her a little lesson."
+        PRINTFORMDW The rabbits start whispering amongst each other, clearly paying attention to your words.
+        PRINTFORML 「More, more, %SLUR("more")%.」
+        PRINTFORMDL You give the signal to the other rabbits, and they all let go of you at once.
+        PRINTFORMDW You instantly flip Tewi around, pinning her down.
+        PRINTFORML 「Hey, wait a minute, I'm the one in char- %FSYN("lips_muffle")%.」
+        PRINTFORMDL You put your lips to Tewi's to shut her up, and put all your weight down on her tiny frame.
+        PRINTFORMDL Not letting up, you keep slamming your %TINKO_TR(MASTER)% into Tewi's %FSYN("vagina",, [[てゐ]])% %FSYN("intense:ly")%.
+        PRINTFORML 「%MOAN("h", 4)%.」
+        PRINTFORMDL Losing to the pleasure of the mating press, Tewi moans and shudders uncontrollably.
+        CALL COLORMESSAGE(@"「Go for it, mister %CALLNAME:MASTER%.」", INABA_COLORS:4, 1)
+        CALL COLORMESSAGE(@"「This is incredible.」", INABA_COLORS:0, 2)
+        PRINTFORMDL %BREAKENG(@"Seeing that she's about to reach her limit, you push your %TINKO_TR(MASTER, 1)% as deep as it can go, pouring endless amounts of your %SEMEN(MASTER)% into Tewi's %FSYN("vagina",, [[てゐ]])%.")%
+        PRINTFORMDW %BREAKENG(@"Tewi continuously orgasm while you pour your seed into her, and when it finally ends, she collapses onto the floor, completely exhausted.")%
+        CALL COLORMESSAGE(@"「Hehehe, it seems like the boss enjoyed it a whole lot.」", INABA_COLORS:4, 1)
+        CALL COLORMESSAGE(@"「But you're not quite done yet, aren't you, %CALLNAME:MASTER%?」", INABA_COLORS:5, 1)
+        PRINTFORMDW Eagerly accepting their invitation, you go on to pleasure all the other rabbits, leaving none of them unsatisfied...
+    CASE 22 ;reisen
+        ;rabbits are very active in molesting her
+    CASE 23 ;kaguya
+        ;rabbits are very gentle and careful
+    CASE 24 ;eirin
+        ;rabbits keep their distance while eirin has sex with the player
+    CASE 25 ;medicine seller
+        ;check which description to use
+        ;today i'll be enjoying your services instead♪～
+        
+        ;both options appear
+        ;test out various medicines they carry
+    CASE 26 ;rei'sen
+        ;got lost and accidentally gets caught up in things
+    CASEELSE
+        PRINTFORMDW WARNING: No valid rabbit scenario found for {SCENARIO}. Please report.
+ENDSELECT
+
+
+@IRAI_固有72_ITEM()
+#FUNCTION
+
+SELECTCASE DAY:2
+    CASE 1
+        RETURNF GETNUM(ITEM, "薬草")
+    CASE 2
+        RETURNF GETNUM(ITEM, "高麗人参")
+    CASE 3
+        RETURNF GETNUM(ITEM, "普通のキノコ")
+    CASE 4
+        RETURNF GETNUM(ITEM, "マンドラゴラ")
+ENDSELECT
+
+@IRAI_固有72_INABA_MOANS(INABA_COLORS, INABA_COUNT, NUMBER_OF_MOANS, L_RATIO = 1, M_RATIO = 1, H_RATIO = 1)
+#DIM REF INABA_COLORS
+#DIM INABA_COUNT
+#DIM NUMBER_OF_MOANS
+#DIM L_RATIO
+#DIM M_RATIO
+#DIM H_RATIO
+#DIM LAST_INABA
+#DIM INABA
+LAST_INABA = -1
+
+REPEAT NUMBER_OF_MOANS
+    IF INABA_COUNT > 1
+        WHILE 1
+            INABA = RAND:INABA_COUNT
+            IF INABA != LAST_INABA
+                LAST_INABA = INABA
+                BREAK
+            ENDIF
+        WEND
+    ELSE
+        INABA = 0
+    ENDIF
+
+    SELECTCASE RAND:(L_RATIO + M_RATIO + H_RATIO)
+        CASE IS < L_RATIO
+            CALL COLORMESSAGE(@"「%MOAN("l")%...」", INABA_COLORS:INABA)
+        CASE IS < L_RATIO + M_RATIO
+            CALL COLORMESSAGE(@"「%MOAN("m")%...」", INABA_COLORS:INABA)
+        CASEELSE
+            CALL COLORMESSAGE(@"「%MOAN("h")%...」", INABA_COLORS:INABA)
+    ENDSELECT
+REND
+PRINTL

@@ -1,0 +1,272 @@
+@Internet_19
+#DIM OldPage
+SETCOLOR C_GREEN
+FONTBOLD
+PRINTBUTTON "Danmaku World", 1000
+PRINTL
+FONTREGULAR
+RESETCOLOR
+PRINTFORM Hello %CALLNAME:MASTER%!
+PRINTBUTTON " [Mail]", 12000
+PRINTL
+PRINTFORML License: %LoG_DW_LicenseName(LegendModeStage)%
+PRINTL
+PRINTFORML -----------------------------------------------
+SELECTCASE SiteSubpage
+CASE 1000
+    CALL DanmakuWorld_ValidateEntries()
+    FONTBOLD
+    PRINTL Home
+    FONTREGULAR
+    PRINTL
+    PRINTFORML # General
+    CALL DanmakuWorld_PageTitleButtons(11)
+    CALL DanmakuWorld_PageTitleButtons(0)
+    PRINTL
+    PRINTFORML # Fighters Club
+    FOR LOCAL, 1, 9
+        SIF !DanmakuWorld_Page_CanDo(LOCAL)
+            CONTINUE
+        CALL DanmakuWorld_PageTitleButtons(LOCAL)
+    NEXT
+CASE 2000 TO 90000
+    OldPage = SiteSubpage
+    CALL DanmakuWorld_EntryList((SiteSubpage-2000)/1000,SiteSubpage%1000)
+CASE IS >= 200000
+    CALL DanmakuWorldEntry((SiteSubpage-200000)/100000,(SiteSubpage-200000)%100000/100,OldPage)
+ENDSELECT
+CALL LoG_AdvanceTutorial(10)
+SIF RESULT
+	RETURN 1000
+
+INPUT
+SELECTCASE RESULT
+CASE -5
+    SIF SiteSubpage%1000 > 0
+    SiteSubpage--
+CASE -6
+    SiteSubpage++
+CASEELSE
+SiteSubpage = RESULT
+ENDSELECT
+RETURN SiteSubpage
+
+@DanmakuWorld_EntryList(nPage,nSubPage)
+#DIM DYNAMIC nPage
+#DIM DYNAMIC nSubPage
+#DIM DYNAMIC entryList, 1000
+#DIM DYNAMIC entryPointer
+#DIM CONST EntriesPerPage = 10
+#DIM ReplyCount
+#DIM DYNAMIC nLoop
+#DIM DYNAMIC nLoop2
+#DIMS DYNAMIC html
+entryPointer = 0
+VARSET entryList
+FONTBOLD
+PRINTSL LoG_DW_PageName(nPage)
+FONTREGULAR
+PRINTL
+PRINTFORML Page {nSubPage+1}
+PRINTFORML -----------------------------------------------
+FOR nLoop, 0, 1000
+    VARSET RESULT
+    TRYCCALLFORM DanmakuWorldEntry_{nPage}_{nLoop}_0
+        [IF_NDEBUG]
+        SIF RESULT:1 == 0
+            CONTINUE
+        [ENDIF]
+        entryList:entryPointer = ((nPage+2)*100000)+(nLoop*100)
+        entryPointer++
+    CATCH
+    ENDCATCH
+NEXT
+;sort by latest day
+;DanmakuWorld_FirstAvailableDay:1:10=2
+LOCAL:0 = 0
+WHILE LOCAL:0 < entryPointer
+	SIF !(LOCAL:0)
+		LOCAL:0 ++
+	IF DanmakuWorld_FirstAvailableDay:((entryList:(LOCAL:0)-200000)/100000):((entryList:(LOCAL:0)-200000)%100000/100) <= DanmakuWorld_FirstAvailableDay:((entryList:(LOCAL:0-1)-200000)/100000):((entryList:(LOCAL:0-1)-200000)%100000/100)
+		LOCAL:0 ++
+	ELSE
+		SWAP entryList:(LOCAL:0 - 1), entryList:(LOCAL:0)
+		LOCAL:0 --
+	ENDIF
+WEND
+
+FOR nLoop, EntriesPerPage*nSubPage, EntriesPerPage*(nSubPage+1)
+    SIF entryList:nLoop == 0
+        BREAK
+    ReplyCount = 0
+    VARSET RESULT
+    TRYCCALLFORM DanmakuWorldEntry_{nPage}_{(entryList:nLoop-200000)%100000/100}_0
+        [IF_NDEBUG]
+        SIF RESULT:1 == 0
+            CONTINUE
+        [ENDIF]
+        html '= @"<button value='{entryList:nLoop}'>%RESULTS:1,40,LEFT%</button>"
+        SIF DanmakuWorld_Seen:nPage:((entryList:nLoop-200000)%100000/100) == 0
+            html '= @"<b>%html%</b>"
+        html += @"Day {DanmakuWorld_FirstAvailableDay:nPage:((entryList:nLoop-200000)%100000/100)}"
+        html += @"<br><font color='#67e47e'>%EZB_TITLES(RESULT:2)%</font>"
+        HTML_PRINT html
+        PRINTL
+    CATCH
+    ENDCATCH
+NEXT
+SIF nLoop
+CLEARLINE 1
+PRINTFORML -----------------------------------------------
+IF nSubPage > 0
+PRINTBUTTON "[Prev] ", -5
+ELSE
+SETCOLOR C_GRAY
+PRINTFORMS "[Prev] "
+RESETCOLOR
+ENDIF
+IF entryPointer > ((nSubPage+1)*EntriesPerPage)
+PRINTBUTTON "[Next]", -6
+ELSE
+SETCOLOR C_GRAY
+PRINTFORMS "[Next]"
+RESETCOLOR
+ENDIF
+PRINTL
+
+@DanmakuWorldEntry(nPage,nEntry,oldPage)
+#DIM nPage
+#DIM nEntry
+#DIM oldPage
+#DIM DYNAMIC nLoop
+#DIMS DYNAMIC html
+DanmakuWorld_Seen:nPage:nEntry = 1
+TRYCCALLFORM DanmakuWorldEntry_{nPage}_{nEntry}_0
+    [IF_NDEBUG]
+    SIF RESULT:1 == 0
+        RETURN
+    [ENDIF]
+    html '= @"<b>%RESULTS:1%</b>"
+    html += @"<br><font color='#67e47e'>%EZB_TITLES(RESULT:2)%</font><br>"
+    html += "---------------------------------------------------<br>"
+    html += RESULTS:0
+    html += "<br>---------------------------------------------------<br>"
+    HTML_PRINT html
+CATCH
+    RETURN
+ENDCATCH
+FOR nLoop, 1, 100
+    TRYCCALLFORM DanmakuWorldEntry_{nPage}_{nEntry}_{nLoop}
+        [IF_NDEBUG]
+        SIF RESULT:1 == 0
+            RETURN
+        [ENDIF]
+        html '= @"<b>"
+        html += "RE:"*nLoop
+        html += @"%RESULTS:1%</b>"
+        html += @"<br><font color='#67e47e'>%EZB_TITLES(RESULT:2)%</font><br>"
+        html += "---------------------------------------------------<br>"
+        html += RESULTS:0
+        html += "<br>---------------------------------------------------<br>"
+        HTML_PRINT html
+    CATCH
+        CONTINUE
+    ENDCATCH
+NEXT
+PRINTL
+PRINTBUTTON @"[Return]", oldPage
+PRINTL
+
+@DanmakuWorld_PageTitleButtons(nPage)
+#DIM DYNAMIC nPage
+PRINTBUTTON @"[%LoG_DW_PageName(nPage)%]", (nPage+2)*1000
+PRINTL
+
+@DanmakuWorld_ValidateEntries()
+#DIM DYNAMIC nPage
+#DIM DYNAMIC nLoop
+FOR nPage,0,13
+    FOR nLoop, 0, 1000
+        VARSET RESULT
+        TRYCCALLFORM DanmakuWorldEntry_{nPage}_{nLoop}_0
+            [IF_NDEBUG]
+            SIF RESULT:1 == 0
+                CONTINUE
+            [ENDIF]
+            SIF DanmakuWorld_FirstAvailableDay:nPage:nLoop == 0
+                DanmakuWorld_FirstAvailableDay:nPage:nLoop = DAY
+        CATCH
+        ENDCATCH
+    NEXT
+NEXT
+
+
+
+; @DanmakuWorldEntry_10_1_0
+; ;title
+; RESULTS:1 '= "Welcome to Stage 2!"
+; ;text
+; {
+; RESULTS:0 '= "Welcome to the world of competitive mixed-weaponry fighting!\n
+; I'm the administrator of this forum. Keep your posts simple and clean. And have fun! "
+; }
+; RESULT:2  = 3133 ;character
+; RESULT:1 = 1 ;appear cond
+
+@LoG_DW_LicenseName(ARG)
+#FUNCTIONS
+SELECTCASE ARG
+CASE IS >= 6
+    RETURNF "Extra Stage"
+CASE 0
+	RETURNF "No License"
+CASEELSE
+    RETURNF @"Stage {ARG+1}"
+ENDSELECT
+
+@LoG_DW_PageName(ARG)
+#FUNCTIONS
+SELECTCASE ARG
+CASE 0
+RETURNF "Be Free"
+CASE 1
+RETURNF "Human Village"
+CASE 2
+RETURNF "Youkai Mountain"
+CASE 3
+RETURNF "Misty Lake"
+CASE 4
+RETURNF "Hijiri Temple"
+CASE 5
+RETURNF "Netherworld"
+CASE 6
+RETURNF "Moon"
+CASE 7
+RETURNF "The Rest of Gensokyo"
+CASE 8
+RETURNF "Makai"
+CASE 10
+RETURNF "Direct Messages"
+CASE 11
+RETURNF "Announcements"
+ENDSELECT
+
+
+@DanmakuWorld_Page_CanDo(ARG)
+#FUNCTION
+SELECTCASE ARG
+CASE 0, 1, 10, 11
+RETURNF 1
+CASE 2, 3
+RETURNF LegendModeStage >= 1
+CASE 4
+RETURNF LegendModeStage >= 2
+CASE 5
+RETURNF LegendModeStage >= 3
+CASE 6
+RETURNF LegendModeStage >= 4
+CASE 7
+RETURNF LegendModeStage >= 5
+CASE 8
+RETURNF LegendModeStage >= 6
+ENDSELECT

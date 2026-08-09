@@ -1,0 +1,462 @@
+;-----------------------------------------------------------
+;キャラメイク
+;全キャラ追加後に行う
+;-----------------------------------------------------------
+@NEWGAME_MAKE
+;共通初期化
+CALL NEWGAME_MAKE_INIT
+;モード選択
+;custom code: Dev Quicktest
+SELECTCASE DevTest
+CASE 0, 2
+	;Non-devtest
+	CALL NEWGAME_MAKE_SELECT_MODE
+CASE 1, 3
+	;Devtest
+	IF DevTestOptions:1
+		;Random character
+		LOCAL = RAND:CHARANUM
+	ELSE
+		;Set character
+		LOCAL = DevTestOptions
+	ENDIF
+	CALL NEWGAME_MAKE_NARIKIRI(LOCAL)
+ENDSELECT
+SIF RESULT == -8888
+	RETURN -8888
+;ステータス設定
+
+;-----------------------------------------------------------
+;初期化
+;-----------------------------------------------------------
+@NEWGAME_MAKE_INIT
+;NOは適当に設定
+NO:MASTER = 0
+;MASTERは初期性別＝男
+;性別(1=女性 2= 男性 3=ふたなり)
+TALENT:MASTER:性別 = 2
+;気力、体力
+MAXBASE:MASTER:体力 = 2000
+BASE:MASTER:体力 = MAXBASE:MASTER:0
+MAXBASE:MASTER:気力 = 2000
+BASE:MASTER:気力 = MAXBASE:MASTER:1
+;TSP
+MAXBASE:MASTER:TSP = 100
+BASE:MASTER:TSP = 100
+;Endurance
+TALENT:MASTER:Religion = 6
+CALL SetOmoStats(MASTER)
+CALLF SILENT_ENDURANCECHANGE(MASTER)
+;add outsider species
+TALENT:MASTER:人間 = 6
+
+;-----------------------------------------------------------
+;モード選択
+;-----------------------------------------------------------
+@NEWGAME_MAKE_SELECT_MODE
+;NAS: REPLACED
+SELECTCASE ViewingTitlePage
+CASE 1
+CALL EZB_NewGameStart
+CASE 2
+CALL LS_NewGameStart
+CASE 0
+CALL NAS_NewGameStart
+ENDSELECT
+SIF RESULT == -8888
+	RETURN -8888
+RETURN 1
+
+CLEARLINE 10000
+PRINTL ★★Select Mode★★
+CALL ASK_CHOICES10("Custom Character","Select a pre-defined character (Some dialog won't show up)")
+SELECTCASE RESULT
+	CASE 0
+		FLAG:ゲームモード = 0
+		CALL NEWGAME_MAKE_ANATA
+	CASE 1
+		FLAG:ゲームモード = 1
+		CALL NEWGAME_MAKE_NARIKIRI
+		SIF !RESULT
+			RESTART
+ENDSELECT
+
+;-----------------------------------------------------------
+;通常
+;-----------------------------------------------------------
+@NEWGAME_MAKE_ANATA
+PRINTW The player character can be customized before the game starts.
+CALL BackstoyBonuses
+CALL CUSTOM_TERMINAL(MASTER)
+
+;-----------------------------------------------------------
+;なりきり
+;-----------------------------------------------------------
+@NEWGAME_MAKE_NARIKIRI(nNo)
+#DIM nNo
+;custom code: Character ID bypass.
+;Checks if there's a bypass ID or the setting for dev test is enabled
+SIF nNo || (!DevTestOptions && !DevTestOptions:1 && DevTest)
+	GOTO BYPASS
+
+PRINTL 
+PRINTL Select a character to play as.
+;custom code: Use the character list from the abilities page.
+CALL SHOW_CHARA_LIST_TR()
+IF RESULT == 999
+	RETURN 0
+ELSEIF !IS_NAMED(RESULT)
+	RESTART
+ENDIF
+nNo = RESULT
+$BYPASS
+PRINTFORMW Starting the game as %NAME:nNo%.
+
+;custom code: Edited Fake-Narikiri
+;Now copies the entire character onto ID 0 instead of just some stats.
+;COPYCHARA nNo, 0
+CALL NAS_REAL_NARIKIRI(nNo) ;NAS: REAL Narikiri
+
+;custom code: apply devtest settings
+IF DevTest
+	;TSP
+	SIF DevTestOptions:2
+		MAXBASE:MASTER:TSP = 4000
+	IF DevTestOptions:3
+	;ESP
+	TALENT:MASTER:ESP = __INT_MAX__
+	MAXBASE:MASTER:法力 = 4000
+	BASE:MASTER:法力 = MAXBASE:MASTER:法力
+	ENDIF		
+	BASE:MASTER:TSP = MAXBASE:MASTER:TSP
+
+	IF DevTestOptions:5
+	;Whereabouts Sense
+	TALENT:MASTER:居場所察知 = 1
+	SETBIT FLAG:面識ボーナス取得状況, 2
+	ENDIF
+
+	IF DevTestOptions:6
+	;Placeholder Callname
+	CALLNAME:MASTER = \%CALLNAME:MASTER\%
+	NAME:MASTER = %NameChecker(MASTER)%
+	ENDIF
+
+	;Forbidden Sexual Knowledge
+	SIF DevTestOptions:7
+	TALENT:MASTER:SexKnow = 5
+
+	;Herm
+	SIF DevTestOptions:4
+		CALLF HERMME(MASTER)
+
+	;Combat Level setting
+	IF DevTestOptions:10 != -1
+		ABL:MASTER:42 = DevTestOptions:10
+		ABL:MASTER:Shooting = DevTestOptions:10
+		ABL:MASTER:Melee = DevTestOptions:10
+	ENDIF
+
+	;Armed Gensokyo
+	SIF DevTestOptions:8
+	FLAG:POSTAL = 2
+
+	;Grab every item
+	SIF DevTestOptions:9
+	CALLF EverybodyHatesEveryone()
+
+	IF DevTestOptions:11
+		CALL DEBUG_MENU_RESULT_3_900
+		MONEY = 1000000000000
+		MONEY:2 = MONEY
+	ENDIF
+	IF DevTestOptions:12
+	;Menstrual Sense
+	FLAG:1007 = 1
+	;and many visitors
+	SETBIT FLAG:面識ボーナス取得状況, 5
+	SETBIT FLAG:陥落ボーナス取得状況, 5
+	ENDIF
+
+	;Player's Land
+	IF DevTestOptions:13
+		PlayerLandBought = 1
+		PlayerLandOwner = MASTER
+		PlayerLandProgress = 3
+		VARSET PlayerLandGuests, -1
+	ENDIF
+
+	SIF DevTestOptions:15
+		CALLF BIONIC_CONVERT(MASTER,DevTestOptions:15)
+
+	IF DevTestOptions:16
+	TALENT:MASTER:ESP = -1
+	FOR LOCAL,0,64
+		YoujutsuLevel:MASTER:LOCAL = MaxNonHLevel
+	NEXT
+		;fire of god
+		{
+		DT_ROW_ADD "combatMagic",
+		"chara", MASTER,
+		"spellPage", 9,
+		"spell", 7
+		} 
+		;blizzard of god
+		;mecoprodyne
+		{
+		DT_ROW_ADD "combatMagic",
+		"chara", MASTER,
+		"spellPage", 18,
+		"spell", 25
+		} 
+		;suicide
+		{
+		DT_ROW_ADD "combatMagic",
+		"chara", MASTER,
+		"spellPage", 19,
+		"spell", 98
+		} 
+		;mediarahan
+		{
+		DT_ROW_ADD "combatMagic",
+		"chara", MASTER,
+		"spellPage", 7,
+		"spell", 5
+		} 
+	ENDIF
+		
+	;V, A, and U (NAS Only) EXP
+	EXP:MASTER:1 += 500
+	EXP:MASTER:2 += 500
+	EXP:MASTER:30 += 500
+	;youjutsu enablers and tsp extensions
+	CALL CrippleEffects(MASTER)
+	BASE:MASTER:法力 = MAXBASE:MASTER:法力
+	BASE:MASTER:TSP = MAXBASE:MASTER:TSP
+
+	GOTO OptionBypass
+ENDIF
+;----------------------------------
+
+IF MAXBASE:MASTER:体力 < 2000
+	PRINTFORML This character has low STA. Raise it to 2000 (effective 1500)?
+	CALL ASK_YN("Raise it","Keep it like this")
+	SIF RESULT == 0
+		MAXBASE:MASTER:体力 = 2000
+ENDIF
+IF MAXBASE:MASTER:気力 < 2000
+	PRINTFORML This character has low ENE. Raise it to 2000?
+	CALL ASK_YN("Raise it","Keep it like this")
+	SIF RESULT == 0
+		MAXBASE:MASTER:気力 = 2000
+ENDIF
+;TSP
+IF !MAXBASE:MASTER:TSP
+	PRINTL Have TSP?
+	CALL ASK_YN("Yes","No")
+	IF RESULT == 0
+		MAXBASE:MASTER:TSP = 100
+		BASE:MASTER:TSP = 100
+	ENDIF
+ENDIF
+;処女
+IF !TALENT:MASTER:処女
+	PRINTL Be a virgin?
+	CALL ASK_YN("Yes","No")
+	IF RESULT == 0
+		CALL SET_VIRGIN(MASTER)
+	ENDIF
+ENDIF
+IF (PeeHold:MASTER:0 < 0 || PooHold:MASTER:0 < 0 ) && nPee
+	PRINTL Be fully potty trained?
+	CALL ASK_YN("Yes","No")
+	IF RESULT == 0
+		SIF PeeHold:MASTER:0 < 0
+		PeeHold:MASTER:0 = 0
+		SIF PooHold:MASTER:0 < 0
+		PooHold:MASTER:0 = 0
+		PeeHoldExp:MASTER:0 = EXP_DEMAND_20(0,91,MASTER)
+		PooHoldExp:MASTER:0 = EXP_DEMAND_21(0,92,MASTER)
+		CALL CrippleEffects(MASTER)
+		CALLF SILENT_ENDURANCECHANGE(MASTER)
+		PRINTFORM Reset to 
+		SETCOLOR EnduranceColors(PeeHold:MASTER:0)
+		PRINTFORM {PeeHold:MASTER:0}【%GET_TALENTNAME_TR(1514, PeeHold:MASTER:0)%】
+		IF nScat
+		RESETCOLOR
+		PRINTFORM /
+		SETCOLOR EnduranceColors(PooHold:MASTER:0)
+		PRINTFORML {PooHold:MASTER:0}【%GET_TALENTNAME_TR(1500, PooHold:MASTER:0)%】
+		ENDIF
+	ENDIF
+ELSEIF PeeHold:MASTER:0 == 6 || PooHold:MASTER:0 == 6
+	PRINTL Allow toilet needs?
+	CALL ASK_YN("Yes","No")
+	IF RESULT == 0
+		PeeHold:MASTER:0 = 0
+		PooHold:MASTER:0 = 0
+		PeeHoldExp:MASTER:0 = EXP_DEMAND_20(0,91,MASTER)
+		PooHoldExp:MASTER:0 = EXP_DEMAND_21(0,92,MASTER)
+		CALLF SILENT_ENDURANCECHANGE(MASTER)
+		PRINTFORM Reset to 
+		SETCOLOR EnduranceColors(PeeHold:MASTER:0)
+		PRINTFORM {PeeHold:MASTER:0}【%GET_TALENTNAME_TR(1514, TALENT:MASTER:57)%】
+		IF nScat
+		RESETCOLOR
+		PRINTFORM /
+		SETCOLOR EnduranceColors(PooHold:MASTER:0)
+		PRINTFORML {PooHold:MASTER:0}【%GET_TALENTNAME_TR(1500, TALENT:MASTER:58)%】
+		ENDIF
+	ENDIF
+ENDIF
+
+IF AlcoholAddict:MASTER:0 != 0 || DrugAddict:MASTER:0 != 0
+	PRINTL Reset drug addictions?	
+	CALL ASK_YN("Yes","No")
+	IF RESULT == 0
+		SIF AlcoholAddict:MASTER:0 != 0
+		AlcoholAddict:MASTER:0 = 0
+		SIF DrugAddict:MASTER:0 != 0
+		DrugAddict:MASTER:0 = 0
+		DrinkingExp:MASTER:0 = EXP_DEMAND_22(0,91,MASTER)
+		DrugExp:MASTER:0 = EXP_DEMAND_23(0,92,MASTER)
+		CALLF SILENT_ENDURANCECHANGE(MASTER)
+		PRINTFORM Reset to 
+		SETCOLOR EnduranceColors(AlcoholAddict:MASTER:0)
+		PRINTFORM {AlcoholAddict:MASTER:0}【%GET_TALENTNAME_TR(121, TALENT:MASTER:121)%】			
+		RESETCOLOR
+		PRINTFORM /
+		SETCOLOR EnduranceColors(DrugAddict:MASTER:0)
+		PRINTFORML {DrugAddict:MASTER:0}【%GET_TALENTNAME_TR(56, TALENT:MASTER:56)%】
+		RESETCOLOR			
+	ENDIF
+ENDIF
+
+$OptionBypass
+;custom code: Option Bypass
+;CFLAG:MASTER:初期位置 = CFLAG:nNo:初期位置
+FLAG:なりきり = nNo
+;SIF nNo != MASTER ;NAS: Non 0 Master. If we DO have a ID 0 master then we disable it much like in normal TW
+;CFLAG:nNo:出禁 = 1
+
+
+FOR LOCAL, 0, CHARANUM
+	SELECTCASE RELATION:LOCAL:MASTER
+	CASE IS >= 300
+		TALENT:LOCAL:3 = 1
+		CFLAG:LOCAL:2 = 5000
+		CFLAG:LOCAL:4 = 1000
+	CASE IS >= 250
+		CFLAG:LOCAL:2 = 3000
+		CFLAG:LOCAL:4 = 500		
+	CASE IS >= 200
+		CFLAG:LOCAL:2 = 2000
+		CFLAG:LOCAL:4 = 300	
+	CASE IS >= 150
+		CFLAG:LOCAL:2 = 1000
+		CFLAG:LOCAL:4 = 150
+	CASE IS > 100
+		CFLAG:LOCAL:2 = 500
+		CFLAG:LOCAL:4 = 50				
+	ENDSELECT
+NEXT
+
+CALL CUSTOM_INIT(MASTER)
+RETURN 1
+
+;FileName_SHOP_CUSTOM.ERB -------------------------- Rev1.00
+;服装の設定
+;CALL		USER
+;ARG		MASTERキャラNO
+;RETURN		VOID
+;COMMENT	
+;-----------------------------------------------------------
+@MASTER_CLOTHES_INIT
+;NAS: Custom chara
+IF TALENT:MASTER:CustomChara
+	CFLAG:MASTER:基本服装セット = 300
+;================
+ELSEIF FLAG:なりきり
+	CFLAG:MASTER:基本服装セット = FLAG:なりきり + 100
+ELSEIF TALENT:MASTER:性別 & 1
+	CFLAG:MASTER:基本服装セット = 2
+ELSE
+	CFLAG:MASTER:基本服装セット = 1
+ENDIF
+
+@MASTER_CLOTHES
+#DIMS choices, 100
+;リスト作成
+VARSET choices
+FOR LOCAL, 0, 10
+	IF LOCAL >= 7
+		choices:LOCAL '= MASTER_CLOTHES_NAME(LOCAL+1)
+	ELSE
+		choices:LOCAL '= MASTER_CLOTHES_NAME(LOCAL)
+	ENDIF
+NEXT
+choices:99 '= MASTER_CLOTHES_NAME(99)
+;表示
+PRINTL
+PRINTL
+PRINTFORML Select Casual Clothes
+DRAWLINE
+CALL ASK_CHOICES(choices, 100)
+SELECTCASE RESULT
+	CASE 100
+		RETURN 0
+	CASE 0 TO 99
+		CALL MASTER_CLOTHES_SET(RESULT)
+		SIF RESULT
+			RETURN 1
+	CASE 99
+		CALL MASTER_CLOTHES_SET(99)
+			RETURN 1
+ENDSELECT
+RESTART
+
+@MASTER_CLOTHES_SET(ARG)
+SELECTCASE ARG
+	CASE 0 TO 6
+		CFLAG:MASTER:基本服装セット = RESULT
+	CASE 7 TO 9
+		CFLAG:MASTER:基本服装セット = RESULT + 1
+	CASE 99
+		CALL MASTER_CLOTHES_INIT
+	CASEELSE
+		;THROW Invalid clothes selection
+		RETURN 0 ;Custom code, crashing the game is too harsh here, many people encounter this thinking they can't ng+
+ENDSELECT
+PRINTFORMW Casual clothes set to %MASTER_CLOTHES_NAME(CFLAG:MASTER:基本服装セット)%.
+RETURN 1
+
+@MASTER_CLOTHES_NAME(ARG)
+#FUNCTIONS
+SELECTCASE ARG
+	CASE 0
+		RETURNF "Naked"
+	CASE 1
+		RETURNF "Men's clothing"
+	CASE 2
+		RETURNF "Women's clothing"
+	CASE 3
+		RETURNF "Butler's clothing"
+	CASE 4
+		RETURNF "Maid's clothing"
+	CASE 5
+		RETURNF "Priest's clothing"
+	CASE 6
+		RETURNF "Monk's clothing"
+	CASE 7
+		RETURNF "Casual kimono" ;bugfix custom code
+	CASE 8
+		RETURNF "Keikogi"
+	CASE 9
+		RETURNF "Graduating male student's clothing"
+	CASE 10
+		RETURNF "Graduating female student's clothing"
+	CASEELSE
+		RETURNF CALLNAME:MASTER + "'s default clothing"
+ENDSELECT
+;custom code
+THROW Invalid clothes selection

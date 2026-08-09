@@ -1,0 +1,154 @@
+;-------------------------------------------------
+;Defecate
+;Hard training command level: 5
+;Flags required: Scat
+;-------------------------------------------------
+@ADD_CUSTOM_COM151
+#DIM Recipient
+SIF ISSKIP()
+	RETURN -1
+
+PRINTFORML Work in progress!
+PRINTFORML Poop yourself, or make %CALLNAME:TARGET% do it?
+CALL ASK_M("Yourself", UnderLaxative(MASTER) || PooHold:MASTER:0 <= -2 || PooBarStage(MASTER) >= 2, CALLNAME:TARGET, UnderLaxative(TARGET) || PooHold:TARGET:0 <= -2 || PooBarStage(TARGET) >= 2, "Cancel", 1)
+IF RESULT == 2
+    DEBUG_Target = -1
+	RETURN -1
+ELSEIF RESULT == 0 ;drinking semen yourself
+    DEBUG_Target = MASTER
+    Recipient = TARGET
+ELSE
+    DEBUG_Target = TARGET
+    Recipient = MASTER
+ENDIF
+
+PRINTFORML How \@ DEBUG_Target == MASTER ? %PARSE("are you")% # is %CALLNAME:DEBUG_Target% \@ going to poop? 
+PRINTFORML [  0] - On the floor
+SIF GETBIT(nScat, 2)
+PRINTFORML [  1] - In %HIS_HER(DEBUG_Target)+" "+PeeProtectType(DEBUG_Target,1)%
+SIF GETBIT(nScat, 3)
+PRINTFORML [  2] - In a bowl
+PRINTFORML [  3] - On \@ DEBUG_Target == MASTER ? %CALLNAME:TARGET% # %PARSE("you")% \@
+SIF GETBIT(nScat, 3)
+PRINTFORML [  4] - Make \@ DEBUG_Target == MASTER ? %CALLNAME:TARGET% # %PARSE("you")% \@ eat it
+INPUT
+TFLAG:144 = RESULT
+;effects
+SELECTCASE TFLAG:144
+CASE 0
+    CALL OMORASHI_END(DEBUG_Target, 0,1,1,-1)
+CASE 1
+    CALL OMORASHI_END(DEBUG_Target, 0,1,,-1)
+CASE 2
+    TFLAG:ScatBowl += BASE:DEBUG_Target:Poo    
+    CALL OMORASHI_END(DEBUG_Target, 0,1,1,-1,1)
+CASE 3
+    FOR LOCAL, 0, 8
+    STAIN:Recipient:LOCAL |= 512
+    NEXT
+    EXP:Recipient:GeneralPoopExp += BASE:DEBUG_Target:Poo/100
+    CALL OMORASHI_END(DEBUG_Target, 0,1,1,-1,1)
+CASE 4
+    STAIN:Recipient:0 |= 512
+    EXP:Recipient:GeneralPoopExp += BASE:DEBUG_Target:Poo/100    
+    TCVAR:Recipient:FoodIntake += BASE:DEBUG_Target:Poo
+    CALL OMORASHI_END(DEBUG_Target, 0,1,1,-1,1)
+ENDSELECT
+
+;-------------------------------------------------
+;COM別FLAGの設定
+;-------------------------------------------------
+;行為者
+TCVAR:116 = PLAYER
+
+;-------------------------------------------------
+;ソース追加処理
+;-------------------------------------------------
+;消費体力、気力
+IF FLAG:70 == 1
+	BASE:MASTER:TSP -= 200
+
+
+ELSE
+
+	DOWNBASE:DEBUG_Target:体力 -= 10
+	DOWNBASE:DEBUG_Target:気力 -= 200
+
+	SOURCE:DEBUG_Target:恐怖 = 400
+	SOURCE:DEBUG_Target:露出 = 1600
+	SOURCE:DEBUG_Target:屈従 = 1000
+	SOURCE:DEBUG_Target:逸脱 = 1400
+	SOURCE:DEBUG_Target:反感 = 1400
+
+	;-------------------------------------------------
+	;特殊ソース処理
+	;-------------------------------------------------
+	;抑圧、抵抗持ちには、抑鬱ソース追加
+	SIF TALENT:自己愛 < 0 || TALENT:抵抗
+		SOURCE:DEBUG_Target:鬱屈 += 1400
+
+	;場所によって逸脱のソースが上下
+	;野外
+	IF TEQUIP:野外プレイ
+		TIMES SOURCE:DEBUG_Target:逸脱 , 2.50
+	;鏡の前（羞恥プレイ）
+	ELSEIF TEQUIP:羞恥プレイ
+		TIMES SOURCE:DEBUG_Target:逸脱 , 1.50
+	;風呂場
+	ELSEIF TEQUIP:お風呂場プレイ
+		TIMES SOURCE:DEBUG_Target:逸脱 , 0.50
+	ENDIF
+ENDIF
+;-------------------------------------------------
+;経験の処理
+;-------------------------------------------------
+;OMORASHI_END does the trick
+;EXP:DEBUG_Target:放尿経験 += BASE:DEBUG_Target:尿意/100
+;EXP:DEBUG_Target:GeneralPeeExp += BASE:DEBUG_Target:尿意/100
+;BASE:DEBUG_Target:尿意 = 0
+
+;同性愛　レズなら戻り値1ゲイなら戻り値2
+IF FLAG:70 == 1
+	IF HETEROSEX(TARGET,PLAYER)
+		EXP:PLAYER:(50 + HETEROSEX(TARGET,PLAYER)) += 2
+	ENDIF
+ELSE
+	IF HETEROSEX(TARGET,PLAYER)
+		EXP:(50 + HETEROSEX(TARGET,PLAYER)) += 2
+		EXP:PLAYER:(50 + HETEROSEX(TARGET,PLAYER)) += 2
+	ENDIF
+
+	;野外放尿で異常経験
+	IF TEQUIP:野外プレイ && !GETBIT(CFLAG:3,6)
+		EXP:異常経験 += 1
+		SETBIT CFLAG:3,6
+	ENDIF
+ENDIF
+
+RETURN 1
+
+@ADD_CUSTOM_COM_ABLE151
+;放尿実行判定
+SIF !TFLAG:100
+	RETURN 0
+;一括管理
+SIF GLOBAL_COMABLE(151)
+	RETURN RESULT
+
+;OPTIONで放尿を有効化してないとダメ
+SIF !GETBIT(nScat,0)
+	RETURN 0
+
+;利尿剤使用中かおもらし癖ありでないとダメ
+SIF ((UnderLaxative(TARGET) == 0 && PooHold:TARGET:0 > -2) && PooBarStage(TARGET) < 2) && ((UnderLaxative(MASTER) == 0 && PooHold:MASTER:0 > -2) && PooBarStage(MASTER) < 2)
+	RETURN 0
+
+;時間停止中は許可
+IF FLAG: 70 != 1 && !TCVAR:無理矢理
+	;従順３以上でないとダメ（お風呂場ならＯＫ）
+	IF !BATHROOM()
+		SIF ABL:従順 <= 4
+			RETURN 0
+	ENDIF
+ENDIF
+RETURN 1

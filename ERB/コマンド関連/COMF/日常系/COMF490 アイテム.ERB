@@ -1,0 +1,699 @@
+;-------------------------------------------------
+;アイテム画面 note: item menu is replaced in the modded branch (but not the effects)
+;-------------------------------------------------
+@COM490
+#DIM 対象
+#DIM 全員
+#DIM CLIENT_ID
+#DIM 虚無への回帰
+#DIM 使用アイテム
+#DIM 表示アイテム種別
+#DIMS 食品特徴
+VARSET LOCAL
+VARSET LOCALS
+対象 = MASTER
+虚無への回帰 = 0
+表示アイテム種別 = 0
+PRINTL Pick an item to use.
+$LOOP
+;qol custom code
+GOTO QOL
+DRAWLINE
+FOR LOCAL,120, 699
+	SIF 表示アイテム種別 != 0 && ITEMTYPE(LOCAL) != 表示アイテム種別
+		CONTINUE
+	IF 対象 != MASTER
+		IF 使用可能アイテム(LOCAL) == 2 && ITEM:LOCAL
+			CALL PRINT_ITEM_EXPLANATION(LOCAL)
+		ENDIF
+	ELSE
+		IF 使用可能アイテム(LOCAL) && ITEM:LOCAL
+			CALL PRINT_ITEM_EXPLANATION(LOCAL)
+		ENDIF
+	ENDIF
+NEXT
+PRINTL
+DRAWLINE
+CALL PRINTBUTTON_EX("[ All ]", 2000, 表示アイテム種別 != 0, 表示アイテム種別 == 0)
+CALL PRINTBUTTON_EX("[Heal]", 2001, 表示アイテム種別 != 1, 表示アイテム種別 == 1)
+CALL PRINTBUTTON_EX("[Buff]", 2002, 表示アイテム種別 != 2, 表示アイテム種別 == 2)
+CALL PRINTBUTTON_EX("[Food]", 2003, 表示アイテム種別 != 3, 表示アイテム種別 == 3)
+CALL PRINTBUTTON_EX("[Snack]", 2004, 表示アイテム種別 != 4, 表示アイテム種別 == 4)
+CALL PRINTBUTTON_EX("[Fruit]", 2005, 表示アイテム種別 != 5, 表示アイテム種別 == 5)
+CALL PRINTBUTTON_EX("[Misc]", 2006, 表示アイテム種別 != 6, 表示アイテム種別 == 6)
+RESETCOLOR
+PRINTL
+DRAWLINE
+SIF ITEM:昆虫採集セット
+	PRINTFORML [901] Check Bug Cage
+PRINTFORML [900] Use Collector's Gap automatically (Currently: \@ FLAG:Cスキマ自動仕様 ? ON# OFF\@)
+IF TARGET && SHIRAHU(TARGET)
+	SIF 対象 != MASTER
+		SETCOLOR C_YELLOW
+	PRINTFORML [998] Use on %CALLNAME:TARGET%
+	RESETCOLOR
+ENDIF
+
+PRINTL [999] Return
+INPUT
+$QOL
+CALL QoL_490_ITEMMENU(対象,MASTER)
+使用アイテム = RESULT
+;アイテム以外の処理
+SELECTCASE RESULT
+	CASE 999
+		RETURN -1
+	CASE 900
+		FLAG:Cスキマ自動仕様 = !FLAG:Cスキマ自動仕様
+		PRINTFORMW Automatic usage has been switched \@ FLAG:Cスキマ自動仕様 ? ON# OFF\@.
+		GOTO LOOP
+	CASE 901
+		;[虫捕りをする]へ転送
+		CALL SHOW_MUSHI_CAGE
+		GOTO LOOP
+	CASE 998
+		IF 対象 != MASTER
+			対象 = MASTER
+		ELSEIF TARGET
+			対象 = TARGET
+		ENDIF
+		GOTO LOOP
+	CASE 2000 TO 2007
+		表示アイテム種別 = RESULT % 2000
+		GOTO LOOP
+ENDSELECT
+
+;使用可能アイテム以外の入力、またはアイテム未所持の場合は再入力
+IF 使用可能アイテム(使用アイテム) == 0 || ITEM:使用アイテム <= 0
+	GOTO LOOP
+ENDIF
+;相手使用時にMASTERのみアイテムの選択は再入力
+IF 対象 != MASTER && 使用可能アイテム(使用アイテム) == 1
+	GOTO LOOP
+ENDIF
+;IF ITEMTYPE_DRUG(使用アイテム,対象) && TCVAR:(ARG:1):お薬
+;	PRINTW That's enough drugs for today.
+;	GOTO LOOP
+;ENDIF
+IF (ITEMTYPE_FOOD(使用アイテム) || ITEMTYPE_MOD(使用アイテム) == 3) && !TIME_PROGRESS(TCVAR:対象:空腹時刻) ;addition custom code
+	PRINTFORMW \@ 対象 == MASTER ? You are # %CALLNAME:対象% is \@ not hungry enough.
+	GOTO LOOP
+ENDIF
+IF (ITEMTYPE_SWEETS(使用アイテム) || ITEMTYPE_MOD(使用アイテム) == 4) && !TIME_PROGRESS(TCVAR:対象:デザート空腹時刻) ;addition custom code
+	PRINTFORMW \@ 対象 == MASTER ? You are # %CALLNAME:対象% is \@ not hungry enough for a snack.
+	GOTO LOOP
+ENDIF
+TFLAG:193 = 使用アイテム
+TFLAG:194 = 対象 == MASTER ? MASTER # 1
+
+;----------------------------------
+;addition custom code, for modded item usage
+CALL Add_UseItem(使用アイテム, 対象)
+IF RESULT > 0
+	SIF RESULT == 3
+		GOTO LOOP
+	LOCAL:1 = 1
+	SIF RESULT == 2
+		虚無への回帰 = 1
+	GOTO DONE
+ENDIF
+;----------------------------------
+
+SELECTCASE 使用アイテム
+	CASE 120	;ブラックサンダー
+		PRINTFORML %PARSE("You eat",,,対象)% the %ITEMNAME_TR(使用アイテム)%.
+		SIF 対象 == MASTER
+			PRINTL ...It tasted pretty cheap.
+		CALL DrugStuffNoFluff(対象,使用アイテム)
+		LOCAL:1 ++
+	CASE 121
+		PRINTFORML %PARSE("You eat",,,対象)% the %ITEMNAME_TR(使用アイテム)%.
+		CALL DrugStuffNoFluff(対象,使用アイテム)
+		LOCAL:1 ++
+	CASE 122	;高級チョコ
+		PRINTFORML %PARSE("You eat",,,対象)% the %ITEMNAME_TR(使用アイテム)%.
+		PRINTFORML Delicious!
+		CALL DrugStuffNoFluff(対象,使用アイテム)
+		LOCAL:1 ++
+	CASE 123	;本命チョコ
+		PRINTFORML %PARSE("You eat",,,対象)% the %ITEMNAME_TR(使用アイテム)%.
+		PRINTFORML %PARSE("You can",5,,対象)% really feel the love!
+		CALL DrugStuffNoFluff(対象,使用アイテム)
+		LOCAL:1 ++
+	CASE 212	;かしわもち
+		PRINTFORML \@ 対象 == MASTER ? You eat # %CALLNAME:対象% eats \@ the %ITEMNAME_TR(使用アイテム)%.
+		LOCAL:1 ++
+		;端午の節句は夏の季語だそうなので春物じゃなかった
+		CALL DrugStuffNoFluff(対象,使用アイテム)
+	CASE 213	;アイス
+		;NAS customs, use item target instead of TARGET
+		IF 対象 != MASTER  && SHIRAHU(対象)
+			PRINTFORM You and %CALLNAME:対象% eat
+		ELSE
+			PRINTFORM You eat
+		ENDIF
+		PRINTDATA
+			DATAFORM 『Ice cream』
+			DATAFORM 『Frozen mandarin orange』
+			DATAFORM 『Double stick ice popsicle』
+			DATAFORM 『Double stick ice cream』
+			DATAFORM 『Chuupet』
+			DATAFORM 『Papico ice cream』
+			DATAFORM 『Condensed milk ice cream bar』
+			DATAFORM 『Red bean ice cream bar』
+			DATAFORM 『Watermelon popsicle』
+			DATAFORM 『Orange ice pops』
+			DATAFORM 『Black Thunder ice cream』
+			DATAFORM 『Yukimi Daifuku』
+			;Custom code
+			DATAFORM 『Frozen cherimoya』
+			DATAFORM 『Kurogoma ice cream』
+			DATAFORM 『Matcha ice cream bar』
+			DATAFORM 『Raspberry ice pops』
+			DATAFORM 『Grape ice pops』
+			DATAFORM 『Tri-color ice pops』
+			DATAFORM 『Choco Monaka Jumbo』
+		ENDDATA
+		IF 対象 != MASTER && SHIRAHU(対象)
+			PRINTFORML together.
+		ELSE
+			PRINTFORML alone.
+		ENDIF
+		食品特徴 = %ITEMNAME:使用アイテム%/冷たい/甘い/
+		CALL DrugStuffNoFluff(MASTER,使用アイテム)
+		IF 対象 != MASTER && SHIRAHU(対象)
+			CALL DrugStuffNoFluff(対象,使用アイテム)
+		ENDIF
+		LOCAL:1 ++
+	CASE 215	;紅茶
+		PRINTFORML \@ 対象 == MASTER ? You drink # %CALLNAME:対象% drinks \@ %ARTICLE(ITEMNAME_TR(使用アイテム))%.
+		CALL DrugStuffNoFluff(対象,使用アイテム)
+		LOCAL:1 ++
+	CASE 352	;イチゴ
+		PRINTFORML \@ 対象 == MASTER ? You eat # %CALLNAME:対象% eats \@ the %ITEMNAME_TR(使用アイテム)%.
+		CALL DrugStuffNoFluff(TARGET:全員,使用アイテム)
+		LOCAL:1 ++
+	CASE 364
+		食品特徴 = %ITEMNAME:使用アイテム%/野菜/果物/甘い/
+		IF FLAG:70 == 1
+			PRINTFORML \@ 対象 == MASTER ? You eat # %CALLNAME:対象% eats \@ the %ITEMNAME_TR(使用アイテム)%.
+			CALL DrugStuffNoFluff(対象,使用アイテム)
+		ELSE
+			IF TARGET != MASTER
+				IF GET_TARGETNUM() > 1
+					PRINTFORM Everyone eats 
+				ELSEIF SHIRAHU(TARGET)
+					PRINTFORM You and %CALLNAME:TARGET% eat 
+				ENDIF
+			ELSE ;custom code
+				PRINTFORM You eat 
+			ENDIF
+			PRINTFORML the %ITEMNAME_TR(使用アイテム)%.
+			CALL DrugStuffNoFluff(MASTER,使用アイテム)
+			FOR 全員, 1, GET_TARGETNUM() + 1
+				SIF TARGET:全員 <= 0
+					CONTINUE
+				SIF !SHIRAHU(TARGET:全員)
+					CONTINUE
+				CALL DrugStuffNoFluff(TARGET:全員,使用アイテム)
+			NEXT
+		ENDIF
+		LOCAL:1 ++
+	;CASE 400
+	;	PRINTFORML %CALLNAME:MASTER%は%ITEMNAME:使用アイテム%を開いた
+	;	CALL COM401
+	;	LOCAL:1 ++
+	CASE 500	;青汁
+		PRINTFORML You drink %ARTICLE(ITEMNAME_TR(使用アイテム))%.
+		PRINTL Gross! Another one!
+		CALL DrugStuffNoFluff(対象,使用アイテム)
+		LOCAL:1 ++
+	CASE 501	;栄養ドリンク
+		PRINTFORML \@ 対象 == MASTER ? You drink # %CALLNAME:対象% drinks \@ %ARTICLE(ITEMNAME_TR(使用アイテム))%.
+		CALL DrugStuffNoFluff(対象,使用アイテム)
+		LOCAL:1 ++
+	CASE 502	;精力剤
+		IF HAS_PENIS(対象)
+			PRINTFORML Drank the %ITEMNAME_TR(使用アイテム)%.
+			CALL DrugStuffNoFluff(対象,使用アイテム)
+			LOCAL:1 ++
+		ELSE
+			PRINTFORMW Vigora has no effect on people without the necessary "package".
+			GOTO LOOP
+		ENDIF
+	CASE 503	;ギンギンＺ
+		PRINTFORML Drank the %ITEMNAME_TR(使用アイテム)%.
+		PRINTL Full tank in no time, MANTAN!
+		CALL DrugStuffNoFluff(対象,使用アイテム)
+		LOCAL:1 ++
+	;CASE 504
+	;		IF FLAG:70
+	;			PRINTFORML 時間停止を解除してから使おう
+	;			GOTO LOOP
+	;		ENDIF
+	;		IF CFLAG:MASTER:現在位置 != CFLAG:MASTER:初期位置
+	;			PRINTFORML これは自室で飲もう
+	;			GOTO LOOP
+	;		ENDIF
+	;		PRINTFORML ストロング虚無を口にした途端、虚無の力で思考はぼやけ、すべてがどうでもよくなってきた
+	;		PRINTFORML %CALLNAME:MASTER%は缶を空けながら一日を無為に過ごした…
+	;		虚無への回帰 = 1
+	CASE 505	;ギンギラギンＸ
+		PRINTFORML \@ 対象 == MASTER ? You drink # %CALLNAME:対象% drinks \@ %ARTICLE(ITEMNAME_TR(使用アイテム))%.
+		PRINTL I feel like I can take on the entire world...!
+		CALL DrugStuffNoFluff(対象,使用アイテム)
+		LOCAL:1 ++
+	CASE 506	;精力剤『天元凸破』
+		PRINTFORML \@ 対象 == MASTER ? You drink # %CALLNAME:対象% drinks \@ %ARTICLE(ITEMNAME_TR(使用アイテム))%.
+		PRINTL Your ××× will pierce the heavens!
+		CALL DrugStuffNoFluff(対象,使用アイテム)
+		LOCAL:1 ++
+	CASE 507	;ポーション
+		PRINTFORML \@ 対象 == MASTER ? You drink # %CALLNAME:対象% drinks \@ %ARTICLE(ITEMNAME_TR(使用アイテム))%.
+		CALL DrugStuffNoFluff(対象,使用アイテム)
+		LOCAL:1 ++
+	CASE 508	;マジックポーション
+		PRINTFORML \@ 対象 == MASTER ? You drink # %CALLNAME:対象% drinks \@ %ARTICLE(ITEMNAME_TR(使用アイテム))%.
+		PRINTFORML Magic is surging within... 
+		CALL DrugStuffNoFluff(対象,使用アイテム)
+		LOCAL:1 ++
+	CASE 509	;破眠ポーション
+		PRINTFORML \@ 対象 == MASTER ? You drink # %CALLNAME:対象% drinks \@ %ARTICLE(ITEMNAME_TR(使用アイテム))%.
+		CALL DrugStuffNoFluff(対象,使用アイテム)
+		LOCAL:1 ++
+	CASE 510	;ウコンドリンク
+		PRINTFORML You drink %ARTICLE(ITEMNAME_TR(使用アイテム))%.
+		PRINTL Liver metabolism has increased, it's now harder to get drunk.
+		CALL DrugStuffNoFluff(対象,使用アイテム)
+		LOCAL:1 ++
+	CASE 511	;エリクサー
+		PRINTFORML \@ 対象 == MASTER ? You drink # %CALLNAME:対象% drinks \@ %ARTICLE(ITEMNAME_TR(使用アイテム))%.
+		CALL DrugStuffNoFluff(対象,使用アイテム)
+		PRINTL All the exhaustion and tiredness are just blown away...!
+		IF GETBIT(nPee, 1)
+			PRINTFORML However... it came with a big cost...
+		ENDIF
+		LOCAL:1 ++
+	CASE 512	;仙丹
+		PRINTFORML \@ 対象 == MASTER ? You drink # %CALLNAME:対象% drinks \@ %ARTICLE(ITEMNAME_TR(使用アイテム))%.
+		PRINTL Unusual power overwhelming...!
+		CALL DrugStuffNoFluff(対象,使用アイテム)
+		LOCAL:1 ++
+	CASE 514	;仙香玉兎
+		IF TFLAG:仙香玉兎 > 0
+			PRINTFORMW Already used.
+			GOTO LOOP
+		ELSE
+			PRINTFORML You put the %ITEMNAME_TR(使用アイテム)% in the incense burner.
+			PRINTL The bewitching incense begins drifting around in the air...
+			TFLAG:仙香玉兎 = 240
+			LOCAL:1 ++
+		ENDIF
+	CASE 515	;国士無双の薬　３回目まではバフ効果
+		PRINTFORML \@ 対象 == MASTER ? You drink # %CALLNAME:対象% drinks \@ the %ITEMNAME_TR(使用アイテム)%.
+		CALL DrugStuffNoFluff(対象,使用アイテム)
+		LOCAL:1 ++
+		IF TCVAR:対象:国士無双の薬 < 3
+			PRINTL Power overwhelming......!
+		ELSE
+			;四回目で爆発、デバフに
+			SETCOLOR C_RED
+			PRINTFORMW ！！
+			PRINTFORML ...An explosion afro... Must've drunk too much...
+			RESETCOLOR
+		ENDIF
+	CASE 516	
+		IF TFLAG:GG設置位置 == CFLAG:MASTER:現在位置
+			PRINTFORMW %TEXTR(@"「I did it.」（Resident at %GET_MAPNAME(MAIN_MAP)% - %CALLNAME:MASTER%.）/This variety is designed to be safe, but if you feel unwell please distance yourself and get some rest.")%
+		ELSEIF TFLAG:GG設置位置
+			PRINTFORML Gassing Garden can only be used once.
+			PRINTFORMW Continue using the one already deployed.
+			GOTO LOOP
+		ELSEIF INROOM(CFLAG:MASTER:現在位置)
+			PRINTFORMW Outdoors only.
+			GOTO LOOP
+		;目撃者がいると駄目
+		ELSEIF (TARGET != MASTER || DATE_HITOGOMI(CFLAG:MASTER:現在位置) > 0) && !FLAG:70
+			PRINTFORMW There's a lot of people here... Try a stealthier approach.
+			GOTO LOOP
+		ELSE
+			PRINTFORML You sprinkle the magic seeds.
+			PRINTFORMW The plant grows and blossoms in the blink of an eye, filling the area with a lust-evoking perfume...
+			TFLAG:GG設置位置 = CFLAG:MASTER:現在位置
+			LOCAL:1 ++
+		ENDIF
+	CASE 517	;ポイズンボディ
+		IF TFLAG:ポイズンボディ > 500
+			;PRINTFORMW Taking any more than this will only result in liver damage.
+			PRINTFORML You take one dose of %ITEMNAME_TR(使用アイテム)%.
+			PRINTFORMW The headache and dizziness assaults you to the point you can't bear it any more.
+			PRINTFORMW You lie down to rest, but you never wake up...
+			BASE:対象:体力 = -5000
+			CALL SET_HISTORY_DEATH(対象,対象,"OD")
+			RETURN
+		ELSEIF HAS_PENIS(対象)
+			PRINTFORML You take one dose of %ITEMNAME_TR(使用アイテム)%.
+			PRINTFORML A strong swirling sensation washes over you, as you feel your crotch starting to heat up...
+			PRINTFORML （Estrus effect has been added to your semen. While the effect is active, ejaculation incurs extra exhaustion.）
+			PRINTFORML You get assailed by a sudden fit of headache, dizziness, nausea and joint pains. 
+			PRINTFORML But you manage to endure it with a strong resolve that some things are more important than health.
+			CALL DrugStuffNoFluff(対象,使用アイテム)
+			LOCAL:1 ++
+		ELSE
+			PRINTFORMW This medicine apparently only works on men.
+			GOTO LOOP
+		ENDIF
+		[SKIPSTART]
+	CASE 520	;包帯
+			PRINTFORML You wrap a %ITEMNAME_TR(使用アイテム)% around the kiss mark to hide it.
+			TFLAG:包帯 = 1
+			LOCAL:1 ++		
+		ELSE
+			PRINTFORMW There's no point in using it now.
+			GOTO LOOP		
+		ENDIF
+		[SKIPEND]
+	CASE 521		
+		IF FLAG:70
+			PRINTFORMW Use it after time has resumed.
+			GOTO LOOP
+		ENDIF
+		PRINTFORML You open the fortune letter.
+		PRINTFORML The Fortune-Teller comes out.
+		PRINTFORMW 
+		CALLF HESOYAM(174)
+		CALLF TP(174)
+		LOCAL:1 ++
+	CASE 530	;ミラダの石
+		CALL SET_MIRADA
+		IF RESULT == -1
+			RETURN -1
+		ELSE
+			LOCAL:1 ++
+		ENDIF
+	CASE 550	;ヤツメ串
+		PRINTFORML \@ 対象 == MASTER ? You eat # %CALLNAME:対象% eats \@ the %ITEMNAME_TR(使用アイテム)%.
+		CALL 満腹度上昇(対象,"軽食")
+		食品特徴 = %ITEMNAME:使用アイテム%/魚料理/おつまみ/
+		CALL RECOVER_PERMIL(対象, ITEM_TASTE(対象, 40, 食品特徴), "体力", 0, "Recover via Lamprey")
+		CALL RECOVER_PERMIL(対象, ITEM_TASTE(対象, 80, 食品特徴), "気力", 0, "Recover via Lamprey")
+		CALL RECOVER_PERMIL(対象, ITEM_TASTE(対象, 50, 食品特徴), "精力", 0, "Recover via Lamprey")
+			SIF nScat
+				TCVAR:対象:FoodIntake += 200
+		LOCAL:1 ++
+	CASE 576	;(酒造パッチ)あくまき
+		PRINTFORML \@ 対象 == MASTER ? You eat # %CALLNAME:対象% eats \@ the %ITEMNAME_TR(使用アイテム)%.
+		CALL 満腹度上昇(対象,"主食")
+		食品特徴 = %ITEMNAME:使用アイテム%/和食/米/団子/甘い/もちもち/家庭的/春物/
+		CALL RECOVER(対象, ITEM_TASTE(対象, 150, 食品特徴), "体力", "Recover via Akumaki")
+		CALL RECOVER(対象, ITEM_TASTE(対象, 150, 食品特徴), "気力", "Recover via Akumaki")
+		LOCAL:1 ++
+	CASE 626	;キイチゴ
+		PRINTFORML \@ 対象 == MASTER ? You eat # %CALLNAME:対象% eats \@ the %ITEMNAME_TR(使用アイテム)%.
+		食品特徴 = %ITEMNAME:使用アイテム%/果物/甘い/すっぱい/野趣/
+		CALL RECOVER(対象, ITEM_TASTE(対象, 50, 食品特徴), "気力", "Recover via Raspberry")
+		SIF nScat
+			CALL RECOVER(対象,20, "Poo", "Recover via raspberry")			
+		LOCAL:1 ++
+	CASE 628	;アケビ
+		PRINTFORML \@ 対象 == MASTER ? You eat # %CALLNAME:対象% eats \@ the %ITEMNAME_TR(使用アイテム)%.
+		食品特徴 = %ITEMNAME:使用アイテム%/果物/甘い/野趣/
+		CALL RECOVER(対象,80, "体力", "Recover via Akebia")
+		CALL RECOVER(対象, ITEM_TASTE(対象, 80, 食品特徴), "気力", "Recover via Akebia")
+		SIF GETBIT(nPee, 1)
+			CALL DRINK(対象, 50,1)
+		SIF nScat
+			TCVAR:対象:FoodIntake += 200
+		LOCAL:1 ++
+	CASE 630	;仙桃
+		PRINTFORML \@ 対象 == MASTER ? You eat # %CALLNAME:対象% eats \@ the %ITEMNAME_TR(使用アイテム)%.
+		PRINTL Power overwhelming...!
+		CALL BUFF_BASE(対象, BASE_体力, MAX(MAXBASE:対象:体力 / 10, 500))
+		CALL BUFF_BASE(対象, BASE_気力, MAX(MAXBASE:対象:気力 / 10, 500))
+		CALL BUFF_BASE(対象, BASE_精力, MAX(MAXBASE:対象:精力 / 10, 500))
+		LOCAL:1 ++
+	CASE 665	;(酒造パッチ)ヤマブドウ
+		PRINTFORML \@ 対象 == MASTER ? You eat # %CALLNAME:対象% eats \@ the %ITEMNAME_TR(使用アイテム)%.
+		食品特徴 = %ITEMNAME:使用アイテム%/果物/甘い/すっぱい/野趣/
+		CALL RECOVER(対象, ITEM_TASTE(対象, 50, 食品特徴), "気力", "Recover via Wild Grape")
+		LOCAL:1 ++
+	CASE 669	;(酒造パッチ)携帯タコス
+		PRINTFORML \@ 対象 == MASTER ? You eat # %CALLNAME:対象% eats \@ the %ITEMNAME_TR(使用アイテム)%.
+		CALL 満腹度上昇(対象,"軽食")
+		食品特徴 = タマネギ/トマト/キャベツ/洋食/野菜/獣肉/スパイス/チーズ/辛い/ガッツリ/濃厚/機能的/野趣/鮮やか/サクサク/
+		CALL RECOVER(対象, ITEM_TASTE(対象, 120, 食品特徴), "体力", "Recover via Taco")
+		CALL RECOVER(対象, ITEM_TASTE(対象, 120, 食品特徴), "気力", "Recover via Taco")
+		LOCAL:1 ++
+	CASE 675	;Custom code
+		PRINTFORML \@ 対象 == MASTER ? You eat # %CALLNAME:対象% eats \@ the %ITEMNAME_TR(使用アイテム)%.
+		食品特徴 = %ITEMNAME:使用アイテム%/果物/甘い/野趣/
+		CALL RECOVER(対象, ITEM_TASTE(対象, 80, 食品特徴), "気力", "Recover via Apple")
+	CASE 677	;Custom code
+		PRINTFORML \@ 対象 == MASTER ? You eat # %CALLNAME:対象% eats \@ some %ITEMNAME_TR(使用アイテム)%.
+		食品特徴 = %ITEMNAME:使用アイテム%/おつまみ/機能的/野趣/
+		CALL RECOVER(対象, ITEM_TASTE(対象, 30, 食品特徴), "体力", "Recover via Nuts")
+		CALL RECOVER(対象, ITEM_TASTE(対象, 30, 食品特徴), "気力", "Recover via Nuts")
+	CASEELSE
+		GOTO LOOP
+ENDSELECT
+$DONE ;addition custom code, move here if modded item was used
+IF LOCAL:1
+	IF !FLAG:70
+		TIME += 5
+	ELSE
+		BASE:MASTER:TSP -= 5
+	ENDIF
+	ITEM:使用アイテム -= 1
+	SIF 虚無への回帰
+		CALL OYASUMI
+	RETURN 0
+ENDIF
+
+
+@SET_MIRADA
+PRINTFORML Select a target.
+PRINTFORML Yellow means it's already set, and pink that they have already fallen for some condition.
+SIF FLAG:並び替え
+	CALL CHARASORT_EX
+FOR LOCAL:1, 1, EX_CHARANUM + 1
+	IF FLAG:並び替え
+		LOCAL = RESULT:(LOCAL:1)
+		SIF LOCAL < 0
+			CONTINUE
+	ELSE
+		LOCAL = LOCAL:1
+		SIF LOCAL >= CHARANUM
+			BREAK
+	ENDIF
+	;SIF TALENT:LOCAL:行きずり
+	;	CONTINUE
+	SIF CFLAG:LOCAL:出禁
+		CONTINUE
+	SIF CFLAG:LOCAL:体目当て
+		SETCOLOR C_YELLOW
+	SIF TALENT:LOCAL:セフレ || TALENT:LOCAL:恋慕
+		SETCOLOR C_PINK
+	PRINTFORMLC [{LOCAL, 3}] %CALLNAME:LOCAL%
+	RESETCOLOR
+NEXT
+PRINTFORML 
+DRAWLINE
+PRINTFORML [999] Never mind
+INPUT
+SIF !INRANGE(RESULT,1,CHARANUM)
+	RETURN -1
+SIF CFLAG:RESULT:体目当て
+	RETURN -1
+LOCAL = 0 ;custom code
+IF TALENT:RESULT:セフレ || TALENT:RESULT:恋慕
+	TCVAR:RESULT:発情 = 1
+	LOCAL = 1 ;custom code
+ELSE
+	CFLAG:RESULT:体目当て = 1
+	Qol_Info_Dates_Array:RESULT:Qol_Dates_Mirada = DAY
+ENDIF
+PRINTFORMW Thinking about %CALLNAME:RESULT% while holding the Stone of Mirada tightly, the stone begins shining a little.
+;custom code
+IF LOCAL
+	SETCOLOR C_PINK
+	PRINTFORML Somewhere, %CALLNAME:RESULT% pants with flushed cheeks...
+	PRINTFORMW Looks like the Stone of Mirada had quite the extreme effect on %HIS_HER(RESULT)% body as %HE_SHE(RESULT,1)% becomes extremely aroused.
+	RESETCOLOR
+ENDIF
+RETURN 1
+
+@使用可能アイテム(ARG)
+;1だとMASTERのみ、2だとあなた以外にも使える
+#FUNCTION
+
+; SIF CFLAG:MASTER:うふふ && !QOL_ITEM_SEX_ALLOWED(ARG) ;qol custom code
+; 	RETURNF 0
+;(酒造パッチ)あくまきとヤマブドウ、タコス
+;SELECTCASE ARG
+;	CASE 121 TO 123, 215, 364, 500, 510, 514, 515, 516, 517, 520, 521, 530
+;		RETURNF 1
+;	CASE 120, 212, 213, 352, 501, 503, 505 TO 509, 511, 512, 550, 576, 626, 628, 630, 665, 669
+;		RETURNF 2
+;	CASE 502
+;		SIF HAS_PENIS(TARGET)
+;			RETURNF 2
+;		RETURNF 1
+;	CASEELSE
+;		RETURNF 0
+;ENDSELECT
+SIF ITEMTYPE_MOD(ARG)
+	RETURNF Add_UsableItem(ARG) ;addition custom code, return modded values for new items, otherwise 0
+SELECTCASE ITEMTYPE(ARG)
+	CASE 1, 2, 3, 4, 5, 7
+		;IF GROUPMATCH(ITEMNAME:ARG, "国士無双の薬", "チョコレート", "高級チョコ", "本命チョコ", "青汁")
+			RETURNF 2
+		;ENDIF
+	CASE 6
+		RETURNF 1
+	CASEELSE
+		;NAS: Legacy Fallback
+		SELECTCASE ARG
+			CASE 120, 212, 213, 352, 501, 503, 505 TO 509, 511, 512, 520, 550, 626, 628, 630
+				RETURNF 2
+			CASE 121 TO 123, 215, 364, 500, 510, 514, 515, 516, 517, 520, 521, 530
+				RETURNF 1
+			CASE 502
+				SIF HAS_PENIS(TARGET)
+					RETURNF 2
+				RETURNF 1
+			CASEELSE
+				RETURNF Add_UsableItem(ARG) ;addition custom code, return modded values for new items, otherwise 0
+		ENDSELECT
+ENDSELECT
+
+;本来@ITEMDATAを使うべきだが#FUNCTIONじゃないのがなんかやだ
+@ITEMTYPE(ARG)
+#FUNCTION
+IF ITEMTYPE_DRUG(ARG)
+	RETURNF 1
+ELSEIF ITEMTYPE_BUFF(ARG)
+	RETURNF 2
+ELSEIF ITEMTYPE_FOOD(ARG)
+	RETURNF 3
+ELSEIF ITEMTYPE_SWEETS(ARG)
+	RETURNF 4
+ELSEIF ITEMTYPE_FRUIT(ARG)
+	RETURNF 5
+ELSEIF ITEMTYPE_ETCETERA(ARG)
+	RETURNF 6
+ELSEIF ITEMTYPE_MOD(ARG) ;addition custom code, return modded values for new items
+	RETURNF ITEMTYPE_MOD(ARG)
+ENDIF
+RETURNF 0
+
+@ITEMTYPE_DRUG(ARG)
+#FUNCTION
+;SIF GROUPMATCH(ARG, 501, 502, 503, 505, 506, 507, 508, 509, 511)
+SIF GROUPMATCH(ITEMNAME:ARG, "栄養ドリンク", "精力剤", "ギンギンＺ", "ギンギラギンＸ", "精力剤『天元凸破』", "ポーション", "マジックポーション", "破眠ポーション", "エリクサー")
+	RETURNF 1
+
+;BUFF_BASEを行うもの
+@ITEMTYPE_BUFF(ARG)
+#FUNCTION
+;SIF GROUPMATCH(ARG, 512, 515, 630)
+SIF GROUPMATCH(ITEMNAME:ARG, "仙丹", "国士無双の薬", "仙桃")
+	RETURNF 1
+
+;満腹度が増えるもの
+@ITEMTYPE_FOOD(ARG)
+#FUNCTION
+;SIF GROUPMATCH(ARG, 550, 576, 669)
+SIF GROUPMATCH(ITEMNAME:ARG, "ヤツメ串", "あくまき", "携帯タコス")
+	RETURNF 1
+
+;デザート満腹度が増えるもの
+@ITEMTYPE_SWEETS(ARG)
+#FUNCTION
+;SIF GROUPMATCH(ARG, 120, 121, 122, 123, 212, 213)
+SIF GROUPMATCH(ITEMNAME:ARG, "ブラックサンダー", "チョコレート", "高級チョコ", "本命チョコ", "かしわもち", "アイス")
+	RETURNF 1
+
+;満腹度が増えないもの
+@ITEMTYPE_FRUIT(ARG)
+#FUNCTION
+;SIF GROUPMATCH(ARG, 352, 364, 500, 626, 628, 665)
+SIF GROUPMATCH(ITEMNAME:ARG, "イチゴ", "スイカ", "青汁", "キイチゴ", "アケビ", "ヤマブドウ", "りんご", "ナッツ");Custom code
+	RETURNF 1
+
+;その他のもの
+@ITEMTYPE_ETCETERA(ARG)
+#FUNCTION
+;SIF GROUPMATCH(ARG, 215, 510, 514, 516, 517, 520, 521, 530)
+SIF GROUPMATCH(ITEMNAME:ARG, "紅茶", "ウコンドリンク", "仙香玉兎", "ガシングガーデン", "ポイズンボディ", "包帯", "易書", "ミラダの石")
+	RETURNF 1
+
+@PRINT_ITEM_EXPLANATION(ARG)
+PRINTFORM [{ARG, 3, RIGHT}] %ITEMNAME:ARG, 18, LEFT% {ITEM:ARG, 3, RIGHT}個　
+SETCOLOR C_L_GRAY
+	PRINTFORML %ITEM_EXPLANATION(ARG)%
+RESETCOLOR
+
+@薬の知識(ARG)
+#FUNCTION
+#DIM 回復量
+#DIM 強化回数
+回復量 = ARG
+;回復量 = 基準値 * (1.1 ^ (調合Lv + 薬に関係しそうな知識))
+強化回数 = LEVEL_TO_RANK(TALENT:MASTER:調合Lv) + TALENT:MASTER:SexKnow >= 3 + TALENT:MASTER:調合知識
+強化回数 = MIN(強化回数, 10) ;bug fix failsafe
+WHILE 強化回数 > 0
+	TIMES 回復量, 1.1
+	強化回数 --
+WEND
+RETURNF 回復量
+
+;味覚による回復補正
+;満腹度が上がらない食品は気力のみ補正
+@ITEM_TASTE(CHARA, 基準値, 食品特徴)
+#FUNCTION
+#DIM CHARA
+#DIM 基準値
+#DIMS 食品特徴
+#DIMS TASTE_CHARA_GOOD
+#DIMS TASTE_CHARA_BAD
+#DIM 回復量
+TASTE_CHARA_GOOD = %GET_STR(, "キャラデータ", CHARA, "料理：好きな味")%
+TASTE_CHARA_BAD = %GET_STR(, "キャラデータ", CHARA, "料理：嫌いな味")%
+
+回復量 = 基準値 + (STR_MULTI_COUNT(TASTE_CHARA_GOOD, 食品特徴) - STR_MULTI_COUNT(TASTE_CHARA_BAD, 食品特徴)) * 10
+
+;旬など季節に応じた補正
+SELECTCASE GET_MONTH()
+	CASE "春の月"
+		IF STRCOUNT(食品特徴, "春物/") && !STRCOUNT(TASTE_CHARA_BAD, "春物/")
+			TIMES 回復量, 1.3
+		ENDIF
+	CASE "夏の月"
+		;夏はアイスが2.0倍（嫌いじゃなければ）
+		IF STRCOUNT(食品特徴, "アイス/") && !STRCOUNT(TASTE_CHARA_BAD, "アイス/")
+			TIMES 回復量, 2.0
+		ELSEIF STRCOUNT(食品特徴, "スイカ/")
+			TIMES 回復量, 1.3
+		ENDIF
+	CASE "秋の月"
+		IF STRCOUNT(食品特徴, "アケビ/")
+			TIMES 回復量, 1.3
+		ENDIF
+	CASE "冬の月"
+		;冬はアイスが0.5倍（好きじゃなければ）
+		IF STRCOUNT(食品特徴, "アイス/") && !STRCOUNT(TASTE_CHARA_GOOD, "アイス/")
+			TIMES 回復量, 0.5
+		ENDIF
+ENDSELECT
+
+RETURNF 回復量
+
+;アイテム
+@COM_ABLE490
+;移動実行判定
+SIF !TFLAG:100
+	RETURN 0
+;一括管理
+SIF GLOBAL_COMABLE(490)
+	RETURN RESULT
+RETURN 1

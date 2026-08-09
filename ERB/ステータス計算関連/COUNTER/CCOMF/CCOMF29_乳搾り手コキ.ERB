@@ -1,0 +1,229 @@
+;*********************************************************************************************
+;com custom code - ported from protoSDM, prostate milking - sadist exclusive rev com, instant ejaculation
+;if 29 gets overridden, change function names here and counter num at EVENT_MESSAGE_ORGASM.ERB
+;カウンターコマンド：乳搾り手コキ
+;ARG = 対象のキャラ番号
+;*********************************************************************************************
+@CCOMF29(ARG)
+
+	;体勢の変更
+	;=============================
+	CALL TOUCH_SET(SET_FROM_YUBI,1,ARG)
+	CALL TOUCH_SET(SET_FROM_YUBI,7,ARG)
+	TFLAG:MASTERのＣ使用中 ++
+	
+	;ソース計算および内部処理系統
+	;=============================
+	; IF TEQUIP:PLAYER:0
+		; IF TEQUIP:PLAYER:0 & 1
+			; CALL DATUI_BOTTOM(ARG,1)
+		; ELSEIF TEQUIP:PLAYER:0 & 8
+			; CALL DATUI_BOTTOM(ARG,2)
+		; ENDIF
+	; ENDIF
+	SOURCE:ARG:性行動 += 400
+	SOURCE:ARG:加虐 += 400
+	SOURCE:ARG:誘惑 += 200
+	SOURCE:ARG:挑発 += 300
+	SOURCE:ARG:奉仕 += 100
+	
+	SOURCE:PLAYER:快Ａ += 100 * (TALENT:ARG:器用な指+1) * ( RAND:(ABL:ARG:指+1) +2 )
+	SOURCE:PLAYER:快Ｃ += 300 * (TALENT:ARG:器用な指+1) * ( RAND:(ABL:ARG:指+1) +2 )
+	
+	;必ず射精させる。器用な指があれば射精量２倍
+	LOCALS = {ARG}/
+	CSTR:PLAYER:10 += LOCALS
+	BASE:PLAYER:射精 = MAXBASE:PLAYER:射精 * (TALENT:ARG:器用な指+1) * ( RAND:(ABL:ARG:指+1) +1 )
+	;MASTERがローター装備時射精量５割増し
+	IF CFLAG:MASTER:ローターA挿入 != 0
+		BASE:MASTER:射精 = BASE:MASTER:射精 * 3 / 2
+	ENDIF
+	;射精箇所（1=膣内 2=アナル 3=手淫 4=口淫 5=パイズリ 6=素股 7=足コキ 8=体表 9=アナル奉仕 10=道具 11=触手 12=Ａ責め 13=Ｖ責め）
+	CALL 射精対象登録(PLAYER, ARG, 12) ;set to prostate ejaculation, equip condom (as per action description)
+	TEQUIP:PLAYER:コンドーム = 1 ;actually required or we enter infinite loop
+	TCVAR:PLAYER:イきそう = 1
+	;counts as masturbation, so no vig farming
+	nSexDone --
+	;強度
+	TCVAR:PLAYER:4 += (BASE:PLAYER:射精/10)
+	EXP:ARG:手淫経験 += 2
+	;奉仕フラグ
+	TCVAR:ARG:108 = 1
+	TCVAR:ARG:嗜虐フラグ = 1
+	CALL EVENT_COUNTER_POSE_69(ARG,0)
+
+	;マスターカウンター制御
+	;(ビット立ちで不可 0=尻を撫でる 1=抱き付く 2=キスする 3=胸愛撫 4=アナル愛撫 5=クリ愛撫 6=指挿入れ 7=スカートめくり)
+	;=============================
+	;CALL カウンター挿入され継続中処理(ARG)
+	SETBIT TCVAR:ARG:26 ,0
+	SETBIT TCVAR:ARG:26 ,1
+	SETBIT TCVAR:ARG:26 ,2
+	SETBIT TCVAR:ARG:26 ,3
+	SETBIT TCVAR:ARG:26 ,4
+	SETBIT TCVAR:ARG:26 ,5
+	SETBIT TCVAR:ARG:26 ,6
+	CCOMF_ProstateCooldown:ARG:0 = 1440 * DAY + TIME
+
+RETURN 1
+
+;*********************************************************************************************
+;カウンター実行可否出力関数
+;ARG = 対象のキャラ番号
+;*********************************************************************************************
+@CCOM_ABLE29(ARG)
+	SIF FLAG:アナル開発無効 ;custom code, allow anal training toggle
+		RETURN 0
+	SIF TIME_PROGRESS(CCOMF_ProstateCooldown:ARG:0) < 360 ;cooldown
+		RETURN 0
+	SIF TFLAG:MASTERのＣ使用中 || TFLAG:MASTERのＡ使用中 ;if already occupied
+		RETURN 0
+	SIF !HAS_PENIS(MASTER)
+		RETURN 0
+	SIF (ABL:MASTER:マゾっ気 < 3 || ABL:ARG:サドっ気 < (5 - (TALENT:ARG:サド * 2))) && CFLAG:ARG:弱み握り <= 0 && MARK:ARG:3 <= 0 ;counter punishment or sadism, player must be used to getting dommed
+		RETURN 0
+	SIF MAXBASE:MASTER:勃起 < 300	; ED状態
+		RETURN 0
+	SIF ABL:ARG:指 < 3 ;must be skilled somewhat
+		RETURN 0
+	SIF ABL:MASTER:Ａ感覚 < 5 ;must be sensitive
+		RETURN 0
+	SIF TEQUIP:ARG:50 >= 0 || TEQUIP:ARG:51 >= 0 ;disallow during actual intercourse for both parties
+		RETURN 0
+	SIF TEQUIP:MASTER:50 >= 0 || TEQUIP:MASTER:51 >= 0
+		RETURN 0
+	SIF MIN(ABL:ARG:サドっ気-2, 10) < RAND:(30 - (CFLAG:ARG:弱み握り > 0 ? 10 # 0) - (MARK:ARG:3 > 0 ? 10 # 0)) ;random chance, normally caps out at 33%, higher with blackmail/hate
+		RETURN 0
+	SIF !GETBIT(nReverseTrain,0) ;NAS: reverse training
+		RETURN 0
+	SIF !GETBIT(nReverseTrain,2) ;NAS: reverse training
+		RETURN 0
+RETURN 1
+
+;*********************************************************************************************
+;カウンター実行判定値算出関数
+;ARG = 対象のキャラ番号
+;*********************************************************************************************
+@CCOM_ORDER29(コマンド番号, ARG, 基本値)
+#DIM コマンド番号
+#DIM 基本値
+#DIMS カウンタータイプ
+
+	;カウンタータイプ設定
+	;=============================
+	IF TFLAG:102 == 3 && !TFLAG:抱きつきモード ;if during sex (debating whether to turn it off or not)
+		カウンタータイプ = 脱衣愛撫
+	ELSE ;daily
+		カウンタータイプ = ソフト
+	ENDIF
+
+	LOCAL = 0
+	;実行判定値算出式
+	;=============================
+	
+	;乳搾り手コキ(男性のみ、相手の浮気を公認してるか、相手にサドっ気3LV以上が必要、レベルの高さで発生率上昇)
+	;ふたなり非対応なのは、前立腺の事を考えるとなんだか不自然っぽい感じがしたからです。わかりますね？
+	IF カウンタータイプ == "ソフト" && GET_TARGETNUM() != 1 ;if daily and if there's someone else around, abort
+		LOCAL = 0
+	ELSE
+		;搾り発生率は２段階判定。
+		;まずはサドっ気が2LVを超える毎に5%、浮気公認は１段階毎に10%（累積しない）
+		LOCAL = 2 * MIN(BASE:MASTER:精力, (ABL:ARG:指+1)*(TALENT:ARG:器用な指+1)+(TALENT:ARG:サド+1)*MIN(ABL:ARG:サドっ気,5)+BASE:MASTER:精力/100)
+
+		;カウンタータイプ別計算処理 実質実行判定処理を含む
+		;=============================
+		LOCAL = MAX(LOCAL + COUNTER_SIKOU:ARG:コマンド番号, 1)
+		LOCAL *= COUNTER_TYPE(カウンタータイプ, ARG)
+	ENDIF
+	
+RETURN LOCAL
+
+@CCOM_DIRECT29(ARG) ;used at source.erb
+SIF TCVAR:ARG:カウンター行動 != 29
+	RETURN 0
+
+IF TFLAG:193 != 99 && !CFLAG:ARG:添い寝中 
+	IF TFLAG:102 == 3 && !TFLAG:抱きつきモード ;for showing correctly when daily execution happens
+		TCVAR:ARG:カウンター行動の派生 = 0
+		CALL KOJO_MESSAGE_SEND("COUNTER",2,ARG,0,0)
+		TCVAR:ARG:カウンター行動の派生 = 1
+		CALL KOJO_MESSAGE_SEND("COUNTER",2,ARG,0,0)
+		RETURN 1
+	ELSE ;during sex
+		TCVAR:ARG:カウンター行動の派生 = 1
+		CALL KOJO_MESSAGE_SEND("COUNTER",2,ARG,0,0)
+		RETURN 1
+	ENDIF
+ENDIF
+RETURN 0
+
+@CCOM_DIRECT_EJAC29(ARG) ;used at EVENT_MESSAGE_ORGASM
+IF TCVAR:ARG:カウンター行動 == 29
+	IF BASE:MASTER:精力 == 0
+		PRINTFORML %CALLNAME:ARG% ends up %FSYN("milk:ing")% you dry to your last drop of semen...
+	ELSE
+		PRINTFORML You end up having your semen %FSYN("milk:ed")% out of you by %CALLNAME:ARG%...
+	ENDIF
+	TCVAR:ARG:カウンター行動の派生 = 3
+	CALL KOJO_MESSAGE_SEND("COUNTER",2,ARG,0,0)
+
+	;remove a stack of blackmail
+	IF CFLAG:ARG:弱み握り > 0
+		CFLAG:ARG:弱み握り--
+		SIF !CFLAG:ARG:弱み握り
+			PRINTFORML With that, %CALLNAME:ARG% forgives you...
+	ENDIF
+
+	CALL SET_KOJO_COLOR() ;custom code
+	WAIT
+	RETURN 1
+ENDIF
+
+
+;乳搾り手コキ
+@EVENT_COUNTE_MESSAGE29
+SELECTCASE TCVAR:カウンター行動の派生
+	CASE 0 ;action shown, dialogue handles speech lines (called at info or source depending which method)
+		PRINTFORML %CALLNAME:TARGET% gives you a strange order with an ominous glint in %HIS_HER(TARGET)% eyes...
+	CASE 1 ;after execution, pre-ejaculation (called at source)
+		PRINTFORM Propping you against the wall, 
+		
+		IF SHOW_BOTTOM(PLAYER,1) != "" && SHOW_BOTTOM(PLAYER) != ""
+			PRINTFORML %CALLNAME:TARGET% pulls your %SHOW_BOTTOM(PLAYER)% down to your knees along with the %SHOW_BOTTOM(PLAYER,1)%.
+		ELSEIF SHOW_BOTTOM(PLAYER) != "" && PANTSNAME(EQUIP:MASTER:下半身下着２) != "" && STRCOUNT(TOLOWER(PANTSNAME(EQUIP:MASTER:下半身下着２)), "no underwear") <= 0
+			PRINTFORML %CALLNAME:TARGET% pulls your %SHOW_BOTTOM(PLAYER)% down to your knees along with the %PANTSNAME(EQUIP:MASTER:下半身下着２)%.
+		ELSEIF PANTSNAME(EQUIP:MASTER:下半身下着２) != "" && STRCOUNT(TOLOWER(PANTSNAME(EQUIP:MASTER:下半身下着２)), "no underwear") <= 0
+			PRINTFORML %CALLNAME:TARGET% pulls your %PANTSNAME(EQUIP:MASTER:下半身下着２)% down to your knees.
+		ELSE
+			PRINTFORML %CALLNAME:TARGET% starts rubbing your genitals right away for the absence of your underwear.
+		ENDIF
+	CASE 2 ;ejaculation (called from EVENT_MESSAGE_ORGASM.ERB)
+		PRINTFORML \@ ABL:TARGET:指 > 5 ? With a well practiced skill,%" "%#\@%CALLNAME:TARGET% quickly wraps a condom over your %TINKO(PLAYER)% and %FSYN("insert:s:g")% %HIS_HER(TARGET)% fingers into your %FSYN("anus")%.
+		IF CFLAG:PLAYER:ローターA挿入 != 0
+			PRINTFORM Pressing the rotor against your prostate with %HIS_HER(TARGET)% fingertips, 
+		ELSE
+			PRINTFORM Stimulating your sensitive prostate gland with %HIS_HER(TARGET)% fingertips, 
+		ENDIF
+		PRINTFORM %HE_SHE(TARGET)% roughly works your shaft as if you were a mere milk cow to make you ejaculate.
+		CALL PRINT_BREAK
+	CASE 3 ;post ejac, (called from EVENT_MESSAGE_ORGASM.ERB)
+		SIF EQUIP:PLAYER:下半身下着１ || EQUIP:PLAYER:下半身下着２
+			PRINTFORM As you arrange the mess of your clothes, 
+		PRINTFORM %CALLNAME:TARGET% reveals your %SEMEN(PLAYER,1)% filling the condom 
+		;気弱系
+		IF CFLAG:TARGET:性格傾向 == 1
+			PRINTFORM with a surprised expression, somewhat proud of %HIMSELF_HERSELF(TARGET)%
+		;素直系
+		ELSEIF CFLAG:TARGET:性格傾向 == 3
+			PRINTFORM in a cheerful, almost innocent manner
+		;真面目系
+		ELSEIF CFLAG:TARGET:性格傾向 == 4
+			PRINTFORM matter-of-factly, never breaking %HIS_HER(TARGET)% composure
+		;その他
+		ELSE
+			PRINTFORM with a sly sneer
+		ENDIF
+		PRINTFORM ...
+		CALL PRINT_BREAK
+ENDSELECT
+RETURN 1

@@ -1,0 +1,313 @@
+;if there's ever an Kosuzu request created in the original, adjust the id and merge this into that, if necessary 
+@固有依頼70(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+#DIM  REQUEST_TARGET
+
+IF CFLAG:[[小鈴]]:依頼状況 > 1 && CFLAG:[[小鈴]]:依頼状況 < 100
+    REQUEST_TARGET = IRAI_SLOT_TO_PERSON(SEARCH_IRAI_SLOT(CFLAG:[[小鈴]]:依頼内容))
+ELSE
+    REQUEST_TARGET = 0
+ENDIF
+SELECTCASE ARG % 1000
+;ID101：Overdue book (without fees)
+CASE 101
+    SELECTCASE O_DATA
+    CASE "依頼名"
+        CALLF MAKE_STR(V_NAME, "BOOK_RETRIEVAL")
+    CASE "依頼内容表示"
+        CALLF MAKE_STR(V_NAME, @"Recover a book for Kosuzu")
+    CASE "依頼報酬表示"
+        CALLF MAKE_STR(V_NAME, @"%金額表示(1000)%")
+    CASE "依頼実行コマンド名"
+        CALLF MAKE_STR(V_NAME, @"Ask About Overdue Book")
+    CASE "依頼内容"
+        CALLF MAKE_INT(V_NAME, MAKE_IRAI_DATA(固有依頼70_Select_Target(), "person"))
+    CASE "依頼サブ"
+        CALLF MAKE_INT(V_NAME, 0)
+    CASE "依頼期限"
+        CALLF MAKE_INT(V_NAME, 15)
+    CASE "依頼発生率"
+        CALLF MAKE_INT(V_NAME, 30)
+    CASE "依頼発生条件"
+        SIF 固有依頼70_Has_Valid_Targets()
+            CALLF MAKE_INT(V_NAME, 1)
+    CASE "依頼受託可能条件"
+        CALLF MAKE_INT(V_NAME, 1)
+    CASE "依頼実行可能条件"
+        SIF !FLAG:70
+            CALLF MAKE_INT(V_NAME, 1)
+    CASE "依頼消滅条件"
+        SIF Add_Request_Should_Discard(ARG) || !固有依頼70_Has_Valid_Targets() ;canceled when disabling all possible targets
+            CALLF MAKE_INT(V_NAME, 1)
+	ENDSELECT
+;ID102：Overdue book (with late fees)
+CASE 102
+    SELECTCASE O_DATA
+    CASE "依頼名"
+        CALLF MAKE_STR(V_NAME, "BOOK_RETRIEVAL_FEES")
+    CASE "依頼内容表示"
+        CALLF MAKE_STR(V_NAME, @"Recover a book and extract late fees for Kosuzu")
+    CASE "依頼報酬表示"
+        CALLF MAKE_STR(V_NAME, @"%金額表示(3000)%")
+    CASE "依頼実行コマンド名"
+        CALLF MAKE_STR(V_NAME, @"Ask About Overdue Book")
+    CASE "依頼内容"
+        CALLF MAKE_INT(V_NAME, MAKE_IRAI_DATA(固有依頼70_Select_Target(), "person"))
+    CASE "依頼サブ"
+        CALLF MAKE_INT(V_NAME, 0)
+    CASE "依頼期限"
+        CALLF MAKE_INT(V_NAME, 15)
+    CASE "依頼発生率"
+        CALLF MAKE_INT(V_NAME, 20)
+    CASE "依頼発生条件"
+        SIF 固有依頼70_Has_Valid_Targets()
+            CALLF MAKE_INT(V_NAME, 1)
+    CASE "依頼受託可能条件"
+        CALLF MAKE_INT(V_NAME, 1)
+    CASE "依頼実行可能条件"
+        SIF !FLAG:70
+            CALLF MAKE_INT(V_NAME, 1)
+    CASE "依頼消滅条件"
+        SIF Add_Request_Should_Discard(ARG) || !固有依頼70_Has_Valid_Targets() ;canceled when disabling all possible targets
+            CALLF MAKE_INT(V_NAME, 1)
+	ENDSELECT
+ENDSELECT
+
+@IRAI_固有70(CHARA, IRAI_ID, SCENE)
+#DIM  CHARA
+#DIM  IRAI_ID
+#DIMS SCENE
+#DIM  CLIENT_ID
+#DIM  REQUEST_TARGET
+CLIENT_ID = IRAI_ID_TO_CLIENT(IRAI_ID)
+SELECTCASE STR_DATA_IRAI(IRAI_ID, "依頼名", CLIENT_ID)
+CASE "BOOK_RETRIEVAL"
+    REQUEST_TARGET = IRAI_SLOT_TO_PERSON(SEARCH_IRAI_SLOT(IRAI_ID))
+	SELECTCASE SCENE
+	CASE "依頼条件表示"
+	CASE "依頼実行時"
+        IF GET_MAPID(CFLAG:MASTER:現在位置) == GET_MAPID(CFLAG:REQUEST_TARGET:自宅位置)
+            PRINTFORML %BREAKENG(@"You ask %CALLNAME:REQUEST_TARGET% about the book %HE_SHE(REQUEST_TARGET)% borrowed, and %HE_SHE(REQUEST_TARGET)% asks you to wait here while %HE_SHE(REQUEST_TARGET)% fetches the book from %HIS_HER(REQUEST_TARGET)% room.")%
+        ELSE
+            PRINTFORML %BREAKENG(@"You ask %CALLNAME:REQUEST_TARGET% about the book %HE_SHE(REQUEST_TARGET)% borrowed, and %HE_SHE(REQUEST_TARGET)% tells you that %HE_SHE(REQUEST_TARGET)%'s carrying it with %HIM_HER(REQUEST_TARGET)% right now.")%
+            PRINTFORML How convenient!
+        ENDIF
+        PRINTFORML %CALLNAME:REQUEST_TARGET% hands the book over to you.
+        RETURN IRAI_CONST_RESULT("実行して成功")
+	CASE "依頼成功時"
+		SOURCE:歓楽 += 1000
+        PRINTFORML Kosuzu thanks you for returning the book to %HIM_HER([[小鈴]])%.
+		CALL CHANGE_CFLAG(2, [[小鈴]], 100)
+		CALL CHANGE_CFLAG(4, [[小鈴]], 50)
+        CALL GET_MONEY_YEN(1000, 2)
+	CASE "依頼失敗時"
+        PRINTFORML Kosuzu is disappointed that you didn't pick up the book.
+		CALL CHANGE_CFLAG(2, [[小鈴]], -5)
+		CALL CHANGE_CFLAG(4, [[小鈴]], -3)
+	ENDSELECT
+CASE "BOOK_RETRIEVAL_FEES"
+    REQUEST_TARGET = IRAI_SLOT_TO_PERSON(SEARCH_IRAI_SLOT(IRAI_ID))
+	SELECTCASE SCENE
+	CASE "依頼条件表示"
+	CASE "依頼実行時"
+        IF AT_HOME(REQUEST_TARGET)
+            PRINTFORML %BREAKENG(@"You ask %CALLNAME:REQUEST_TARGET% about the book %HE_SHE(REQUEST_TARGET)% borrowed, and %HE_SHE(REQUEST_TARGET)% asks you to wait here while %HE_SHE(REQUEST_TARGET)% fetches the book from %HIS_HER(REQUEST_TARGET)% room.")%
+        ELSE
+            PRINTFORML %BREAKENG(@"You ask %CALLNAME:REQUEST_TARGET% about the book %HE_SHE(REQUEST_TARGET)% borrowed, and %HE_SHE(REQUEST_TARGET)% tells you that %HE_SHE(REQUEST_TARGET)%'s carrying it with %HIM_HER(REQUEST_TARGET)% right now.")%
+            PRINTFORML How convenient!
+        ENDIF
+        PRINTFORMW %CALLNAME:REQUEST_TARGET% hands the book over to you.
+
+        PRINTFORML You inform %HIM_HER(REQUEST_TARGET)% that the book was well overdue, and that %HE_SHE(REQUEST_TARGET)%'ll need to pay late fees for it.
+        
+        CALL SET_KOJO_COLOR(REQUEST_TARGET) ;custom code
+        RESULT:100 = 0
+        CALL KOJO_MESSAGE_SEND("IRAI", TARGET, IRAI_ID, 0, 0, "TARGET", "PAYS_UP")
+        LOCAL = RESULT:100
+        RESETCOLOR
+        SIF !LOCAL
+            LOCAL = 固有依頼70_Willing_To_Pay(REQUEST_TARGET)
+
+        IF LOCAL == 1
+            $PAYS_UP
+            PRINTFORML %HE_SHE(REQUEST_TARGET, 1)% decided to hand over the money along with an apology for forgetting about the book.
+            TFLAG:194 = 0
+            RETURN IRAI_CONST_RESULT("実行して成功")
+        ELSE ;danmaku
+            $DOESNT_PAY
+            PRINTFORML %HE_SHE(REQUEST_TARGET, 1)% does not seem to be willing to pay.
+            CALL KOJO_MESSAGE_SEND("IRAI", TARGET, IRAI_ID, 0, 0, "TARGET", "REFUSAL_DIALOGUE")
+
+            $BOOKRETURN_OPTIONS
+            PRINTFORML What will you do?
+            CALL ASK_M(@"Pay the fee yourself (-%金額表示(MIN(MONEY, 5000))%)", 1, "Challenge them to a Danmaku battle", 1, @"Threaten to get %CALLNAME:1% involved", CFLAG:[[霊夢]]:好感度 >= 1500)
+            SELECTCASE RESULT
+            CASE 0
+                PRINTFORML You decide to just pay the fee yourself. %CALLNAME:REQUEST_TARGET% seems to appreciate it.
+                CALL CHANGE_CFLAG(2, REQUEST_TARGET, 20)
+                CALL CHANGE_CFLAG(4, REQUEST_TARGET, 10)
+                CALL LOST_MONEY_YEN(5000, 2)
+                TFLAG:194 = -2
+                RETURN IRAI_CONST_RESULT("実行して成功")
+            CASE 1
+                IF ABL:REQUEST_TARGET:戦闘能力 > ABL:MASTER:戦闘能力
+                    PRINTFORML Are you sure about this? %CALLNAME:REQUEST_TARGET% is a formidable opponent.
+                    CALL ASK_YN("Back down", "Your righteous cause will assure your victory!")
+                    SELECTCASE RESULT
+                    CASE 0
+                        GOTO BOOKRETURN_OPTIONS
+                    CASE 1
+                    ENDSELECT
+                ENDIF
+
+                SIF AT_HOME(MASTER) && !OUTROOF(CFLAG:MASTER:現在位置) && !戦闘訓練可(CFLAG:MASTER:現在位置)
+                    PRINTFORML You and %CALLNAME:REQUEST_TARGET% move to somewhere with enough space for a Danmaku battle.
+                CALL KNIFE_FIGHT(MASTER,REQUEST_TARGET,nRyona,1)
+                $DanmakuEnd
+                IF lcWarResult == CurrentBattle:Battle_PlayerSide
+                    PRINTFORML With %CALLNAME:REQUEST_TARGET% lying on the ground, defeated, you just take the late fees out of %HIS_HER(REQUEST_TARGET)% wallet.
+                    TARGET = REQUEST_TARGET
+                    PRINTFORML ...Plus a little extra for your troubles.
+                    CALL GET_MONEY_YEN(5000, 2)
+                    TFLAG:194 = 1
+                    CALL ADD_CUSTOM_COM453
+                    RETURN IRAI_CONST_RESULT("実行して成功")
+                ELSE
+                    PRINTFORML Unfortunately, %CALLNAME:REQUEST_TARGET% proved to be too much for you to handle.
+                    PRINTFORML %CALLNAME:[[小鈴]]% will be disappointed.
+                    TFLAG:194 = -1
+                    RETURN IRAI_CONST_RESULT("実行して失敗")
+                ENDIF
+            CASE 2
+                IF !HostileAffinity(1,REQUEST_TARGET) || !nRyona
+                    PRINTFORML Not wanting to incur the wrath of the Hakurei Shrine Maiden, %CALLNAME:REQUEST_TARGET% decides to pay up.
+                    PRINTFORML %HE_SHE(REQUEST_TARGET, 1)% looks pretty annoyed about it, though.
+                        IF CFLAG:REQUEST_TARGET:好感度 >= 1500 || RELATION:REQUEST_TARGET:MASTER > 100
+                            CALL CHANGE_CFLAG(2, REQUEST_TARGET, -30)
+                            CALL CHANGE_CFLAG(4, REQUEST_TARGET, -5)
+                            TFLAG:194 = -3
+                        ELSE      
+                            CALL GET_ANGRY(REQUEST_TARGET,1)
+                        ENDIF
+                    RETURN IRAI_CONST_RESULT("実行して成功")
+                ELSE
+                    PRINTFORML %CALLNAME:REQUEST_TARGET% doesn't care, and seems to actually want to fight you and %CALLNAME:1% to the death...
+                    PRINTFORMW Seems like you made a really big mistake...
+                    CALL GET_ANGRY(REQUEST_TARGET,5)
+                    CALLF TP(1)
+                    CALL KNIFE_FIGHT(REQUEST_TARGET,1,1,1)
+                    CALL KNIFE_FIGHT(REQUEST_TARGET,MASTER,1,1)
+                    GOTO DanmakuEnd
+                ENDIF
+            ENDSELECT
+        ENDIF
+	CASE "依頼成功時"
+		SOURCE:歓楽 += 1000
+        PRINTFORML Kosuzu thanks you for returning the book and fees to her.
+		CALL CHANGE_CFLAG(2, [[小鈴]], 150)
+		CALL CHANGE_CFLAG(4, [[小鈴]], 75)
+        CALL GET_MONEY_YEN(3000, 2)
+	CASE "依頼失敗時"
+        PRINTFORML Kosuzu is disappointed that you failed.
+		CALL CHANGE_CFLAG(2, [[小鈴]], -5)
+		CALL CHANGE_CFLAG(4, [[小鈴]], -3)
+	ENDSELECT
+ENDSELECT
+
+@固有依頼70_Willing_To_Pay(ARG)
+#FUNCTION
+#DIM POSITIVE_POINTS
+#DIM NEGATIVE_POINTS
+SIF TALENT:ARG:機嫌 > 0 ;good mood
+    RETURNF 1
+SIF TALENT:ARG:恋慕 ;likes you
+    RETURNF 1
+SIF TALENT:ARG:貞操 > 0 ;morally upright
+    RETURNF 1
+SIF !ABL:ARG:戦闘能力 ;can't fight
+    RETURNF 1
+SIF HostileAffinity(MASTER,ARG) ;hostile
+    RETURNF 0
+
+;take negative and positive points from talents, to determine if the target will be hostile to the idea of paying late fees
+NEGATIVE_POINTS = (TALENT:ARG:サド * 3) + (TALENT:ARG:機嫌 * -3) + (TALENT:ARG:狂気 * 2) + (TALENT:ARG:態度 > 0 ? 2 # 0) + (TALENT:ARG:応答 > 0 ? 1 # 0) + (TALENT:ARG:プライド > 0 ? 1 # 0) + TALENT:ARG:ツンデレ + (ABL:ARG:戦闘能力 - ABL:MASTER:戦闘能力)
+POSITIVE_POINTS = (TALENT:ARG:献身的 * 2) + (TALENT:ARG:マゾ * 3) + (TALENT:ARG:度胸 < 0 ? 1 # 0) + (TALENT:ARG:態度 < 0 ? 2 # 0) + (TALENT:ARG:プライド < 0 ? 1 # 0)
+
+SIF NEGATIVE_POINTS < 1
+    RETURNF 1
+
+RETURNF RAND:NEGATIVE_POINTS < POSITIVE_POINTS
+
+@固有依頼70_Has_Valid_Targets()
+#FUNCTION
+FOR LOCAL, 0, CHARANUM
+    SIF LOCAL == MASTER ;ignore (You)
+        CONTINUE
+    SIF CFLAG:LOCAL:出禁
+        CONTINUE
+    SIF !CFLAG:LOCAL:自宅位置 ;ignore the homeless
+        CONTINUE
+    SIF LOCAL != [[小鈴]]
+        RETURNF 1
+NEXT
+RETURNF 0
+
+;should never be able to be called if there are no valid targets
+@固有依頼70_Select_Target()
+#FUNCTION
+DO
+    LOCAL = RAND:CHARANUM
+    SIF LOCAL == MASTER ;ignore (You)
+        CONTINUE
+    SIF LOCAL == [[小鈴]]
+        CONTINUE
+    SIF CFLAG:LOCAL:出禁
+        CONTINUE 
+    SIF IsDead:LOCAL:0 ;ignore the dead
+        CONTINUE
+    SIF !CFLAG:LOCAL:自宅位置 ;ignore the homeless
+        CONTINUE
+    RETURNF LOCAL
+LOOP 1
+
+@SPECIAL_DANMAKU_CHALLENGE(ARG, HANDICAP_RAND_VALUE = 0, HANDICAP_FIXED_VALUE = 0)
+#DIM OPPONENT_REMAIN
+#DIM HANDICAP_RAND_VALUE
+#DIM HANDICAP_FIXED_VALUE
+;Copied and adjusted from IRAI_一般12
+LOCAL:1 = TARGET ;temp storage target
+TARGET = ARG
+
+HANDICAP_RAND = HANDICAP_RAND_VALUE
+HANDICAP_FIXED = HANDICAP_FIXED_VALUE
+
+SETCOLOR C_GREEN
+PRINTFORML ＜Danmaku Fight＞
+RESETCOLOR
+PRINTFORMW Game Start!!
+CALL DANMAKU_BATTLE(TARGET)
+OPPONENT_REMAIN = RESULT
+CALL KOJO_MESSAGE_SEND("DANMAKU", OPPONENT_REMAIN, TARGET, -1, -1, "戦闘後")
+PRINTL 
+TCVAR:TARGET:弾幕勝負不能 = 1
+SIF OPPONENT_REMAIN == 0
+    CFLAG:TARGET:弾幕勝負勝利 = 1
+DOWNBASE:気力 += 500
+DOWNBASE:MASTER:気力 += 500
+DOWNBASE:体力 += 500
+DOWNBASE:MASTER:体力 += 500
+SOURCE:歓楽 += (3000 + ABL:親密 * 100) / (OPPONENT_REMAIN + 1)
+TFLAG:好感度ボーナス = 1600 / (OPPONENT_REMAIN + 1)
+TFLAG:信頼度管理 = 3 - LOCAL
+
+EXP:MASTER:戦闘経験 += 3
+
+TIME += 60
+
+TARGET = LOCAL:1 ;restore original target
+
+RETURN OPPONENT_REMAIN == 0

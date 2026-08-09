@@ -1,0 +1,128 @@
+;-------------------------------------------------
+;330 Convert
+;You can convert someone to your religion once a day
+;-------------------------------------------------
+@ADD_CUSTOM_COM330
+SELECTCASE TFLAG:192
+	CASE 0
+		LOCAL = RAND:100
+		LOCAL:1 = (ABL:MASTER:41*13) + MOUTH_SUCCESS_RATE() / 5
+		SIF LOCAL:1 > 99
+			LOCAL:1 = 99
+		IF LOCAL <= 9
+			;10％で大成功
+			EXP:MASTER:会話経験 ++
+			TFLAG:193 = 1
+			TFLAG:98 = 2
+		ELSEIF LOCAL >= LOCAL:1
+			;10～1％で失敗
+			TFLAG:193 = -1
+			TFLAG:98 = -2
+		ELSE
+			;残りは成功
+			TFLAG:193 = 0
+			TFLAG:98 = 0
+		ENDIF
+	CASE 1
+		IF RAND:100 <= 9
+			;10％で大成功
+			EXP:MASTER:会話経験 ++
+			TFLAG:193 = 1
+			TFLAG:98 = 2
+		ELSE
+			;残りは成功
+			TFLAG:193 = 0
+			TFLAG:98 = 0
+		ENDIF
+	CASE -1
+		TFLAG:193 = -1
+		TFLAG:98 = -1
+	CASE -2
+		RETURN 0
+ENDSELECT
+
+;先制発生時は失敗しない
+SIF TCVAR:20
+	TFLAG:193 = MAX(TFLAG:193,0)
+DOWNBASE:MASTER:気力 += 100
+DOWNBASE:MASTER:体力 += 50
+;信頼
+TFLAG:98 += 3
+TIME += 10
+SETBIT TFLAG:一日一回, 30
+RETURN 1
+
+
+@ADD_CUSTOM_MESSAGE_COM330
+IF GET_TARGETNUM() > 1
+	LOCALS '= @"%CALLNAME:TARGET% and the others"
+ELSE
+	LOCALS '= @"%CALLNAME:TARGET%"
+ENDIF
+IF TALENT:MASTER:Religion == TALENT:TARGET:Religion
+	IF TALENT:MASTER:Religion
+	PRINTFORMDL You try to reassure that %LOCALS% that practicing %TOSTR_RELIGION(TALENT:MASTER:Religion)% is best for %HIM_HER(TARGET)%.
+	ELSE
+	PRINTFORMDL You try to reassure %LOCALS% that religion isn't necessary.
+	ENDIF
+ELSE
+	IF TALENT:MASTER:Religion
+	PRINTFORMDL You try to convert %LOCALS% to %TOSTR_RELIGION(TALENT:MASTER:Religion)%.
+	ELSE
+	PRINTFORMDL You try to convince %LOCALS% to stop practicing %HIS_HER(TARGET)% religion.
+	ENDIF
+ENDIF
+
+IF TFLAG:193 == 1;good outcome
+	PRINTFORMDW %LOCALS% was very interested on what you had to say about your religion.
+	;NAS: Slight convert to religion
+	FOR L, 1, GET_TARGETNUM()+1
+		SIF TALENT:MASTER:Religion != TALENT:(TARGET:L):Religion
+		CALL changeCertainty(TARGET:L, WeightedConvert(-350, TARGET:L, MASTER))
+		CALL changeCertainty(TARGET:L, WeightedConvert(500, TARGET:L, MASTER), TALENT:MASTER:Religion)
+		CALL ChangeFaith(TARGET:L, WeightedConvert(200, TARGET:L, MASTER), TALENT:MASTER:Religion)
+	NEXT
+ELSEIF TFLAG:193 == 2;exceptional outcome
+	;NAS: Can't really happen
+ELSEIF TFLAG:193 == -1
+	PRINTFORMDW %LOCALS% wasn't really keen on your religion.
+ELSEIF TFLAG:193 == -2
+	PRINTFORMDW %LOCALS% resented the conversion attempt.
+	;NAS: Slight convert to religion
+	FOR L, 1, GET_TARGETNUM()+1
+		CALL changeCertainty(TARGET:L, WeightedConvert(225, TARGET:L, TARGET:L), TALENT:(TARGET:L):Religion)
+		CALL ChangeFaith(TARGET:L, WeightedConvert(50, TARGET:L, MASTER), TALENT:(TARGET:L):Religion)
+	NEXT
+ELSE
+	PRINTFORMDW %LOCALS% put a bit of thought on your religion.
+	;NAS: Slight convert to religion
+	FOR L, 1, GET_TARGETNUM()+1
+		SIF TALENT:MASTER:Religion != TALENT:(TARGET:L):Religion
+		CALL changeCertainty(TARGET:L, WeightedConvert(-150, TARGET:L, MASTER))
+		CALL changeCertainty(TARGET:L, WeightedConvert(225, TARGET:L, MASTER), TALENT:MASTER:Religion)
+		CALL ChangeFaith(TARGET:L, WeightedConvert(50, TARGET:L, MASTER), TALENT:MASTER:Religion)
+	NEXT
+ENDIF
+
+
+
+RETURN 1
+
+@ADD_CUSTOM_COM_ABLE330
+; Do not allow during ufufu or time stop
+SIF FLAG:70 == 1
+	RETURN 0
+SIF CFLAG:うふふ != 0
+	RETURN 0
+SIF !TFLAG:100
+	RETURN 0
+SIF !SHIRAHU(TARGET) ; must be alive
+	RETURN 0
+SIF TARGET == MASTER ; can't convert yourself
+    RETURN 0
+SIF GETBIT(TFLAG:一日一回, 30) ; once a day
+	RETURN 0
+SIF !GETBIT(nReligions,0) || !GETBIT(nReligions,1) ; religion toggle
+	RETURN 0
+
+RETURN 1

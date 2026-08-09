@@ -1,0 +1,347 @@
+;Simple quest system that can be used in dialogues or by additional features. See examples of use below and in Lunatic Survival.
+
+;------------------------------------------------------------------------------------------------------
+@INIT_QUESTS
+	;Add quests here to ensure they are always available for processing.
+	;Quest commands and events can't be accessed unless their quest is initialized first.
+CALL INIT_QUEST(LSScarletAlias)
+;------------------------------------------------------------------------------------------------------
+
+;These templates can be duplicated elsewhere to define quest actions and events. Replace any instance of "Example Quest" with the name of your quest.
+;Make sure the name of the function is formatted with underscores instead of spaces, and no apostrophes or other unusual characters.
+	;e.g. the function for a quest named "Reimu's Quest" would be QUEST_REIMUS_QUEST.
+
+@QUEST_EXAMPLE_QUEST_COMMAND
+	;Controls when individual quest commands are available and the functions to which they connect.
+	;Basically, if this function returns 1, then a quest-related command will be usable by the player, which is also defined here.
+	;Your version of this function will be called on every screen where the player can act, so make sure the conditions are tight.
+#FUNCTION
+
+	;Do some basic sanity checks first, such as SHIRAHU if the command is to interact with a character.
+IF CFLAG:MASTER:うふふ
+	GOTO FAIL
+ELSEIF FLAG:70
+	GOTO FAIL
+
+	;Check for the specific conditions of the command.
+ELSEIF !QUEST_FLAG("Example Quest",0) && CFLAG:MASTER:現在位置 == 9001
+		;If Example Quest's first flag (its flag in the 0 position) is 0 and the player's position is room 9001, this command will be available.
+		;Set RESULTS to the name of the command and RESULTS:1 to the designation of the function it will call when clicked.
+		;In this case, upon clicking the "Command" action, the @QUEST_EXAMPLE_QUEST_EXAMPLE_COMMAND_FUNCTION function will be called. Make sure to define it.
+	RESULTS '= "Example Command"
+	RESULTS:1 '= "Example Command Function"
+	GOTO SUCCEED
+ELSEIF QUEST_FLAG("Example Quest",0) == 1 && CFLAG:MASTER:現在位置 == 9001
+		;If Flag 0 is 1, we can use a different command instead.
+	RESULTS '= "Another Example Command"
+	RESULTS:1 '= "Another Example Command Function"
+	GOTO SUCCEED
+ENDIF
+
+$FAIL
+	;Consolidate failure and success settings in one place to make it easier.
+	;RESULT and RESULTS must be set manually instead of just using RETURNF because this function will be TRYCALLed, which doesn't automatically set RESULT.
+RESULTS =
+RESULTS:1 =
+RESULT = 0
+RESULT:1 = 0
+RETURNF RESULT
+
+$SUCCEED
+	;Return 1 if a command should be available.
+	;If the command should be a specific color, set RESULT:1 to the color you want. Not setting it will leave it as the default color.
+RESULT = 1
+RESULT:1 = 0x00FF00
+RETURNF RESULT
+
+
+@QUEST_EXAMPLE_QUEST_EXAMPLE_COMMAND_FUNCTION
+	;The function that is called by your command. Put whatever you want here.
+	;If this command advances the quest, you'll want to set the appropriate flag. In this case, we set Flag 0 to 1.
+	;Doing this with the above function's setup will make the "Example Command" unavailable, and the "Another Example Command" available.
+CALL SET_QUEST_FLAG("Example Quest",0,1)
+
+@QUEST_EXAMPLE_QUEST_ANOTHER_EXAMPLE_COMMAND_FUNCTION
+	;The function that is called from the second example command.
+	;This sets Flag 0 to 2, which results in neither command ever being available again. You could consider the quest complete.
+CALL SET_QUEST_FLAG("Example Quest",0,2)
+
+
+@QUEST_EXAMPLE_QUEST_EVENT_WAKE_UP
+	;A quest event that triggers when the player wakes up.
+	;Events such as this can be tied to other triggers by name, according to QUEST_EVENT hooks planted in the game's code.
+	;For example, if you define QUEST_EXAMPLE_QUEST_DAY_END, it will be called by the "Day End" hook.
+
+	;These hooks are added on a basis of necessity, so if you need a quest event that occurs after you do skinship, it can be added.
+	;In that case, you would add CALL QUEST_EVENT("Skinship End") to the end of the skinship command's code on the modding branch.
+
+	;Int arguments can be added to hooks as well, which are passed into the QuestEventArg array, which can be used by this function.
+	;For example, if this hook's call was QUEST_EVENT("Wake Up",DAY), you could access DAY by checking QuestEventArg:0.
+	;You can add any number of arguments to a hook without having to edit existing functions, but take care to only add what's necessary.
+
+	;The actual content of the event can be whatever you like.
+SIF CFLAG:MASTER:現在位置 != 9001
+	RETURN ;If the player isn't in room 9001, it can't happen.
+PRINTFORMDW Write a story or something here.
+
+;------------------------------------------------------------------------------------------------------
+
+;These functions can be called anywhere to interact with a quest's flags.
+;Note that quest flags are reset on Bites the Dust.
+
+@QUEST_FLAG(QuestAlias,FlagPosition)
+	;Returns the flag state of the given quest at the given position.
+#FUNCTION
+#DIMS DYNAMIC QuestAlias
+#DIM DYNAMIC FlagPosition
+FOR LOCAL,0,MaxQuest
+	SIF QuestList:LOCAL == QuestAlias
+		RETURNF QuestFlag:LOCAL:FlagPosition
+NEXT
+RETURNF 0
+
+@QUEST_STRING(QuestAlias,StringPosition)
+	;Returns the string of the given quest at the given position.
+#FUNCTIONS
+#DIMS DYNAMIC QuestAlias
+#DIM DYNAMIC StringPosition
+FOR LOCAL,0,MaxQuest
+	SIF QuestList:LOCAL == QuestAlias
+		RETURNF QuestString:LOCAL:StringPosition
+NEXT
+RETURNF ""
+
+@SET_QUEST_FLAG(QuestAlias,FlagPosition,SetFlag=1,BitFlag)
+	;Sets the given quest's flag at the given position to the given value.
+	;Automatically initializes the quest if it's not in the list.
+	;If BitFlag is 1, sets the bit using SetFlag as the index instead. If BitFlag is -1, clears the bit.
+#DIMS DYNAMIC QuestAlias
+#DIM DYNAMIC FlagPosition
+#DIM DYNAMIC SetFlag
+#DIM DYNAMIC BitFlag
+FOR LOCAL,0,MaxQuest
+	SIF QuestList:LOCAL == ""
+		QuestList:LOCAL '= QuestAlias
+	IF QuestList:LOCAL == QuestAlias
+		IF BitFlag > 0
+			SETBIT QuestFlag:LOCAL:FlagPosition,SetFlag
+		ELSEIF BitFlag < 0
+			CLEARBIT QuestFlag:LOCAL:FlagPosition,SetFlag
+		ELSE
+			QuestFlag:LOCAL:FlagPosition = SetFlag
+		ENDIF
+		RETURN
+	ENDIF
+NEXT
+
+@SET_QUEST_STRING(QuestAlias,StringPosition,SetString)
+	;Sets the given quest's string at the given position to the given value.
+	;Automatically initializes the quest if it's not in the list.
+#DIMS DYNAMIC QuestAlias
+#DIM DYNAMIC StringPosition
+#DIMS DYNAMIC SetString
+FOR LOCAL,0,MaxQuest
+	SIF QuestList:LOCAL == ""
+		QuestList:LOCAL '= QuestAlias
+	IF QuestList:LOCAL == QuestAlias
+		QuestString:LOCAL:StringPosition '= SetString
+		RETURN
+	ENDIF
+NEXT
+
+@ADD_QUEST_FLAG(QuestAlias,FlagPosition,AddFlag=1)
+	;Increments the given quest's flag by the given value.
+#DIMS DYNAMIC QuestAlias
+#DIM DYNAMIC FlagPosition
+#DIM DYNAMIC AddFlag
+CALL SET_QUEST_FLAG(QuestAlias,FlagPosition,QUEST_FLAG(QuestAlias,FlagPosition)+AddFlag)
+
+@ADD_QUEST_STRING(QuestAlias,StringPosition,AddString)
+	;Adds an additional string on the end of the given quest string.
+#DIMS DYNAMIC QuestAlias
+#DIM DYNAMIC StringPosition
+#DIMS DYNAMIC AddString
+CALL SET_QUEST_STRING(QuestAlias,StringPosition,QUEST_STRING(QuestAlias,StringPosition)+AddString)
+
+@SUBTRACT_QUEST_FLAG(QuestAlias,FlagPosition,SubtractFlag=1,AllowNegative)
+	;Subtracts the given value from the given quest's flag value. If AllowNegative is 0, the minimum result will be 0.
+#DIMS DYNAMIC QuestAlias
+#DIM DYNAMIC FlagPosition
+#DIM DYNAMIC SubtractFlag
+#DIM DYNAMIC AllowNegative
+CALL SET_QUEST_FLAG(QuestAlias,FlagPosition,MAX(QUEST_FLAG(QuestAlias,FlagPosition)-SubtractFlag,AllowNegative ? -9999999999 # 0))
+
+@SUBTRACT_QUEST_STRING(QuestAlias,StringPosition,SubtractString,SubtractAmount)
+	;Removes the given substring from the given string. Will remove either the first given number of substrings, or all if SubtractAmount is omitted.
+#DIMS DYNAMIC QuestAlias
+#DIM DYNAMIC StringPosition
+#DIMS DYNAMIC SubtractString
+#DIM DYNAMIC AllowNegative
+#DIM DYNAMIC SubtractAmount
+LOCALS '= QUEST_STRING(QuestAlias,StringPosition)
+IF !SubtractAmount
+	LOCALS '= REPLACE(LOCALS,SubtractString,"")
+ELSE
+	WHILE STRFINDU(LOCALS,SubtractString) && SubtractAmount
+		LOCALS '= SUBSTRING(LOCALS,0,STRFINDU(LOCALS,SubtractString))+SUBSTRING(LOCALS,STRFINDU(LOCALS,SubtractString)+STRLENSU(SubtractString))
+	WEND
+	SubtractAmount--
+ENDIF
+CALL SET_QUEST_STRING(QuestAlias,StringPosition,LOCALS)
+
+@CLEAR_QUEST_FLAGS(QuestAlias)
+	;Clears all flags of the given quest.
+#DIMS DYNAMIC QuestAlias
+FOR LOCAL,0,MaxQuest
+	SIF QuestList:LOCAL == ""
+		RETURN
+	IF QuestList:LOCAL == QuestAlias
+		FOR LOCAL:1,0,MaxQuestFlag
+			QuestFlag:LOCAL:(LOCAL:1) = 0
+		NEXT
+	ENDIF
+NEXT
+
+@CLEAR_QUEST_STRINGS(QuestAlias)
+	;Clears all strings of the given quest.
+#DIMS DYNAMIC QuestAlias
+FOR LOCAL,0,MaxQuest
+	SIF QuestList:LOCAL == ""
+		RETURN
+	IF QuestList:LOCAL == QuestAlias
+		FOR LOCAL:1,0,MaxQuestFlag
+			QuestString:LOCAL:(LOCAL:1) '= ""
+		NEXT
+	ENDIF
+NEXT
+
+@QUEST_INDEX(QuestAlias)
+	;Returns the index of the given quest.
+#FUNCTION
+#DIMS DYNAMIC QuestAlias
+FOR LOCAL,0,MaxQuest
+	SIF QuestList:LOCAL == QuestAlias
+		RETURNF LOCAL
+NEXT
+RETURNF 0
+
+;------------------------------------------------------------------------------------------------------
+
+;The functions below form the core of the system and don't require outside interaction.
+
+@INIT_QUEST(QuestAlias)
+	;Places the quest in the quest list if it isn't there already so it can be processed.
+#DIMS DYNAMIC QuestAlias
+FOR LOCAL,0,MaxQuest
+	SIF QuestList:LOCAL == ""
+		QuestList:LOCAL '= QuestAlias
+	SIF QuestList:LOCAL == QuestAlias
+		RETURN
+NEXT
+
+@ADD_CUSTOM_COM94
+	;Custom quest command, used for any quest-specific actions.
+FOR LOCAL,0,MaxQuest
+	SIF QuestList:LOCAL == ""
+		BREAK
+	RESULT = 0
+	RESULTS =
+	RESULTS:1 =
+	TRYCALLFORMF QUEST_%FUNCTION_FORMAT(QuestList:LOCAL)%_COMMAND
+	IF RESULT
+			;The first applicable command is the one to be called. Make sure they don't overlap.
+		PRINTL
+		TRYCALLFORM QUEST_%FUNCTION_FORMAT(QuestList:LOCAL)%_%FUNCTION_FORMAT(RESULTS:1)%
+		PRINTL
+		BREAK
+	ENDIF
+NEXT
+TIME += 5
+RETURN 1
+
+@ADD_CUSTOM_COM_ABLE94
+SIF !TFLAG:100
+	RETURN 0
+FOR LOCAL,0,MaxQuest
+	SIF QuestList:LOCAL == ""
+		RETURN 0
+	RESULT = 0
+	TRYCALLFORMF QUEST_%FUNCTION_FORMAT(QuestList:LOCAL)%_COMMAND
+	SIF RESULT
+		RETURN RESULT
+NEXT
+RESULT = 0
+RETURN 0
+
+@ADD_CUSTOM_MESSAGE_COM94
+
+@QUEST_COMMAND
+#FUNCTIONS
+FOR LOCAL,0,MaxQuest
+	SIF QuestList:LOCAL == ""
+		RETURNF ""
+	RESULT = 0
+	RESULTS =
+	TRYCALLFORMF QUEST_%FUNCTION_FORMAT(QuestList:LOCAL)%_COMMAND
+	IF RESULT
+			;The first applicable command is the one to be returned. Make sure they don't overlap.
+		;RESULTS =
+		;TRYCALLFORMF QUEST_%FUNCTION_FORMAT(QuestList:LOCAL)%_COMMAND
+		RETURNF RESULTS
+	ENDIF
+NEXT
+RETURNF ""
+
+@ADD_CUSTOM_COM_PRINT94
+FOR LOCAL,0,MaxQuest
+	SIF QuestList:LOCAL == ""
+		RETURN
+	RESULT = 0
+	TRYCALLFORMF QUEST_%FUNCTION_FORMAT(QuestList:LOCAL)%_COMMAND
+	IF RESULT
+			;The first applicable command is the one to be printed.
+		SETCOLOR RESULT:1
+		PRINTFORMC %RESULTS%[9094]
+		RESETCOLOR
+		RETURN
+	ENDIF
+NEXT
+
+@QUEST_EVENT(EventType,EventArg:0,EventArg:1,EventArg:2,EventArg:3,EventArg:4,EventArg:5,EventArg:6,EventArg:7,EventArg:8,EventArg:9)
+	;Calls any and all quest events of the given type.
+	;Ensure that all events have condition checks so they don't proceed every time.
+	;Also passes all arguments into the QuestEventArg array and then resets the array.
+	;Functions called by this function should use the QuestEventArg array if they require the use of arguments.
+	;This is to allow quest functions to be defined using an arbitrary number of arguments and make later expansion more flexible.
+#DIMS DYNAMIC EventType
+#DIM DYNAMIC EventArg,10
+FOR LOCAL,0,10
+	QuestEventArg:LOCAL = EventArg:LOCAL
+NEXT
+FOR LOCAL,0,MaxQuest
+	SIF QuestList:LOCAL == ""
+		BREAK
+			;All applicable events will be called one after another. Ensure they don't conflict badly.
+	TRYCALLFORM QUEST_%FUNCTION_FORMAT(QuestList:LOCAL)%_EVENT_%FUNCTION_FORMAT(EventType)%
+NEXT
+VARSET QuestEventArg
+
+@NG_CUSTOM_RESET_VAR_4
+VARSET QuestList
+VARSET QuestFlag
+VARSET QuestString
+
+@EVENTCOM
+#PRI
+CALL QUEST_EVENT("Command Start")
+
+@EVENTLOAD
+#LATER
+CALL INIT_QUESTS
+
+@EVENTEND
+#PRI
+CALL QUEST_EVENT("Day End Start")
+
+@EVENTEND
+CALL QUEST_EVENT("Day End")

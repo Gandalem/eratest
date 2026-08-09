@@ -1,0 +1,335 @@
+@SpawnMobEnemy(ARG,nType,nFaction=-1,nPosition = -1)
+#DIM nType
+#DIM nFaction
+#DIM nPosition
+
+CALL MobEnemyArchive(ARG,nType)
+
+CALL MAKE_YUKIZURI(ARG, TempMobRace, 1)
+FOR LOCAL,0,(MaxFactions)
+	FactionFame:ARG:(LOCAL) = TempFactionFame:LOCAL
+	FactionInfamy:ARG:(LOCAL) = TempFactionInfamy:LOCAL
+	FactionRank:(ARG):LOCAL = TempMobFaction:LOCAL
+NEXT
+;no rank, assume member
+IF nFaction > -1
+	SIF !FactionRank:ARG:nFaction
+		FactionRank:ARG:nFaction = 2
+ENDIF
+FOR LOCAL,0,(MaxFactions)
+	IF FactionRank:ARG:LOCAL
+		TRYCALLFORM FACTION_UNIT_QUIRK_{LOCAL}(ARG)
+		TALENT:ARG:TechKnow = FactionTech:LOCAL
+	ENDIF
+NEXT
+MAXBASE:ARG:0 = TempMobHP
+BASE:ARG:0 = MAXBASE:ARG:0
+
+MAXBASE:ARG:Blood = TempMobHP
+BASE:ARG:Blood = MAXBASE:ARG:0
+
+MAXBASE:ARG:7 = TempMobMP
+BASE:ARG:7 = MAXBASE:ARG:7
+
+MAXBASE:ARG:8 = TempMobTSP
+BASE:ARG:8 = MAXBASE:ARG:8
+
+CFLAG:ARG:デート中 = -1
+
+[SKIPSTART]
+IF TempMobName:1 != ""
+NAME:ARG '= TempMobName:0
+CALLNAME:ARG '= TempMobName:1
+ELSEIF TempMobName:0 != ""
+NAME:ARG '= TempMobName:0
+CALLNAME:ARG '= TempMobName:0
+ENDIF
+[SKIPEND]
+
+
+ABL:ARG:42 = MAX(TempMobYoujutsuLevel:0,TempMobCombatLevel)
+ABL:ARG:Shooting = TempMobCombatLevel
+ABL:ARG:Melee = TempMobCombatLevel
+FOR LOCAL,0,64
+	IF TempMobYoujutsuLevel:LOCAL
+		CALLF GiveYoujutsu(ARG,LOCAL,TempMobYoujutsuLevel:LOCAL)
+	ENDIF
+NEXT
+CALL AutoYoujutsuSet(ARG)
+;dirty 3-4x increase for max level of 24
+; IF nLevelRework
+; FOR LOCAL,40,72
+; 	CALLF CONVERT_TO_20_SYSTEM(ARG,LOCAL,0)
+; NEXT
+; CALLF CONVERT_TO_20_SYSTEM(ARG,46,1)
+; CALLF CONVERT_TO_20_SYSTEM(ARG,47,1)
+; CALLF CONVERT_TO_20_SYSTEM(ARG,48,1)
+; CALLF CONVERT_TO_20_SYSTEM(ARG,49,1)
+; ENDIF
+
+CALL SET_MINIMUM_EXP_ALL(ARG, 1)
+SIF TempMobSex > -1
+TALENT:ARG:2 = TempMobSex
+CFLAG:ARG:睡眠 = 0
+CSTR:ARG:3 = %TempMobName:0%
+CSTR:ARG:15 = %TitleRanks(ABL:ARG:66)% at combat
+TALENT:ARG:Raider = 1
+;SIF ARG > RANDOM_CHARANUM
+;CFLAG:ARG:MARKED_FOR_DELETION = 1
+
+IF TempMobEquip:24
+;specific weapon
+CALLF EQUIPWEAPON(ARG,TempMobEquip:24)
+ELSE
+;weapon from tags
+DEBUGPRINTFORML %CALLNAME:ARG% wants weapon with tags "%TempMobDesiredWeap%"
+CALLF EQUIPWEAPON(ARG,MakeDesiredWeapon(TempMobDesiredWeap))
+ENDIF
+
+;danmaku
+IF CharaWeaponInts:ARG:MPCost
+	CALLF GiveYoujutsu(ARG,0,ABL:ARG:42)
+	IF !TempMobMP
+		CALL CombatLevelToMaxMP(ARG,ARG:1)
+	ENDIF
+	BASE:ARG:7 = MAXBASE:ARG:7
+ENDIF
+;heavy weapons
+SIF GET_INT(ARG, "Weapon", EQUIP:ARG:24, "Heavy Weapon")
+	TALENT:ARG:223 = 1
+
+FOR LOCAL,0, 15
+	IF TempMobYoujutsuList:LOCAL
+		{
+			DT_ROW_ADD @"combatMagic",
+			"chara", ARG,
+			"spellPage", (TempMobYoujutsuList:LOCAL)/1000,
+			"spell", (TempMobYoujutsuList:LOCAL)%1000,
+			"enchantment", 0,
+		}
+	ELSE
+		CONTINUE
+	ENDIF
+NEXT
+
+FOR LOCAL,0, 25
+	IF TempMobEquip:LOCAL
+		EQUIP:ARG:LOCAL = TempMobEquip:LOCAL
+		CFLAG:ARG:(200+LOCAL) = TempMobEquip:LOCAL
+		SIF LOCAL == 6
+			CALLF PANTY_REWORK_CHANGE(ARG,TempMobEquip:LOCAL)
+	ELSE
+		CONTINUE
+	ENDIF
+NEXT
+
+;hediffs
+FOR LOCAL,0, DT_ROW_LENGTH("TempMobHediff")
+    {
+        DT_ROW_ADD @"Hediff",
+        "chara", ARG,
+        "part", DT_CELL_GET(@"TempMobHediff", LOCAL, "part"),
+        "type", DT_CELL_GET(@"TempMobHediff", LOCAL, "type"),
+        "severity", DT_CELL_GET(@"TempMobHediff", LOCAL, "severity"),
+        "tended", DT_CELL_GET(@"TempMobHediff", LOCAL, "tended"),
+        "bleeding", DT_CELL_GET(@"TempMobHediff", LOCAL, "bleeding"),
+        "owner", DT_CELL_GET(@"TempMobHediff", LOCAL, "owner"),
+        "cause", DT_CELL_GETS(@"TempMobHediff", LOCAL, "cause"),
+        "permanent", DT_CELL_GET(@"TempMobHediff", LOCAL, "permanent"),
+    }
+NEXT
+
+CFLAG:ARG:基本服装セット = 300
+CFLAG:ARG:衣装一時変更 = 0
+CALL CrippleEffects(ARG)
+CALL CLOTHES_SETTING_TRAIN(ARG)
+FOR LOCAL,0, 25
+	CFLAG:ARG:(240+LOCAL) = CFLAG:ARG:(200+LOCAL)
+NEXT
+
+
+SIF nPosition == -1
+	nPosition = KICKOUT()
+CFLAG:ARG:現在位置 = nPosition
+CALL MOB_SET_ARRIVE_TIME(ARG, 800)
+
+;uses desired weapon tags to grab a weapon.
+;nItem   : Desired tags
+;nMatches: Grab all matches instead of just one
+;nFaction: For research stuff. 
+;nType   : Type of item.
+@MakeDesiredWeapon(nItem,nMatches, nFaction=-1, nType = "Weapon")
+#FUNCTION
+#DIMS nItem
+#DIMS desireSplit, 15
+#DIMS weapSplits, 15
+#DIMS tagMatch
+#DIM desirePoints
+#DIM weapPoints
+#DIM weapMatches
+#DIMS weapList
+#DIM nMatches
+#DIM nFaction
+#DIM nCurrentItem
+#DIM nCurrentItemPreset
+#DIM nCurrentItemBase
+#DIM nMaximumItems
+#DIMS nType
+#DIMS nTotalTags
+#DIMS nResearchNeeded
+#DIMS nResearchSplit
+#DIMS nItemName
+VARSET desirePoints
+VARSET desireSplit
+VARSET weapMatches
+VARSET weapList
+
+
+SPLIT nItem, "/", desireSplit
+desirePoints = STRCOUNT(nItem, "/")
+IF !desirePoints
+	;blank
+	DEBUGPRINTFORML No parameters for @MakeDesiredWeapon were specified!
+	RETURNF
+ELSEIF FINDELEMENT(EquipIDSTR,nType) == -1
+	;invalid type
+	DEBUGPRINTFORML Invalid type for @MakeDesiredWeapon were specified! (got "%nType%")
+	RETURNF
+ENDIF
+
+IF nType == "Weapon"
+	nMaximumItems = 2000
+ELSE
+	nMaximumItems = VAR_TEMP_MAX
+ENDIF
+
+SELECTCASE nMatches
+CASE 0
+	CALLF FISHER_YATES_SHUFFLE_F(nMaximumItems)
+CASEELSE
+	FOR LOCAL,0,nMaximumItems
+		SHAFFLE_ARRAY:LOCAL = LOCAL
+	NEXT
+ENDSELECT
+
+FOR LOCAL,0,nMaximumItems
+	VARSET weapPoints
+	VARSET weapSplits
+	VARSET tagMatch
+	VARSET nTotalTags
+	VARSET nItemName
+	VARSET nCurrentItemPreset
+	VARSET nCurrentItemBase
+	nCurrentItem = SHAFFLE_ARRAY:(LOCAL)
+	IF nType == "Weapon" || nType == "WeaponPreset"
+		IF nCurrentItem > VAR_TEMP_MAX
+			nType '= "WeaponPreset"
+			nCurrentItemPreset = nCurrentItem%1000
+			nCurrentItemBase = GET_INT(0, "WeaponPreset", nCurrentItemPreset, "Base Weapon")
+		ELSE
+			nType '= "Weapon"
+		ENDIF
+	ELSE
+		nCurrentItemBase = nCurrentItem
+	ENDIF
+
+	IF nFaction > -1
+		nResearchNeeded '= GET_STR(MASTER, nType, nCurrentItemBase, "Research Needed")
+		IF !STRCOUNT(nResearchNeeded,"/")
+		ELSE
+			FOR LOCAL:1,0,STRCOUNT(nResearchNeeded,"/")
+				nResearchSplit = SPLIT_SINGLE(nResearchNeeded,LOCAL:1,"/")
+				SIF !RESEARCH_PROJECT_FROM_DEFNAME(nResearchSplit)
+					CONTINUE
+				SIF !RESEARCH_DONE(nFaction,nResearchSplit)
+					GOTO WSBreak
+			NEXT
+		ENDIF
+	ENDIF 
+	;itemname
+	nItemName '= GET_STR(MASTER, nType, nCurrentItemPreset ? nCurrentItemPreset # nCurrentItem, "名前")
+	SIF !STRLENS(nItemName)
+		nItemName '= GET_STR(MASTER, nType, nCurrentItemPreset ? nCurrentItemPreset # nCurrentItem, "Name")
+	SELECTCASE nType
+	CASE "Weapon", "WeaponPreset"
+		nTotalTags '= WEAP_TOTAL_TAGS(MASTER,nCurrentItem)
+		SIF BLACKLISTED_WEAPON(nCurrentItemBase)
+			CONTINUE
+	CASE "下半身下着_ずらし可能"
+		nTotalTags '= PANTY_TOTAL_TAGS(MASTER,nCurrentItem)
+	CASEELSE
+		nTotalTags '= GET_STR(MASTER, nType, nCurrentItem, "Tags")
+	ENDSELECT
+	SIF nTotalTags == "" || !STRLENS(nItemName)
+		CONTINUE	
+
+	SPLIT nTotalTags, "/", weapSplits
+	;DEBUGPRINTFORML weapon tags: %GET_STR(MASTER, "Weapon", SHAFFLE_ARRAY:(LOCAL), "Tags")%, desired: %nItem%
+
+	FOR LOCAL:1, 0, VARSIZE("weapSplits")
+	;空文字列ならスキップ
+	SIF weapSplits:(LOCAL:1) == ""
+		BREAK
+		FOR LOCAL:2, 0, VARSIZE("desireSplit")
+			;空文字列ならスキップ
+			SIF desireSplit:(LOCAL:2) == ""
+				BREAK
+			IF desireSplit:(LOCAL:2) == weapSplits:(LOCAL:1)
+				;no duplicate tags
+				SIF STRFIND(tagMatch,weapSplits:(LOCAL:1)) != -1
+					CONTINUE
+					
+				tagMatch += @"%weapSplits:(LOCAL:1)%/"
+				weapPoints ++
+				;DEBUGPRINTFORML no dupes found, adding "%tagMatch:(LOCAL:3)%" to matches
+				IF (weapPoints >= desirePoints) && desirePoints
+					SELECTCASE nMatches
+					CASE 0
+					RETURNF SHAFFLE_ARRAY:(LOCAL)
+					CASEELSE
+					weapMatches ++ 
+					weapList += TOSTR(SHAFFLE_ARRAY:(LOCAL))+"/"
+					ENDSELECT		
+					GOTO WSBreak			
+				ENDIF
+			ENDIF
+		NEXT
+	NEXT
+	$WSBreak
+NEXT
+IF nMatches
+	RESULTS '= weapList
+	RETURNF weapMatches
+ENDIF
+
+SIF nType == "WeaponPreset"
+	nType '= "Weapon"
+
+DEBUGPRINTFORML Unable to retrieve %表示ラベル:(FINDELEMENT(EquipIDSTR,nType))% from desired tags "%nItem%"
+
+
+@CombatLevelToMaxMP(ARG,ARG:1)
+SELECTCASE ARG:1
+CASE 10
+	MAXBASE:ARG:7 = 64000
+CASE 9
+	MAXBASE:ARG:7 = 32000
+CASE 8
+	MAXBASE:ARG:7 = 16000
+CASE 7
+	MAXBASE:ARG:7 = 8000
+CASE 6
+	MAXBASE:ARG:7 = 4000
+CASE 5
+	MAXBASE:ARG:7 = 2500
+CASE 4
+	MAXBASE:ARG:7 = 1500
+CASE 3
+	MAXBASE:ARG:7 = 800
+CASE 2
+	MAXBASE:ARG:7 = 500
+CASE 1
+	MAXBASE:ARG:7 = 200
+CASEELSE
+	MAXBASE:ARG:7 = 100
+ENDSELECT

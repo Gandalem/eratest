@@ -1,0 +1,770 @@
+;Recollection menu
+@LucidDreamRecollection
+#DIM nLineCnt_Head
+LOADGLOBAL
+CUSTOMDRAWLINE ＊
+PRINTFORML Lucid Dream Recollection
+CUSTOMDRAWLINE ＊
+SETCOLOR C_RED
+PRINTFORML Lucid dream progress is saved between all saves
+RESETCOLOR
+PRINTFORML
+nLineCnt_Head = LINECOUNT
+REDRAW 0
+DO
+	SIF LINECOUNT - nLineCnt_Head > 0
+		CLEARLINE LINECOUNT - nLineCnt_Head
+
+	CALL LucidDreamRecollection_State
+	SELECTCASE RESULT
+		CASE 0, 
+			SAVEGLOBAL
+			RETURN
+		CASE 88890, -1
+			SAVEGLOBAL
+			RETURN RESULT
+	CASEELSE
+	ENDSELECT
+LOOP 1
+
+@LucidDreamRecollection_State
+#DIM 	 CREDRAW
+#DIM     PAGE       ;表示中のページ
+#DIMS CONST DISP_NAME = "Normal", "Nightmare", "Sex", "Pee"
+#DIM FIRST_LINE
+#DIM nTempDream
+FIRST_LINE = LINECOUNT
+$REPRINT
+CLEARLINE LINECOUNT - FIRST_LINE
+CREDRAW = CURRENTREDRAW()
+REDRAW 0
+CALL LucidDreamRecollection_Page(PAGE, DISP_NAME:PAGE)
+DRAWLINE
+FOR LOCAL, 0, VARSIZE("DISP_NAME")
+	SIF LOCAL == 3 && !GETBIT(nPee,1) && !GETBIT(nScat,2)
+		CONTINUE
+	SIF PAGE == LOCAL
+		SETCOLOR 0x00FFFF
+	PRINTBUTTON DISP_NAME:LOCAL, LOCAL + 8002
+	RESETCOLOR
+	PRINTFORM 　　
+NEXT
+PRINTFORML 
+;#;PRINTBUTTON "[-1] Random", -1
+PRINTBUTTON "[0] Return", 0
+DO
+	INPUT
+	SELECTCASE RESULT
+	CASE 0
+		RETURN 0
+	CASE 8002 TO VARSIZE("DISP_NAME")+8002
+		PAGE = RESULT-8002
+	CASE -1
+		RETURN -1
+	CASE 0 TO DAILY_Lucid_Max
+		nTempDream = RESULT
+		CALL LucidDreamRecollection_Info(nTempDream)
+		;debug
+		IF RESULT == 88890
+			;set dream
+			DAILY_Lucid_Stats:3 = nTempDream
+			RETURN 88890
+		ENDIF
+	CASEELSE
+		$RETRY
+		REUSELASTLINE Invalid Input
+		CONTINUE
+	ENDSELECT
+	BREAK
+LOOP 1
+GOTO REPRINT
+
+@LucidDreamRecollection_Page(nCurPage, nTag)
+#DIM DYNAMIC nCurPage
+#DIMS DYNAMIC nTag
+FOR LOCAL, 0, DAILY_Lucid_Max
+	VARSET DAILY_Lucid_Type
+	TRYCALL LucidDreamRecollection_Individual(LOCAL, nTag)
+NEXT
+
+@LucidDreamRecollection_Individual(DREAM, nType)
+#DIM DYNAMIC DREAM
+#DIMS DYNAMIC nType
+#DIM DYNAMIC endingCount, 2
+VARSET endingCount
+VARSET DAILY_Lucid_EndingAvailable
+
+TRYCALLFORMF LUCID_DREAM_INFO_{DREAM}
+SIF TOLOWER(nType) != TOLOWER(DAILY_Lucid_Type)
+	RETURN
+
+PRINTBUTTON @"%DAILY_Lucid_Name%", DREAM
+PRINTL
+SETCOLOR C_GRAY
+FOR LOCAL,0,100
+	LOCAL:1 = TOINT(SPLIT_SINGLE(DAILY_Lucid_EndingAvailable, LOCAL, "/"))
+	endingCount++
+	SIF !LOCAL:1
+		BREAK
+	IF GETBIT(DAILY_Lucid_Progress:DREAM, (LOCAL:1))
+		SETCOLOR C_YELLOW
+	ENDIF
+	PRINTFORM %LucidDreamEndingName(LOCAL:1,1,DREAM)%
+	SETCOLOR C_GRAY
+	SIF LOCAL != STRCOUNT(DAILY_Lucid_EndingAvailable,"/")
+		PRINTFORM /
+NEXT
+RESETCOLOR
+PRINTL
+
+@LucidDreamRecollection_Info(DREAM, IsInteractive = 1)
+#DIM DREAM
+#DIM IsInteractive
+
+TRYCALLFORMF LUCID_DREAM_INFO_{DREAM}
+SIF !STRLENS(DAILY_Lucid_Name)
+	RETURN
+
+DRAWLINE
+PRINTFORML %DAILY_Lucid_Name%
+SETCOLOR C_GRAY
+PRINTFORML %DAILY_Lucid_Type% Dream
+RESETCOLOR
+PRINTL
+PRINTFORML  %DAILY_Lucid_Desc%
+SIF !IsInteractive
+	RETURN
+CALL PRINTLINE, "Endings Gotten"
+FOR LOCAL,0,100
+	LOCAL:1 = TOINT(SPLIT_SINGLE(DAILY_Lucid_EndingAvailable, LOCAL, "/"))
+	SIF !LOCAL:1
+		BREAK
+	IF GETBIT(DAILY_Lucid_Progress:DREAM, (LOCAL:1))
+		SETCOLOR C_YELLOW
+		PRINTFORML %LucidDreamEndingName(LOCAL:1,0, DREAM)%
+	ENDIF
+NEXT
+RESETCOLOR
+DRAWLINE
+IF DAILY_Lucid_Type != "Pee" || DAILY_Lucid_Stats:14
+	PRINTFORML [0] - Reminisce
+ENDIF
+SIF nPee
+PRINTFORML [1] - Reminisce (Wet)
+SIF nScat
+PRINTFORML [2] - Reminisce (Mess)
+SIF nPee && nScat
+PRINTFORML [3] - Reminisce (Dual)
+PRINTFORML [9] - Leave
+INPUT
+D = RESULT
+SELECTCASE RESULT
+CASE 0 TO 3
+	IF DAILY_Lucid_Stats:14
+		RETURN 88890
+	ELSE
+		CALL LucidDream(MASTER,GETBIT(D,0) , GETBIT(D,1),DREAM)
+	ENDIF
+ENDSELECT
+
+
+
+
+;Lucid dream
+;These dreams are mostly about things in the outside world, as the TW player is an outsider.
+;ARG (Dream type. 1: Pee holding - 0: Wet dream)
+;LOCAL to LOCAL:5 are characters
+@LucidDream(ARGS,HasPiss,HasScat,DreamOverride=0,yumeDance=0)
+#DIM HasPiss
+#DIM HasScat
+#DIM EndOutcome
+#DIM DreamOverride
+#DIM CHARA
+#DIM PlayerDice
+#DIM LocalDice
+#DIM PlayerHealth
+#DIM DamageThreshold
+#DIM DamageTake
+#DIM RandomChara
+#DIM yumeDance
+
+IF inTrain != 3
+	VARSET DAILY_Lucid_Stats
+	VARSET DAILY_LUCID_CLOTHES, -1
+	DAILY_Lucid_Stats:1 = HasPiss
+	DAILY_Lucid_Stats:2 = HasScat
+	DAILY_Lucid_Stats:3 = DreamOverride
+	DAILY_Lucid_Stats:4 = CFLAG:MASTER:300
+	DAILY_Lucid_Stats:5 = TIME
+	DAILY_Lucid_Stats:8 = EQUIP:MASTER:6
+	DAILY_Lucid_Stats:15 = TIME:1
+	DAILY_Lucid_Stats:16 = yumeDance
+	;clear eternal desperation
+	CLEARBIT YoujutsuEffects:MASTER:18,34
+	CFLAG:MASTER:デート中 = 18
+	FOR LOCAL,0,VARSIZE("DAILY_LUCID_CLOTHES")
+		DAILY_LUCID_CLOTHES:LOCAL = EQUIP:MASTER:LOCAL
+	NEXT
+
+	;PRINTFORML Due to Eramaker restrictions, your save will be reloaded.
+	CALL TempVarSave
+	inTrain = 3
+	SAVEDATA 302, "Lucid Dream Temp Save"
+	;FORCEWAIT
+	LOADDATA 302
+	RETURN
+ENDIF
+yumeDance = DAILY_Lucid_Stats:16
+
+
+EndOutcome = 0
+LocalDice = 0
+FOR LOCAL,0,CHARANUM
+	CALL LucidDreamCacheClothes(LOCAL)
+NEXT
+CALLF PANTY_REWORK_CHANGE(MASTER,今日のぱんつ(MASTER))
+CFLAG:MASTER:現在位置 = 1810
+;TFLAG:妄想中 = 1
+
+;Get Dream
+;Blank means to go anyway
+IF !DreamOverride
+	$GetDream
+	VARSET DAILY_Lucid_Type
+	VARSET DAILY_Lucid_Name
+	DreamOverride = (RAND:DAILY_Lucid_Max)+1
+	TRYCALLFORMF LUCID_DREAM_INFO_{DreamOverride}
+	SIF DAILY_Lucid_Type != ARGS && STRLENS(ARGS)
+		GOTO GetDream
+	
+	SELECTCASE DAILY_Lucid_Type
+	CASE "Pee"
+		;fetish toggles
+		SIF !GETBIT(nPee,1) && !GETBIT(nScat,2)
+			GOTO GetDream
+		SIF !HasPiss && !HasScat
+			GOTO GetDream
+		IF FIRSTTIME("DoremyPeeTutorial")
+			DreamOverride = 99
+		ENDIF
+	CASE "Sex"
+		SIF !nSex
+			GOTO GetDream
+	ENDSELECT
+	SIF !STRLENS(DAILY_Lucid_Name) ; invalid
+		GOTO GetDream
+ENDIF
+DAILY_Lucid_Stats:3 = DreamOverride
+
+		;get a random character
+CALL FISHER_YATES_SHAFFLE(CHARANUM)
+VARSET LOCAL
+FOR RandomChara, 0, CHARANUM
+	CHARA = SHAFFLE_ARRAY:(RandomChara)
+	;対象があなた
+	SIF CHARA == MASTER
+		CONTINUE
+	SIF TALENT:CHARA:行きずり
+		CONTINUE
+	SIF CFLAG:CHARA:出禁 ;ignore banned characters
+		CONTINUE
+	; CALL Add_Duplicate_Character(CHARA)
+	; DAILY_Lucid_Chara:(LOCAL:15) = RESULT
+	DAILY_Lucid_Chara:(LOCAL:15) = CHARA
+	LOCAL:15 ++
+NEXT
+
+; ;loop again
+; FOR RandomChara, 1, CHARANUM
+; 	CHARA = SHAFFLE_ARRAY:(RandomChara)
+; 	SIF GROUPMATCH(DAILY_Lucid_Chara:(RandomChara-1), MASTER, [[モブ子]])
+; 		DAILY_Lucid_Chara:(RandomChara-1) = CHARA
+; NEXT
+
+SETBGCOLOR 0, 0, 102
+IF yumeDance
+	TRYCALLFORM LUCID_EV{DreamOverride}_YumeDance_Init(MASTER)
+ELSE
+	PRINTFORMDL You have a lucid dream while you're sleeping...
+	IF nSpoilerMode
+	CALL LucidDreamRecollection_Info(DreamOverride,0)
+	DRAWLINE
+ENDIF
+ENDIF
+$ResetDream
+SELECTCASE DreamOverride
+CASEELSE
+	TRYCALLFORM LUCID_DREAM_START_{DAILY_Lucid_Stats:3}
+ENDSELECT
+$END
+
+;Outcome determined by what underwear you were wearing
+@LucidDreamLoser(hasIntent)
+#FUNCTION
+#DIM hasIntent
+IF IsPadded(MASTER)
+	X = 20
+ELSE
+	X = 10
+ENDIF
+SIF hasIntent
+	X += hasIntent
+RETURNF X
+
+;Ending flavor text
+; 0: Undetermined.
+; 1: Held it and relieved self
+; 2: Relived self in a non-nomal location
+;10: Genuine accident
+;11: Intentional accident
+;12: Genuine toilet accident
+;20: Genuine accident (padded)
+;21: Intentional accident (padded)
+;22: Genuine toilet accident (padded)
+;61: Dream Paradox
+;62: Left area
+@LucidDreamEnd()
+TRYCALLFORM LUCID_DREAM_END_{DAILY_Lucid_Stats:3}
+
+$Bypass
+TRYCALLFORMF LUCID_DREAM_INFO_{DAILY_Lucid_Stats:3}
+SELECTCASE DAILY_Lucid_Type
+CASE "Nightmare"
+	SELECTCASE DAILY_Lucid_Stats:9
+	CASE 1,2
+		CALL COLORMESSAGE(@"Life prevails!",C_GREEN,1,1)
+	CASE 10,12
+		CALL COLORMESSAGE(@"Loser!",C_RED,1,1)
+	ENDSELECT
+CASE "Normal"
+	SELECTCASE DAILY_Lucid_Stats:9
+	CASE 1
+		CALL COLORMESSAGE(@"Life prevails!",C_GREEN,1,1)
+	CASE 10
+		CALL COLORMESSAGE(@"Loser!",C_RED,1,1)
+	ENDSELECT
+CASE "Pee"
+	SELECTCASE DAILY_Lucid_Stats:9
+	CASE 20 TO 29
+		CALL COLORMESSAGE(@"Loser! But saved by the padding!",C_ORANGE,2,1)
+	CASE 10 TO 19
+		CALL COLORMESSAGE(@"Loser!",C_RED,1,1)
+	CASE 1
+		CALL COLORMESSAGE(@"Life prevails!",C_GREEN,1,1)
+	CASE 2
+		CALL COLORMESSAGE(@"Life prevails?",C_GREEN,1,1)
+	CASE 61
+		CALL COLORMESSAGE(@"Dream paradox?!",C_PINK,2,1)
+	CASE 62
+		CALL COLORMESSAGE(@"(Left Dream)",C_YELLOW,2,1)
+	ENDSELECT
+ENDSELECT
+CALL COLORMESSAGE(@"(%LucidDreamEndingName(DAILY_Lucid_Stats:9)% End)",C_YELLOW,2,1)
+LOADGLOBAL
+SETBIT DAILY_Lucid_Progress:(DAILY_Lucid_Stats:3), DAILY_Lucid_Stats:9
+SAVEGLOBAL
+
+@LucidDreamEndingName(ARG,nShort = 0,nDream = -1)
+#DIM nShort
+#DIM nDream
+#FUNCTIONS
+SIF nDream == -1
+	nDream = DAILY_Lucid_Stats:3
+
+TRYCALLFORMF LUCID_DREAM_INFO_{nDream}
+IF nShort == 1
+	SELECTCASE DAILY_Lucid_Type
+	CASE "Normal"
+		SELECTCASE ARG
+		CASE 1
+			RETURNF "Won"
+		CASE 10
+			RETURNF "Lost"
+		CASE 62
+			RETURNF "Left"
+		ENDSELECT
+	CASE "Nightmare"
+		SELECTCASE ARG
+		CASE 1
+			RETURNF "Got Away"
+		CASE 2
+			RETURNF "Won"
+		CASE 10
+			RETURNF "Got Caught"
+		CASE 11
+			RETURNF "Gave Up"
+		CASE 12
+			RETURNF "Defeat"
+		CASE 61
+			RETURNF "Paradox"
+		CASE 62
+			RETURNF "Left"
+		ENDSELECT
+	CASE "Sex"
+		SELECTCASE ARG
+		CASE 10
+			RETURNF "Ejaculation"
+		CASE 11
+			RETURNF "Accident"
+		CASE 61
+			RETURNF "Paradox"
+		CASE 62
+			RETURNF "Left"
+		ENDSELECT
+	CASE "Pee"
+		SELECTCASE ARG
+		CASE 22
+			RETURNF "Accident (D/T)"
+		CASE 21
+			RETURNF "Intentional (D)"
+		CASE 20
+			RETURNF "Accident (D)"
+		CASE 12
+			RETURNF "Accident (T)"
+		CASE 11
+			RETURNF "Intentional"
+		CASE 1
+			RETURNF "Relieved"
+		CASE 2
+			RETURNF "Relieved (N)"
+		CASE 10
+			RETURNF "Accident"
+		CASE 59
+			RETURNF "Dry"
+		CASE 61
+			RETURNF "Paradox"
+		CASE 62
+			RETURNF "Left"
+		ENDSELECT
+	ENDSELECT
+ELSE
+	SELECTCASE DAILY_Lucid_Type
+	CASE "Normal"
+		SELECTCASE ARG
+		CASE 1
+			RETURNF "Won"
+		CASE 10
+			RETURNF "Lost"
+		CASEELSE
+			RETURNF "Left Dream"
+		ENDSELECT
+	CASE "Nightmare"
+		SELECTCASE ARG
+		CASE 1
+			RETURNF "Lost Enemy"
+		CASE 2
+			RETURNF "Won"
+		CASE 10
+			RETURNF "Got Caught"
+		CASE 11
+			RETURNF "Gave Up"
+		CASE 12
+			RETURNF "Defeat"
+		CASE 61
+			RETURNF "Paradox"
+		CASE 62
+			RETURNF "Left Dream"
+		ENDSELECT
+	CASE "Sex"
+		SELECTCASE ARG
+		CASE 10
+			RETURNF "Ejaculation"
+		CASE 11
+			RETURNF "Accident"
+		CASE 61
+			RETURNF "Paradox"
+		CASE 62
+			RETURNF "Left Dream"
+		ENDSELECT
+	CASE "Pee"
+		SELECTCASE ARG
+		CASE 22
+			RETURNF "Toilet Accident (Diapered)"
+		CASE 21
+			RETURNF "Intentional (D)"
+		CASE 20
+			RETURNF "Genuine Accident (Diapered)"
+		CASE 12
+			RETURNF "Toilet Accident"
+		CASE 11
+			RETURNF "Intentional Accident"
+		CASE 1
+			RETURNF "Relieved Self"
+		CASE 2
+			RETURNF "Relieved Self (Non-Normal Location)"
+		CASE 10
+			RETURNF "Genuine Accident"
+		CASE 61
+			RETURNF "Dream Paradox"
+		CASE 62
+			RETURNF "Left Dream"
+		ENDSELECT
+	ENDSELECT
+ENDIF
+
+
+;relieve yourself or have an accident in the dream which results you in having an accident for real.
+@LucidDreamTimeUp()
+CALL LucidDreamEnd()
+
+CALL LucidDreamAfter()
+BEGIN AFTERTRAIN
+
+;After the lucid dream
+;You'll most likely wet or mess yourself in bed.
+@LucidDreamAfter()
+;TCVAR:MASTER:906 = 0
+;TCVAR:LOCAL:906 = 0
+STOPSOUND
+FOR LOCAL,0,CHARANUM
+	CALL LucidDreamReleaseClothes(LOCAL)
+NEXT
+CFLAG:MASTER:デート中 = MAIN_MAP
+CFLAG:MASTER:300 = DAILY_Lucid_Stats:4
+TIME = DAILY_Lucid_Stats:5
+TFLAG:妄想中 = 0
+CALLF PANTY_REWORK_CHANGE(MASTER,DAILY_Lucid_Stats:8)
+BASE:MASTER:0 = MAXBASE:MASTER:0
+DAILY_Lucid_Stats = 1
+
+RESETBGCOLOR
+RESETCOLOR
+TRYCALLFORMF LUCID_DREAM_INFO_{DAILY_Lucid_Stats:3}
+SELECTCASE DAILY_Lucid_Type
+CASE "Nightmare"
+	IF DAILY_Lucid_Stats:9 == 10
+	CALL BEDWETTING(DAILY_Lucid_Stats:1,DAILY_Lucid_Stats:2,0,1)
+	ENDIF
+CASE "Sex"
+	IF DAILY_Lucid_Stats:9 == 11
+	CALL BEDWETTING(DAILY_Lucid_Stats:1,DAILY_Lucid_Stats:2,0,1)
+	ELSEIF DAILY_Lucid_Stats:9 == 10
+	CALL LucidDreamEjac
+	ENDIF
+CASE "Pee"
+	IF DAILY_Lucid_Stats:9 == 62
+	PRINTFORML
+	CALL DAILY_EV_901(DAILY_Lucid_Stats:1,DAILY_Lucid_Stats:2)
+	ELSEIF DAILY_Lucid_Stats:9 == 59
+	ELSE
+	PRINTFORML
+	CALL BEDWETTING(DAILY_Lucid_Stats:1,DAILY_Lucid_Stats:2,0,1)
+	ENDIF
+ENDSELECT
+VARSET DAILY_Lucid_InterruptCom
+
+@LucidDreamNormalCommand(ARG)
+#FUNCTION
+TRYCALLFORMF LUCID_DREAM_INFO_{DAILY_Lucid_Stats:3}
+RETURNF DAILY_Lucid_NormalCom
+
+@LucidDreamInterceptCommand(ARG)
+#FUNCTION
+SIF InTrain != 3
+	RETURNF 0
+
+TRYCALLFORMF LUCID_DREAM_INFO_{DAILY_Lucid_Stats:3}
+SIF STRFIND(DAILY_Lucid_InterruptCom,TOSTR(ARG)+"/") > -1
+	RETURNF 1
+
+@LucidDreamNames(ARG)
+#FUNCTIONS
+VARSET LOCALS
+VARSET DAILY_Lucid_Name
+SELECTCASE ARG
+	CASE 0
+		LOCALS:1 = Random	
+	CASE 21
+		LOCALS:1 = Another World
+	CASEELSE
+		TRYCALLFORMF LUCID_DREAM_INFO_{ARG}
+		RETURNF DAILY_Lucid_Name
+ENDSELECT
+RETURNF LOCALS:1
+
+
+@LucidDreamInputName(ARG,nInput)
+#FUNCTIONS
+#DIM nInput
+
+DAILY_Lucid_ComName =
+TRYCALLFORMF LUCID_DREAM_INPUT_NAMES_{ARG}(nInput)
+RETURNF DAILY_Lucid_ComName
+
+@LucidDreamInfo()
+#FUNCTIONS
+
+LOCALS =
+TRYCALLFORMF LUCID_DREAM_INPUT_STATUS_{DAILY_Lucid_Stats:3}
+LOCALS '= DAILY_Lucid_InfoTab
+SIF STRLENS(LOCALS)
+RETURNF @"<%LOCALS%>"
+
+
+@LucidDreamInput(ARG,nInput)
+#DIM nInput
+TRYCALLFORM LUCID_DREAM_INPUT_{ARG}(nInput)
+
+@LucidDreamTurnEnd
+TRYCCALLFORM LUCID_DREAM_TURN_{DAILY_Lucid_Stats:3}
+CATCH
+	IF (PeeBarstage(MASTER) >= 7 && DAILY_Lucid_Stats:1 && nPee) || (PooBarStage(MASTER) >= 7 && DAILY_Lucid_Stats:2 && nScat)
+		CALL CAUSE_OMORASHI(MASTER,DAILY_Lucid_Stats:1,DAILY_Lucid_Stats:2,1)
+		DAILY_Lucid_Stats:9 = LucidDreamLoser()
+		CALL LucidDreamTimeUp()
+	ENDIF
+ENDCATCH
+
+;-------------------------------------------------
+; LucidDreamEjac
+; Acts like the old one but it instead does a lucid dream sequence and proper underwear checks like how the bedwetting event does it.
+;-------------------------------------------------
+@LucidDreamEjac
+#DIM CHARA
+SIF !GETBIT(nSexExcrete,0)
+	RETURN -1
+SIF !HAS_PENIS(MASTER)
+	RETURN -1
+
+FLAG:71 = 0
+TALENT:MASTER:120 = 0
+BASE:MASTER:精力 -= 500
+EXP:MASTER:射精経験 ++
+CALLF MessUndies(MASTER, "liquid", 3, 500, 1)
+Qol_Info_Count_Array:MASTER:Qol_Count_Wetting += 1
+
+IF (IsPadded(MASTER) || PantiesType:MASTER:0 != "Naked")
+	PRINTFORMW Your %PeeProtectType(MASTER)% fills up with your %SEMEN(MASTER,1)%.
+	IF DiapeCharges:MASTER:0 >= 0 
+	PRINTFORMW You sleep soundly as your protection works as intended.
+	CALL COLORMESSAGE("Maximum TSP and energy have temporarily increased",C_YELLOW,2,1)
+	CALL BUFF_BASE(MASTER,BASE_気力,MIN(MAXBASE:MASTER:気力 / 10, 300))
+	CALL BUFF_BASE(MASTER,BASE_TSP,MIN(MAXBASE:MASTER:TSP / 2, 500))	
+		CALL COLORMESSAGE(@"Times Peed Self ＋1",C_PINK,1)
+		CALL COLORMESSAGE(@"Ejaculation Exp +1",C_PINK,1)	
+	RETURN 1
+	ELSE
+	PRINTFORMW %PARSE("Your")% %PeeProtectType(MASTER,1)% can't hold all of %PARSE("your",1)% %SEMEN(MASTER,1)% as it starts %FSYN("leak:ing")% on the bed...
+	PRINTFORML
+ENDIF
+ELSE
+PRINTFORMW In your sleep, you unconsciously have an orgasm inside your %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))% and make a small stain on the bed.   
+PRINTFORML
+ENDIF
+;===============================
+
+PRINTFORML %PARSE("You wake")% up in the middle of the night from a pleasurable feeling.
+PRINTFORMW %PARSE("Your",1)% crotch feels rather warm...
+PRINTFORML !!!! %PARSE("You",1)% had a wet dream!
+PRINTFORMW %PARSE("You")% deeply %PARSE("regret")% not spending it in a more meaningful way...
+PRINTL 
+
+; QOL stats
+; - Mr Pops Alot
+;===============================
+CALL QoL_Info_Write(MASTER, Qol_Dates_Wetting)
+Qol_Info_Count_Array:MASTER:Qol_Count_BedWetting += 1
+CALL COLORMESSAGE(@"Times Peed Self ＋1",C_PINK,1)
+CALL COLORMESSAGE(@"Ejaculation Exp +1",C_PINK,1)
+CALL COLORMESSAGE(@"Bedwettings ＋1",C_PINK,1)	
+CALL CharacterSinned(MASTER,"Incontinence",@"had a wet dream which resulted in ejaculating in %HIS_HER(MASTER)% %PeeProtectType(MASTER,2)%", -3,-1)
+;===============================
+
+IF RAND:10 == 0 && ITEM:ミラダの石 == 0
+	PRINTFORML %BREAKENG(@"Because of the miraculous combination of temperature, wind direction, humidity, air pressure, day of the week, lunar days, planetary alignment etc. something impossible has occurred.")%
+	FONTBOLD
+	PRINTFORM %PARSE("Your")% semen crystallizes, and forms a 
+	CALL COLORMESSAGE("Stone of Mirada that Monopolizes Lust", C_D_PINK, 0, 1)
+	PRINTFORMW !
+	FONTREGULAR
+	CALL GET_ITEM("ミラダの石", 1, 1)
+	RETURN 1
+ENDIF
+
+;NAS: Diaper change
+IF ITEM:20
+	PRINTFORML However... the play mat managed to catch your %SEMEN(MASTER,1)%.
+	PRINTFORML You wipe yourself off with a wet wipe before changing yourself into a new %PeeProtectType(MASTER,1)%
+	CALLF PANTY_REWORK_CHANGE(MASTER,EQUIP:MASTER:下半身下着２)
+	RETURN
+ENDIF
+
+CALL FISHER_YATES_SHAFFLE(CHARANUM)
+VARSET LOCAL
+FOR LOCAL, 1, CHARANUM
+	CHARA = SHAFFLE_ARRAY:LOCAL
+	;対象があなた
+	SIF CHARA == MASTER
+		CONTINUE
+	;でてこない
+	SIF CFLAG:CHARA:出禁
+		CONTINUE
+	;拠点キャラではない
+	SIF !CFLAG:CHARA:神社在住
+		CONTINUE
+	;同じエリア内に住んでいない
+	SIF MAP_AREASELECT(MAIN_MAP, CFLAG:MASTER:初期位置) != MAP_AREASELECT(MAIN_MAP, CFLAG:CHARA:初期位置)
+		CONTINUE
+	LOCAL:1 = CHARA
+	BREAK
+NEXT
+SIF LOCAL:1 <= 0
+	RETURN
+
+CALL KOJO_MESSAGE_SEND("DAILY", 2, LOCAL:1)
+
+
+@LucidDreamCacheClothes(ARG)
+#DIMS nTableName
+nTableName '= @"LucidDream_Clothes_{ARG}"
+DT_CREATE nTableName
+DT_COLUMN_ADD nTableName, "slot", "int16"
+DT_COLUMN_ADD nTableName, "equipment", "int16"
+FOR LOCAL,200,240
+	{
+	DT_ROW_ADD nTableName,
+	"slot", LOCAL,
+	"equipment", CFLAG:ARG:LOCAL
+	}
+NEXT
+
+nTableName '= @"LucidDream_SleepClothes_{ARG}"
+DT_CREATE nTableName
+DT_COLUMN_ADD nTableName, "slot", "int16"
+DT_COLUMN_ADD nTableName, "equipment", "int16"
+FOR LOCAL,240,280
+	{
+	DT_ROW_ADD nTableName,
+	"slot", LOCAL,
+	"equipment", CFLAG:ARG:LOCAL
+	}
+NEXT
+
+@LucidDreamReleaseClothes(ARG)
+#DIMS nTableName
+nTableName '= @"LucidDream_Clothes_{ARG}"
+SIF !DT_EXIST(nTableName)
+	RETURN
+
+FOR LOCAL,0,40
+	CFLAG:ARG:(LOCAL+200) = DT_CELL_GET(nTableName, LOCAL, "equipment")
+NEXT
+DT_RELEASE nTableName
+
+nTableName '= @"LucidDream_SleepClothes_{ARG}"
+FOR LOCAL,0,40
+	CFLAG:ARG:(LOCAL+240) = DT_CELL_GET(nTableName, LOCAL, "equipment")
+NEXT
+
+DT_RELEASE nTableName
+
+@ROOMSETTING_18
+
+@LUCID_DREAM_LOCATION_NAME(ARG,ARG:1)
+#FUNCTIONS
+
+VARSET DAILY_LUCID_LocationName
+TRYCALLFORMF LUCID_DREAM_LOCATION_NAME_{ARG}(ARG:1)
+SIF !STRLENS(DAILY_LUCID_LocationName)
+	RETURNF "Fantasy Realm"
+RETURNF DAILY_LUCID_LocationName

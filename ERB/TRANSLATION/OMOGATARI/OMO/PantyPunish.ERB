@@ -1,0 +1,861 @@
+@RandomUnderwearCheck(ARG,BYPASS,Changee = -1)
+#DIM DYNAMIC canWearIt
+#DIM DYNAMIC BYPASS
+#DIM DYNAMIC nUndies
+#DIM DYNAMIC PPCHANGE
+#DIM DYNAMIC Changee
+#DIMS DYNAMIC PP_DIAP, 30
+#DIMS DYNAMIC PP_PADS, 30
+#DIM DYNAMIC CHOICE_INPUT, 2
+#DIM DYNAMIC PP_SoilingBit
+SIF Daily_Lucid_Stats:3 == 27 && DAILY_Lucid_Stats:7 == 3
+    RETURN
+
+SIF Changee == -1
+    Changee = MASTER
+
+SIF Changee == MASTER && K102_PunishPottyTimeLeft
+    RETURN
+
+IF ARG == 102
+	FOR LOCAL:1, 0, VARSIZE("IRAI_SLOT")
+		IF IRAI_SLOT:(LOCAL:1) == 102104
+			RETURN -1
+		ENDIF
+	NEXT
+ENDIF
+
+;soiling bits
+IF SoiledDiaper(Changee,2,,15)
+    ;poop
+    PP_SoilingBit = 2
+ELSEIF SoiledDiaper(Changee,1,,33)
+    ;liquids
+    SELECTCASE DOMINANT_LIQUID_SOIL(Changee)
+    CASE 1
+    ;menstural blood
+        PP_SoilingBit = 3
+    CASE 2, 3
+        PP_SoilingBit = 4
+    CASEELSE
+    ;urine
+        PP_SoilingBit = 1
+    ENDSELECT
+ELSEIF !UnderwearOffPoints(Changee) && !PadOffPoints(Changee) && !CANT_UNDIES(Changee)
+    ;bad undies
+    PP_SoilingBit = 10
+ENDIF
+
+SELECTCASE BYPASS
+CASE 1
+	GOTO BYPAS
+CASE 2
+	GOTO BYPAS2
+CASE 3
+	GOTO DiaperChange
+ENDSELECT
+
+LOCAL:1 = SoiledFindOutChance(Changee)
+
+IF RAND(1000) < LOCAL:1 && nPantyPunish
+	$BYPAS
+    CALL INTERACTIVE_TUTORIAL_GET(102,403,"Diaper Checks",6)
+	PRINTL  
+	PRINTFORMW %PARSE("You find",,,ARG)% %PARSE("you",,,Changee)% suspicious and %PARSE("do",,,ARG)% a \@ nOmutsu ? diaper # underwear\@ check on %PARSE("you",6,,Changee)%...
+	SIF Changee == MASTER
+    CALL KOJO_MESSAGE_SEND("EVENT",100,ARG,PP_SoilingBit,90)
+    IF ARG == MASTER
+        CHOICE_INPUT:1 = 1
+    ELSEIF Changee == MASTER
+        CHOICE_INPUT:1 = 0
+        LOCAL = TALENT:Changee:ぱんつ密輸
+        {
+        CALL ASK_M(
+            @"Comply to check", 1, 
+            @"Lie ({MIN(ABL:ARG:話術技能,20)} Speech to pass)", 1,
+            @"Deceive%COND_STR(@" (Requires【%GET_TALENTNAME_TR(158,1)%】)", !TALENT:MASTER:ぱんつ密輸)%", TALENT:MASTER:ぱんつ密輸,
+            @"【TSP Change】 (350 TSP)", AL_IS_CLAIMED("lucidEV3BeatHypermesser") && BASE:MASTER:TSP >= 350 
+            )
+        }
+        CHOICE_INPUT = RESULT
+    ENDIF
+    PRINTFORMW 
+	PRINTFORMW 
+	PRINTFORMW
+    SELECTCASE CHOICE_INPUT:1
+    CASE 0
+        SELECTCASE CHOICE_INPUT
+        CASE 0
+        CASE 1
+            PRINTFORML But you lie by telling %HIM_HER(ARG)% that you're clean and don't need a check.
+            IF ABL:Changee:話術技能 >= MIN(ABL:ARG:話術技能,20)
+            PRINTFORML %CALLNAME:ARG% is convinced and leaves.
+            RETURN -1
+            ELSE
+            PRINTFORML %CALLNAME:ARG% says that you're bluffing and that you need to be checked.
+            ENDIF
+        CASE 2
+            IF RAND:10
+                PRINTFORMW But %PARSE("you",6,,Changee)% skillfully %PARSE("deceive",,,Changee)% %PARSE("you",5,,ARG)%.
+                RETURN -1
+            ENDIF
+        ENDSELECT
+    CASE 1
+        IF RAND(1000) <= NDD_THRESHOLD(Changee) || SignificantRelationship(Changee)
+        ELSE
+            PRINTFORMW But %CALLNAME:Changee% starts to resist!
+            {
+            CALL ASK_M(
+                @"Give up", 1, 
+                @"Convince %HIM_HER(Changee)% ({MIN(ABL:Changee:話術技能*5,20)} Speech to pass)", 1,
+                @"Sneakily check%COND_STR(@" (Requires【%GET_TALENTNAME_TR(158,1)%】)", !TALENT:MASTER:ぱんつ密輸)%", TALENT:MASTER:ぱんつ密輸
+                )
+            }
+            CHOICE_INPUT = RESULT
+            SELECTCASE CHOICE_INPUT
+            CASE 0
+            PRINTFORMW You give up on %CALLNAME:Changee% for now.
+            RETURN -1
+            CASE 1
+                PRINTFORML You tell %HIM_HER(Changee)% that %HE_SHE(Changee)% needs to be checked.
+                IF ABL:ARG:話術技能 >= MIN(ABL:Changee:話術技能,20)
+                PRINTFORML %CALLNAME:Changee% blushes in embarrassment as %HE_SHE(Changee)% lets you check %HIM_HER(Changee)%
+                ELSE
+                PRINTFORML %CALLNAME:Changee% seems really mad about it.
+                PRINTFORMW You give up on %CALLNAME:Changee% for now.
+                RETURN -1
+                ENDIF
+            CASE 2
+                IF !RAND:10
+                    PRINTFORMW But %PARSE("you",6,,Changee)% skillfully %PARSE("deceive",,,Changee)% %PARSE("you",5,,ARG)%.
+                    RETURN -1
+                ENDIF
+            ENDSELECT
+        ENDIF
+    CASE 3
+        ;Oh no...
+        ;Can't shift the blame to anyone else with TSP Change...
+        CALL TSP_DIAPER_CHANGE_INIT()
+    ENDSELECT
+	$BYPAS2
+	IF Changee == MASTER
+        CALL KOJO_MESSAGE_SEND("EVENT",100,ARG,PP_SoilingBit,91)
+    ENDIF
+	IF SoiledDiaper(Changee,2,,15)
+            IF Changee == MASTER
+                CALL KOJO_MESSAGE_SEND("EVENT",100,ARG,0,3)
+                SIF !RESULT
+                    GOTO checkPoopGeneric
+            ELSE
+                $checkPoopGeneric
+                IF IsPadded(Changee, "diaper")
+                    PRINTFORMDW %PARSE("You squeeze",,,ARG)% the bottom of %PARSE("your",5,,Changee)% diaper and %PARSE("find",5,,ARG)% a big mess inside. 
+                ELSEIF IsPadded(Changee, "pull-up")
+                    PRINTFORMDW %PARSE("You pull",,,ARG)% the back of %PARSE("your",5,,Changee)% waistband and %PARSE("find",5,,ARG)% an awful stinky mess inside. 
+                ELSE
+                    PRINTFORMDW %PARSE("You giggle",,,ARG)% at the sorry state of %PARSE("your",5,,Changee)% %PeeProtectType(Changee,2)%. 
+                ENDIF
+            ENDIF
+			IF Changee == MASTER
+                CALL SET_REP(ARG,7,,1)
+			ENDIF
+            GOTO DiaperChange
+	ELSEIF SoiledDiaper(Changee,1,,33)
+			SELECTCASE DOMINANT_LIQUID_SOIL(Changee)
+			CASE 1
+			;menstural blood
+                IF Changee == MASTER
+                    CALL KOJO_MESSAGE_SEND("EVENT",100,ARG,0,7)
+                    SIF !RESULT
+                        GOTO checkMensesGeneric
+                ELSE
+                    $checkMensesGeneric
+				    PRINTFORMDW %PARSE("You pull",,,ARG)% the back of %PARSE("your",5,,Changee)% waistband and finds it red with %PARSE("your",5,,Changee)% menstrual blood. 
+				ENDIF
+				GOTO DiaperChange
+			CASE 2, 3
+                IF Changee == MASTER
+                    CALL KOJO_MESSAGE_SEND("EVENT",100,ARG,0,7)
+                    SIF !RESULT
+                        GOTO checkSexFluidGeneric
+                ELSE
+                    $checkSexFluidGeneric
+				    PRINTFORMDW %PARSE("You pull",,,ARG)% the back of %PARSE("your",5,,Changee)% waistband and finds it wet with sexual fluids. 
+				ENDIF
+				GOTO DiaperChange
+			CASEELSE
+			;urine
+                IF Changee == MASTER
+		            CALL KOJO_MESSAGE_SEND("EVENT",100,ARG,0,1)
+                    SIF !RESULT
+                        GOTO checkPeeGeneric
+				ELSE
+                    $checkPeeGeneric
+                    IF IsPadded(Changee, "diaper")
+                        SELECTCASE RAND:2
+                        CASE 0
+                        PRINTFORMDW %PARSE("You put",,,ARG)% a finger inside %PARSE("your",5,,Changee)% diaper and %PARSE("find",,,ARG)% %PARSE("you",6,,Changee)% very wet inside. 
+                        CASE 1
+                        PRINTFORMDW %PARSE("You pat",,,ARG)% against the front of %PARSE("your",5,,Changee)% diaper and %PARSE("find",,,ARG)% it very squishy.
+                        ENDSELECT
+                    ELSEIF IsPadded(Changee, "pull-up")
+                        PRINTFORMDW %PARSE("You pull",,,ARG)% the back of %PARSE("your",5,,Changee)% waistband and %PARSE("find",,,ARG)% it very wet inside. 
+                    ELSE
+                        PRINTFORMW %PARSE("You find",,,ARG)% %PARSE("you",5,,Changee)% in wet underwear...
+                    ENDIF	
+				ENDIF
+
+                SELECTCASE SoiledDiaper(Changee,1,1)
+				CASE IS >= 50
+				CASEELSE
+				PRINTFORMDW It's not wet enough for %PARSE("you",,,ARG)% to warrant a change though... 
+				RETURN
+				ENDSELECT
+				GOTO DiaperChange
+			ENDSELECT
+	ELSEIF !UnderwearOffPoints(Changee) && !PadOffPoints(Changee) && !CANT_UNDIES(Changee)
+		PRINTFORMW But %PARSE("realize",,,ARG)% %PARSE("you are",,,Changee)% not wearing the correct underwear nor pads. 
+		PRINTL
+        SIF Changee == MASTER
+		    CALL KOJO_MESSAGE_SEND("EVENT",100,ARG,0,1)
+		$DiaperChange
+        VARSET LOCALS
+		CALL PunishmentPointChange(Changee,PUNISHMENT_POINT_GAIN(Changee))
+		CALLF UnderwearOffPoints(Changee)
+        IF RESULTS:1 != ""
+		LOCALS:1 '= RESULTS:1
+		LOCALS '= @"%PLURALIZER(RESULTS:1)%、"
+        ENDIF
+        CALLF PadOffPoints(Changee,1)
+        SIF RESULTS:1 != ""
+		LOCALS += @"%PLURALIZER(RESULTS:1)%、"
+		PRINTFORMDL %PARSE("You say",,,ARG)% that %PARSE("you need",5,,Changee)% to be in \@ LOCALS != "" ? %PARSE("your",5,,Changee)% %TOLOWER(LIST_IN_STRING(LOCALS, ," or"))% # some underwear\@.
+        ;Still would love the option to stay in the same underwear when confronted with a Diaper Check though
+        ;since the underwear type should be acceptable
+
+        ;Nah, it's either succeeds because you're wearing an appropriate underwear type to the punishment level
+
+        ;Also if you do ask to stay in the same diaper, the Caretaker will definitely tease you about it
+        ;And also a chance for them to get handsy as well
+
+        ; i thinking that the chance to be able to stay in your diaper should be depending on a few factors:
+        ; 1. your diaper type
+        ; 2. your diaper permissions
+        ; 3. how soiled your diaper is
+        ; 4. how many times that you leaked after being forgiven
+        IF Changee == MASTER
+            {
+            CALL ASK_M(
+                "Get changed", 1,
+                @"Ask to stay in %PeeProtectType(MASTER,2)%", 1
+            )
+            }
+            SELECTCASE RESULT
+            CASE 0
+            CASE 1
+                IF !UnderwearOffPoints(Changee) && !PadOffPoints(Changee) && !CANT_UNDIES(Changee)
+                    PRINTFORML %CALLNAME:ARG% says that you cannot wear your current underwear anymore and forces you to get changed
+                ELSE
+                    PRINTFORML %CALLNAME:ARG% teases you about wanting to stay in your soiled %PeeProtectType(Changee,1)%, but relents and lets you go.
+                    TCVAR:Changee:DiaperCheckImmunity = 150
+                    RETURN
+                ENDIF
+            ENDSELECT
+        ENDIF
+
+
+		CALL FISHER_YATES_SHAFFLE(VAR_TEMP_MAX)
+		FOR LOCAL, 0, VAR_TEMP_MAX
+			nUndies = SHAFFLE_ARRAY:LOCAL
+            SIF !STRLENS(PANTSNAME(nUndies,Changee))
+                CONTINUE
+
+            CALLF DiapeStats(Changee,nUndies,1,1)
+            LOCALS:2 '= RESULTS:0
+            LOCALS:3 '= RESULTS:2
+            LOCALS:4 '= MERGE_UNDIES_NAME(LOCALS:2,LOCALS:3)
+			;IF UnderwearOffPoints(Changee,nUndies) && GET_INT(Changee, "下半身下着_ずらし可能", nUndies, "はける")
+            ;conditions
+            A:0 = (UnderwearOffPoints(Changee,nUndies) || !STRLENS(LOCALS:1))
+            A:1 = (LOCALS:4 == LOCALS:1 || !STRLENS(LOCALS:1)) && GET_INT(Changee, "下半身下着_ずらし可能", nUndies, "はける")
+            ;PRINTFORML {nUndies,3} %UNDIES_NAME_WITH_BRAND(Changee,nUndies,1),50,LEFT% | Type needed: "%LOCALS:1,20,LEFT%" | Type Got "%LOCALS:4,20,LEFT%"
+			
+            IF A:0 && A:1
+            	BREAK
+			ENDIF
+		NEXT
+            SIF !STRLENS(PANTSNAME(nUndies,Changee))
+                nUndies = 174
+        ;Teasing about how you like your pamps soggy and stinky with a smirk
+        ;And getting all handsy with it
+		CALL DiaperChangeDesc(Changee, nUndies, ARG, 0)
+        SIF ARG == MASTER
+            CFLAG:Changee:パンツ2 = 1
+	ELSEIF !EQUIP:Changee:6
+		PRINTFORMW But %PARSE("realize",,,ARG)% that %PARSE("you don't",,,Changee)% have any underwear.
+		GOTO DiaperChange			
+	ELSE
+        IF Changee == MASTER
+            CALL KOJO_MESSAGE_SEND("EVENT",100,ARG,0,0)
+            SIF !RESULT
+                GOTO checkCleanGeneric
+        ELSE
+            $checkCleanGeneric
+		    PRINTFORMW %PARSE("You find",,,ARG)% %PARSE("you",6,,Changee)% clean...
+        ENDIF
+	ENDIF
+	PunishChange:Changee:0 = LIMIT(PunishChange:Changee:0,0,PANTY_PUNISH_MAX)
+    TCVAR:Changee:DiaperCheckImmunity = 60
+ELSE
+RETURN -1
+ENDIF
+
+
+
+@PunishmentPointChange(ARG,POINTS,nMainType="undies",SEEABLE=0)
+#DIM DYNAMIC POINTS
+#DIM LAST_POINTS
+#DIM LAST_RANK
+#DIM C_COL
+#DIM nReq
+#DIM DYNAMIC nBarDid
+#DIM DYNAMIC nNighttime
+#DIM SEEABLE
+#DIMS BAR_VAR
+#DIMS LABEL
+#DIM POINT_MAX
+#DIMS nMainType
+SIF !POINTS
+    RETURN 0
+SIF SEEABLE == 0
+    SEEABLE = CAN_SEE(ARG)
+
+SELECTCASE nMainType
+CASE "undiesNight"
+    SIF !nPantyPunish
+        RETURN 0
+    LABEL '= "Nighttime Punishment Points"
+    BAR_VAR '= "PunishNightChange"
+    POINT_MAX = PANTY_PUNISH_MAX
+CASE "undies"
+    SIF !nPantyPunish
+        RETURN 0
+    LABEL '= "Diaper Punishment Points"
+    BAR_VAR '= "PunishChange"
+    POINT_MAX = PANTY_PUNISH_MAX
+CASE "chastity"
+    SIF !nChastityPunish
+        RETURN 0
+    LABEL '= "Chastity Punishment Points"
+    BAR_VAR '= "PunishChastity"
+    POINT_MAX = CHASTITY_PUNISH_MAX
+ENDSELECT
+SETVAR @"%BAR_VAR%:{ARG}:1", GET_PUNISHMENT_POINT_TIER(ARG,nMainType)
+LAST_POINTS = GETVAR(@"%BAR_VAR%:{ARG}:0")
+LAST_RANK   = GETVAR(@"%BAR_VAR%:{ARG}:1")
+SETVAR @"%BAR_VAR%:{ARG}:0", LIMIT(GETVAR(@"%BAR_VAR%:{ARG}:0")+POINTS,0,POINT_MAX)
+
+
+SIF LAST_RANK == 0 && POINTS <= 0
+    RETURN 0
+
+SIF SEEABLE > 0
+CALL COLORMESSAGE(@"%LABEL,20,LEFT% \@ POINTS > 0 ? ＋ # ー\@%DIGIT_GROUP(ABS(POINTS)),3,LEFT% （%CALLNAME:ARG%）",POINTS < 0 ? C_GREEN # C_RED,1,1)
+
+;animate the bar filling up
+LOCAL = LAST_POINTS
+LOCAL:2 = LAST_POINTS - LOCAL
+LOCAL:1 = POINTS
+LOCAL:3 = LAST_RANK
+nReq = PunishmentPointTier(LOCAL:3+1)
+
+;this is just bar stuff
+IF SEEABLE <= 0
+    SETVAR @"%BAR_VAR%:{ARG}:1", GET_PUNISHMENT_POINT_TIER(ARG,nMainType)
+    RETURN
+ENDIF
+gLineCount = LINECOUNT
+nBarDid = 0
+
+REDRAW 0
+DO
+    ;number resetting
+    IF POINTS >= 0
+        LOCAL ++
+        LOCAL:1 --
+    ELSE
+        LOCAL --
+        LOCAL:1 ++
+    ENDIF
+    IF LOCAL <= 0
+        LOCAL = 0
+        LOCAL:1 = 0
+    ELSEIF LOCAL >= POINT_MAX
+        LOCAL = POINT_MAX
+        LOCAL:1 = 0
+    ENDIF
+
+    ;show the bar
+    $PicLoop
+    LOCAL:3 = PUNISH_RANK_CALC(LOCAL)
+    SIF LINECOUNT - gLineCount > 0
+        CLEARLINE LINECOUNT - gLineCount
+    CALL PunishmentPointBar(ARG,LOCAL,LOCAL:3,nMainType)
+    SIF LOCAL:1 == PANTY_PUNISH_MAX || LOCAL:1 == 0
+        BREAK
+LOOP (LOCAL:1 != 0) && !nBarDid
+IF !nBarDid
+    nBarDid = 1
+    GOTO PicLoop
+ENDIF
+SIF LOCAL:3 != PunishChange:ARG:1
+    CALL PunishmentPointPromote(ARG,LOCAL:3,POINTS <= 0 ? 1 # -1, nMainType)
+SIF PunishChange:ARG:0 >= PANTY_PUNISH_MAX && ARG == MASTER
+	CALL AL_NOTIFY_ACHIEVEMENT_COMPLETION("maxDiaperPunishment")
+
+@PunishmentPointBar(ARG,nPoints,nRank,nMainType="undies")
+#DIM DYNAMIC nPoints
+#DIM DYNAMIC nRank
+#DIM DYNAMIC barRec
+#DIMS DYNAMIC nMainType
+#DIMS typeLabel
+#DIMS privilegeLabel
+
+SELECTCASE nMainType
+CASE "undies"
+typeLabel '= "Undies Punishment  "
+privilegeLabel '= PunishmentPointTierName(nRank)
+CASE "chastity"
+typeLabel '= "Chastity Punishment"
+privilegeLabel '= ChastityPunishmentPointTierName(nRank)
+ENDSELECT
+
+barRec = PunishmentPointTier(nRank)
+
+PRINTFORM %typeLabel% Lv.{nRank}:　
+CALL PRINT_COLORBAR(nPoints-PunishmentPointTier(nRank-1), barRec-PunishmentPointTier(nRank-1), 100, UNICODE(0x2585), UNICODE(0x2585), C_YELLOW, RESULT:1)
+PRINTFORML 　{nPoints, 3}/{barRec} (%privilegeLabel%)
+TWAIT 15, 0
+
+
+@PunishmentPointPromote(ARG,ARG:1,ARG:2,nMainType="undies")
+#DIMS DYNAMIC nMainType
+#DIMS typeLabel
+#DIMS privilegeLabel
+#DIMS promoteLabel,2
+#DIMS varToChange
+
+SELECTCASE nMainType
+CASE "undies"
+typeLabel '= "Underwear Privilege"
+promoteLabel:0 '= "Promotion"
+promoteLabel:1 '= "Demotion"
+varToChange '= "PunishChange"
+CASE "chastity"
+typeLabel '= "Chastity Restriction"
+promoteLabel:0 '= "Decreased"
+promoteLabel:1 '= "Increased"
+varToChange '= "PunishChastity"
+ENDSELECT
+
+CALL COLORMESSAGE(@"%@"%typeLabel% \@ ARG:2 >= 0 ? %promoteLabel:0% # %promoteLabel:1%\@! (%CALLNAME:ARG%)",20,LEFT%",ARG:2 > 0 ? C_GREEN # C_RED,2,1)
+SETVAR @"%varToChange%:{ARG}:1", ARG:1
+
+SELECTCASE nMainType
+CASE "undies"
+privilegeLabel '= PunishmentPointTierName(ARG:1)
+CASE "chastity"
+privilegeLabel '= ChastityPunishmentPointTierName(ARG:1)
+ENDSELECT
+
+LOCALS '= @"%TOLOWER(PLURALIZER(privilegeLabel))%"
+IF ARG:2 >= 0
+    PRINTFORML Congratulations! %PARSE("You are",,,ARG)% now able to wear %LOCALS%!
+ELSE
+    PRINTFORML Unfortunately, %PARSE("you have",,,ARG)% to wear %LOCALS% now...
+ENDIF
+WAIT
+
+
+@PunishmentPointTier(ARG)
+#FUNCTION
+RETURNF (7*ARG)
+; SELECTCASE ARG
+; CASE 0
+;     ;all
+;     RETURNF 0
+; CASE 1
+;     ;sanitary pads
+;     RETURNF 1
+; CASE 2
+;     ;light pads
+;     RETURNF 2
+; CASE 3
+;     ;moderate pads
+;     RETURNF 3
+; CASE 4
+;     ;pull-ups
+;     RETURNF 5
+; CASE 5
+;     ;diapers
+;     RETURNF 10
+; CASE 6
+;     ;thick diaper
+;     RETURNF 25
+; CASE 7
+;     ;bulky diapers
+;     RETURNF 40
+; CASEELSE
+;     RETURNF PANTY_PUNISH_MAX
+; ENDSELECT
+
+
+;ARG:1
+;0 = display string
+;1 = no diaper mode display tstring
+;2 = pad internal
+@PunishmentPointTierName(ARG,ARG:1=0)
+#FUNCTIONS
+SIF !ARG:1 && !nOmutsu
+    ARG:1 = 1
+
+SELECTCASE ARG
+CASE 0
+    ;all
+    RETURNF "Underwear"
+; CASE 1
+;     ;sanitary pads
+;     RETURNF "Sanitary Pads"
+; CASE 2
+;     ;light pads
+;     RETURNF "Thin Pads"
+; CASE 3
+CASE 1
+    ;moderate pads
+    SELECTCASE ARG:1
+    ; CASE 2
+    ; RETURNF "Average"
+    CASEELSE
+    RETURNF "Average Pad"
+    ENDSELECT
+CASE 2
+    ;pull-ups
+    SELECTCASE ARG:1
+    CASE 1,2
+    RETURNF "Thin Liner"
+    CASEELSE
+    RETURNF "Pull-Up"
+    ENDSELECT
+CASE 3
+    ;diapers
+    SELECTCASE ARG:1
+    CASE 1,2
+    RETURNF "Liner"
+    CASEELSE
+    RETURNF "Diaper"
+    ENDSELECT
+CASE 4
+    ;thick diaper
+    SELECTCASE ARG:1
+    CASE 1,2
+    RETURNF "Thick Liner"
+    CASEELSE
+    RETURNF "Thick Diaper"
+    ENDSELECT
+CASE 5
+    ;bulky diapers
+    SELECTCASE ARG:1
+    CASE 1,2
+    RETURNF "Bulky Liner"
+    CASEELSE
+    RETURNF "Bulky Diaper"
+    ENDSELECT
+CASEELSE
+    SELECTCASE ARG:1
+    CASE 1,2
+    RETURNF "Extreme Liner"
+    CASEELSE
+    RETURNF "Extreme Diaper"
+    ENDSELECT
+ENDSELECT
+
+;arg:1 is for nighttime
+@GET_PUNISHMENT_POINT_TIER(ARG,nMainType="undies")
+#FUNCTION
+#DIM DYNAMIC nGet = 0
+#DIMS DYNAMIC nMainType
+#DIMS typeLabel
+#DIMS privilegeLabel
+
+SELECTCASE nMainType
+CASE "undies"
+    nGet = PunishChange:ARG:0
+CASE "undiesNight"
+    nGet = PunishNightChange:ARG:0
+CASE "chastity"
+    nGet = PunishChastity:ARG:0
+ENDSELECT
+RETURNF PUNISH_RANK_CALC(nGet)
+
+@PUNISH_RANK_CALC(ARG)
+#FUNCTION
+SIF PantyPunishLock != -1
+    RETURNF PantyPunishLock
+
+FOR LOCAL, 0, 9
+    IF ARG <= PunishmentPointTier(LOCAL)
+        LOCAL --
+        BREAK
+    ENDIF
+NEXT
+RETURNF LOCAL
+
+@SHOW_PANTY_PRIVELEGE(nChara)
+#DIM nChara
+PRINTL
+CALL PRINTLINE, "Punishments"
+;PRINTFORML Daytime:
+CALL PunishmentPointBar(nChara,PunishChange:nChara:0,PunishChange:nChara:1,"undies")
+;PRINTFORML Nighttime:
+;CALL PunishmentPointBar(nChara,PunishNightChange:nChara:0,PunishNightChange:nChara:1,1)
+SIF !nChastityPunish
+PRINTL 
+
+@UnderwearOffPoints(ARG, ARG:1, nUnderwearType = "")
+#FUNCTION
+#DIMS DYNAMIC nUnderwearType
+#DIM DYNAMIC nCount
+VARSET RESULTS
+VARSET LOCALS
+VARSET nCount, 1
+
+SIF !nPantyPunish
+    RETURNF 1
+SIF !nOmutsu
+    RETURNF 1
+
+SELECTCASE PunishChange:ARG:1
+CASE 0
+    RETURNF 1
+CASEELSE
+    ;pull-up and diaper (so we get "X says that you need to be in your diapers" instead of "thick pull-ups")
+    ;pull-up
+    CALLF UNDERWEAR_TYPES(UNDERWEAR_TYPES:0)
+    IF PunishChange:ARG:1 <= UNDERWEAR_TYPES_PUNISHMENT
+        LOCALS:nCount '= @"%UNDERWEAR_TYPES:0%"
+        nCount++
+    ENDIF
+    ;diaper
+    CALLF UNDERWEAR_TYPES(UNDERWEAR_TYPES:1)
+    IF PunishChange:ARG:1 <= UNDERWEAR_TYPES_PUNISHMENT
+        LOCALS:nCount '= @"%UNDERWEAR_TYPES:1%"
+        nCount++
+    ENDIF
+    ;thick diaper
+    CALLF UNDERWEAR_TYPES(UNDERWEAR_TYPES:1,UNDERWEAR_SUB_TYPES:2)
+    IF PunishChange:ARG:1 <= UNDERWEAR_TYPES_PUNISHMENT
+        LOCALS:nCount '= @"%MERGE_UNDIES_NAME(UNDERWEAR_TYPES:1,UNDERWEAR_SUB_TYPES:2)%"
+        nCount++
+    ENDIF
+
+    FOR LOCAL,0,VARSIZE("UNDERWEAR_TYPES")
+        ;don't mention the forbidden types
+        SIF (UNDERWEAR_TYPES:LOCAL == "Pull-Up") || (UNDERWEAR_TYPES:LOCAL == "Diaper") && !nOmutsu
+            CONTINUE
+        FOR LOCAL:1,0,VARSIZE("UNDERWEAR_SUB_TYPES")
+            CALLF UNDERWEAR_TYPES(UNDERWEAR_TYPES:LOCAL, UNDERWEAR_SUB_TYPES:(LOCAL:1))
+            IF PunishChange:ARG:1 <= UNDERWEAR_TYPES_PUNISHMENT
+                LOCALS:nCount '= @"%MERGE_UNDIES_NAME(UNDERWEAR_TYPES:LOCAL,UNDERWEAR_SUB_TYPES:(LOCAL:1))%"
+                nCount++
+            ENDIF
+        NEXT
+    NEXT
+ENDSELECT
+
+;DEBUGPRINTFORML Allowed underwear types for %CALLNAME:ARG% ({PunishChange:ARG:1} punishment points):
+FOR LOCAL, 0, 30
+    IF LOCALS:LOCAL != ""
+        ;DEBUGPRINTFORML ・%LOCALS:LOCAL%
+        RESULTS:LOCAL = %LOCALS:LOCAL%
+    ENDIF
+NEXT
+
+FOR LOCAL, 1, 10
+    SIF LOCALS:LOCAL == ""
+        BREAK 
+
+    IF nUnderwearType != ""
+        SIF TOLOWER(nUnderwearType) == TOLOWER(LOCALS:1)
+            RETURNF 3
+        SIF TOLOWER(nUnderwearType) == TOLOWER(LOCALS:LOCAL)
+            RETURNF 2 
+    ELSEIF ARG:1
+        SIF IsPadded(ARG, LOCALS:LOCAL, ARG:1)
+            RETURNF 2    
+    ELSE
+        SIF IsPadded(ARG, LOCALS:LOCAL)
+            RETURNF 2
+    ENDIF
+NEXT
+RETURNF
+
+@PadOffPoints(ARG, ARG:1=0, nUnderwearType = "")
+#FUNCTION
+#DIMS DYNAMIC nUnderwearType
+#DIM DYNAMIC nCount
+VARSET RESULTS
+VARSET LOCALS
+VARSET nCount, 1
+
+;diapered, always pass.
+IF !ARG:1
+SIF IsPadded(ARG,"Diaper") || IsPadded(ARG,"Pull-Up")
+    RETURNF 1
+ENDIF 
+
+SELECTCASE PunishChange:ARG:1
+CASE 0
+    RETURNF 1
+CASEELSE
+    FOR LOCAL,0,VARSIZE("UNDERWEAR_PAD_TYPES")
+        CALLF UNDERWEAR_PAD_TYPES(UNDERWEAR_PAD_TYPES:LOCAL)
+        IF PunishChange:ARG:1 <= UNDERWEAR_PAD_TYPES_PUNISHMENT
+            LOCALS:nCount '= @"%UNDERWEAR_PAD_TYPES:LOCAL%"
+            nCount++
+        ENDIF
+    NEXT
+ENDSELECT
+
+DEBUGPRINTFORML Allowed pad types for %CALLNAME:ARG% ({PunishChange:ARG:1} punishment points):
+FOR LOCAL, 0, 30
+    IF LOCALS:LOCAL != ""
+        DEBUGPRINTFORML ・%LOCALS:LOCAL%
+        RESULTS:LOCAL = %LOCALS:LOCAL%
+    ENDIF
+NEXT
+
+FOR LOCAL, 1, 10
+    SIF LOCALS:LOCAL == ""
+        BREAK 
+
+    IF nUnderwearType != ""
+        SIF TOLOWER(nUnderwearType) == TOLOWER(LOCALS:1)
+            RETURNF 3
+        SIF TOLOWER(nUnderwearType) == TOLOWER(LOCALS:LOCAL)
+            RETURNF 2 
+    ELSE
+        SIF PantiesType:ARG:2 == TOLOWER(LOCALS:LOCAL)
+            RETURNF 2
+    ENDIF
+NEXT
+RETURNF
+
+@PUNISHMENT_POINT_GAIN(ARG)
+#FUNCTION
+#DIM DYNAMIC PPCHANGE
+VARSET PPCHANGE
+IF SoiledDiaper(ARG,2,,15)
+    SELECTCASE SoiledDiaper(ARG,2,1)
+    CASE IS >= 80
+    PPCHANGE = PP_SCALE_POINTS(ARG,3,7)
+    CASE IS >= 50
+    PPCHANGE = PP_SCALE_POINTS(ARG,3,4)
+    CASEELSE
+    PPCHANGE = PP_SCALE_POINTS(ARG,2,2)
+    ENDSELECT	
+ELSEIF SoiledDiaper(ARG,1,,33)
+    ;liquid
+    SELECTCASE DOMINANT_LIQUID_SOIL(ARG)
+    CASE 1, 2, 3
+    ;menstural blood
+        SIF PunishChange:ARG:0 < 4
+            PPCHANGE = 1
+    CASEELSE
+    ;urine
+        SELECTCASE SoiledDiaper(ARG,1,1)
+        CASE IS >= 90
+            PPCHANGE = PP_SCALE_POINTS(ARG,2,3)
+        CASE IS >= 50
+            PPCHANGE = PP_SCALE_POINTS(ARG,2,2)
+        CASEELSE
+            PPCHANGE = PP_SCALE_POINTS(ARG,1,1)
+        ENDSELECT
+    ENDSELECT
+ENDIF
+RETURNF PPCHANGE
+
+;character
+;minimum rank
+;point gain
+@PP_SCALE_POINTS(ARG,nRank,nPointGain,nMainType="undies")
+#FUNCTION
+#DIM nRank
+#DIM nPointGain
+#DIM curVals,2
+#DIMS DYNAMIC nMainType
+
+SELECTCASE nMainType
+CASE "undies"
+    curVals = PunishChange:ARG:0
+    curVals:1 = PunishChange:ARG:1
+CASE "undiesNight"
+    curVals = PunishNightChange:ARG:0
+    curVals:1 = PunishNightChange:ARG:1
+CASE "chastity"
+    curVals = PunishChastity:ARG:0
+    curVals:1 = PunishChastity:ARG:1
+ENDSELECT
+
+IF curVals:1 < nRank
+    RETURNF PunishmentPointTier(nRank) - curVals
+ENDIF
+RETURNF nPointGain
+
+@PatrolUnderwearChecking
+#DIM PUC_CHARA
+#DIM PUC_CHECKER
+#DIM PUC_CHECKEE
+
+FOR LOCAL,0,CHARANUM
+	TCVAR:LOCAL:DiaperCheckDid = 0
+NEXT
+SIF !nPantyPunish
+    RETURN
+SIF FLAG:70
+    RETURN
+SIF GROUPMATCH(SELECTCOM, 400)
+    RETURN
+SIF TFLAG:102 >= 2
+    RETURN
+
+FOR PUC_CHECKER,1,GET_TARGETNUM()+1
+	PUC_CHARA = TARGET:PUC_CHECKER
+    SIF !CharaDiaperChecker(PUC_CHARA)
+		CONTINUE
+	SIF IS_BABY(PUC_CHARA)
+		CONTINUE
+	SIF PUC_CHARA == MASTER
+		CONTINUE
+	SIF !SHIRAHU(PUC_CHARA)
+		CONTINUE
+	SIF BASE:PUC_CHARA:0 <= 500 || IsDead:PUC_CHARA:0
+		CONTINUE
+    SIF CFLAG:PUC_CHARA:ディレイ > 0
+        CONTINUE
+    SIF BATHROOM(CFLAG:PUC_CHARA:300)
+        CONTINUE
+	FOR PUC_CHECKEE,0,CHARANUM
+        SIF !IS_HERE_NAS(PUC_CHARA,PUC_CHECKEE)
+	        CONTINUE
+        SIF TCVAR:PUC_CHECKEE:DiaperCheckDid
+            CONTINUE
+        SIF PUC_CHECKEE == PUC_CHARA
+            CONTINUE
+        SIF TCVAR:PUC_CHECKEE:DiaperCheckImmunity
+            CONTINUE
+        SIF BASE:PUC_CHECKEE:0 <= 500 || IsDead:PUC_CHECKEE:0
+            CONTINUE
+        CALL RandomUnderwearCheck(PUC_CHARA,0,PUC_CHECKEE)
+        TCVAR:PUC_CHECKEE:DiaperCheckDid = 1
+    NEXT
+NEXT

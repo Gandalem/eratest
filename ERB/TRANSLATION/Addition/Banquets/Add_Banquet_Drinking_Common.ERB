@@ -1,0 +1,268 @@
+;mostly common functions used for the old banquets
+@ADD_BANQUET_DRINKING(ARG, LAPSE)
+#DIM LAPSE
+
+SIF !LAPSE <= 0
+    RETURN
+
+IF CFLAG:ARG:行動 == 5
+	BASE:ARG:仕事量 = MAX(BASE:ARG:仕事量 - LAPSE * 10, 0)
+	;宴会で呑んでる場合酒気が上昇
+	SIF CFLAG:ARG:職種 == 49 && !(AlcoholAddict:ARG:0 == -5 || CFLAG:ARG:妊娠自覚状態 == 1)
+		BASE:ARG:酒気 += LAPSE * (RAND:3 * (4 - AlcoholAddict:ARG:0))
+
+    SIF CFLAG:ARG:BANQUET_ROLE < ADD_BANQUET_ROLE_HOST && (BASE:ARG:仕事量 == 0 || CFLAG:ARG:睡眠)
+        CALL ADD_BANQUET_END_PARTICIPATION(ARG)
+ENDIF
+
+@ADD_BANQUET_DRINKING_DESCRIPTIONS(ARG)
+IF TCVAR:ARG:泥酔 == 0
+    IF CFLAG:ARG:職種 == 49 && TALENT:ARG:恋慕
+        PRINTFORML %CALLNAME:ARG% enjoys the banquet while occasionally letting %HIS_HER(ARG)% eyes linger on you.
+    ELSE
+        PRINTFORML %CALLNAME:ARG% enjoys the banquet.
+    ENDIF
+ELSE
+    IF TALENT:ARG:恋慕
+        PRINTFORML %CALLNAME:ARG% is completely wasted but gazes occasionally at you.
+    ELSE
+        PRINTFORML %CALLNAME:ARG% is completely wasted.
+    ENDIF
+ENDIF
+IF CFLAG:ARG:職種 == 51 && (BASE:ARG:酒気 > (MAXBASE:ARG:酒気 / 10) * 8)
+    PRINTFORML 　Seems %HE_SHE(ARG)%'ll remain drunk for quite some time...
+ELSEIF CFLAG:ARG:職種 == 51 && (BASE:ARG:酒気 > (MAXBASE:ARG:酒気 / 10) * 6)
+    PRINTFORML 　It'll take some time for %HIM_HER(ARG)% to sober up...
+ELSEIF CFLAG:ARG:職種 == 51
+    PRINTFORML 　It seems %HE_SHE(ARG)%'s about to sober up...
+ELSEIF CFLAG:ARG:職種 == 49 && (BASE:ARG:酒気 > (MAXBASE:ARG:酒気 / 10) * 6) 
+    IF TALENT:ARG:感情乏しい && RAND:4
+        ELSEIF !RAND:10
+            IF !RAND:2
+                PRINTFORML 　%HIS_HER(ARG,1)% eyes have glazed over.
+                PRINTFORML 　It seems the alcohol isn't agreeing with %HIM_HER(ARG)%.
+                    TALENT:ARG:15 = -1
+            ELSE
+                PRINTFORML 　%HE_SHE(ARG,1)% seems to be having fun.
+                PRINTFORML 　It seems the alcohol is working well.
+                    TALENT:ARG:15 = 1
+            ENDIF
+        ELSE
+            IF TALENT:ARG:15 == -1
+                PRINTFORML 　%HE_SHE(ARG,1)%'s hanging out all by %HIMSELF_HERSELF(ARG)% in %HIS_HER(ARG)% lonesome...
+            ELSEIF TALENT:ARG:15 == 1
+                PRINTFORML 　%HE_SHE(ARG,1)%'s laughing uncontrollably...
+            ELSE
+                PRINTFORML 　%HE_SHE(ARG,1)%'s slowly getting more and more tipsy...
+            ENDIF
+        ENDIF
+ELSEIF CFLAG:ARG:職種 == 49 && (BASE:ARG:酒気 > (MAXBASE:ARG:酒気 / 10) * 4)
+    PRINTFORML 　%HE_SHE(ARG,1)%'s starting to enjoy %HIMSELF_HERSELF(ARG)% more...
+ELSEIF AlcoholAddict:ARG:0 == -5 || CFLAG:ARG:妊娠自覚状態 == 1
+    IF BASE:ARG:仕事量 >= (MAXBASE:ARG:仕事量 / 3) * 2
+        PRINTFORML 　%HE_SHE(ARG,1)% simply chats without drinking...
+    ELSEIF BASE:ARG:仕事量 >= (MAXBASE:ARG:仕事量 / 3)
+        IF CFLAG:ARG:妊娠自覚状態 == 1
+            PRINTFORML 　%HE_SHE(ARG,1)% enjoys %HIMSELF_HERSELF(ARG)% without drinking...
+        ELSEIF AlcoholAddict:ARG:0 == -5
+            PRINTFORML 　As usual, %HE_SHE(ARG)% doesn't drink anything...
+        ENDIF
+    ELSEIF AlcoholAddict:ARG:0 == -5 || CFLAG:ARG:妊娠自覚状態 == 1
+        PRINTFORML 　%HE_SHE(ARG,1)% stands firm against any alcohol...
+    ENDIF
+ELSEIF CFLAG:ARG:職種 == 49 
+    PRINTFORML 　It seems %HE_SHE(ARG)%'s in the mood for even more alcohol...
+ENDIF
+
+
+@ADD_BANQUET_DRINKING_PREPARATION_WORKLOAD(ARG, BANQUET_INDEX)
+#DIM BANQUET_INDEX
+#DIM SCALE
+#DIM WORKLOAD
+SCALE = ADD_BANQUETS_SCALE:BANQUET_INDEX
+WORKLOAD = ADD_BANQUET_TIME_UNTIL(BANQUET_INDEX) * 10
+
+IF CFLAG:ARG:職種 != JOB_宴会準備
+	MAXBASE:ARG:仕事量 = MIN(WORKLOAD, 2400)
+	BASE:ARG:仕事量 = MAXBASE:ARG:仕事量
+	CFLAG:ARG:職種 = JOB_宴会準備
+    TCVAR:ARG:手伝えない = 2
+	CFLAG:ARG:行動 = 5
+ENDIF
+
+@ADD_BANQUET_DRINKING_WORKLOAD(ARG, SCALE)
+#DIM SCALE
+;それぞれが飲むペースを変えるので、宴の規模に応じて仕事量が変化
+IF CFLAG:ARG:職種 != JOB_宴会参加 && TCVAR:ARG:泥酔 == 0
+	MAXBASE:ARG:仕事量 = SCALE
+	;最大値、通常7200(半日)・酒呑み神なら制限なし
+	SIF MAXBASE:ARG:仕事量 >= 7200 && TALENT:ARG:酒耐性 != 3
+		MAXBASE:ARG:仕事量 = 7200
+	MAXBASE:ARG:仕事量 += RAND:500
+	IF TALENT:ARG:酒耐性 == -1
+		TIMES MAXBASE:ARG:仕事量, 0.75
+	ELSEIF TALENT:ARG:酒耐性 == 1
+		TIMES MAXBASE:ARG:仕事量, 1.25
+	ELSEIF TALENT:ARG:酒耐性 == 2
+		TIMES MAXBASE:ARG:仕事量, 1.5
+	ELSEIF TALENT:ARG:酒耐性 == 3
+		TIMES MAXBASE:ARG:仕事量, 2.0
+	ENDIF
+	BASE:ARG:仕事量 = MAXBASE:ARG:仕事量
+	CFLAG:ARG:職種 = JOB_宴会参加
+	CFLAG:ARG:行動 = 5
+    TCVAR:ARG:手伝えない = 1
+ENDIF
+
+RETURN 1
+
+@ADD_BANQUET_DRINKING_INITIALIZATION_DESCRIPTION(BANQUET_INDEX)
+#DIM BANQUET_INDEX
+#DIM BANQUET_ID
+BANQUET_ID = ADD_BANQUETS_UPCOMING:BANQUET_INDEX
+PRINTFORMW %ADD_BANQUET_TIME_AND_PLACE_DESCRIPTION(BANQUET_INDEX)%
+PRINT From the way people are talking
+IF ADD_BANQUETS_SCALE:BANQUET_INDEX >= 5000
+	PRINTW ... This is going to be a long one.
+ELSEIF ADD_BANQUETS_SCALE:BANQUET_INDEX >= 2500
+	PRINTW  there will be lots to eat.
+ELSEIF ADD_BANQUETS_SCALE:BANQUET_INDEX >= 1500
+	PRINTW  it'll be a nice place to deepen some friendships.
+ELSE
+	PRINTW  it seems like it's going to be a small gathering.
+ENDIF
+PRINTFORMW \@ ADD_BANQUETS_START_DAY:BANQUET_INDEX - DAY == 1? Although it's sort of abrupt, so who knows who will show up...# Those wishing to participate should inform in advance...\@
+IF GET_INT(0, "ADD_BANQUET", BANQUET_ID, "WEATHER_DEPENDENT")
+    IF GET_INT(0, "ADD_BANQUET", BANQUET_ID, "ALTERNATIVE_INDOOR_LOCATION")
+	    PRINTFORMW Also, the location might change depending on the weather...
+    ELSE
+	    PRINTFORMW Also, it might get canceled because of the weather...
+    ENDIF
+ENDIF
+
+@ADD_BANQUET_DRINKING_PROGRESS(BANQUET_INDEX)
+#DIM BANQUET_INDEX
+#DIM PRESENT
+#DIM LAPSE
+#DIM BANQUET_ID
+#DIM LOCATION
+BANQUET_ID = ADD_BANQUETS_UPCOMING:BANQUET_INDEX
+LOCATION = GET_MAP_REPLACEMENT(ADD_BANQUETS_LOCATION:BANQUET_INDEX)
+;if master at location
+PRESENT = CFLAG:MASTER:現在位置 == LOCATION
+IF DAY * 1440 + TIME:1 < ADD_BANQUETS_START_DAY:BANQUET_INDEX * 1440 + ADD_BANQUETS_START_TIME:BANQUET_INDEX
+    LAPSE = TIME_PROGRESS(ADD_BANQUETS_START_TIME:BANQUET_INDEX)
+ELSE
+    LAPSE = TIME_PROGRESS(TIME:1)
+ENDIF
+
+SELECTCASE ADD_BANQUETS_STATUS:BANQUET_INDEX
+    CASE ADD_BANQUET_STATE_PREPARING
+        IF PRESENT
+            FOR LOCAL, 1, CHARANUM
+                SIF !SHIRAHU(LOCAL)
+                    CONTINUE
+                IF CFLAG:LOCAL:BANQUET == BANQUET_ID && CFLAG:LOCAL:BANQUET_ROLE > 1
+                    IF TALENT:LOCAL:恋慕
+                        PRINTFORML %CALLNAME:LOCAL% thinks about you while preparing for the banquet.
+                    ELSE
+                        PRINTFORML %CALLNAME:LOCAL% is busily preparing for the banquet.
+                    ENDIF
+                ENDIF
+            NEXT
+        ENDIF
+    CASE ADD_BANQUET_STATE_IN_PROGRESS
+        FOR LOCAL, 1, CHARANUM
+            SIF !SHIRAHU(LOCAL)
+                CONTINUE
+            IF CFLAG:LOCAL:BANQUET == BANQUET_ID && CFLAG:LOCAL:現在位置 == LOCATION
+                CALL ADD_BANQUET_DRINKING(LOCAL, LAPSE)
+                SIF PRESENT
+                    CALL ADD_BANQUET_DRINKING_DESCRIPTIONS(LOCAL)
+            ENDIF
+        NEXT
+    CASE ADD_BANQUET_STATE_FINISHED
+ENDSELECT
+
+@ADD_BANQUET_DRINKING_PREPARATION_TEXT(CHARA, LOCATION)
+#DIM CHARA
+#DIM LOCATION
+IF CFLAG:CHARA:現在位置 == CFLAG:MASTER:現在位置 && CFLAG:MASTER:現在位置 == LOCATION
+    PRINTFORML %CALLNAME:CHARA% starts preparing for the banquet.
+ELSEIF CFLAG:MASTER:現在位置 == LOCATION
+    PRINTFORML %CALLNAME:CHARA% arrives at %NAME_FROM_PLACE_THE(LOCATION)% to start preparing for the banquet.
+ELSEIF CFLAG:CHARA:現在位置 == CFLAG:MASTER:現在位置
+    PRINTFORML %CALLNAME:CHARA% moves over to %NAME_FROM_PLACE_THE(LOCATION)% to start preparing for the banquet.
+ENDIF
+
+@ADD_BANQUET_DRINKING_JOIN_TEXT(CHARA, LOCATION)
+#DIM CHARA
+#DIM LOCATION
+IF CFLAG:CHARA:現在位置 == CFLAG:MASTER:現在位置 && CFLAG:MASTER:現在位置 == LOCATION
+    PRINTFORML %CALLNAME:CHARA% joins the banquet.
+ELSEIF CFLAG:MASTER:現在位置 == LOCATION
+    PRINTFORML %CALLNAME:CHARA% arrives at %NAME_FROM_PLACE_THE(LOCATION)% to join the banquet.
+ELSEIF CFLAG:CHARA:現在位置 == CFLAG:MASTER:現在位置
+    PRINTFORML %CALLNAME:CHARA% moves over to %NAME_FROM_PLACE_THE(LOCATION)% to join the banquet.
+ENDIF
+
+@ADD_BANQUET_DRINKING_VISIT(PREVIOUS_STATE, BANQUET_INDEX)
+#DIM PREVIOUS_STATE
+#DIM BANQUET_INDEX
+#DIM CURRENT_STATE
+#DIM PARTICIPANTS
+PARTICIPANTS = ADD_BANQUET_PARTICIPANT_COUNT(BANQUET_INDEX)
+CURRENT_STATE = ADD_BANQUETS_STATUS:BANQUET_INDEX
+
+IF CURRENT_STATE == ADD_BANQUET_STATE_IN_PROGRESS && PREVIOUS_STATE == ADD_BANQUET_STATE_PREPARING ;player was present during start
+    PRINTFORML 
+    IF PARTICIPANTS < 2
+        PRINTW The banquet starts with a chill atmosphere...
+    ELSEIF PARTICIPANTS >= 8
+        PRINTW The banquet starts with a lively atmosphere...
+    ELSE
+        PRINTW The banquet starts with a cheerful atmosphere...
+    ENDIF
+    PRINTFORML 
+ELSEIF CURRENT_STATE == ADD_BANQUET_STATE_IN_PROGRESS ;joins later
+    PRINTL  
+    PRINTW The banquet seems to have already started...
+    PRINTL  
+ENDIF
+
+@ADD_BANQUET_DRINKING_MESSAGE_TALK(BANQUET_INDEX)
+#DIM BANQUET_INDEX
+#DIMS 会場
+#DIM PARTICIPANTS
+#DIM SCALE
+PARTICIPANTS = ADD_BANQUET_PARTICIPANT_COUNT(BANQUET_INDEX)
+SCALE = ADD_BANQUETS_SCALE:BANQUET_INDEX
+
+会場 = %NAME_FROM_PLACE_THE(GET_MAP_REPLACEMENT(ADD_BANQUETS_LOCATION:BANQUET_INDEX))%
+;参加者が居なければ表示されない
+IF PARTICIPANTS > 0
+    ;宴会の規模に応じて分岐
+    IF SCALE <= 1500 || PARTICIPANTS <= 3
+        PRINTFORML The modest banquet being held in %会場% has only \@ PARTICIPANTS == 1 ? one participant # around %PRINT_PLUR("participant", PARTICIPANTS)%\@...
+    ELSE
+        PRINTFORML The banquet being held in %会場% currently has around %PRINT_PLUR("participant", PARTICIPANTS)%...
+    ENDIF
+    IF ADD_BANQUET_TIME_UNTIL(BANQUET_INDEX) < -240
+        IF PARTICIPANTS <= 3
+            PRINTFORML Seems like there's just a few die-hards left here...
+        ELSE
+            PRINTFORML Looks like some people have started to leave...
+        ENDIF
+    ELSEIF ADD_BANQUET_TIME_UNTIL(BANQUET_INDEX) < -180
+        PRINTFORML Seems like it's rounding off soon...
+    ELSEIF ADD_BANQUET_TIME_UNTIL(BANQUET_INDEX) < -60
+        PRINTFORML The banquet is in full force, judging by the unceasing laughter and noise...
+    ;まだ始まったばかり
+    ELSE
+        PRINTFORML It's pretty crowded here...
+    ENDIF
+ELSE
+    PRINTFORML The veteran (drunkards) finally fell asleep.
+    ;custom code
+    PRINTFORML %CAPITALIZE(会場)% has been ruined by the banquet...
+ENDIF

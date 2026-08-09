@@ -1,0 +1,780 @@
+;日記口上
+;使うなら@M_KOJO_K53(ARG)のCALL DIARY_BEFORE_CHECK_K53のコメントアウトを外すこと。
+;例によってK53をKキャラ番号、XXをキャラ番号に置換してね。
+;旧テンプレにはないのでその場合は該当箇所に追記しましょう。
+
+;一日の終了時の流れ
+;@DIARY_TEXT_K53（日記本文）→@DIARY_AFTER_CHECK_K53（フラグの処理）
+
+
+;◆日記の仕様◆
+;※１@DIARY_BEFORE_CHECK_K53で日記のフラグが立つ。
+;→未読フラグ(2)が立っていると一日の終わりにデイリーイベントとして日記が読まれる（既読になる）。
+;→※２未読フラグ(3)が立っていると[日記を読む]で読む事ができる。読むと既読(1)になる。
+;※１各所イベント口上やコマンド口上でフラグを立たせても良いです。
+;※２基本的には未読(2)推奨です。既読(1)、未読(3)はワンステップ必要。
+
+;[日記を読む]には、持ち主が[恋慕]なら自由に読むことができ、
+;そうでない場合は恋慕でない人物がその場に居ない時、もしくは時間停止することで盗み読みできる。
+;拠点住民でないキャラは恋慕であれば自宅（お招き部屋）で読むことができる。
+
+;MAX_DIARY_PAGE:XX　キャラ番号XXの日記の最大ページ数　限度は101（1～100）
+;DIARY:XX:YY　　　　キャラ番号XXの日記番号YYの情報
+;　　 3=未読　　　　デイリーイベントで読まれない。[日記を読む]で読むと既読になる。
+;　　 2=未読　　　　デイリーイベントで読まれる。読まれるまでは[日記を読む]では読めない。読まれると既読になる。
+;　　 1=既読　　　　デイリーイベントで読まれない。[日記を読む]で読める。
+;　　 0=読めない　　未解禁。
+;PAGESET:XX:YY　　　キャラ番号XXの実際に書かれたYYページ目の日記番号。
+;=============================
+@DIARY_K53_EXIST
+;存在判定
+;0だと日記は書かれません。
+;=============================
+RETURN 1
+
+;=============================
+@DIARY_AFTER_CHECK_K53
+;デイリーイベントで日記が読まれた際の後処理。
+;フラグの管理等自由に扱って良い。
+
+;条件フラグのリセットや判定追加もここに 
+;たとえば：今日構ったフラグ
+;今日構った日記が表示した後、構ったフラグをリセット。
+; CFLAG:XX:今日構ったフラグ = 0
+;あるいは何かの状態が続くことがフラグの場合
+;例：好感度がほぼ変わらない日が続くと
+;「あなた」の態度が冷たいな～みたいな日記を書く
+; SIF CFLAG:XX:好感度 <= LAST_LP+3
+; 	NOTOUCH_DAY ++
+;=============================
+
+
+;=============================
+@DIARY_BEFORE_CHECK_K53
+;常時チェックされる日記の状態情報。
+;ここでDIARY:XX:YYの更新を行う。
+;※DIARY:XX:0番は使えません。
+
+;ここで汎用発生条件を記入する
+;コマンド別の発生条件はM_KOJOの各ファイル中で追加してください。
+
+;基本的に発生条件には"DIARY:XX:YY == 0"を入れること。
+;そうしないと同じ日記が書かれたりしてしまう。
+
+;DIARY:XX:YY　　　　キャラ番号XXの日記番号YYの情報
+;　　 3=未読　　　　デイリーイベントで読まれない。[日記を読む]で読むと既読になる。
+;　　 2=未読　　　　デイリーイベントで読まれる。読まれるまでは[日記を読む]では読めない。読まれると既読になる。
+;　　 1=既読　　　　デイリーイベントで読まれない。[日記を読む]で読める。
+;　　 0=読めない　　未解禁。
+
+;○未読(2)にする場合（基本）
+;未読(2)にするとデイリーイベントとして発生し、一日の終わりに１つだけ読まれる。
+;複数のページが未読(2)になっている場合は番号が小さいものが読まれ、それ以外はリセット(0)される。
+;その為、複数同時に発生すると、発生したのに読まれずリセットされる場合もある。
+;未読(2)にするには単純にフラグに2を入れるだけで良い。
+
+;例１)初対面
+;SIF DIARY:XX:YY == 0 && CFLAG:XX:面識
+;	DIARY:XX:YY = 2
+
+;○未読(3)にする場合（応用）
+;未読(3)にするとデイリーイベントとして読まれず、書かれた時点で[日記を読む]によって読めるようになる。
+;プレイヤーが自主的に読まない限り読まれず、一日に複数ページ加筆される場合もある。
+;未読(3)にするにはフラグに3を入れた上で、CALL CHARA_DIARY_PAGESETTING(XX, YY)をする必要がある。
+
+;例２）好感度100以上
+;IF DIARY:XX:YY == 0 && CFLAG:XX:好感度 >= 100
+;	DIARY:XX:YY = 3
+;	CALL CHARA_DIARY_PAGESETTING(XX, YY)
+;ENDIF
+
+;例３）例２の日記が読まれた上で好感度1000以上
+;これをするとYYを読んだ直後にZZが書き込まれることも起こる。
+;IF DIARY:XX:ZZ == 0 && DIARY:XX:YY == 1 && CFLAG:XX:好感度 >= 1000
+;	DIARY:XX:ZZ = 3
+;	CALL CHARA_DIARY_PAGESETTING(XX, ZZ)
+;ENDIF
+
+;▽おせっかいな注釈
+;ファーストキスは基本的に全員[キス未経験]を所持しているので、"!TALENT:XX:キス未経験"で判定できます。
+;デート帰りのキスで分岐したいならデート帰りのキス口上でフラグを立てます。
+;その場合、通常のファーストキス喪失と重複しないように気をつけましょう。
+;処女喪失は初期設定で処女喪失している場合もあるので、処女喪失口上の方でフラグを立てた方が良いです。
+;その他告白・陥落等のイベントは各種イベント口上でフラグを立てます。初対面はそっちでも大丈夫です。
+;日付を正確に測るには別途フラグが必要です。例えば初めて会った日とか。
+;=============================
+SIF CHARANUM <= 53 + 1
+	RETURN
+;MAXPAGEはここで記入する
+MAX_DIARY_PAGE:53:0 = 100
+
+CALL M_KOJO_DIARYSETTING_K53(1)
+CALL M_KOJO_DIARYSETTING_K53(2)
+CALL M_KOJO_DIARYSETTING_K53(3)
+CALL M_KOJO_DIARYSETTING_K53(4)
+CALL M_KOJO_DIARYSETTING_K53(5)
+CALL M_KOJO_DIARYSETTING_K53(6)
+CALL M_KOJO_DIARYSETTING_K53(7)
+IF CFLAG:53:面識
+	IF CFLAG:53:K53C_DAY_FIRST_MET < 1
+		CFLAG:53:K53C_DAY_FIRST_MET = DAY
+	ENDIF
+	SIF !CFLAG:53:K53C_MESUGAKI
+		CALL M_KOJO_DIARYSETTING_K53(8)
+	SIF CFLAG:53:好感度 >= 100 && CFLAG:52:面識 && !TALENT:53:思慕 && !TALENT:53:恋慕 && !TALENT:53:恋人 && !TALENT:52:思慕 && !TALENT:52:恋慕 && !TALENT:52:恋人
+		CALL M_KOJO_DIARYSETTING_K53(9)
+	SIF (DAY-CFLAG:53:K53C_DAY_FIRST_MET) > 1
+		CALL M_KOJO_DIARYSETTING_K53(10)
+	SIF (DAY-CFLAG:53:K53C_DAY_FIRST_MET) > 3
+		CALL M_KOJO_DIARYSETTING_K53(11)
+	SIF (DAY-CFLAG:53:K53C_DAY_FIRST_MET) > 6
+		CALL M_KOJO_DIARYSETTING_K53(12)
+	SIF (DAY-CFLAG:53:K53C_DAY_FIRST_MET) > 7
+		CALL M_KOJO_DIARYSETTING_K53(13)
+	SIF (DAY-CFLAG:53:K53C_DAY_FIRST_MET) > 10
+		CALL M_KOJO_DIARYSETTING_K53(14)
+	SIF (DAY-CFLAG:53:K53C_DAY_FIRST_MET) > 14 && !TALENT:53:妊娠
+		CALL M_KOJO_DIARYSETTING_K53(15)
+	SIF CFLAG:53:好感度 > 999
+		CALL M_KOJO_DIARYSETTING_K53(16)
+	SIF (DAY-CFLAG:53:K53C_DAY_FIRST_MET) > 33
+		CALL M_KOJO_DIARYSETTING_K53(17)
+	SIF (DAY-CFLAG:53:K53C_DAY_FIRST_MET) > 34
+		CALL M_KOJO_DIARYSETTING_K53(18)
+	SIF (DAY-CFLAG:53:K53C_DAY_FIRST_MET) > 19
+		CALL M_KOJO_DIARYSETTING_K53(19)
+	SIF CFLAG:53:好感度 > 2000
+		CALL M_KOJO_DIARYSETTING_K53(20)
+	SIF (DAY-CFLAG:53:K53C_DAY_FIRST_MET) > 26
+		CALL M_KOJO_DIARYSETTING_K53(21)
+	SIF TALENT:53:キス未経験 == 0
+		CALL M_KOJO_DIARYSETTING_K53(24)
+	SIF CFLAG:53:既成事実 > 0 && ABL:53:欲望 > 2
+		CALL M_KOJO_DIARYSETTING_K53(27)
+	SIF CFLAG:53:K53C_INITIAL_VIRGIN && !THINKS_IS_VIRGIN(53)
+		CALL M_KOJO_DIARYSETTING_K53(28)
+	SIF TALENT:53:セフレ
+		CALL M_KOJO_DIARYSETTING_K53(29)
+	SIF TALENT:53:セフレ && ABL:53:欲望 > 5
+		CALL M_KOJO_DIARYSETTING_K53(30)
+	SIF ABL:53:精液中毒 > 3
+		CALL M_KOJO_DIARYSETTING_K53(31)
+	SIF CFLAG:53:K53C_REISEN_GROUP_SEX
+		CALL M_KOJO_DIARYSETTING_K53(32)
+	SIF TALENT:53:愛欲 && ABL:53:欲望 > 11
+		CALL M_KOJO_DIARYSETTING_K53(34)
+	SIF TALENT:53:愛欲 && ABL:53:欲望 > 12 && CFLAG:53:好感度 > 4999
+		CALL M_KOJO_DIARYSETTING_K53(35)
+	SIF HAS_PENIS(53)
+		CALL M_KOJO_DIARYSETTING_K53(52)
+	SIF MARK:53:反発刻印 == 3
+		CALL M_KOJO_DIARYSETTING_K53(55)
+	SIF TALENT:53:ポルチオ性感
+		CALL M_KOJO_DIARYSETTING_K53(59)
+	SIF TALENT:53:器用な指 && HAS_PENIS(MASTER)
+		CALL M_KOJO_DIARYSETTING_K53(60)
+	SIF CFLAG:53:K53C_REISEN_GROUP_SEX > 2
+		CALL M_KOJO_DIARYSETTING_K53(68)
+	SIF CFLAG:53:K53C_REISEN_GROUP_SEX > 5
+		CALL M_KOJO_DIARYSETTING_K53(69)
+	SIF (DAY-CFLAG:53:K53C_DAY_FIRST_MET) > 360
+		CALL M_KOJO_DIARYSETTING_K53(70)
+	SIF !TALENT:53:恋人 && !TALENT:53:恋慕 && TALENT:52:思慕
+		CALL M_KOJO_DIARYSETTING_K53(71)
+	SIF !TALENT:53:恋人 && !TALENT:53:恋慕 && TALENT:52:恋慕
+		CALL M_KOJO_DIARYSETTING_K53(72)
+ENDIF
+
+
+;=============================
+@DIARY_TEXT_K53, PAGENUM, MODE, PAGECOUNT
+;日記の内容
+;PAGENUM   = 日記番号（日記のパターン）
+;MODE      = "デイリー":一日終了時のデイリーイベントでの読み上げ
+;          = "コマンド":[日記を読む]コマンドでの読み上げ
+;PAGECOUNT = 何ページ目に書かれているか
+;=============================
+#DIM PAGENUM
+#DIMS MODE
+#DIM PAGECOUNT
+
+;口上色指定あるならコメントアウトを外す
+CALL M_KOJO_COLOR_K53
+
+;グループマッチに日記のIDを入れて、表示させたい顔絵を表示する
+;表情・服装・特殊画像をオプション指定で表示（省略可）
+;書式は\resources\顔.CSVと下の例を参照
+
+;以下はサンプル
+IF MODE == "デイリー"
+;	IF GROUPMATCH(PAGENUM, 1) 
+;		CALL PRINT_FACE, XX, "発情", "裸", "_1"
+;	ELSEIF GROUPMATCH(PAGENUM, 2)
+;		CALL PRINT_FACE, XX, "笑顔", "服1"
+;	ELSEIF GROUPMATCH(PAGENUM, 3)
+;		CALL PRINT_FACE, XX, "怒り"
+;	ELSE
+;		CALL PRINT_FACE, XX
+;	ENDIF
+ENDIF
+
+PRINTFORMDL - Tewi's Guide to Happiness  Pg.%ORDINAL(PAGECOUNT)% --------------------------------------------------------------------------------------
+PRINTL 
+
+;※PAGENUM:0は使えません
+SELECTCASE PAGENUM
+	CASE 1
+		PRINTFORML I'm going to write a Guide to Happiness!
+		PRINTFORML
+		PRINTFORML Youkai and humans in Gensokyo don't know how to be happy. That's why I'll save them with smiles!%UNICODE(0x2764)%
+		PRINTFORML By following my techniques, everyone can become happy! You'll surely have good fortune your whole life!
+		PRINTFORML
+		PRINTFORML To start with, let's teach a basic pit trap! This is the classic!%UNICODE(0x2764)%%UNICODE(0x2764)%%UNICODE(0x2764)%
+		PRINTFORML First, you need a target, or what's the point? For convenience, let's call her Girl R!%UNICODE(0x2764)%
+		PRINTFORML Dig a hole at least 12 shaku wide and 12 shaku deep! Don't skimp on size, or she might get out!
+		PRINTFORML Cover it with a lattice of sticks and hide it with a leaf blanket! Don't make it too strong! I'll go over the details on the next page!
+		PRINTFORML Now, lure Girl R out by telling her that Master has called for her. Hide in a nearby bush and get ready to come out when she falls in!
+		PRINTFORML Remember, a good follow-up is just as important as the actual trap!%UNICODE(0x2764)%
+		PRINTFORML If you want to keep her in there for a while, you can try making a lid out of bamboo to stop her from flying out!
+		PRINTFORML
+		PRINTFORML There are a lot of details, but so that everyone will be happy, I'll guide you through! Turn to the next page and we'll study it together!%UNICODE(0x2764)%
+	CASE 2
+		PRINTFORMDL (This page is occupied entirely by a drawing of a cute, fluffy bunny munching on a carrot.)
+	CASE 3
+		PRINTFORMDL (This page is filled with doodles of rabbits, carrots, bamboo, and medicine. Some kind of chemical formula is also noted down.)
+		PRINTFORML
+	CASE 4
+		PRINTFORMDL (A picture of a big, round full moon has been drawn with randomly-shaped craters and seas. A cute, fluffy bunny is sitting on top of it.)
+	CASE 5
+		PRINTFORMDL (More doodles fill up this page, including a large caricature of Reisen. Her hips have been greatly exaggerated.)
+	CASE 6
+		PRINTFORML Wow, I just discovered this book in the storeroom! Apparently, I was going to write a Guide to Happiness!
+		PRINTFORML How long ago did I write that? I think it's been thirty years!
+		PRINTFORML Silly younger Tewi, happiness isn't complicated! No one wants to read complicated instructions and no one wants to write them!
+		PRINTFORML Happiness is an art. You don't make art by following a guide!
+		PRINTFORML
+		PRINTFORML That said, I need a notebook, so I'll write some tips for myself. It's not that I'm forgetful in my old age, all right? (Because I'm still a kid!)
+		PRINTFORML Maybe with enough of them, it'll become a guide after all? Yeah, right!%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORML Here's my great idea: Learn from Master how Reisen's ears work, then make a way to send fake messages!
+		CALL CHARA_TEXT([[レイセン]], "「Moon Rabbit Command, we've infiltrated Eientei! Our new technique hides us from anyone wearing clothes! With this, we can't be stopped!」")
+		PRINTFORML Would Reisen really start streaking? Probably not!%UNICODE(0x2764)%
+	CASE 7
+		PRINTFORML I tricked Master into giving the info, but it was too difficult, so I gave up.
+		PRINTFORML See, it's just like I said! Happiness isn't complicated! If you don't care anymore, just don't bother!%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL (A fluffy rabbit is drawn making a peace sign and winking. It's surrounded by stars and flowers.)
+		PRINTFORML
+		PRINTFORML Today, I'm going to make a fake horoscope and trick Reisen into believing it. Much easier! I don't think I can make her streak, though.
+	CASE 8
+		IF TALENT:MASTER:動物耳 == 2 ;Bunny Ears.
+			PRINTFORML I met someone new today! %HE_SHE(MASTER,1)%'s \@ TALENT:MASTER:年齢 < 1 ? a # an old \@ rabbit named %CALLNAME:MASTER%!
+		ELSEIF TALENT:MASTER:年齢 > 0
+			PRINTFORML I met someone new today! %HE_SHE(MASTER,1)%'s an old %PRINT_MALE("man", MASTER)% named %CALLNAME:MASTER%!
+		ELSE
+			PRINTFORML I met someone new today! %HE_SHE(MASTER,1)%'s a %PRINT_MALE("boy", MASTER)% named %CALLNAME:MASTER%!
+		ENDIF
+		PRINTFORML What do I make of %HIM_HER(MASTER)%? I don't know...
+		PRINTFORML I'd better test %HIM_HER(MASTER)% to find out what kind of person %HE_SHE(MASTER)% really is!
+	CASE 9
+		PRINTFORML I caught Reisen looking at %CALLNAME:MASTER%! Is she interested?!
+		PRINTFORML They'd be really cute together! Okay, I'll try pushing them closer!%UNICODE(0x2764)%
+		PRINTFORML Just to see Reisen embarrassed, of course!
+		PRINTFORML Tip for happiness: Trick others into becoming happy! Why not play cupid sometimes?%UNICODE(0x2764)%
+	CASE 10
+		PRINTFORML Is your girlfriend getting fat? Not fat enough in the right areas? Afraid to bring it up to her? No problem!
+		PRINTFORML Eientei's discreet "Figure-Fixer" plan can solve your problems without her noticing and give you the girl you deserve!!
+		PRINTFORML Tell her it's because of her efforts and watch her self-esteem climb! Now with a special offer, 20\% off for the first month!!!
+		PRINTFORML
+		PRINTFORML sideeffectsmayincludenauseavomitingvertigopancreatitisupsetstomachandpicasyndrome
+	CASE 11
+		PRINTFORMDL (This page is occupied by a cute drawing of a goat.)
+	CASE 12
+		PRINTFORML Let's think of ways to erase grudges! We can't let our new girl take revenge! Oh, no!💀
+		PRINTFORML Feed her a big cake! Tell her a story about love! Feed her a big cake with a love potion in it! Fix her a date with a bunny boy!!%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL (There's a drawing of a cute, knife-wielding rabbit stabbing a man to death. Tengu are watching from the top of a nearby mountain.)
+		PRINTFORML
+		PRINTFORML Tip for happiness: Selfish acts will be bad for all of us! Think of your fellow rabbits!!!🐰
+	CASE 13
+		PRINTFORMDL (On this page, a cute, knife-wielding rabbit is joining hands with another rabbit. A heart is drawn between them.)
+		PRINTFORML
+		PRINTFORMDL %UNICODE(0x2764)%%UNICODE(0x2764)%%UNICODE(0x2764)%HAPPY END!!%UNICODE(0x2764)%%UNICODE(0x2764)%%UNICODE(0x2764)%
+	CASE 14
+		PRINTFORMDL (Eirin is drawn on this page with a scary face. There's a speech bubble coming from her.)
+		CALL CHARA_TEXT([[永琳]], "「Punishment time―」")
+	CASE 15
+		PRINTFORML Tip for happiness: Drink beer!🍺
+		PRINTFORML
+		PRINTFORMDL (Doodles of rabbits drinking from foaming flagons cover the page. The lines get shakier as it goes and there's a beer stain on the page.)
+	CASE 16
+		PRINTFORMDL (A caricature of you is drawn on this page. \@ IS_MALE(MASTER) ? You look handsome. # You're wearing a pretty, frilly dress. \@)
+	CASE 17
+		PRINTFORML Let's make a bee farm! %UNICODE(0x2764)%
+		PRINTFORML Money, honey, and bees! Great tricks with beehives!%UNICODE(0x2764)%%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL (A detailed diagram of a bee farm layout is drawn here, with annotations and logistics notes.)
+		PRINTFORML
+		PRINTFORML Make all equipment at Eientei → Export everywhere → ?????????? → Big profit%UNICODE(0x2764)%
+	CASE 18
+		PRINTFORML Kaguya-sama hates bees! No more bees!
+		PRINTFORML
+		PRINTFORMDL (An angry Kaguya is drawn setting fire to a beehive with a torch. Rabbits are gathered nearby, all with sad faces. Some of them are crying.)
+	CASE 19
+		PRINTFORMD (A detailed cross-section of a carrot is drawn here with its parts labeled. However, the xylem at its center is labeled
+		PRINTFORM  「Stomach」
+		PRINTFORMDL  instead.)
+		PRINTFORMDL (Additionally, the carrot has a mouth with rows of sharp teeth running down its length and tentacle-like lateral roots poking out.)
+		PRINTFORML Main diet: Humans! Main predator: Rabbits! Without rabbits, these creatures would depopulate the world!
+		PRINTFORML
+		PRINTFORMDL (There's a small note at the bottom in different handwriting.)
+		CALL CHARA_TEXT([[永琳]], "This is not the assignment. Zero points.")
+	CASE 20
+		CALL COLORMESSAGE(@"Endless・Tewima Park by IOSYS",C_GRAY, 1, 0)
+		PRINTFORML On rainy dewis and windy dewis,            %UNICODE(0x2764)%
+		PRINTFORML undewicided plans at EienTewi, ♪
+		PRINTFORML todewi of all dewis,      %UNICODE(0x2764)%
+		PRINTFORML I'll sTewi at home! ♪                           ✨
+		PRINTFORML                                 %UNICODE(0x2764)%
+		PRINTFORML PleasanTlewi, jubilanTlewi, ♪
+		PRINTFORML singing my STewips a bit out of kewi,       🍺
+		PRINTFORML those sTewitments-, ♪
+		PRINTFORML I deny them ompletelewi!
+		PRINTFORML                              🐰         %UNICODE(0x2764)%
+		PRINTFORML It's happiness,
+		PRINTFORML it's happiness, right? ♪                                         ✨
+		PRINTFORML                                  %UNICODE(0x2764)%
+		PRINTFORML Even if I'm hypoThewirmic or hypoTewinsive, ♪
+		PRINTFORML I live by my nature posiTewivelewi!
+		PRINTFORML                                                   %UNICODE(0x2764)%
+		PRINTFORML It's happiness, ♪
+		PRINTFORML it's happiness, right?             %UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORML Although I might be weak in the head, 🥕
+		PRINTFORML I'm always by your side! ♪   %UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORML The clouds with silver linings roll in;                             💕
+		PRINTFORML just the nice feelings are my Tewike awaewi! ♪
+		PRINTFORML I head-to-Tewil exhausTewivelewi Q-R-S-Tewi-anywewi ＪＵＭＰ　ＡＮＤ　ＪＵＭＰ！
+		PRINTFORML
+		PRINTFORML Strewining my ears, heart palpiTewiting, ♪
+		PRINTFORML my happy feelings are Tewiking off!         🐰
+		PRINTFORML The equewition of happiness ♪
+		PRINTFORML is right next to you!
+		PRINTFORML                                                   arcsin(1/🥕)
+		PRINTFORML Lose the sterm face, calm down, ♪
+		PRINTFORML toss out vain resisTewince,                                %UNICODE(0x2764)%
+		PRINTFORML believe in me, ♪                     %UNICODE(0x2764)%
+		PRINTFORML and ＪＵＭＰ　ＡＮＤ　ＪＵＭＰ！
+		PRINTFORML                                                 🥕
+		PRINTFORML Smiles spreading like dandewilion seeds, ♪
+		PRINTFORML heading for tomorrow, they'll ＴＥＷＩＫＥ　ＯＦＦ！
+		PRINTFORML The equewition of happiness ♪                             e=mc🥕
+		PRINTFORML is right next to you! %UNICODE(0x2764)%
+	CASE 21
+		PRINTFORML Tip for happiness: Don't forget your health! Your health is the most important thing!
+		PRINTFORML The best medicine for health is a happy smile! Smile and you'll be healthier! Become healthy and you'll smile!
+		PRINTFORML
+		PRINTFORML Beer helps, too!🍺 But not too much!! You'll end up like Reisen!!!
+	CASE 22
+		PRINTFORML Tip for happiness: Remember to put on your panties in the morning!
+		PRINTFORML I suddenly noticed I wasn't wearing any! Oops! I was so sure I had them, too!!
+		PRINTFORML
+		PRINTFORML I don't want to put some on, though! It's a Commando Day!%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL (A fluffy rabbit wearing only a skirt is drawn blushing and covering itself.)
+	CASE 23
+		PRINTFORML Tip for happiness: Don't be lonely! If you're alone, find someone fun to play with!
+		PRINTFORML Kaguya-sama is fun to play with! So is Reisen, but in a different way!
+		PRINTFORML But the most fun is %CALLNAME:MASTER%! So, I'll play with %HIM_HER(MASTER)% lots from now on!!
+		PRINTFORML
+		PRINTFORMDL (The rest of the page is taken up by a drawing of you playing with a group of rabbits.)
+	CASE 24
+		PRINTFORML I kissed %CALLNAME:MASTER%%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORML What's this fluffy feeling? Could it be happiness?!
+		PRINTFORML Let's investigate thoroughly!%UNICODE(0x2764)%%UNICODE(0x2764)%
+	CASE 25
+		IF CFLAG:53:K53C_INITIAL_VIRGIN
+			PRINTFORML My days as a pure, unspoiled thousands-of-years-old maiden are over! %UNICODE(0x2764)% Can I still be married?!
+		ELSE
+			PRINTFORML Oops, we had sex!%UNICODE(0x2764)%%UNICODE(0x2764)%%UNICODE(0x2764)%
+		ENDIF
+		PRINTFORML I feel all funny and fluffy and happy inside! Really really! This is the power of sex!
+		PRINTFORML Happiness tip: Have sex with someone fun!%UNICODE(0x2764)% I'm going to think about doing it some more, too!%UNICODE(0x2764)%
+	CASE 26
+		PRINTFORML I put a carrot in my mouth, but it wasn't food%UNICODE(0x2764)%
+		PRINTFORML Still, I sucked on it%UNICODE(0x2764)%%UNICODE(0x2764)%
+		PRINTFORML I wonder when I'll taste %HIS_HER(MASTER)% carrot again?%UNICODE(0x2764)%%UNICODE(0x2764)%%UNICODE(0x2764)%
+	CASE 27
+		PRINTFORMDL (A sketch of you, naked and in an artistic pose, adorns this page. She put a lot of detail into it.)
+	CASE 28
+		PRINTFORML Happiness hurts sometimes!
+		PRINTFORML You know, staying a pure maiden for thousands of years wasn't that hard! Who needs sex, anyway?
+		PRINTFORML That's what I thought, but I finally did it! And it hurt!! It hurt!!! It hurt!!!!!!
+		PRINTFORML But even though it hurt, I feel really happy for some reason! I wanna do it again!!
+		PRINTFORML Happiness tip: Take a dick!%UNICODE(0x2764)%
+	CASE 29
+		PRINTFORML Happiness tip: Get a sex pal!%UNICODE(0x2764)%
+		PRINTFORML I can't believe I wrote that! But I went and got one, anyway! Is this the start of something new?!
+		PRINTFORML It's scary, but exciting! Happiness is like that sometimes, too!
+	CASE 30
+		PRINTFORMDL (This page is filled with doodles of penises.)
+	CASE 31
+		PRINTFORML Happiness tip: Drink lots of milk!
+		PRINTFORML Where to get it? Right from the dick%UNICODE(0x2764)%
+		PRINTFORML I didn't like the taste at first, but it's growing on me! I want to drink a lot more!!%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL (There's a drawing of an ejaculating penis here.)
+	CASE 32
+		PRINTFORML Happiness tip: Have a threesome!
+		PRINTFORML Reisen's naked body is so beautiful! But I won't lose!!
+		PRINTFORML I tried my best and we all felt happy! That's what counts!!!
+		PRINTFORML
+		PRINTFORMD (There's a self-portrait of Tewi riding your penis here.
+		PRINTFORM  『Champion!』
+		PRINTFORMDL is written above her.)
+		PRINTFORMD (Meanwhile, a naked Reisen looks on in awe, labeled with
+		CALL CHARA_TEXT([[鈴仙]], "『Second best!』", "")
+		PRINTFORMDL )
+	CASE 33
+		PRINTFORML To be happy, have sex!%UNICODE(0x2764)%
+		PRINTFORML To be happy, suck a dick!%UNICODE(0x2764)%
+		PRINTFORML To be happy, take a load on your body!%UNICODE(0x2764)%
+		PRINTFORML To be happy, take it in the pussy!%UNICODE(0x2764)%
+		PRINTFORML To be happy, take it hard!%UNICODE(0x2764)%
+		PRINTFORML To be happy, take it until you can't think anymore!%UNICODE(0x2764)%
+		PRINTFORML To be happy, be a living sex toy!%UNICODE(0x2764)%
+		PRINTFORML To be happy, have sex!%UNICODE(0x2764)%%UNICODE(0x2764)%%UNICODE(0x2764)%
+	CASE 34
+		PRINTFORMDL (This page is filled with doodles of rabbits having sex.)
+	CASE 35
+		PRINTFORML The secret to a girl's happiness is sex with %CALLNAME:MASTER%!
+		PRINTFORML What else is there to write? That's all there is!
+		PRINTFORML Teach girls how to pleasure %HIM_HER(MASTER)%? How to tempt %HIM_HER(MASTER)%? How to feel good?
+		PRINTFORML Nope! I don't feel like it!!!
+		PRINTFORML Maybe I'll write other stuff in here sometimes! Maybe I won't! Nobody knows the future!!
+		PRINTFORML For now, this is Sex Master Tewi's final lesson!
+		PRINTFORML Have lots and lots and lots of sex!!!!%UNICODE(0x2764)%%UNICODE(0x2764)%%UNICODE(0x2764)%
+	CASE 36
+		PRINTFORML Happiness tip: Go on a date!
+		PRINTFORML It doesn't have to be serious! It doesn't mean you're tying the knot! It's just for fun!
+		PRINTFORML Even if it turns out badly, it's an experience, and that's what life is about!
+		PRINTFORML You can always prank %HIM_HER(MASTER)% if you want to!
+	CASE 37
+		PRINTFORML Happiness tip: Don't mistake other feelings for love!
+		PRINTFORML Love isn't something you can just pick up, is it? Of course not! An old girl especially can't fall in love that easy! (Though I'm still a kid!)
+		PRINTFORML How do you tell if a feeling is true love?
+		PRINTFORML That's what we have to investigate! From now on, I'll be keeping a close eye on %CALLNAME:MASTER%!
+	CASE 38
+		PRINTFORML Remember that love can bloom even after you become lovers!
+		PRINTFORML There's no need to hold back if %HE_SHE(MASTER)% confesses while you're still unsure. Eventually, everything will fall into place!
+		PRINTFORML Don't give up, I believe in you!♪
+	CASE 39
+		PRINTFORML Happiness can find you in weird ways!
+		PRINTFORML I still feel nervous, but it's a good feeling! I'm definitely, absolutely in love with %CALLNAME:MASTER%!
+		PRINTFORML Even if it's embarrassing, I want to shout it out loud! I'm in love with %CALLNAME:MASTER% and %HE_SHE(MASTER)%'s in love with me!%UNICODE(0x2764)%
+		PRINTFORML This was supposed to be a guide to happiness, but I don't think I knew what real happiness was all this time.
+		PRINTFORML I'm going to keep training! I'll love %CALLNAME:MASTER% with my whole heart and become a happiness guru!!!
+	CASE 40
+		PRINTFORML I'm pregnant.
+		PRINTFORML %CALLNAME:MASTER% is going to pay.
+		PRINTFORML Time to find some snakes.💀
+	CASE 41
+		PRINTFORML I'm pregnant!
+		PRINTFORML It's scary! It's exciting! It's horrible! It's lovely! I want to scream!!!!
+		PRINTFORML How should I feel about this? I think I feel good! It's so hard to tell, though!!
+		PRINTFORML %CALLNAME:MASTER% will support me, though! I'm sure of it! So whatever happens, it'll be all right in the end!
+		PRINTFORML Okay! I'm going to face this with everything I've got! Then I'll make this a Guide to Momminess!
+		PRINTFORML
+		PRINTFORMDL (There's a doodle of a large rabbit cuddling with a tiny one. They're both smiling contentedly.)
+	CASE 42
+		PRINTFORML %CHILDNAME:53:1%!
+		PRINTFORML That's \@ CHILD_SEX:53:1 == 1 ? her # his\@ name! We decided on it!
+		PRINTFORML \@ CHILD_SEX:53:1 == 1 ? She # He\@'s beautiful! I love \@ CHILD_SEX:53:1 == 1 ? her # him\@ more than anything, even though we just met! Isn't that weird?
+		IF IS_MALE(MASTER) && CHILD_SEX:53:1 == 2
+			PRINTFORML I hope he'll grow up to be like his daddy! He's going to be strong and healthy, I just know it!
+		ELSEIF CHILD_SEX:53:1 == 2
+			PRINTFORML I hope we'll be close when he grows up! I want to share his whole life!
+		ELSE
+			PRINTFORML I hope she'll grow into a beautiful girl! I'll do everything with her and teach her lots!
+		ENDIF
+		PRINTFORML \@ CHILD_SEX:53:1 == 1 ? She # He\@'s so precious, I want more! Is that bad to say so quickly? I hope %CALLNAME:MASTER% loves \@ CHILD_SEX:53:1 == 1 ? her # him\@ just as much!
+		PRINTFORML
+		PRINTFORMDL (There's a detailed sketch of the newborn %CHILDNAME:53:1% drawn here. She captured every detail of \@ CHILD_SEX:53:1 == 1 ? her # his\@ face.)
+	CASE 43
+		PRINTFORML I'm pregnant again!
+		PRINTFORML I learned a lot from last time! I think this time, I'm ready to be a super duper mommy!
+		PRINTFORML Happiness tip: Have children! After that, everything will make total sense! Don't wait for thousands of years like me!
+		PRINTFORML
+		PRINTFORMDL (A doodle of two rabbits, one larger than the other, is drawn here.)
+	CASE 44
+		PRINTFORML %CHILDNAME:53:2%! My love!
+		PRINTFORML Now I have two children! I never knew I could be so happy!
+		PRINTFORML %CALLNAME:MASTER%, thank you for showing me real happiness!%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL (There's a detailed sketch of the newborn %CHILDNAME:53:2% drawn here. You feel a deep affection from it.)
+	CASE 45
+		PRINTFORML Every girl should have at least ten kids! That's what I've decided!
+		PRINTFORML The more children you have, the happier you'll be! The happier you are, the more happiness you can share with your kids!!
+		PRINTFORML Have I really just found the meaning of life?!
+		PRINTFORML Anyway, I'm expecting for the third time! Go, Tewi! I'll do my best to reach that number together with %CALLNAME:MASTER%!
+		PRINTFORML
+		PRINTFORMDL (Three happy bunnies are drawn here, cuddling together.)
+	CASE 46
+		PRINTFORML The new baby's name is %CHILDNAME:53:3%! \@ CHILD_SEX:53:1 == 1 ? She # He\@'s so wonderful, I could die!
+		PRINTFORML But I won't die! I'll be the best mommy in the world for \@ CHILD_SEX:53:3 == 1 ? her # him\@, and for %CHILDNAME:53:1% and %CHILDNAME:53:2%!
+		PRINTFORML
+		PRINTFORMDL (There's a detailed sketch of the newborn %CHILDNAME:53:3% drawn here. It's filled with maternal love.)
+	CASE 47
+		PRINTFORML Pregnant again! Is there anything else to say?!
+		PRINTFORML I love my little bunnies!%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL (Four happy bunnies are drawn here, all in a little pile.)
+	CASE 48
+		PRINTFORML %CHILDNAME:53:4%! %CHILDNAME:53:4%! %CHILDNAME:53:4%!%UNICODE(0x2764)%
+		PRINTFORML I feel unstoppable, unbeatable, and uncounterable! Even twenty children will be nothing to me! Let's have fifty!
+		PRINTFORML But don't get the wrong idea! I love each and every one of them and know everything about them, okay?!
+		PRINTFORML Don't just count your blessings! Appreciate them! That's today's tip for happiness!%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL (There's a detailed sketch of the newborn %CHILDNAME:53:4% drawn here. It's drawn with an obsessive hand.)
+	CASE 49
+		PRINTFORML When this pregnancy is over, I'll have so many bunnies! I never imagined!
+		PRINTFORML Except, I looked at my old pages and I wrote I'll have fifty?!
+		PRINTFORML That might take a while, but slow and steady wins the race! (Is it okay if a rabbit says that?)
+		PRINTFORML Keep doing your best in the future, Tewi!%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL (A stack of five happy bunnies is drawn here.)
+	CASE 50
+		PRINTFORML %CHILDNAME:53:5% is finally here!
+		PRINTFORML Even right after childbirth, I'm so busy! Am I gonna have time to draw from now on?!
+		PRINTFORML Even if I don't, I'll engrave all my future children's faces on my heart! I still don't forget when I first saw %CHILDNAME:53:1%!
+		PRINTFORML But for now, I'll make time for %CHILDNAME:53:5%! %CHILDNAME:53:5%! \@ CHILD_SEX:53:1 == 1 ? She # He\@'s a little weak, but that's okay! I'll love \@ CHILD_SEX:53:5 == 1 ? her # him\@ until \@ CHILD_SEX:53:5 == 1 ? she # he\@'s healthy!
+		PRINTFORML Once \@ CHILD_SEX:53:5 == 1 ? she # he\@'s healthy, I'll keep loving \@ CHILD_SEX:53:5 == 1 ? her # him\@! That's the ultimate secret to happiness!%UNICODE(0x2764)%%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL (There's a detailed sketch of the newborn %CHILDNAME:53:5% drawn here. Tears (of joy?) are staining the page.)
+	CASE 51
+		PRINTFORML Happiness tip: Have an orgy!
+		PRINTFORML I can't believe me, Reisen, Master, and Kaguya-sama all had sex with %CALLNAME:MASTER%! It feels good to share!
+		PRINTFORML Is that weird to say? Don't I want %HIM_HER(MASTER)% to myself? Of course I do!
+		PRINTFORML Even so, we share our lives together, so they're special! Besides, fighting to stay number one is worth it!
+		PRINTFORML Happiness is being able to share it with others! Especially those close to you!!!
+	CASE 52
+		PRINTFORML Tip for happiness: Grow a dick???
+		PRINTFORML I don't know, but that's what happened! Life is weird sometimes! I'm not a boy, though!
+		PRINTFORML I tried touching it and it felt good! There's gotta be a fun way to use it!
+		PRINTFORML
+		PRINTFORML The real tip for today is to always look on the bright side of life!
+	CASE 53
+		PRINTFORML Tip for happiness: Grow a dick!!!
+		PRINTFORML Putting it in %CALLNAME:MASTER% felt so good!%UNICODE(0x2764)% I feel so lucky to have it!
+		PRINTFORML All right! I'm going to use this dick for all it's worth! It's going to be so much fun from now on!
+		PRINTFORML
+		PRINTFORMDL (There is a doodle of a cute, blushing rabbit with a massive penis here.)
+	CASE 54
+		PRINTFORML I love having a dick! It feels weird to say, but it's true!
+		PRINTFORML I never knew I'd get to shoot inside of Reisen! Life just keeps on surprising me! Her embarrassed face was so cute!
+		PRINTFORML What'll happen if she has my baby?%UNICODE(0x2764)%
+	CASE 55
+		PRINTFORMDL (This page is occupied by a drawing of you on the ground, defeated, with a giant X in place of eyes. A rabbit stands proudly on top of you.)
+	CASE 56
+		PRINTFORML I'm moving! Goodbye, everyone!
+		PRINTFORML I'll never forget our days of staying up late and playing together! I love you all!
+		PRINTFORML Tip for happiness: Even if parting from your family is hard, living with someone new can be exciting, too!
+		PRINTFORML Don't be afraid to go where life takes you!
+	CASE 57
+		PRINTFORML %CALLNAME:MASTER% decided to move in! Everyone cheerfully welcomed %HIM_HER(MASTER)% in!
+		PRINTFORML We'll have slumber parties with everyone all the time from now on! It's going to be great!
+		PRINTFORML Tip for happiness: Welcome someone special into your home!%UNICODE(0x2764)%
+	CASE 58
+		PRINTFORML When %CALLNAME:MASTER% rubs my pregnant belly, that completes me!%UNICODE(0x2764)%
+		PRINTFORML I'm so glad to have children! I'm happy! It's happiness!!
+		PRINTFORML If you want to be happy, find a \@ IS_MALE(MASTER) ? man # girl \@ who'll rub your tummy after putting a baby in it!%UNICODE(0x2764)%
+	CASE 59
+		PRINTFORML When it's deep inside me, I can't hold it together!%UNICODE(0x2764)%
+		PRINTFORML Can I confess something? Is it okay to write it? I never want to take it out!%UNICODE(0x2764)%%UNICODE(0x2764)%
+		PRINTFORML A toy won't do at all! It's got to be %CALLNAME:MASTER%'s! Push it up inside as far as it'll go!%UNICODE(0x2764)%%UNICODE(0x2764)%%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL (There is a doodle of a rabbit with a blissful expression being penetrated by a penis, with an inside view of it teasing the rabbit's womb.)
+	CASE 60
+		PRINTFORML I've used my hands so much, I must be a master sculptor!
+		PRINTFORML So I thought, but I couldn't make it from clay... I'll just have to draw it here instead!
+		PRINTFORML My favorite work of art!%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL (There is a sketch on this page of what is unmistakably your penis. She's accurately rendered every detail of it, presumably from memory.)
+	CASE 61
+		PRINTFORML The only way to get to know people is to talk to them! Ask them about their interests! Their hobbies!
+		PRINTFORML People like it when you show interest! Try to understand them and happiness will be yours!
+		PRINTFORML Today, I asked %CALLNAME:MASTER% what %HIS_HER(MASTER)% favorite food is! I won't tell what %HE_SHE(MASTER)% said, though!%UNICODE(0x2764)%
+		PRINTFORML As for mine, of course there's only one answer!🥕
+	CASE 62
+		PRINTFORML For girls, the way to happiness is to be cute! Naturally, rabbits have an advantage!
+		PRINTFORML Some girls are sexy, though! When it comes to that, rabbits are also the best!
+		PRINTFORML What about girls who are cute and sexy? I'm jealous of them! Really! I'm supposed to be the lucky one, so why is Reisen so hot?!
+		PRINTFORML Outclassed in every way! But I won't give up! Girls should be strong of heart, too!
+		PRINTFORML Later, I'll get back at her by flipping her skirt in public! But for sure, she'll be ultra cute when she's embarrassed, too! It's not fair!!!!
+	CASE 63
+		PRINTFORML Water balloons!
+		PRINTFORML Chuck them on Reisen and watch her go! The fun never ends!
+		PRINTFORML That is, until I run out! I'll see if %CALLNAME:MASTER% wants to try them!
+		PRINTFORML Tip for happiness: Always take an opportunity for mischief!
+		PRINTFORML
+		PRINTFORMDL (There is a drawing of Reisen here, drenched from head to toe. She's throwing up her arms and wailing as more balloons fly at her.)
+	CASE 64
+		PRINTFORML Is it too much to ask that Master doesn't experiment on me? She's supposed to be a genius, so why does she need so much help?!
+		PRINTFORML She should just drink her own experiment!💀
+		PRINTFORML My muscles still feel like they're exploding! Am I gonna have to stay in bed all day? I don't want to!
+		PRINTFORML Tip for happiness: Don't drink anything Master gives you!!!!!!!
+	CASE 65
+		PRINTFORML Is it too much to ask that Master doesn't experiment on me? She's supposed to be a genius, so why does she need so much help?!
+		PRINTFORML She should just drink her own experiment!💀
+		PRINTFORML At least %CALLNAME:MASTER% was there to save me! Poor %PRINT_MALE("guy", MASTER)%, %HE_SHE(MASTER)% melted right onto the floor! Your sacrifice will not be forgotten!!!
+		PRINTFORML Tip for happiness: Don't drink anything Master gives you!!!!!!!
+	CASE 66
+		PRINTFORMDL (A 4koma is drawn here. On the first panel, a cartoon Tewi is handing a cartoon Reisen a small object.)
+		PRINTFORML 「Have a fortune cookie!」
+		CALL CHARA_TEXT([[鈴仙]], "「Wow, looks great!」")
+		PRINTFORML
+		PRINTFORMDL (In the second panel, the cookie is exploding in Reisen's face. Her eyeballs can be seen through the blast.)
+		PRINTFORMDL BOOM!
+		PRINTFORML
+		PRINTFORMDL (In the third panel, a smoking Reisen is threatening Tewi with a raised fist.)
+		CALL CHARA_TEXT([[鈴仙]], "「I'll make you pay for that!」")
+		PRINTFORML 「But did you read the fortune?」
+		PRINTFORML
+		PRINTFORMDL (In the fourth panel, Reisen is holding an omikuji.)
+		PRINTFORML EXPLOSIVELY GOOD LUCK
+		CALL CHARA_TEXT([[鈴仙]], "「Wow, so it was lucky after all! Thank you, Tewi!!!」")
+	CASE 67
+		PRINTFORML Sharing activities with others is also a good way to build bonds! And of course, with close bonds come happiness!
+		PRINTFORML Today, %CALLNAME:MASTER% helped cook for Eientei! It was so much fun, I want to do it again sometime!
+		PRINTFORML But I don't want to cook, so we need to get the food somewhere else! A cooking party without cooking! How fun is that?!
+		PRINTFORML Not fun at all, actually! What a stupid idea!
+		PRINTFORML
+		PRINTFORMDL (There is a doodle here of a fat rabbit with its belly up in the air, sleeping after a big meal. An empty plate lies next to the rabbit.)
+	CASE 68
+		PRINTFORML I've made love to Reisen three times now!
+		PRINTFORML You know, she's annoying sometimes, but so much fun to tease!%UNICODE(0x2764)% I'm so glad that %CALLNAME:MASTER% likes her!
+		PRINTFORML Tip for happiness: Find someone cute and bully them in bed!%UNICODE(0x2764)% (Just kidding!)
+		PRINTFORML
+		PRINTFORMDL (There is a doodle of a naked, embarrassed Reisen here, trying to cover up.)
+	CASE 69
+		PRINTFORML Reisen is getting good at pleasuring %CALLNAME:MASTER%! I'm so proud of her!
+		PRINTFORML We've made love so many times, we're like rabbits in heat! Wait, that's exactly what we are!
+		PRINTFORML %CALLNAME:MASTER%, do your best to please us, too!%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL (There is a doodle here of a naked Reisen, reclining in a sexy pose and making bedroom eyes at you.)
+	CASE 70
+		PRINTFORML It's been years now since I first met %CALLNAME:MASTER%! I can't believe it!
+		PRINTFORML When I think of how much my life has changed in such a short time, my heart does somersaults!
+		PRINTFORML %CALLNAME:MASTER%, make sure we have many, many more years together!!
+		PRINTFORML
+		PRINTFORMDL (There is a doodle here of you and Tewi in each other's arms.)
+	CASE 71
+		PRINTFORML Reisen's totally changed around %CALLNAME:MASTER%! I just knew they'd hit it off!%UNICODE(0x2764)%
+		PRINTFORML As expected, they're super cute! I'm jealous! I'm gonna tease her about it for sure!
+		PRINTFORML Isn't life great when you get to see people become happy?
+	CASE 72
+		PRINTFORML Reisen's officially in love! Don't ask me how I know, she can't keep secrets at all!
+		PRINTFORML Where do we go from here? Who knows! Life is about exploring until the end!
+		PRINTFORML Tip for happiness: Bring happiness to others! Obviously, I deserve the credit!!
+		PRINTFORML
+		PRINTFORMDL (There is a doodle here of Reisen with her hands clasped against her chest, a wistful expression, and a big heart above her head.)
+	CASE 73
+		PRINTFORML %CALLNAME:MASTER% turned out to be a pervert! Big shock!!
+		PRINTFORML %HE_SHE(MASTER,1)% wants my body, but I won't lose! I'll teach %HIM_HER(MASTER)% a lesson if %HE_SHE(MASTER)% ever comes back!
+		PRINTFORML Tip for happiness: Don't let anyone push you around! If you have to, fight back with your body!
+	CASE 74
+		PRINTFORML Happiness tip: Do as you please with troublemakers!%UNICODE(0x2764)%
+		PRINTFORML Sex is a girl's most powerful weapon! You can even turn enemies into friends!
+		PRINTFORML Don't give up!%UNICODE(0x2764)%%UNICODE(0x2764)%
+	CASE 75
+		PRINTFORML I lost...
+		PRINTFORML But it felt so good!!!!!!
+		PRINTFORML Is it bad that I want more? I'm shaking just to remember it%UNICODE(0x2764)%
+		PRINTFORML %CALLNAME:MASTER%, come back soon!%UNICODE(0x2764)%%UNICODE(0x2764)%%UNICODE(0x2764)%
+	CASE 76
+		PRINTFORML Carrot🥕Rider! ♪ Face the hard life! ♪ Carrot🥕Rider! ♪ Swallow your fear! ♪ Jump up, dash! ♪ Don't stop cumming! ♪
+		PRINTFORML
+		PRINTFORMDL (There's a doodle of Carrot🥕Rider, the nude hero on this page.)
+	CASE 77
+		PRINTFORML Mochi%UNICODE(0x2764)%Rider! ♪ Climb the mountains! ♪ Mochi%UNICODE(0x2764)%Rider! ♪ Grind it out! ♪ Jump up, dash! ♪ Don't stop cumming! ♪
+		PRINTFORML
+		PRINTFORMDL (There's a doodle of Mochi%UNICODE(0x2764)%Rider, the nude hero on this page.)
+	CASE 78
+		PRINTFORML I had to go through so much! Giving birth is hard, especially so many times in a row!
+		PRINTFORML But! My bunnies!!! They're so beautiful!!!! I love all their little faces, I can't believe how happy I am to hold them!!!!!!!
+		PRINTFORML They're so precious, I want more! Is that bad to say so quickly? I hope %CALLNAME:MASTER% loves them just as much!
+		PRINTFORML
+		PRINTFORMDL (There's a detailed sketch of the newborn children drawn here. She captured every detail of their faces.)
+	CASE 79
+		PRINTFORML Little baby bunnies! The love of my life!
+		PRINTFORML Now I've done this twice! I never knew I could be so happy!
+		PRINTFORML %CALLNAME:MASTER%, thank you for showing me real happiness!%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL (There's a detailed sketch of the newborn children drawn here. You feel a deep affection from it.)
+	CASE 80
+		PRINTFORML The new babies are here! They're so wonderful, I could die!
+		PRINTFORML But I won't die! I'll be the best mommy in the world for them, and for all their siblings too!
+		PRINTFORML
+		PRINTFORMDL (There's a detailed sketch of the newborn children drawn here. It's filled with maternal love.)
+	CASE 81
+		PRINTFORML Bunnies! Bunnies! Bunnies!%UNICODE(0x2764)%
+		PRINTFORML I feel unstoppable, unbeatable, and uncounterable! Even thirty children will be nothing to me! Let's have fifty!
+		PRINTFORML But don't get the wrong idea! I love each and every one of them and know everything about them, okay?!
+		PRINTFORML Don't just count your blessings! Appreciate them! That's today's tip for happiness!%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL (There's a detailed sketch of the newborn children drawn here. It's drawn with an obsessive hand.)
+	CASE 82
+		PRINTFORML The newest wave is finally here!
+		PRINTFORML Even right after childbirth, I'm so busy! Am I gonna have time to draw from now on?!
+		PRINTFORML Even if I don't, I'll engrave all my future children's faces on my heart! I still don't forget when I first saw %CHILDNAME:53:1%!
+		PRINTFORML But for now, I'll make time for everyone! I'll love them until they're big and strong!
+		PRINTFORML Once they're big and strong, I'll keep loving them! That's the ultimate secret to happiness!%UNICODE(0x2764)%%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL (There's a detailed sketch of the newborn children drawn here. Tears (of joy?) are staining the page.)
+ENDSELECT
+PRINTFORML
+RESETCOLOR
+
+;=============================
+@M_KOJO_MESSAGE_COM_K53_406
+;=============================
+CALL M_KOJO_MESSAGE_COM_K53_406_1
+RETURN RESULT
+
+;=============================
+@M_KOJO_MESSAGE_COM_K53_406_1
+;コマンド口上
+;TFLAG:194（誰の日記を読んでいるか）
+;TFLAG:194がXXでない場合は他人の日記なので注意。
+;PAGEは書かれてあるページ数。
+;SHIRAHU(XX)はキャラXXの状態が正常かどうか。
+;=============================
+
+CALL M_KOJO_COLOR_K53
+IF SHIRAHU(53) && TFLAG:194 == 53
+	IF FIRSTTIME("TewiDiary")
+		PRINTFORMW 「Eeh?! You're really reading that?! That's a girl's private possession!」
+		PRINTFORMDW The book is calling itself a "guide to happiness." Shouldn't she want others to read it?
+		PRINTL
+		PRINTFORMW 「Ehehe, well, it was a guide... but it kinda became like a sketchbook, or a diary...」
+		PRINTFORMW 「Anyway, it's embarrassing! Even I don't know what I wrote in there!」
+		PRINTFORMW 「Maybe I wrote private details... or the plans to my secret weapon...」
+		PRINTFORMDW If Tewi has a secret weapon, you want to see it.
+		PRINTFORMW 「Well... J-Just remember, don't take it seriously! It's something I scribble in for fun!」
+	ENDIF
+ENDIF
+
+;=============================
+@M_KOJO_DIARYSETTING_K53(ARG, ARG:1 = 0)
+;日記発生処理の一括管理関数
+;=============================
+SIF DIARY:53:ARG != 0
+	RETURN
+IF ARG:1
+	DIARY:53:ARG = 2
+ELSE
+	DIARY:53:ARG = 3
+ENDIF
+CALL CHARA_DIARY_PAGESETTING(53, ARG)

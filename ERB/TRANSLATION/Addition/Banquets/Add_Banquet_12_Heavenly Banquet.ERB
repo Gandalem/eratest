@@ -1,0 +1,484 @@
+@EXIST_ADD_BANQUET12
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+@ADD_BANQUET12(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+
+SELECTCASE O_DATA
+	CASE "NAME"
+        CALLF MAKE_STR(V_NAME, "Tenshi's Heavenly Banquet")
+    CASE "ACTIVITIES"
+        CALLF MAKE_STR(V_NAME, "Enjoying heavenly food and drink")
+    CASE "TERM"
+        CALLF MAKE_STR(V_NAME, "banquet")
+    CASE "CATEGORY"
+        CALLF MAKE_STR(V_NAME, "banquet")
+    CASE "PRIORITY"
+        CALLF MAKE_INT(V_NAME, 2)
+    CASE "NOTIFY_PLAYER"
+        CALLF MAKE_INT(V_NAME, 1)
+    CASE "HOST"
+        CALLF MAKE_INT(V_NAME, [[天子]])
+    CASE "HOST_LIST"
+        IF ADD_BANQUET12_KASEN_HOST
+            CALLF MAKE_STR(V_NAME, @"{[[天子]]}/{[[紫苑]]}/{[[華扇]]}")
+        ELSE
+            CALLF MAKE_STR(V_NAME, @"{[[天子]]}/{[[紫苑]]}")
+        ENDIF
+    CASE "GUEST_LIST"
+    CASE "BANNED_LIST"
+    CASE "CONDITIONS"
+        SIF CFLAG:[[天子]]:出禁 == 0 && CFLAG:[[紫苑]]:出禁 == 0 && !RAND:62 ;roughly once every two months
+            CALLF MAKE_INT(V_NAME, 1)
+    CASE "WEATHER_DEPENDENT"
+        CALLF MAKE_INT(V_NAME, 1) ;though ultimately moot because tenshi will clear it up
+    CASE "DRINKING"
+        CALLF MAKE_INT(V_NAME, 1)
+    CASE "MUSIC_PERFORMANCE"
+        CALLF MAKE_INT(V_NAME, 1)
+ENDSELECT
+
+@ADD_BANQUET_PLANNING12
+#DIM LOCATION
+#DIM SCALE
+#DIM START_TIME
+
+DO
+    SELECTCASE RAND:5
+        CASE 0
+            LOCATION = P202中央広場
+        CASE 1 ;tends to impose on hermits
+            LOCATION = P131枯山水
+        CASE 2
+            LOCATION = P730仙人の屋敷・庭
+        CASE 3
+            LOCATION = P11庭
+        CASE 4
+            LOCATION = P343湖畔
+    ENDSELECT
+LOOP FINDELEMENT(ADD_BANQUETS_LOCATION, LOCATION) >= 0
+
+SCALE = 2000 + RAND:1000
+START_TIME = CLOCK_TO_TIME(18, 0)
+
+CALL ADD_BANQUET_CREATE(12, LOCATION, START_TIME, DAY+7, 240, SCALE)
+LOCAL = RESULT ;banquet_index
+
+SIF LOCAL < 0 ;couldn't create
+    RETURN
+
+ADD_BANQUET12_KASEN_HOST = CFLAG:[[華扇]]:出禁 == 0 ? !RAND:5 # 0
+ADD_BANQUET12_QUALITY = ADD_BANQUET12_KASEN_HOST ? 75 # RAND:25
+ADD_BANQUET12_DISASTER = 0
+ADD_BANQUET12_PARTICIPATION_TIME = 0
+ADD_BANQUET12_PREPARATION_STAGE = 0
+ADD_BANQUETS_INVITED:LOCAL = ADD_BANQUET_INVITE_NOT_INVITED
+IF MARK:[[天子]]:反発刻印 ;hate
+ELSEIF !CFLAG:[[天子]]:面識 ;unknown
+ELSE
+    IF RAND:1500 < CFLAG:[[天子]]:好感度 ;chance of invitation increases with how much she likes you
+        PRINTL 
+        CALL SET_KOJO_COLOR([[天子]])
+        CALL PRINT_LETTER(@"Congratulations %CALLNAME:MASTER%,/You have been given the honor of being invited to a feast beyond anything you've ever experienced before./Next week, at %ADD_BANQUET_LOCATION(LOCAL)%, I will host another one of my famous heavenly banquets allowing even you surface-dwellers to enjoy a taste of heaven.//Don't miss it,/%NAME:34%", , 40)
+        RESETCOLOR
+
+        PRINTL
+        PRINTFORMDW You receive an invitation to a banquet from Tenshi.
+        PRINTFORML 
+
+        ADD_BANQUETS_INVITED:LOCAL = ADD_BANQUET_INVITE_INVITED
+        PRINTFORMW %ADD_BANQUET_TIME_AND_PLACE_DESCRIPTION(LOCAL)%
+
+        IF ABL:MASTER:教養 < UniversalRank("B") && !ADD_BANQUET12_BAD_EXPERIENCE ;not smart enough to recognize danger
+            PRINTFORMDL You're honored to be invited to a banquet hosted by a genuine Celestial.
+            PRINTFORMDW This is bound to become an unforgettable experience.
+        ELSE
+            PRINTFORMDL Given who's hosting it, this banquet will most certainly end in disaster...
+            PRINTFORMDL You could try to come up with an excuse so you can decline, but Tenshi might take it really badly.
+            SIF ADD_BANQUET12_BAD_EXPERIENCE
+                PRINTFORMDL If you do decide to join, you may be able to salvage it with some cleverness, however.
+
+            PRINTFORMDL What will you do?
+            CALL ASK_YN("Accept the invitation", "Try to excuse yourself")
+            IF !RESULT
+                PRINTFORMDW You accept Tenshi's invitation, against your better judgment.
+            ELSE
+                ;todo come up with excuses
+                PRINTFORMDL You come with some excuse about how you're unfortunately unable to join her oh-so-wonderful banquet.
+                IF !ABL:MASTER:話術技能 || !RAND:(ABL:MASTER:話術技能) ;failure
+                    PRINTFORMW Unfortunately, she doesn't buy it, and she gets pretty angry with you.
+                    CALL CHANGE_CFLAG(2, [[天子]], -100)
+                    CALL CHANGE_CFLAG(4, [[天子]], -40)
+                ELSE ;success
+                    PRINTFORMDW Fortunately, she seems to believe you, and you don't need to worry about the heavenly banquet any more.
+                ENDIF
+                ADD_BANQUETS_INVITED:LOCAL = ADD_BANQUET_INVITE_REJECTED
+            ENDIF
+        ENDIF
+
+        ;todo trigger special requests to do menial labor
+    ENDIF
+ENDIF
+
+@ADD_BANQUET_START12
+ADD_BANQUET12_PARTICIPATION_TIME = 0
+
+@ADD_BANQUET_FINISH12
+
+@ADD_BANQUET_VISIT12(PREVIOUS_STATE)
+#DIM PREVIOUS_STATE
+#DIM BANQUET_INDEX
+#DIM CURRENT_STATE
+#DIM PARTICIPANTS
+BANQUET_INDEX = ADD_BANQUET_INDEX(12)
+PARTICIPANTS = ADD_BANQUET_PARTICIPANT_COUNT(BANQUET_INDEX)
+CURRENT_STATE = ADD_BANQUETS_STATUS:BANQUET_INDEX
+
+CALL SET_KOJO_COLOR([[天子]])
+
+PRINTL
+IF CURRENT_STATE == ADD_BANQUET_STATE_IN_PROGRESS && PREVIOUS_STATE == ADD_BANQUET_STATE_PREPARING ;player was present during start
+    $TENSHI_SPEECH
+    PRINTFORMDL As the banquet begins, Tenshi holds a short speech.
+    PRINTFORML 「Welcome to today's heavenly banquet.」
+    PRINTFORML 「Naturally, this cannot compare to a true banquet like we hold in heaven, but it's the best we can do here on Earth.」
+    PRINTFORML 「So, all of you, enjoy!」
+ELSEIF CURRENT_STATE == ADD_BANQUET_STATE_IN_PROGRESS ;joins later
+    SELECTCASE ADD_BANQUETS_INVITED:BANQUET_INDEX
+        CASE ADD_BANQUET_INVITE_REJECTED ;rejected
+            PRINTFORML 「I thought you didn't have the time to join us.」
+            PRINTFORML 「Hmph, it's too late to change your mind now. The luxury of heaven will escape you today.」
+            PRINTFORMDW It's probably best not to stick around. She's already angry enough.
+        CASE ADD_BANQUET_INVITE_INVITED ;invited
+            ;time since arrival
+            SELECTCASE ABS(ADD_BANQUET_TIME_UNTIL(BANQUET_INDEX))
+                CASE IS <= 10
+                    GOTO TENSHI_SPEECH
+                CASE IS <= 60
+                    PRINTFORML 「You're late!」
+                    PRINTFORML 「Don't you realize what an honor it is to be invited to a genuine heavenly banquet?」
+                    PRINTFORML 「Fortunately for you, I am a gracious host, and I will overlook your disrespect just this once.」
+                    CALL CHANGE_CFLAG(2, [[天子]], -10)
+                    CALL CHANGE_CFLAG(4, [[天子]], -5)
+                    PRINTFORMDW Tenshi is a little upset about your tardiness, but she quickly returns to her usual cheerful demeanor.
+                CASEELSE
+                    PRINTFORML 「You're ridiculously late!」
+                    PRINTFORML 「Do you ever take the feelings of others into consideration?」
+                    PRINTFORML 「Well, whatever. Just sit down already and enjoy the banquet.」
+                    CALL CHANGE_CFLAG(2, [[天子]], -30)
+                    CALL CHANGE_CFLAG(4, [[天子]], -20)
+                    PRINTFORMDW Tenshi is pretty upset with your late arrival.
+            ENDSELECT
+        CASEELSE ;not invited
+            PRINTFORML 「Hey, you weren't invited to this!」
+            IF  PARTICIPANTS < 7 && !MARK:[[天子]]:反発刻印 && !CFLAG:[[天子]]:ブチギレ
+                PRINTFORML 「Well, since a lot of people had to cancel due to their unfortunate frailty, I suppose I can allow you to join regardless, since I'm such a gracious host.」
+                PRINTFORML 「Looks like their misfortune is your fortune. AHAHAHAHAHAHA!」
+                PRINTFORMDW It seems Tenshi is willing to overlook your intrusion just to fill up the seats.
+                ADD_BANQUETS_INVITED:BANQUET_INDEX = 1
+            ELSE
+                PRINTFORML 「Get out of here!」
+                PRINTFORMDW Tenshi is pretty upset with you.
+            ENDIF
+    ENDSELECT
+ENDIF
+PRINTL
+RESETCOLOR
+
+IF ADD_BANQUETS_INVITED:BANQUET_INDEX > 0
+    SELECTCASE PARTICIPANTS
+        CASE 2
+            PRINTFORMDW You appear to be the only actual guest today.
+        CASE 3
+            IF ADD_BANQUET12_KASEN_HOST
+                PRINTFORMDW You appear to be the only actual guest today.
+            ELSE 
+                PRINTFORMDW It seems only one other person decided to show up.
+            ENDIF
+        CASE IS <= 5
+            PRINTFORMDW Only a few people showed up.
+        CASE IS <= 10
+            PRINTFORMDW Looks like Tenshi managed to attract a fairly large crowd.
+        CASEELSE 
+    ENDSELECT
+    PRINTL
+
+    SELECTCASE ADD_BANQUET12_QUALITY
+        CASE IS <= 20 ;disaster
+            PRINTFORMDL As you look at the "food" and "drink" laid out on the plates, a sense of terror washes over you.
+            PRINTFORMDL Where did they even find this stuff?
+
+            IF PARTICIPANTS > 2 + ADD_BANQUET12_KASEN_HOST
+                PRINTFORMD You hear the other guests murmuring about the state of the banquet
+            ELSE
+                PRINTFORMD You consider simply leaving the banquet
+            ENDIF
+            PRINTFORMDL , until you hear a loud voice amongst the crowd.
+
+            CALL SET_KOJO_COLOR([[紫苑]])
+            PRINTFORML 「Wow! This is delicious!」
+            PRINTFORML 「What luxury!」
+            PRINTFORML 「Being able to enjoy all this food and drink with everyone here... This is a dream come true!」
+            PRINTFORML 「I'm so glad to be alive!」
+            PRINTFORML 「Thank you, life, for letting me live to see this!」
+            PRINTFORML 「Thank you, plants, whose names I don't know!」
+            PRINTFORML 「Thank you for giving up your lives for this!」
+            PRINTFORMDL A strong sense of guilt comes over you, and you decide that maybe this isn't so bad once in a while.
+            PRINTFORMDW It's important to be grateful, after all.
+            RESETCOLOR
+        CASE IS <= 50 ;mediocre
+            PRINTFORMDL The food and drink look bland and unappetizing, but at least they don't seem to be dangerous.
+            PRINTFORMDW You see Shion eagerly stuffing herself with the food. It seems that this is significantly better than her usual fare.
+        CASE IS <= 100 ;pretty decent
+            PRINTFORMDL The food and drink look pretty good today.
+            PRINTFORMDW You see Shion with a blissful expression on her face as she eats the food. This must be the best meal she's had in ages.
+        CASEELSE ;great
+            PRINTFORMDL As you look at the lavish food and drink spread out before you, you feel a sense of pride welling up within you.
+            PRINTFORMDL You look over at Shion, who is wolfing down the food in a complete frenzy.
+            PRINTFORMDW Is she going to be okay?
+    ENDSELECT
+    IF !ADD_BANQUET12_KASEN_HOST && ADD_BANQUET12_QUALITY > 75 && PARTICIPANTS > 2
+        PRINTFORML Everyone is making glances towards you as they inspect the food.
+        PRINTFORML It seems that they're all quite aware that you're the one who's really responsible for it.
+
+        FOR LOCAL, 1, CHARANUM
+            IF CFLAG:LOCAL:BANQUET == 12 && !GROUPMATCH(LOCAL, [[天子]], [[紫苑]])
+                CALL CHANGE_CFLAG(2, LOCAL, MIN((ADD_BANQUET12_QUALITY - 75), 50))
+                CALL CHANGE_CFLAG(4, LOCAL, MIN((ADD_BANQUET12_QUALITY - 75) / 5, 20))
+            ENDIF
+        NEXT
+    ENDIF
+
+    IF !RAND:10 ;always a chance that shion's misfortune strikes
+        DEBUGPRINTFORML Shion ruins everything again.
+        ADD_BANQUET12_DISASTER = 1
+    ELSEIF ADD_BANQUET12_QUALITY < 20 ;unavoidable disaster
+        ADD_BANQUET12_DISASTER = 1
+    ELSEIF ADD_BANQUET12_QUALITY < 100 ;chance for disaster
+        ADD_BANQUET12_DISASTER = ADD_BANQUET12_QUALITY < RAND:100
+    ELSEIF ADD_BANQUET12_QUALITY > 100 ;chance for great success
+        SIF RAND:100 < ADD_BANQUET12_QUALITY - 100
+            ADD_BANQUET12_DISASTER = -1
+    ENDIF
+ENDIF
+
+@ADD_BANQUET_PROGRESS12(BANQUET_INDEX)
+#DIM BANQUET_INDEX
+#DIM BANQUET_ID
+#DIM PRESENT
+#DIM LAPSE
+#DIM LOCATION
+
+BANQUET_ID = ADD_BANQUETS_UPCOMING:BANQUET_INDEX
+;if master at location
+PRESENT = CFLAG:MASTER:現在位置 == GET_MAP_REPLACEMENT(ADD_BANQUETS_LOCATION:BANQUET_INDEX)
+LAPSE = TIME_PROGRESS(TIME:1)
+LOCATION = GET_MAP_REPLACEMENT(ADD_BANQUETS_LOCATION:BANQUET_INDEX)
+
+SIF PRESENT
+    ADD_BANQUET12_PARTICIPATION_TIME += LAPSE
+
+SELECTCASE ADD_BANQUETS_STATUS:BANQUET_INDEX
+    CASE ADD_BANQUET_STATE_PREPARING
+        IF PRESENT
+            FOR LOCAL, 1, CHARANUM
+                IF CFLAG:LOCAL:BANQUET == BANQUET_ID && CFLAG:LOCAL:BANQUET_ROLE > 1
+                    IF LOCAL == [[華扇]]
+                        PRINTFORML %CALLNAME:LOCAL% is preparing the banquet in a diligent manner.
+                    ELSEIF TALENT:LOCAL:恋慕
+                        PRINTFORML %CALLNAME:LOCAL% smiles at you while preparing for the banquet.
+                    ELSE
+                        PRINTFORML %CALLNAME:LOCAL% is preparing the banquet in a rather sloppy manner.
+                    ENDIF
+                ENDIF
+            NEXT
+        ENDIF
+    CASE ADD_BANQUET_STATE_IN_PROGRESS
+        FOR LOCAL, 1, CHARANUM
+            IF CFLAG:LOCAL:BANQUET == BANQUET_ID && CFLAG:LOCAL:現在位置 == LOCATION
+                CALL ADD_BANQUET_DRINKING(LOCAL, LAPSE)
+                SIF PRESENT
+                    CALL ADD_BANQUET_DRINKING_DESCRIPTIONS(LOCAL)
+                ;TODO more unique descriptions?
+            ENDIF
+        NEXT
+    CASE ADD_BANQUET_STATE_FINISHED
+ENDSELECT
+
+@ADD_BANQUET_PREPARATION_TEXT12(CHARA, LOCATION)
+#DIM CHARA
+#DIM LOCATION
+CALL ADD_BANQUET_DRINKING_PREPARATION_TEXT(CHARA, LOCATION)
+
+@ADD_BANQUET_JOIN_TEXT12(CHARA, LOCATION)
+#DIM CHARA
+#DIM LOCATION
+CALL ADD_BANQUET_DRINKING_JOIN_TEXT(CHARA, LOCATION)
+
+@ADD_BANQUET_SET_PARTICIPANTS12
+#DIM BANQUET_INDEX
+#DIM BANQUET_SCALE
+BANQUET_INDEX = ADD_BANQUET_INDEX(12)
+BANQUET_SCALE = ADD_BANQUETS_SCALE:BANQUET_INDEX
+
+CALL ADD_BANQUET_FILL_PARTICIPANTS(BANQUET_INDEX, 0, 0)
+
+@ADD_BANQUET_PARTICIPANT_JOIN_CHECK12(ARG)
+IF ARG == [[チルノ]] ;the only one brave and/or stupid enough to join twice, joins fairly regularly
+    RETURN !RAND:2
+ENDIF
+;otherwise, it's mostly the dumb ones who join
+;RETURN RAND:100 < 3 - (ABL:ARG:教養 / 2)
+RETURN RAND:100 < 8 - (ABL:ARG:教養 / 2) ;nas: more idiots join lol
+
+@ADD_BANQUET_WORKLOAD_PREPARATION12(ARG)
+#DIM SCALE
+#DIM BANQUET_INDEX
+#DIM WORKLOAD
+
+CALL ADD_BANQUET_DRINKING_PREPARATION_WORKLOAD(ARG, ADD_BANQUET_INDEX(12))
+
+@ADD_BANQUET_WORKLOAD_PARTICIPATION12(ARG, SCALE)
+#DIM SCALE
+CALL ADD_BANQUET_DRINKING_WORKLOAD(ARG, SCALE)
+
+@ADD_BANQUET_MESSAGE_TALK12
+#DIM BANQUET_INDEX
+BANQUET_INDEX = ADD_BANQUET_INDEX(12)
+
+PRINTFORMDL The heavenly banquet continues...
+SELECTCASE ADD_BANQUET12_DISASTER
+    CASE 1
+        PRINTFORMD The sake keeps flowing like water, everyone drinking eagerly
+        SELECTCASE ADD_BANQUET12_QUALITY
+            CASE IS < 50
+                PRINTFORMDL , losing themselves to the magic of alcohol.
+            CASE IS < 100
+                PRINTFORMDL .
+            CASEELSE
+                PRINTFORMDL , greatly enjoying the taste.
+        ENDSELECT
+    CASE 0
+        PRINTFORMDL People drink and eat leisurely.
+    CASE -1
+        PRINTFORMDL Everyone present seems to be in a great mood, enjoying the wonderful food and drink.
+ENDSELECT
+
+@ADD_BANQUET_HELP_PREPARE12
+#DIM BANQUET_INDEX
+BANQUET_INDEX = ADD_BANQUET_INDEX(12)
+
+PRINTFORMDL You help with the preparations for the heavenly banquet.
+
+SELECTCASE ADD_BANQUET12_PREPARATION_STAGE
+    CASE 0
+        PRINTFORMDL Tenshi tells you to set up the cups and plates for the banquet.
+        IF GETBIT(ADD_BANQUET12_TOOLS, 4)
+            PRINTFORMDL Do you want to replace the tableware with your own?
+            CALL ASK_YN
+            IF !RESULT
+                IF RAND:(ABL:MASTER:清掃技能)
+                    PRINTFORMDL While nobody's looking, you quickly replace the chipped and filthy plates and cups and replace them with your Royal Doulton with the hand-painted periwinkles.
+                    PRINTFORMDL The banquet already looks much nicer now.
+                    ADD_BANQUET12_QUALITY += 25
+                ELSE
+                    PRINTFORMDL Unfortunately, as you move to swap the tableware, Tenshi comes over, and you're forced to abandon your plot.
+                ENDIF
+            ELSE
+                PRINTFORMDL You take out the chipped plates and cups and start setting them up.
+            ENDIF
+        ELSE
+            PRINTFORMDL You take out the chipped plates and cups and start setting them up.
+        ENDIF
+        IF ABL:MASTER:清掃技能
+            PRINTFORMDL You use your cleaning skills to polish up the plates and cups nicely.
+            ADD_BANQUET12_QUALITY += MIN(ABL:MASTER:清掃技能 * 2, 10)
+        ENDIF
+    CASE 1
+        IF !ADD_BANQUET12_KASEN_HOST
+            PRINTFORMDL Tenshi says she has to go out for just a little while, leaving you alone with the sake jar.
+            PRINTFORMDL Do you want to replace the low-grade sake with some of your own?
+            CALL ASK_M(@"Yes (req. 20 sake, {ITEM:清酒} left)",ITEM:清酒 >= 20, "No", 1)
+            IF !RESULT
+                IF RAND:(TALENT:MASTER:調合Lv)
+                    PRINTFORMDL You throw out the sake in the jar and quickly replace it with your own.
+                    PRINTFORMDL It's expensive, but at least you're guaranteed a good drink today.
+                    CALL LOST_ITEM("清酒", 20, 2)
+                    ADD_BANQUET12_QUALITY += 40
+                ELSE
+                    PRINTFORMDL While carrying the sake jar, you find Shion constantly hovering over you, giving you no chance to switch out the content.
+                ENDIF
+            ELSE
+                PRINTFORMDL You decide to leave Tenshi's sake untouched.
+            ENDIF
+            IF GETBIT(ADD_BANQUET12_TOOLS, 1)
+                PRINTFORMDW You quickly run the sake through your replica sake dish, increasing the quality.
+                ADD_BANQUET12_QUALITY += MIN(TALENT:MASTER:調合Lv * 3, 15)
+            ENDIF
+        ELSE
+            PRINTFORMDL You help Kasen with setting up the sake.
+        ENDIF
+    CASE 2
+        IF !ADD_BANQUET12_KASEN_HOST
+            PRINTFORMDL You start cooking the food on Tenshi's orders.
+            PRINTFORMDL Do you want to sneakily use your own vegetables instead?
+
+            CALL ASK_M(@"Yes (req. 10 each of cabbage, cucumber, tomato, onion, eggplant, and carrot)",ITEM:キャベツ >= 10 && ITEM:キュウリ >= 10 && ITEM:トマト >= 10 && ITEM:タマネギ >= 10 && ITEM:ナス >= 10 && ITEM:ニンジン >= 10, "No", 1)
+            IF !RESULT
+                PRINTFORMDL You ignore the vegetables Tenshi and Shion brought and instead use your own.
+                CALL LOST_ITEM("キャベツ", 10, 1)
+                CALL LOST_ITEM("キュウリ", 10, 1)
+                CALL LOST_ITEM("トマト", 10, 1)
+                CALL LOST_ITEM("タマネギ", 10, 1)
+                CALL LOST_ITEM("ナス", 10, 1)
+                CALL LOST_ITEM("ニンジン", 10, 2)
+                ADD_BANQUET12_QUALITY += 20
+            ELSE
+                PRINTFORMDL You decide to use the vegetables Tenshi and Shion brought with them.
+            ENDIF
+        ELSE
+            PRINTFORMDL You help Kasen with the cooking. The high-quality ingredients she brought make it easy to make something good out of them.
+        ENDIF
+        ADD_BANQUET12_QUALITY += MIN(ABL:MASTER:料理技能 * 2, 10)
+        IF GETBIT(ADD_BANQUET12_TOOLS, 3)
+            PRINTFORMDL You liberally apply Minoriko's special herbs and spices to the food.
+            PRINTFORMDL Regardless of the quality of the food, the smell is wonderful, at the very least.
+
+            ADD_BANQUET12_QUALITY += 5
+        ENDIF
+        WAIT
+    CASEELSE
+        PRINTFORMDW You help Tenshi and Shion set up some decorations to improve the atmosphere around %NAME_FROM_PLACE_THE(GET_MAP_REPLACEMENT(ADD_BANQUETS_LOCATION:BANQUET_INDEX))%.
+        ADD_BANQUET12_QUALITY += RAND:(MAX(ABL:MASTER:音楽技能 + ABL:MASTER:教養,1))
+ENDSELECT
+ADD_BANQUET12_PREPARATION_STAGE++
+
+DEBUGPRINTFORML Current heavenly banquet quality: {ADD_BANQUET12_QUALITY}.
+
+@EVENTTRAIN
+#LATER
+IF ADD_BANQUET12_DISASTER > 0
+    PRINTFORMDL After that disastrous party yesterday, you feel like absolute garbage.
+    PRINTFORMDW You should probably take things easy today.
+	CALL BUFF_BASE(MASTER, BASE_体力, -MAXBASE:MASTER:体力 / 2)
+	CALL BUFF_BASE(MASTER, BASE_気力, -MAXBASE:MASTER:気力 / 2)
+	CALL BUFF_BASE(MASTER, BASE_精力, -MAXBASE:MASTER:精力 / 2)
+	CALL BUFF_BASE(MASTER, BASE_TSP, -MAXBASE:MASTER:TSP / 2)
+    CALL COLORMESSAGE(@"Your STA, ENE, VIG, and TSP are halved for the day. (The Worst Banquet)",C_YELLOW,2,1)
+    ADD_BANQUET12_BAD_EXPERIENCE = 1
+    ADD_BANQUET12_DISASTER = 0
+ELSEIF ADD_BANQUET12_DISASTER < 0
+    PRINTFORMDL After that incredible party yesterday, you're full of energy.
+    PRINTFORMDW You feel like you could take on the whole world today.
+	CALL BUFF_BASE(MASTER, BASE_体力, MAXBASE:MASTER:体力 / 5)
+	CALL BUFF_BASE(MASTER, BASE_気力, MAXBASE:MASTER:気力 / 5)
+	CALL BUFF_BASE(MASTER, BASE_精力, MAXBASE:MASTER:精力 / 5)
+	CALL BUFF_BASE(MASTER, BASE_TSP, MAXBASE:MASTER:TSP / 5)
+    CALL COLORMESSAGE(@"Your STA, ENE, VIG, and TSP are increased by 20\% for the day. (The Best Banquet)",C_YELLOW,2,1)
+    ADD_BANQUET12_DISASTER = 0
+ENDIF

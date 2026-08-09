@@ -1,0 +1,312 @@
+;FileName_JOB.ERB ----------------------------- Rev1.00
+;仕事開始処理
+;CALL		USER
+;ARG		キャラNO
+;RETURN		VOID
+;COMMENT	
+;-----------------------------------------------------------
+@CHARA_JOBSTR(ARG)
+#DIM 移動前
+#DIM 移動後
+#DIMS HOLD_SAMEN
+
+
+IF EX:ARG:膣内精液 + EX:ARG:アナル内精液 >= 500
+	HOLD_SAMEN = , %HIS_HER(ARG)% stomach full of semen
+ELSEIF EX:ARG:膣内精液 + EX:ARG:アナル内精液 >= 100
+	HOLD_SAMEN = , with semen in %HIS_HER(ARG)% stomach
+ELSE
+	HOLD_SAMEN =
+ENDIF
+
+;FOR LOCAL,0,CHARANUM
+;	SIF CFLAG:LOCAL:職場 == 0 && CFLAG:LOCAL:行動 == 5
+;		PRINTFORMW ### JOB 326ERROR %CALLNAME:LOCAL% ###
+;NEXT
+VARSET LOCAL
+移動前 = 0
+移動後 = 0
+;泣く泣く仕事へ 真面目だからね
+IF CFLAG:ARG:うふふ && !GROUPMATCH(CFLAG:ARG:職種, 49, 51) && TCVAR:ARG:Common_Sense_Alteration_Status <= 75 && FLAG:催眠強度 <= 75 ;custom code
+	PRINTFORMW Unfortunately, %CALLNAME:ARG% has to \@ CFLAG:ARG:職場 == CFLAG:ARG:現在位置 ? start working # go to work \@ now...
+	IF CFLAG:ARG:職場 == CFLAG:ARG:現在位置 ;qol custom code
+		CALL ENDUFUFU_ALL
+	ELSE
+	CALL ENDUFUFU(ARG)
+	ENDIF
+	;CFLAG:MASTER:うふふ = 0
+	TFLAG:106 = 0
+	IF TFLAG:102 == 3 && TFLAG:抱きつきモード
+		TFLAG:抱きつきモード = 0
+		TFLAG:102 = 1
+	ENDIF
+ENDIF
+
+SIF CFLAG:ARG:行動 == 5
+	CALL JOBMOVE(ARG)
+
+IF CAN_SEE(ARG) && !TFLAG:遠距離移動
+	IF CFLAG:ARG:現在位置 == TFLAG:宴会場 && TIME_PROGRESS(TIME:1) && (CFLAG:ARG:職種 == 49 || CFLAG:ARG:職種 == 51)
+		CALL 宴会描写(ARG)
+	ELSEIF CFLAG:ARG:現在位置 == CFLAG:ARG:職場 && TIME_PROGRESS(TIME:1)
+		CALL 仕事情景描写(ARG)
+		IF BASE:ARG:仕事量
+			;仕事がまだ3分の2以上残っている
+			IF BASE:ARG:仕事量 >= (MAXBASE:ARG:仕事量 / 3) * 2
+				IF CFLAG:ARG:職種 == 48
+					;addition custom code
+					PRINTFORMW  There's still quite a lot of preparations for the %ADD_BANQUET_TERM(CFLAG:ARG:BANQUET)% left to do...
+				ELSEIF CFLAG:ARG:職種 == 50
+					;addition custom code
+					PRINTFORMW  There's still quite a lot of cleaning up after the %ADD_BANQUET_TERM(CFLAG:ARG:BANQUET_CLEANUP)% left to do...
+				ELSEIF CFLAG:ARG:職種 == 46
+					PRINTFORMW %HE_SHE(ARG,1)%'s still immersed in playing...
+				ELSEIF CFLAG:ARG:職種 == 49
+				ELSE
+					PRINTFORMW There's quite a lot of %GET_JOBNAME_TR(ARG,3)% left to do.
+				ENDIF
+				LOCAL = 3
+			;仕事がまだ3分の1以上残っている
+			ELSEIF BASE:ARG:仕事量 >= (MAXBASE:ARG:仕事量 / 3)
+				IF CFLAG:ARG:職種 == 48
+					;addition custom code
+					PRINTFORMW  Finishing the %ADD_BANQUET_TERM(CFLAG:ARG:BANQUET)% preparation will take a bit more time...
+				ELSEIF CFLAG:ARG:職種 == 50
+					;addition custom code
+					PRINTFORMW  Finishing the cleanup after the %ADD_BANQUET_TERM(CFLAG:ARG:BANQUET_CLEANUP)% will take a bit more time...
+				ELSEIF CFLAG:ARG:職種 == 46
+					PRINTFORMW %HE_SHE(ARG,1)% still wants to play...
+				ELSEIF CFLAG:ARG:職種 == 49
+				ELSE
+					PRINTFORMW There's still a bit of %GET_JOBNAME_TR(ARG,3)% left to do.
+				ENDIF
+				LOCAL = 2
+			ELSE
+				IF CFLAG:ARG:職種 == 48
+					;addition custom code
+					PRINTFORMW  The %ADD_BANQUET_TERM(CFLAG:ARG:BANQUET)% planning is almost complete...
+				ELSEIF CFLAG:ARG:職種 == 50
+					;addition custom code
+					PRINTFORMW  The %ADD_BANQUET_TERM(CFLAG:ARG:BANQUET_CLEANUP)% cleanup is almost complete...
+				ELSEIF CFLAG:ARG:職種 == 46
+					PRINTFORMW %HE_SHE(ARG,1)% seems to be getting tired from playing...
+				ELSEIF CFLAG:ARG:職種 == 49
+				ELSE
+					PRINTFORMW There's just a bit of %GET_JOBNAME_TR(ARG)% left to do.
+				ENDIF
+				LOCAL = 1
+			ENDIF
+			;通常のお仕事口上　お仕事中かつ宴会フラグが立ってなければ表示する
+			SIF CFLAG:ARG:宴会参加 == 0
+				CALL KOJO_MESSAGE_SEND("EVENT",13,ARG,2,LOCAL)
+		ENDIF
+		;宴会中の場合のみ、スムーズに次の動作に繋がる
+		;酒を飲み終わった時に１ターン何もせずボーっとするのを防止する処理
+;		SIF CFLAG:ARG:宴会参加 > 0 && BASE:ARG:仕事量 <= 0
+;			CALL CHARA_JOBEND(ARG)
+	ELSEIF CFLAG:ARG:職種 != 51
+		;custom code, not using this as it only causes problems
+		; IF !AT_HOME(ARG) && GET_MAPID(CFLAG:ARG:現在位置) != MAIN_MAP
+		; 	移動前 = 6000 + (CFLAG:ARG:現在位置 / 10)
+		; ELSE
+		; 	移動前 = CFLAG:ARG:現在位置
+		; ENDIF
+		; IF IN_HOME(CFLAG:ARG:職場) == 0 && GET_MAPID(CFLAG:ARG:職場) != MAIN_MAP
+		; 	移動後 = 6000 + (CFLAG:ARG:職場 / 10)
+		; ELSE
+		; 	移動後 = CFLAG:ARG:職場
+		; ENDIF
+		;時間経過してなかったら非表示
+		IF !TIME_PROGRESS(TIME:1)
+			;custom code
+			PRINTFORMW %CALLNAME:ARG% is busy and leaves...
+		;移動前と移動後の位置が同じなら非表示
+		ELSEIF CFLAG:ARG:現在位置 == CFLAG:ARG:職場 ;custom code
+		ELSEIF CFLAG:ARG:現在位置 == OMANEKIBEYA()
+			;部屋に上がってたら出る,すいません面倒なので地の文まとめちゃいます；
+			IF MOREDATE && CFLAG:MASTER:お招き != ARG ;custom code, don't kick from rooms they don't own
+				PRINTFORMW %CALLNAME:ARG% has some work to do, so %HE_SHE(ARG)% thanks %CALLNAME:(CFLAG:MASTER:お招き)% and leaves.
+			ELSE
+				CFLAG:MASTER:現在位置 = CFLAG:ARG:自宅位置
+				PRINTFORMW %CALLNAME:ARG% has some work to do, so %HE_SHE(ARG)% leaves.
+			ENDIF
+		ELSEIF CFLAG:ARG:職種 == 48
+			PRINTFORM %CALLNAME:ARG% goes from 
+			;Custom code
+			PRINTFORMS NAME_FROM_PLACE_THE(CFLAG:ARG:現在位置)
+			PRINT  to 
+			;Custom code
+			PRINTFORMS NAME_FROM_PLACE_THE(CFLAG:ARG:職場)
+			PRINTFORMW  to prepare for the banquet%HOLD_SAMEN%.
+		ELSEIF CFLAG:ARG:職種 == 49
+			PRINTFORM %CALLNAME:ARG% goes from 
+			;Custom code
+			PRINTFORMS NAME_FROM_PLACE_THE(CFLAG:ARG:現在位置)
+			PRINT  to 
+			;Custom code
+			PRINTFORMS NAME_FROM_PLACE_THE(CFLAG:ARG:職場)
+			PRINTFORMW  to take part in the banquet%HOLD_SAMEN%.
+		ELSEIF CFLAG:ARG:職種 == 46
+			PRINTFORM %CALLNAME:ARG% goes from 
+			;Custom code
+			PRINTFORMS NAME_FROM_PLACE_THE(CFLAG:ARG:現在位置)
+			PRINT  to 
+			;Custom code
+			PRINTFORMS NAME_FROM_PLACE_THE(CFLAG:ARG:職場)
+			PRINTFORMW  to play%HOLD_SAMEN%.
+		ELSE
+			PRINTFORM %CALLNAME:ARG% goes from 
+			;Custom code
+			PRINTFORMS NAME_FROM_PLACE_THE(CFLAG:ARG:現在位置)
+			PRINT  to 
+			;Custom code
+			PRINTFORMS NAME_FROM_PLACE_THE(CFLAG:ARG:職場)
+			;Custom code
+			PRINTFORMW  to %GET_JOBNAME_TR(ARG,2)%%HOLD_SAMEN%.
+		ENDIF
+		
+		;通常の職場に移動口上　宴会フラグが立ってなければ表示する
+		SIF CFLAG:ARG:宴会参加 == 0
+			CALL KOJO_MESSAGE_SEND("EVENT",13,ARG,1,LOCAL)
+			
+		;addition custom code, let 2hu invite you with them
+		CALL Add_Move_Job(ARG)
+	ENDIF
+ENDIF
+SIF CFLAG:ARG:添い寝中
+	CALL SET_TOGETHER(0,ARG,1)
+SIF CFLAG:ARG:同行 && CFLAG:ARG:職種 != 51
+	CFLAG:ARG:同行 = 0
+;End date due to work(? i legit have no idea why or how this gets called)
+IF MOREDATE && IS_IN_GROUP_DATE(ARG) ;Check if currently dating
+	CALL REMOVE_FROM_GROUP_DATE(ARG)
+ELSEIF FLAG:デート相手 == ARG
+	FLAG:デート相手 = MASTER
+	TFLAG:デート前好感度 = 0
+	CFLAG:ARG:デート中 = MAIN_MAP
+ENDIF
+;職場へ移動
+SIF CFLAG:ARG:職場 && SHIRAHU(ARG)
+	CFLAG:ARG:現在位置 = CFLAG:ARG:職場
+SIF CFLAG:ARG:職種 == 49 && !TCVAR:ARG:泥酔 && (BASE:ARG:酒気 > (MAXBASE:ARG:酒気 / 10) * 8)
+	CALL ENKAI_DRUNK(ARG)
+CFLAG:ARG:行動 = 5
+IF TCVAR:ARG:着替え
+	CALL OKIGAE(ARG,TCVAR:ARG:着替え)
+ENDIF
+
+;FileName_JOB.ERB ----------------------------- Rev1.00
+;仕事終了処理
+;CALL		USER
+;ARG		キャラNO
+;RETURN		VOID
+;COMMENT	
+;-----------------------------------------------------------
+@CHARA_JOBEND(ARG)
+;仕事後ディレイSET
+SIF CFLAG:ARG:行動 == 5 && !CFLAG:ARG:拠点来訪 ;qol custom code, skip the delay for special visitors
+	CALL SET_DERAY(3,ARG)
+
+;仕事量を0にする
+SIF CFLAG:ARG:行動 == 5
+	BASE:ARG:仕事量 = 0
+;このタイミングで疲労追加
+CALL ADD_TIRED(ARG, MAXBASE:ARG:仕事量 / 2)
+
+;仕事中フラグOFF
+CFLAG:ARG:行動 = 0
+;qol custom code
+IF TCVAR:ARG:本来の服装 && CFLAG:ARG:基本服装セット == TCVAR:ARG:着替え
+	CALL OKIGAE(ARG,TCVAR:ARG:本来の服装)
+	TCVAR:ARG:本来の服装 = 0
+	TCVAR:ARG:着替え = 0
+ENDIF
+IF CFLAG:ARG:現在位置 == CFLAG:ARG:職場 && CFLAG:ARG:職種 != 51
+	SELECTCASE CFLAG:ARG:職種
+	CASE 46
+		IF CFLAG:ARG:現在位置 == CFLAG:MASTER:現在位置
+			PRINTFORMW %CALLNAME:ARG% has finished playing.
+			;お疲れ様口上
+			SIF CFLAG:ARG:宴会参加 == 0
+				CALL KOJO_MESSAGE_SEND("EVENT",13,ARG,3,0)
+		ENDIF
+	CASE 48
+		IF CFLAG:ARG:現在位置 == CFLAG:MASTER:現在位置
+			;addition custom code, tweaked for new banquet system
+			PRINTFORMW %CALLNAME:ARG% has finished preparing for the %ADD_BANQUET_TERM(CFLAG:ARG:BANQUET)%.
+			SIF ARG == [[霊夢]]
+				PRINTL  Thanks for your hard work, Reimu!
+		ENDIF
+		;addition custom code, handled by new banquet system
+		; IF DAY == FLAG:開始日 && TIME >= FLAG:33
+		; 	CALL ENKAI_START(ARG)
+		; ELSEIF 宴会開催中判定()
+		; 	CALL ENKAI_START(ARG)
+		; ENDIF
+	CASE 49
+		;addition custom code, handled by new banquet system
+		;CALL ENKAI_DRUNK(ARG)
+	CASE 50
+		IF CFLAG:ARG:現在位置 == CFLAG:MASTER:現在位置
+			;addition custom code, tweaked for new banquet system
+			PRINTFORMW %CALLNAME:ARG% has finished cleaning up after the %ADD_BANQUET_TERM(CFLAG:ARG:BANQUET_CLEANUP)%.
+			SIF ARG == [[霊夢]]
+				PRINTL  Thanks for your hard work, Reimu!
+		ENDIF
+		CFLAG:ARG:職種 = 0
+		CFLAG:ARG:宴会参加 = 0 ;bugfix custom code
+		CALL CHARA_JOBEND_GO_HOME(ARG)
+	CASEELSE
+		IF CFLAG:ARG:現在位置 == CFLAG:MASTER:現在位置
+			PRINTFORMW %CALLNAME:ARG% has finished %GET_JOBNAME_TR(ARG,4)%.
+			;お疲れ様口上
+			CALL KOJO_MESSAGE_SEND("EVENT",13,ARG,3,0)
+			IF MAXBASE:ARG:仕事量 < (TCVAR:ARG:手伝った量 * 3) && TCVAR:ARG:お礼
+				PRINTFORMW %CALLNAME:ARG% gives you %ItemName_Full(TCVAR:ARG:お礼)% as thanks.
+				ITEM:(TCVAR:ARG:お礼) ++
+			ENDIF
+		ENDIF
+		IF CFLAG:ARG:現在位置 / 100 != MAIN_MAP && !CFLAG:ARG:神社在住 && VISIT(ARG)
+			IF !RAND:15 && CAN_VISIT(ARG) ;custom code, use the CAN_VISIT function
+				CALL 主人公物件へ向かう(ARG)
+			ELSEIF CFLAG:ARG:現在位置 == CFLAG:MASTER:現在位置 && CAN_DATE(ARG)
+				PRINTFORML %CALLNAME:ARG% asks you out for a date.
+				CALL KOJO_MESSAGE_SEND("EVENT",27,ARG,0,0) ;addition custom code, call date invite kojo
+				CALL ASK_YN
+				IF !RESULT
+					CALL KOJO_MESSAGE_SEND("EVENT",27,ARG,1,0) ;addition custom code
+					CALL 外出先から誘えるか(ARG)
+					IF RESULT
+						;Group date check
+						SIF MOREDATE
+							CALL ADD_TO_GROUP_DATE(ARG)
+						CFLAG:MASTER:同行 = 60
+						CFLAG:ARG:同行 = 60
+						CFLAG:ARG:デート中 = CFLAG:MASTER:現在位置 / 100
+						FLAG:デート相手 = ARG
+						TFLAG:デート前好感度 = CFLAG:ARG:好感度
+						TIME += 1
+						PRINTFORMW You finish your work, and then take %CALLNAME:ARG% out on a date.
+						;必要かわからんが一応
+						RETURN
+					ENDIF
+				ELSE
+					CALL KOJO_MESSAGE_SEND("EVENT",27,ARG,2,0) ;addition custom code
+				ENDIF
+			ENDIF
+		ENDIF
+		CALL CHARA_JOBEND_GO_HOME(ARG)
+	ENDSELECT
+ENDIF
+
+
+@CHARA_JOBEND_GO_HOME(ARG)
+IF CFLAG:ARG:神社在住 && !AT_HOME(ARG)
+	SIF CFLAG:ARG:現在位置 == CFLAG:MASTER:現在位置
+			PRINTFORMW %CALLNAME:ARG% returns home to %GET_MAPNAME(MAIN_MAP)%.
+	IF CFLAG:ARG:(450 + MAIN_MAP) ;qol custom code
+		CFLAG:ARG:現在位置 = CFLAG:ARG:(450 + MAIN_MAP)
+	ELSE
+	CFLAG:ARG:現在位置 = MAXROOM
+	ENDIF ;qol custom code
+ENDIF

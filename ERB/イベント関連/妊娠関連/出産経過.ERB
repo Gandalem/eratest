@@ -1,0 +1,361 @@
+@出産経過(ARG)
+#DIM CHILDNUM
+#DIM D_BEFORE
+#DIM nCurrentChildCareCount
+#DIM nCurrentCareChild
+
+IF CFLAG:ARG:妊娠経過日数 > 0 && (!IsDead:ARG:0 || CFLAG:ARG:妊娠経過日数 > 98)
+	D_BEFORE = CFLAG:ARG:妊娠経過日数
+	CFLAG:ARG:妊娠経過日数 += FLAG:妊娠日程倍率 + 1
+	FOR LOCAL,20,72
+		SIF !GROUPMATCH(LOCAL, 20, 30, 40, 60, 71)
+			CONTINUE
+		CALL PREG_DAY_ADJUSTER(ARG, LOCAL, D_BEFORE, CFLAG:ARG:妊娠経過日数)
+	NEXT
+ENDIF
+	;Custom code, egg laying.
+SIF TALENT:ARG:NESTING > 0
+	TALENT:ARG:NESTING += FLAG:妊娠日程倍率 + 1
+SIF CFLAG:ARG:育児人数 > 0 && CFLAG:ARG:出産経過日 == 0 ;failsafe
+	CFLAG:ARG:出産経過日 = 19 ;set to pre-recovery so it becomes 20
+
+SIF CFLAG:ARG:出産経過日 > 0
+	CFLAG:ARG:出産経過日 += FLAG:妊娠日程倍率 + 1
+	;Custom code, additional pregnancies or eggs.
+CALL PROGRESS_PREGNANCIES(ARG)
+;potentially, even if these counters misbehave, because we check birthdays the events will popup properly anyway and process all children of a 2hu
+nCurrentChildCareCount = CFLAG:ARG:出産経過日
+nCurrentCareChild = TALENT:ARG:育児中
+
+;FOR LOCAL, 1, (CFLAG:ARG:子供人数 + 1) ;bug fix loop, process all children
+;NAS: ALL children
+;CHILDNUM = LOCAL
+FOR CHILDNUM, 0, CHARANUM
+	;not a son or daughter
+	SIF CharaFamily:ARG:CHILDNUM != 1
+		CONTINUE
+	SIF !TALENT:CHILDNUM:BornChild ;not born child
+		CONTINUE
+
+	TALENT:ARG:育児中 = CHILDNUM
+	CFLAG:ARG:出産経過日 = (DAY+(StartingYear*YearLength)-CharaAge:CHILDNUM:2)+1 ;their current growth counter/age
+
+	;子離れ
+;	IF CFLAG:ARG:出産経過日 > CHILD_自立 && !CHILD_INDEPENDENT:ARG:CHILDNUM
+IF CFLAG:ARG:出産経過日 > CHILD_自立 && !GETBIT(TALENT:CHILDNUM:BornChild, 1) ;bug fix
+		SIF CHILD_MULTIPLE_FIRST(ARG,CHILDNUM) == CHILDNUM
+				;Custom code, only print a line for the first child of a litter.
+			DRAWLINE
+		;口上チェック,存在しないならRESULT=2,以下同様
+		CALL KOJO_MESSAGE_SEND("CHILD", 0, ARG, 0, 0, "RAISING_自立")
+		IF RESULT == 2
+			PRINTFORMW Yours and %CALLNAME:ARG%'s child %CALLNAME:CHILDNUM% starts standing on %HIS_HER(CHILDNUM)% own legs and reaches independency, on %HIS_HER(CHILDNUM)% path to become a full-fledged %PRINT_MALE("man",CHILDNUM)%.
+			PRINTFORML 
+			PRINTFORML You wish to tell %HIM_HER(CHILDNUM)% that %HES_SHES(CHILDNUM)% always welcome to come and visit anytime, but the words get caught in your throat...
+			PRINTFORMW 
+		ENDIF
+		CFLAG:ARG:育児人数 -= 1
+		CFLAG:MASTER:育児人数 -= 1
+		;IF CFLAG:ARG:育児人数 >= 0
+		IF CHILD_MULTIPLE_LAST(ARG,CHILDNUM) == CHILDNUM && RESULT == 2
+			IF CFLAG:ARG:育児人数 > 0
+				;PRINTFORML 遠くなる子の背中を見ながらまだ小さい他の子供も無事に育てようと、
+				PRINTFORML You clasp your hands in prayer as the child walks off.
+				PRINTFORMW Hoping that the next child will grow up safely as well, you and %CALLNAME:ARG% pray together quietly...
+				;PRINTFORML %CALLNAME:ARG%は%CALLNAME:MASTER%と静かに誓った。
+				;PRINTFORMW %CALLNAME:ARG% and you pray together quietly...
+			ELSE
+				;PRINTFORML 遠くなる子の背中を見ながら%CALLNAME:ARG%は%CALLNAME:MASTER%とこどもの無事を祈った。
+				PRINTFORMW You and %CALLNAME:ARG% pray together as %CALLNAME:CHILDNUM% walks off into the distance...
+			ENDIF
+			;PRINTFORML 別れ際、子供は%CALLNAME:MASTER%が%CALLNAME:ARG%を顧みず他の女の尻を追い回していたことを口汚く罵り、
+			;PRINTFORML 自分は絶対に%CALLNAME:MASTER%のようにはならないと吐き捨てて去っていった
+			CALL ASK_DIARY(@"\@ CHILD_MULTIPLE_COUNT(ARG,CHILDNUM) > 1 ? %CALLNAME:CHILDNUM% and %HIS_HER_CHILD(ARG,0,CHILDNUM)% siblings have # %CALLNAME:CHILDNUM% has \@ become independent.")
+		ENDIF
+
+		SETBIT TALENT:CHILDNUM:BornChild, 1
+		;自立するときに再度設定する
+		;CALL 自立先選定(ARG, CHILDNUM)
+	ENDIF
+	IF CFLAG:ARG:出産経過日 == CHILD_自立前
+		SIF CHILD_MULTIPLE_FIRST(ARG,CHILDNUM) == CHILDNUM
+				;Custom code, only print a line for the first child of a litter.
+			DRAWLINE
+		;口上チェック
+		CALL KOJO_MESSAGE_SEND("CHILD", 0, ARG, 0, 0, "RAISING_自立前")
+		IF RESULT == 2
+			PRINTFORML %CALLNAME:ARG%'s %CALLNAME:CHILDNUM% has come a long way, and the day for separation comes close.
+			PRINTFORML %HE_SHE(CHILDNUM,1)% has grown a lot, and isn't that much shorter than %CALLNAME:ARG% now.
+			PRINTFORMW %BREAKENG(@"Soon the time will come for %HIM_HER(CHILDNUM)% to leave the house, let's spend the important moments left together and treasure them...")%
+		ENDIF
+	ELSEIF CFLAG:ARG:出産経過日 == CHILD_就学
+		SIF CHILD_MULTIPLE_FIRST(ARG,CHILDNUM) == CHILDNUM
+				;Custom code, only print a line for the first child of a litter.
+			DRAWLINE
+		;口上チェック
+		CALL KOJO_MESSAGE_SEND("CHILD", 0, ARG, 0, 0, "RAISING_就学")
+		IF RESULT == 2
+			PRINTFORML %CALLNAME:ARG%'s %CALLNAME:CHILDNUM% has started attending the Temple Elementary School.
+			PRINTFORML The %PRINT_MALE("boy",CHILDNUM)% is growing up fast.
+			PRINTFORML That the day when the child separates from its parents comes so fast...
+			PRINTFORMW You are overcome with sentimentality.
+		ENDIF
+
+		;remove "Baby" callnames
+		IF STRFIND(CALLNAME:CHILDNUM,"Baby") > -1 && STRFIND(nameArray:CHILDNUM:na_FirstName,"Baby") > -1
+			PRINTL
+			PRINTFORML And it seems like %HE_SHE(CHILDNUM)% doesn't want to be 「Baby」 anymore.
+			LOCALS '= nameArray:CHILDNUM:na_LastName
+			CALL RandomName(ARG, 5)
+			nameArray:CHILDNUM:na_LastName '= LOCALS
+			NAME:CHILDNUM '= nameChecker(CHILDNUM)
+			PRINTFORML The child renames %HIMSELF_HERSELF(CHILDNUM)% to 「%NAME:CHILDNUM%」.
+		ENDIF
+	ELSEIF CFLAG:ARG:出産経過日 == CHILD_しつけ
+		SIF CHILD_MULTIPLE_FIRST(ARG,CHILDNUM) == CHILDNUM
+				;Custom code, only print a line for the first child of a litter.
+			DRAWLINE
+		;口上チェック
+		CALL KOJO_MESSAGE_SEND("CHILD", 0, ARG, 0, 0, "RAISING_しつけ")
+		IF RESULT == 2
+			PRINTFORML %CALLNAME:ARG%'s %CALLNAME:CHILDNUM% has started showing wisdom, so you start teaching %HIM_HER(CHILDNUM)%.
+			PRINTFORML At the same time %HIS_HER(CHILDNUM)% ego has grown and %HE_SHE(CHILDNUM)% has started becoming mischievous.
+			PRINTFORMW %HE_SHE(CHILDNUM,1)% will have to learn about discipline too...
+		ENDIF
+	ELSEIF CFLAG:ARG:出産経過日 == CHILD_語彙
+		SIF CHILD_MULTIPLE_FIRST(ARG,CHILDNUM) == CHILDNUM
+				;Custom code, only print a line for the first child of a litter.
+			DRAWLINE
+		;口上チェック
+		CALL KOJO_MESSAGE_SEND("CHILD", 0, ARG, 0, 0, "RAISING_語彙")
+		IF RESULT == 2
+			PRINTFORML %CALLNAME:ARG%'s %CALLNAME:CHILDNUM%'s vocabulary has started increasing.
+			PRINTFORMW As for what's said, it's mostly two or three words at a time, fragmented, but slowly sentences are being formed.
+		ENDIF
+	ELSEIF CFLAG:ARG:出産経過日 == CHILD_喋る
+		SIF CHILD_MULTIPLE_FIRST(ARG,CHILDNUM) == CHILDNUM
+				;Custom code, only print a line for the first child of a litter.
+			DRAWLINE
+		;口上チェック
+		CALL KOJO_MESSAGE_SEND("CHILD", 0, ARG, 0, 0, "RAISING_喋る")
+		IF RESULT == 2
+			PRINTFORML %CALLNAME:ARG% rushes in, saying something important has happened.
+			PRINTFORML %CALLNAME:CHILDNUM% just called %HIM_HER(ARG)% %PRINT_MALE("papa",ARG)%.
+			PRINTFORML %BREAKENG(@"You hurry with %HIM_HER(ARG)%, and sure enough %CALLNAME:CHILDNUM% says 「%CAPITALIZE(PRINT_MALE("papa",ARG))%」 as soon as %HE_SHE(CHILDNUM)% sees %HIS_HER(ARG)% face.")%
+			PRINTFORM Wanting %HIM_HER(CHILDNUM)% to call your name too, you repeatedly point at yourself saying 
+			CALL SET_KOJO_COLOR(MASTER)
+			PRINTFORM 「%CAPITALIZE(PRINT_MALE("papa",MASTER))%」
+			RESETCOLOR
+			PRINTFORMW .
+		ENDIF
+	;Custom code, stop this message from overriding previous growth messages if the previous growth lengths are set low.
+	ELSEIF (CHILD_喋る > CHILD_よちよち+3 && INRANGE(CFLAG:ARG:出産経過日, CHILD_喋る - 3, CHILD_喋る - 1)) || (CHILD_喋る > CHILD_よちよち+1 && CFLAG:ARG:出産経過日 == CHILD_喋る-1)
+		SIF CHILD_MULTIPLE_FIRST(ARG,CHILDNUM) == CHILDNUM
+				;Custom code, only print a line for the first child of a litter.
+			DRAWLINE
+		;口上チェック
+		CALL KOJO_MESSAGE_SEND("CHILD", 0, ARG, 0, 0, "RAISING_会話寸前")
+		IF RESULT == 2
+			PRINTFORML Recently %CALLNAME:ARG%'s %CALLNAME:CHILDNUM% has started speaking.
+			PRINTFORML %BREAKENG(@"It's still unintelligible but, when %HE_SHE(CHILDNUM)% points at something %HE_SHE(CHILDNUM)% wants and tries to say something, words aren't needed.")%
+			PRINTFORMW Soon %HE_SHE(CHILDNUM)% will be able to talk.
+		ENDIF
+	ELSEIF CFLAG:ARG:出産経過日 == CHILD_よちよち
+		SIF CHILD_MULTIPLE_FIRST(ARG,CHILDNUM) == CHILDNUM
+				;Custom code, only print a line for the first child of a litter.
+			DRAWLINE
+		;口上チェック
+		CALL KOJO_MESSAGE_SEND("CHILD", 0, ARG, 0, 0, "RAISING_よちよち")
+		IF RESULT == 2
+			PRINTFORML Even if it's with unsteady legs, %CALLNAME:ARG%'s %CALLNAME:CHILDNUM% can now stand up and walk around.
+			PRINTFORML %BREAKENG(@"As %HIS_HER(CHILDNUM)% field of vision increases the things %HE_SHE(CHILDNUM)% can see does as well and %HE_SHE(CHILDNUM)%'s filled with curiosity.")%
+			PRINTFORMW You move away everything dangerous that %CALLNAME:CHILDNUM%'s hands can reach.
+		ENDIF
+
+	ELSEIF CFLAG:ARG:出産経過日 == CHILD_つかまり立ち
+		SIF CHILD_MULTIPLE_FIRST(ARG,CHILDNUM) == CHILDNUM
+				;Custom code, only print a line for the first child of a litter.
+			DRAWLINE
+		;口上チェック
+		CALL KOJO_MESSAGE_SEND("CHILD", 0, ARG, 0, 0, "RAISING_つかまり立ち")
+		IF RESULT == 2
+			PRINTFORML You crouch over %CALLNAME:ARG%'s %CALLNAME:CHILDNUM% and let %HIM_HER(CHILDNUM)% grab your finger.
+			PRINTFORMW You then lift the finger slowly, helping %CALLNAME:CHILDNUM% practice standing.
+		ENDIF
+	ELSEIF CFLAG:ARG:出産経過日 == CHILD_玩具
+		SIF CHILD_MULTIPLE_FIRST(ARG,CHILDNUM) == CHILDNUM
+				;Custom code, only print a line for the first child of a litter.
+			DRAWLINE
+		;口上チェック
+		CALL KOJO_MESSAGE_SEND("CHILD", 0, ARG, 0, 0, "RAISING_玩具")
+		IF RESULT == 2
+			PRINTFORML You have made a simple, small toy from wood for %CALLNAME:ARG%'s %CALLNAME:CHILDNUM%.
+			PRINTFORML Since %HE_SHE(CHILDNUM)% will probably bite it and throw it around, you make it simple and sturdy.
+			PRINTFORMW To ensure it doesn't hurt %HIM_HER(CHILDNUM)%, you polish all corners of it.
+		ENDIF
+	ELSEIF CFLAG:ARG:出産経過日 == CHILD_離乳
+		SIF CHILD_MULTIPLE_FIRST(ARG,CHILDNUM) == CHILDNUM
+				;Custom code, only print a line for the first child of a litter.
+			DRAWLINE
+		;口上チェック
+		CALL KOJO_MESSAGE_SEND("CHILD", 0, ARG, 0, 0, "RAISING_離乳")
+		IF RESULT == 2
+			PRINTFORMW Seeing your baby %CALLNAME:CHILDNUM% eat %HIS_HER(CHILDNUM)% food with a big smile, your heart warms up.
+		ENDIF
+		IF CHILD_MULTIPLE_LAST(ARG,CHILDNUM) == CHILDNUM && CFLAG:ARG:妊娠経過日数 < 60 && TALENT:ARG:NESTING < 60
+			PRINTFORML %CALLNAME:ARG%'s lactation period has ended.
+			IF TALENT:ARG:母乳体質 == 1 && EXP:ARG:噴乳経験 > 500 && EXP:ARG:出産経験 > 1
+				PRINTFORML %BREAKENG(@"However, as far more has been sucked from %CALLNAME:ARG%'s breasts than needed, they keep producing their nutritious, savory, milk even after the pregnancy.")%
+				PRINTFORMW %CALLNAME:ARG% has started【Lactating】!
+				TALENT:ARG:母乳体質 = 2
+			ELSEIF TALENT:ARG:母乳体質 == 2 ;addition custom code
+				PRINTFORM %CALLNAME:ARG% stops breast-feeding %CALLNAME:CHILDNUM%
+			IF CFLAG:ARG:乳ランクアップ && TALENT:ARG:バストサイズ > -3
+				PRINTFORML  and %HIS_HER(ARG)% breasts shrink a bit, though they continue to produce milk.
+			ELSE
+				PRINTFORML , though %HIS_HER(ARG)% breasts continue to produce milk.
+			ENDIF
+			ELSE
+				PRINTFORMW Having finished their role, %PARSE("your",5,,ARG)% breasts %COND_STR("shrink a bit and ", CFLAG:ARG:乳ランクアップ == 1 && TALENT:ARG:バストサイズ > -3)%stop lactating.
+				SIF TALENT:ARG:母乳体質 == 1
+					TALENT:ARG:母乳体質 = 0
+			ENDIF
+			;乳ランクアップフラグたってて、今絶壁じゃないなら小さくなる。通常出産以外の妊娠終了なんかも考慮するとCALLで呼び出す方が良いのだろうが…
+			IF CFLAG:ARG:乳ランクアップ && TALENT:ARG:バストサイズ > -3
+				TALENT:ARG:バストサイズ -= 1
+				CFLAG:ARG:乳ランクアップ --
+			ENDIF
+		ENDIF
+	ENDIF
+	IF CFLAG:ARG:出産経過日 == 20 && CFLAG:ARG:回復速度ダウン
+		IF CHILD_MULTIPLE_FIRST(ARG,CHILDNUM) == CHILDNUM
+				;Custom code, only print for the first child of a litter.
+			DRAWLINE
+			IF TALENT:ARG:妊娠 ;Custom code, different message while pregnant.
+				PRINTFORMW Although carrying \@ BABYMULTIAWARE(ARG) ? more children # another child \@, %CALLNAME:ARG% recovers somewhat from having given birth.
+			ELSE
+				PRINTFORMW After having given birth safely, %CALLNAME:ARG% returns to full health.
+			ENDIF
+		ENDIF
+		;口上チェック
+		CALL KOJO_MESSAGE_SEND("CHILD", 0, ARG, 0, 0, "RAISING_回復")
+		IF RESULT == 2
+			;体質変化があるので省略しない
+		ENDIF
+		IF CHILD_MULTIPLE_LAST(ARG,CHILDNUM) == CHILDNUM
+				;Custom code, only after the last child in a litter.
+			MAXBASE:ARG:体力 += 500
+			MAXBASE:ARG:気力 += 500
+			;addition custom code, duplicated characters
+			SIF MAXBASE:ARG:体力 / 10 * 11 <= CSVBASE(NO:ARG, GETNUM(BASE, "体力")) * 2
+				MAXBASE:ARG:体力 = MAXBASE:ARG:体力 / 10 * 11
+			SIF MAXBASE:ARG:気力 / 10 * 11 <= CSVBASE(NO:ARG, GETNUM(BASE, "気力")) * 2
+				MAXBASE:ARG:気力 = MAXBASE:ARG:気力 / 10 * 11
+			IF !TALENT:ARG:妊娠 ;Custom code, don't unset flag while pregnant.
+				TALENT:ARG:回復速度 = CFLAG:ARG:回復速度ダウン - 2
+				CFLAG:ARG:回復速度ダウン = 0
+			ENDIF
+		ENDIF
+	ENDIF
+NEXT
+
+;bug fix, set counter to latest progress of the last child
+IF CFLAG:ARG:育児人数 > 0
+	CFLAG:ARG:出産経過日 = nCurrentChildCareCount
+	TALENT:ARG:育児中 = nCurrentCareChild
+ELSE
+	CFLAG:ARG:出産経過日 = 0
+	TALENT:ARG:育児中 = 0
+ENDIF
+;Moved to make child growth stage length settings accurate, added egg laying check.
+SIF CFLAG:ARG:妊娠経過日数 > 100 || TALENT:ARG:NESTING > 100
+	CALL BIRTH(ARG)
+SIF CFLAG:ARG:妊娠経過日数 > 1 || TALENT:ARG:NESTING == 60
+	CALL PERCIEVE(ARG)
+
+;bug fix
+@EVENTLOAD
+#DIM DYNAMIC CHANGES
+FOR LOCAL, 1, CHARANUM - 1
+	IF CFLAG:LOCAL:子供人数 > 0
+		FOR COUNT, 1, MAXCHILD + 1
+			SIF CHILDNAME:LOCAL:COUNT == ""
+				CONTINUE
+			IF CHILD_BIRTHDAY:LOCAL:COUNT > 0 && (DAY-CHILD_BIRTHDAY:LOCAL:COUNT)+1 > CHILD_自立 && !CHILD_INDEPENDENT:LOCAL:COUNT
+				PRINTFORMDL Setting independence flag for %CALLNAME:LOCAL%'s child %CHILDNAME:LOCAL:COUNT%.
+				CHILD_INDEPENDENT:LOCAL:COUNT = 1
+				CHANGES = 1
+			ENDIF
+		NEXT
+	ENDIF
+NEXT
+
+SIF CHANGES && !CHECK_UPDATE("4.861") ;saves prior to this need converting, everywhere else indicates an error somewhere
+	CALL COLORMESSAGE("＊WARNING＊ CHILD_INDEPENDENT was set incorrectly and needed to be adjusted. Please report this.", C_RED, 2)
+
+;子供が通学するか
+@GO_SCHOOL(ARG)
+#FUNCTION
+SIF !INRANGE(DAY % 7, 1, 5) 
+	RETURNF 0
+SIF FESTIVAL() != ""
+	RETURNF 0
+SIF !TALENT:ARG:育児中
+	RETURNF 0
+;大雨と吹雪
+SIF TIME:5 == 5
+	RETURNF 0
+SIF TIME:5 == 9
+	RETURNF 0
+SIF CFLAG:ARG:出産経過日 >= CHILD_就学
+	RETURNF 1
+
+;現在育児中の子供の名前を表示
+@SHOW_CHILDNAME(ARG)
+#FUNCTIONS
+RETURNF CALLNAME:(TALENT:ARG:育児中)
+;RETURNF CHILDNAME:ARG:(TALENT:ARG:育児中)
+
+;成長した子供と親をランダムで拾ってくる関数
+@PickRandGrownChild
+#DIM YOME
+#DIM CHILDNUM
+;qol custom code, replaced
+CALL QOL_PICK_RAND_GROWN_CHILD_TR
+RETURN RESULT:0, RESULT:1
+
+SIF !CFLAG:MASTER:子供人数
+	RETURN -1
+YOME = 0
+CALL FISHER_YATES_SHAFFLE(CHARANUM - 1)
+FOR LOCAL:10, 0, CHARANUM - 1
+	LOCAL = SHAFFLE_ARRAY:(LOCAL:10) + 1
+	IF CFLAG:LOCAL:子供人数 - CFLAG:LOCAL:育児人数 > 0
+		YOME = LOCAL
+		CHILDNUM = RAND:(CFLAG:LOCAL:子供人数 - CFLAG:LOCAL:育児人数) + 1
+		BREAK
+	ENDIF
+NEXT
+RETURN YOME, CHILDNUM
+
+;-----------------------------------------------------
+;自立した子供の自立先を決める関数
+;-----------------------------------------------------
+@自立先選定(CHARA, CHILDNUM)
+#DIM CHARA
+#DIM CHILDNUM
+{
+#DIM CONST VALID_AREAS = 
+	神社境内, 神社本堂, 夢幻遺跡, 命蓮寺境内, 命蓮寺方丈, 神霊廟広場, 神霊廟道場, 広場, 商家町, 呑屋小道, 広間, 食堂, 大図書館,
+	斜角の竹林, 永遠亭, 夢幻館, 香霖堂, 中有の道, 三途の川, 彼岸, 白玉楼庭, 畜生界, 玄武の沢, 間欠泉地下センター,
+	九天の滝, 守矢神社境内, 守矢神社本殿, 旧地獄街道, 地霊殿, 灼熱地獄跡, 月の都, 玉兎の街
+}
+CHILD_AREA:CHARA:CHILDNUM = VALID_AREAS:(RAND:32)
+
+@PREG_DAY_ADJUSTER(C_ID, ADJUST_TO, D_BEFORE, D_AFTER)
+#DIM ADJUST_TO
+#DIM C_ID
+#DIM D_BEFORE
+#DIM D_AFTER
+SIF D_BEFORE < ADJUST_TO && D_AFTER >= ADJUST_TO
+	CFLAG:C_ID:妊娠経過日数 = ADJUST_TO

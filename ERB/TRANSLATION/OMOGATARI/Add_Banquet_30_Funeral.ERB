@@ -1,0 +1,333 @@
+@EXIST_ADD_BANQUET30
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+@ADD_BANQUET30(ARG, O_DATA, V_NAME)
+#FUNCTION
+#DIMS O_DATA
+#DIMS V_NAME
+#DIMS AB30_NAME
+#DIM AB30_ID
+IF !INRANGE(NewDead,0,CHARANUM-1)
+    AB30_NAME '= @"Character Not Found ({NewDead})"
+    AB30_ID = 0
+    NewDead = -1
+ELSE
+    AB30_ID = NewDead
+    AB30_NAME '= CALLNAME:NewDead
+ENDIF
+
+SELECTCASE O_DATA
+	CASE "NAME"
+        CALLF MAKE_STR(V_NAME, @"Funeral for %AB30_NAME%")
+    CASE "ACTIVITIES"
+        CALLF MAKE_STR(V_NAME, @"Mourning the loss of %AB30_NAME%")
+    CASE "TERM"
+        CALLF MAKE_STR(V_NAME, "funeral")
+    CASE "PRIORITY"
+        CALLF MAKE_INT(V_NAME, 3)
+    CASE "NOTIFY_PLAYER"
+        CALLF MAKE_INT(V_NAME, 1)
+    CASE "HOST"
+        CALLF MAKE_INT(V_NAME, 29)
+    CASE "HOST_LIST"
+        CALLF MAKE_STR(V_NAME, @"30/76")
+    CASE "GUEST_LIST"
+        SIF !INRANGE(AB30_ID,0,CHARANUM-1)
+            RETURNF
+
+        LOCALS '= @"{AB30_ID}/"
+        FOR C, 0, CHARANUM
+            SIF RELATION:C:AB30_ID > 100 || CharaFamily:C:AB30_ID
+                LOCALS += @"{C}/"
+        NEXT
+        CALLF MAKE_STR(V_NAME, @"%LOCALS%")
+    CASE "BANNED_LIST"
+        ;CALLF MAKE_STR(V_NAME, @"97")
+    CASE "CONDITIONS"
+        SIF !IsDead:30:0 && NewDead != -1 ;if funeral queue is not empty and eiki is not dead
+            CALLF MAKE_INT(V_NAME, 1)
+    CASE "WEATHER_DEPENDENT"
+        CALLF MAKE_INT(V_NAME, 0)
+    CASE "DRINKING"
+        CALLF MAKE_INT(V_NAME, 1)
+    CASE "MUSIC_PERFORMANCE"
+        CALLF MAKE_INT(V_NAME, 1)
+ENDSELECT
+
+@ADD_BANQUET_PLANNING30
+#DIM LOCATION
+#DIM SCALE
+#DIM START_TIME
+#DIM CHARA
+
+VARSET NewDead, -1
+
+CALLF FISHER_YATES_SHUFFLE_F(CHARANUM - 1)
+FOR LOCAL:10, 0, CHARANUM - 1
+	CHARA = SHAFFLE_ARRAY:(LOCAL:10)
+	IF DAY == KnowsDeadBodies:29:CHARA && IsDead:CHARA:0 && !IS_MOB(CHARA)
+		FuneralQueue:(FreeMorgueSlot()) = CHARA
+	ENDIF
+NEXT
+
+ARRAYSORT FuneralQueue, BACK, 0, 100
+;special exception for character 0
+IF !FuneralQueue:0 && !IsDead:0:0
+	VARSET FuneralQueue, -1
+ENDIF
+
+IF NewDead == -1 && FuneralQueue:0 != -1
+NewDead = FuneralQueue:0
+FuneralQueue:0 = -1
+ARRAYSORT FuneralQueue, BACK, 0, 100
+ENDIF
+IF NewDead == -1 ; couldn't create
+    RETURN
+ELSEIF !INRANGE(NewDead,0,CHARANUM-1)
+    DEBUGPRINTFORML Attempted to host funeral for character that doesn't exist ({NewDead}).
+    NewDead = -1
+    RETURN
+ENDIF
+
+
+VARSET P
+FOR C, 0, CHARANUM
+    SIF RELATION:C:NewDead > 100 || CharaFamily:C:NewDead
+        P++
+NEXT
+
+SCALE = (P*200)
+START_TIME = 660
+
+;SCALE = (P*200) + RAND:1500
+;START_TIME = 900 - (SCALE / 10)
+
+CALL ADD_BANQUET_CREATE(30, TPToGraveyard(NewDead), START_TIME, DAY+1, (SCALE / 10) + 300, SCALE)
+LOCAL = RESULT ;banquet_index
+
+SIF LOCAL < 0 ;couldn't create
+    RETURN
+
+;move the dead body to the grave
+CFLAG:NewDead:300 = GET_MAP_REPLACEMENT(TPToGraveyard(NewDead))
+
+
+ADD_BANQUET30_QUALITY = 75
+ADD_BANQUET30_DISASTER = 0
+ADD_BANQUET30_PARTICIPATION_TIME = 0
+ADD_BANQUET30_PREPARATION_STAGE = 0
+ADD_BANQUETS_INVITED:LOCAL = ADD_BANQUET_INVITE_INVITED
+PRINTL  
+;PRINTFORMW %CALLNAME:29% feels sorry for the death of %CALLNAME:NewDead% and decides to host a funeral.
+CALL SET_KOJO_COLOR(30)
+{
+    CALL PRINT_LETTER(
+    @"To those who grieve %CALLNAME:NewDead%,/
+    You are invited to mourn the loss of %NAME:NewDead%./
+    Tomorrow, at %ADD_BANQUET_LOCATION(LOCAL)%, we will host a funeral to say our goodbye prayers, and bury the body.//
+    This is your final chance to say goodbye to %HIM_HER(NewDead)%,/
+    %NAME:30%", , 40)
+}
+RESETCOLOR
+PRINTFORML 
+
+PRINTFORMW %ADD_BANQUET_TIME_AND_PLACE_DESCRIPTION(LOCAL)%
+
+;CALL ADD_BANQUET_DRINKING_INITIALIZATION_DESCRIPTION(LOCAL)
+PRINT It seems like
+IF SCALE >= 5000
+	PRINTFORMW  a ton of people will mourn the loss.
+ELSEIF SCALE >= 2500
+	PRINTFORMW  it will attract a fairly large crowd.
+ELSEIF SCALE >= 1500
+	PRINTFORMW  it will be fairly restrained this time.
+ELSE
+	PRINTFORMW  not many people care for %HIM_HER(NewDead)%.
+ENDIF
+
+
+@ADD_BANQUET_START30
+ADD_BANQUET30_PARTICIPATION_TIME = 0
+
+@ADD_BANQUET_FINISH30
+
+@ADD_BANQUET_VISIT30(PREVIOUS_STATE)
+#DIM PREVIOUS_STATE
+#DIM BANQUET_INDEX
+#DIM CURRENT_STATE
+#DIM PARTICIPANTS
+BANQUET_INDEX = ADD_BANQUET_INDEX(30)
+PARTICIPANTS = ADD_BANQUET_PARTICIPANT_COUNT(BANQUET_INDEX)
+CURRENT_STATE = ADD_BANQUETS_STATUS:BANQUET_INDEX
+
+
+CALL SET_KOJO_COLOR(30)
+
+PRINTL
+IF CURRENT_STATE == ADD_BANQUET_STATE_IN_PROGRESS && PREVIOUS_STATE == ADD_BANQUET_STATE_PREPARING ;player was present during start
+    $FUNERAL_START
+    PRINTFORMDL As the funeral begins, %CALLNAME:30% holds a short speech.
+    ;ADD_BANQUET30_PREPARATION_STAGE = 1
+ELSEIF CURRENT_STATE == ADD_BANQUET_STATE_IN_PROGRESS ;joins later
+    ;time since arrival
+    SELECTCASE ABS(ADD_BANQUET_TIME_UNTIL(BANQUET_INDEX))
+        CASE IS <= 10
+            GOTO FUNERAL_START
+        CASE IS <= 60
+            PRINTFORML 「You're quite late to the funeral.」
+            PRINTFORML 「It's disrespectful to visit one's funeral when it's already started.」
+            PRINTFORMDW %CALLNAME:30% is a little upset about your tardiness, but %HE_SHE(30)% quickly returns to the funeral in hand.
+        CASEELSE
+            PRINTFORML 「You're ridiculously late!」
+            PRINTFORML 「Do you think that a Yama would approve someone going to a stranger's funeral 3 hours in?」
+            PRINTFORML 「If this was any other time I'll send you a lecture.」
+            PRINTFORMDW %CALLNAME:30% is pretty upset with your late arrival.
+    ENDSELECT
+ENDIF
+PRINTL
+RESETCOLOR
+
+SELECTCASE PARTICIPANTS
+    CASE 3
+        PRINTFORMDW You appear to be the only actual guest today.
+    CASE 4
+        PRINTFORMDW It seems only one other person decided to show up.
+    CASE IS <= 5
+        PRINTFORMDW Only a few people showed up.
+    CASE IS <= 10
+        PRINTFORMDW Looks like %CALLNAME:30% managed to attract a fairly large crowd.
+    CASEELSE 
+ENDSELECT
+PRINTL
+
+@ADD_BANQUET_PROGRESS30(BANQUET_INDEX)
+#DIM BANQUET_INDEX
+#DIM BANQUET_ID
+#DIM PRESENT
+#DIM LAPSE
+#DIM LOCATION
+
+BANQUET_ID = ADD_BANQUETS_UPCOMING:BANQUET_INDEX
+;if master at location
+PRESENT = CFLAG:MASTER:現在位置 == GET_MAP_REPLACEMENT(ADD_BANQUETS_LOCATION:BANQUET_INDEX)
+LAPSE = TIME_PROGRESS(TIME:1)
+LOCATION = GET_MAP_REPLACEMENT(ADD_BANQUETS_LOCATION:BANQUET_INDEX)
+
+SIF PRESENT
+    ADD_BANQUET30_PARTICIPATION_TIME += LAPSE
+
+SELECTCASE ADD_BANQUETS_STATUS:BANQUET_INDEX
+    CASE ADD_BANQUET_STATE_PREPARING
+        IF PRESENT
+            FOR LOCAL, 0, CHARANUM
+                IF CFLAG:LOCAL:BANQUET == BANQUET_ID && CFLAG:LOCAL:BANQUET_ROLE > 1 && !IsDead:LOCAL:0
+                    PRINTFORML %CALLNAME:LOCAL% is preparing the funeral.
+                ENDIF
+            NEXT
+        ENDIF
+    CASE ADD_BANQUET_STATE_IN_PROGRESS
+        SELECTCASE ADD_BANQUET_TIME_UNTIL(BANQUET_INDEX)
+            CASE IS < -300
+            CASE IS < -30
+                ;body prep
+                IF PRESENT && ADD_BANQUET30_PREPARATION_STAGE != 2
+                    PRINTFORML The funeral organizers place the body from the table into a coffin on the front of the arrangement.
+                    PRINTFORMDW %CALLNAME:30% lights up the incense, officially starting up the wakes.
+                    FORCEWAIT
+                ENDIF
+                ADD_BANQUET30_PREPARATION_STAGE = 2
+            CASE IS <= 0
+                ;body prep
+                IF PRESENT && ADD_BANQUET30_PREPARATION_STAGE != 1
+                    PRINTFORML The funeral organizers begin to prepare the body for the funeral.
+                    PRINTFORML %CALLNAME:30% brings out a coffin for the body of %CALLNAME:NewDead% to be laid in.
+                    FORCEWAIT
+                ENDIF
+                ADD_BANQUET30_PREPARATION_STAGE = 1
+        ENDSELECT
+
+        FOR LOCAL, 0, CHARANUM
+            IF CFLAG:LOCAL:BANQUET == BANQUET_ID && CFLAG:LOCAL:現在位置 == LOCATION && LOCAL != MASTER
+                ;have them dependent on the stage
+                SIF PRESENT
+                CALL ADD_BANQUET_FUNERAL_DESCRIPTIONS(LOCAL)
+            ENDIF
+        NEXT
+    CASE ADD_BANQUET_STATE_FINISHED
+ENDSELECT
+
+@ADD_BANQUET_PREPARATION_TEXT30(CHARA, LOCATION)
+#DIM CHARA
+#DIM LOCATION
+CALL ADD_BANQUET_DRINKING_PREPARATION_TEXT(CHARA, LOCATION)
+
+@ADD_BANQUET_JOIN_TEXT30(CHARA, LOCATION)
+#DIM CHARA
+#DIM LOCATION
+LOCATION = GET_MAP_REPLACEMENT(LOCATION)
+IF CFLAG:CHARA:現在位置 == CFLAG:MASTER:現在位置 && CFLAG:MASTER:現在位置 == LOCATION
+    PRINTFORML %CALLNAME:CHARA% joins the funeral.
+ELSEIF CFLAG:MASTER:現在位置 == LOCATION
+    PRINTFORML %CALLNAME:CHARA% arrives at %NAME_FROM_PLACE_THE(LOCATION)% to join the funeral.
+ELSEIF CFLAG:CHARA:現在位置 == CFLAG:MASTER:現在位置
+    PRINTFORML %CALLNAME:CHARA% moves over to %NAME_FROM_PLACE_THE(LOCATION)% to join the funeral.
+ENDIF
+
+
+@ADD_BANQUET_SET_PARTICIPANTS30
+#DIM BANQUET_INDEX
+#DIM BANQUET_SCALE
+BANQUET_INDEX = ADD_BANQUET_INDEX(30)
+BANQUET_SCALE = ADD_BANQUETS_SCALE:BANQUET_INDEX
+
+CALL ADD_BANQUET_FILL_PARTICIPANTS(BANQUET_INDEX, BANQUET_SCALE > 2500 ? 12 # 7, BANQUET_SCALE > 2500 ? 12 # 7)
+
+@ADD_BANQUET_PARTICIPANT_JOIN_CHECK30(ARG)
+SIF ARG == NewDead
+    RETURN 1
+RETURN RAND:100 < 5
+
+@ADD_BANQUET_WORKLOAD_PREPARATION30(ARG)
+CALL ADD_BANQUET_DRINKING_PREPARATION_WORKLOAD(ARG, ADD_BANQUET_INDEX(30))
+
+@ADD_BANQUET_WORKLOAD_PARTICIPATION30(ARG, SCALE)
+#DIM SCALE
+CALL ADD_BANQUET_DRINKING_WORKLOAD(ARG, SCALE)
+
+@ADD_BANQUET_MESSAGE_TALK30
+CALL ADD_BANQUET_DRINKING_MESSAGE_TALK(ADD_BANQUET_INDEX(30))
+
+
+@ADD_BANQUET_FUNERAL_DESCRIPTIONS(ARG)
+SELECTCASE ADD_BANQUET30_PREPARATION_STAGE
+CASE 1
+    ; Preparing the body
+    ;(done by the deceased's family members, or whoever has the highest friendship with them if they don't have any (living) family members)
+    IF CFLAG:ARG:BANQUET_ROLE >= ADD_BANQUET_ROLE_HOST || RELATION:ARG:NewDead > 100
+        PRINTDATAL
+        DATAFORM %CALLNAME:ARG% continues to prepare the body of %CALLNAME:NewDead%
+        DATAFORM %CALLNAME:ARG% puts an arrangement of flowers
+        DATAFORM %CALLNAME:ARG% puts more dry ice into the coffin
+        DATAFORM %CALLNAME:ARG% puts a portrait of %CALLNAME:NewDead% onto the arrangement
+        DATAFORM %CALLNAME:ARG% puts some incense on the arrangement
+        ENDDATA
+    ENDIF
+CASE 2
+    ; The wake
+CASE 3
+    [SKIPSTART]
+    Ceremonial prayers
+    held by Reimu/Sanae if Shinto
+    Byakuren if Buddhist
+    Miko if Taoist
+    Sariel or maybe Yumemi (we don't know for sure if she's Christian but she uses crosses in one of her attacks in PoDD) if Christian
+    and I'm not sure who would do "best wishes" for atheists.
+    The wiki says that Sakuya, Nitori, Marisa, Patchy, and Remilia are atheists or apatheists (https://en.touhouwiki.net/wiki/Irreligion)... maybe one of them?
+    One of Parsee's friends does their best to do the Zoroastrian ceremonial prayers because Parsee was the only Zoroastrian and the only one who knew them
+    [SKIPEND]
+CASE 4
+    ; Last goodbyes
+CASE 5
+    ; The actual burial
+ENDSELECT

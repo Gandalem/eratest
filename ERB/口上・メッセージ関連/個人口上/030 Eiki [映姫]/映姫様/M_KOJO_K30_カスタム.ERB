@@ -1,0 +1,389 @@
+;================================
+;custom shop button
+;カスタムSHOPボタン
+;y is the id of the button, range from 0 to 9
+;yはボタンのID、0~9に対応
+;使用する際はSKIPSTART~SKIPENDを外してください。
+;================================
+;judge the button can be shown, if return 1, it will show
+;これをRETURN 1するとボタンが表示される
+@KOJO_CUSTOM_BUTTON_CONDITION_K30_0
+SIF !GETBIT(CFLAG:30:1803, 8)
+	RETURN 0
+custom_button_name:30:0 = 口上色変更
+;custom code - disabled since it can be accessed in character settings (character color change)
+RETURN 0
+
+;when the button is clicked
+;ボタンがクリックされた場合
+@KOJO_CUSTOM_BUTTON_K30_0
+#DIM K_COLOR = 0x337D5C, 0x52C487, 0x7FD8A7, GETDEFCOLOR(), 0xFF93FB
+LOCALS '= "calm", "normal", "slightly high-pitched", "default", "sexy"
+LOCAL = FINDELEMENT(K_COLOR, CFLAG:30:1501, 0)
+LOCAL = INRANGE(LOCAL, 0, 3) ? LOCAL + 1 # 0
+CFLAG:30:1501 = K_COLOR:LOCAL
+SETCOLOR CFLAG:30:1501
+PRINTFORML 「Voice changed to a %LOCALS:LOCAL% type.」
+RESETCOLOR
+RETURN 0
+
+;================================
+;カスタム素質
+;テンプレの便宜上、独立した関数としてまとめました。
+;使用する際はSKIPSTART~SKIPENDを外してください。
+;================================
+@KOJO_CUSTOM_TALENT_SET_K30
+
+;表示判定 真=表示/偽=非表示
+CUSTOM_TALENT:30:0 = GETBIT(CFLAG:1910, 7)
+;素質名
+CUSTOM_TALENT_NAME:30:0 = Slit-like Anus
+;(省略可)表示色、0/通常 1/ピンク 2/赤色+太字
+CUSTOM_TALENT_COLOR:30:0 = 1
+;(省略可)表示タイプ 1/種族 2/性的 3/身体的 4/精神的 5/技術的 他は「その他」
+CUSTOM_TALENT_TYPE:30:0 = 3
+
+CUSTOM_TALENT:30:1 = !INRANGE(TCVAR:30:363, -1, 0)
+CUSTOM_TALENT_NAME:30:1 = %\@ TCVAR:30:363 < 0 ? Satisfied Since Morning # Oral Satisfaction \@%
+CUSTOM_TALENT_COLOR:30:1 = 1
+CUSTOM_TALENT_TYPE:30:1 = 0
+
+;================================
+;カスタムコマンド0_説教を受ける
+;================================
+;コマンド名
+@KOJO_COM_NAME_K30_0
+RESULTS = Listen To Lecture
+
+;コマンド使用条件。通常のCOM_ABLE関数と同じくRETURN 1すれば実行可能としてコマンドが表示される
+@KOJO_COM_ABLE_K30_0
+SIF SHIRAHU(MASTER) != 1 || SHIRAHU(30) != 1 || CFLAG:30:1701 < 10 || TFLAG:COMABLE管理 > 1
+	RETURN 0
+SIF GET_TARGETNUM() > 1 || CHK_DATENOW(CFLAG:30:デート中) || MARK:30:反発刻印 > 1
+	RETURN 0
+SIF NEMUKE() > 240 || !CHARA_HOLIDAY(30) || K30_CHECK_HEN_T()
+	RETURN 0
+RETURN 1
+
+;コマンド実行内容。経験・SOURCE変動を記述
+;RETURN 1=コマンド実行 / RETURN 0=キャンセル(SOURCE計算SKIP) / RETURN -1=コマンド取り消し
+@KOJO_COM_K30_0
+#DIM お怒り
+お怒り = CFLAG:ブチギレ || MARK:反発刻印
+PRINTFORML ...Are you really sure?（%\@ お怒り ? In exchange for lightening Eiki's anger # With no further event \@%, the day will end.）
+CALL ASK_YN
+SIF RESULT
+	RETURN -1
+;好感度低いなら効果強め、でも効率考えると使う意味なし
+TFLAG:194 = 720 - NEMUKE() / 60
+SOURCE:情愛 = 75 * TFLAG:194
+SOURCE:達成 = 150 * TFLAG:194
+IF CFLAG:30:好感度 <= 500
+	TIMES SOURCE:情愛, 1.50
+	TIMES SOURCE:達成, 1.50
+ELSEIF CFLAG:30:好感度 <= 5000
+	TIMES SOURCE:情愛, 1.25
+	TIMES SOURCE:達成, 1.25
+ENDIF
+BASE:MASTER:体力 = 0
+BASE:MASTER:気力 = 0
+IF お怒り
+	SOURCE:情愛 = 0
+	SOURCE:達成 /= 3
+	CFLAG:ブチギレ = 0
+	CFLAG:不機嫌 = 0
+	BASE:怒り = 0
+	BASE:MASTER:体力 = -500
+	TFLAG:193 = 1
+	IF MARK:反発刻印
+		SOURCE:達成 = 0
+		MARK:反発刻印 = 0
+		TFLAG:193 = 2
+		BASE:MASTER:体力 = -2500
+	ENDIF
+ENDIF
+TFLAG:194 = MIN(TFLAG:194, 6)
+TIME += TFLAG:194  * 60
+RETURN 1
+
+;コマンドメッセージ。口上色が指定される。
+;Vの値は(270 + Y)。SELECTCOM/PREVCOMの代入値も同じ
+@M_KOJO_MESSAGE_COM_K30_270
+#DIM TEMP
+#DIM P_REDRAW
+#DIM L_COUNT
+#DIM LOOP_C
+#DIM LINE_C
+{
+#DIMS WORDS =	 "In the first place", "I'll say this again", "To be clear", "From my perspective",
+				 "To make an analogy", "Moving to another topic", "The important point is", "To change your mindset",
+				 "Yes, you should", "Use this opportunity", "Reflect on yourself", "At this rate"
+}
+{
+#DIMS MODIFY =	"perpetually", "thoroughly", "endlessly", "forever", "unendingly",
+				"ceaselessly", "neverendingly", "evermore", "singlemindedly", "relentlessly",
+				"constantly", "continually", "untiringly", "eternally", "unceasingly",
+				"until you click", "as expected", "incessantly", "everlastingly", "tirelessly"
+}
+CALL FISHER_YATES_SHAFFLE(12)
+CALLF FUNC_FISHER_YATES_SHAFFLE(LOCAL, 20)
+VARSET LOCALS
+TEMP = 0
+MODIFY:(LOCAL:0) '= ""
+IF TFLAG:193
+	PRINTFORMDL As requested, Eiki begins lecturing you %TEXTR("with intense passion/with the heat of a thousand hellfires/like a raging flood")%...
+ELSE
+	PRINTFORMDL Hearing your request, Eiki begins lecturing you %TEXTR("with unbridled enthusiasm/with great joy/as if it's all she ever wanted")%...
+ENDIF
+PRINTW
+PRINTFORML 「!!」
+IF !TFLAG:193
+	PRINTDATAW 
+		DATAFORM 「Splendid... What a commendable attitude.」\n「I'm seeing you in a new light.」
+		DATAFORM 「I never knew you were so eager to hear my teachings.」\n「It seems you've finally realized the importance of building a virtuous life.」
+		DATAFORM 「For you to have become such an admirable person...」\n「I feel my daily services are finally being rewarded.」
+	ENDDATA
+	PRINTFORML 「...Very well.」
+	PRINTFORML 「Fortunately for you, I have no other plans today.」
+	PRINTFORML 「%TEXTR("I will give it my all/I will take more time than usual/I will include all of my thoughts up to today")% in teaching you.」
+ELSE
+	PRINTDATAW 
+		DATAFORM 「Finally... So you've finally turned a new leaf.」
+		DATAFORM 「I would never turn away such a repentant heart.」
+		DATAFORM 「I'm glad you realized the error of your ways before my patience ran out.」
+	ENDDATA
+	PRINTFORML 「I have no other plans for today... So there's no need for you to worry.」
+	PRINTDATAL 
+		DATAFORM 「Then, this may take some time... But please listen carefully.」
+		DATAFORM 「Then, where should I begin... I will organize my thoughts as I speak.」
+		DATAFORM 「Then, to ensure my words stay with you even after I finish, I will thoroughly hammer my teachings into you.」
+	ENDDATA
+ENDIF
+PRINTL
+
+P_REDRAW = CURRENTREDRAW()
+LINE_C = LINECOUNT
+REDRAW 0
+WHILE 1
+	FOR LOOP_C, 0, 5
+		IF !TEMP
+			LOCALS:99 = Now listen carefully
+		ELSEIF TEMP % 2
+			LOCALS:99 = 
+		ELSE
+			SIF !LOOP_C
+				LOCAL:99 = LOCAL:99 == 11 ? 0 # LOCAL:99 + 1
+			LOCALS:99 = \@ !LOOP_C ? %WORDS:(SHAFFLE_ARRAY:(LOCAL:99))% # %LOCALS:99% \@
+		ENDIF
+		LOCALS:0 = 「%LOCALS:99%%UNICODE(0x2026) * (MAX(1, 9 - STRLENSU(LOCALS:99)))%」
+		FOR L_COUNT, 1, 4
+			LOCALS:L_COUNT '= COND_STR(@"「%UNICODE(0x2026) * ((4 - L_COUNT) * 2 + 1)%」", LOOP_C >= L_COUNT)
+		NEXT
+		LOCALS:4 '= COND_STR(@"（Being lectured %MODIFY:(LOCAL:TEMP)%...）", LOOP_C == 4)
+		FOR L_COUNT, 0, 5
+			IF L_COUNT < 4
+				PRINTFORML %LOCALS:L_COUNT%
+			ELSE
+				PRINTFORMDL %LOCALS:L_COUNT%
+			ENDIF
+		NEXT
+		TWAIT 350 + ((LOOP_C == 4) * 1050), 0
+		SIF GETKEY(1) && TEMP > 1
+			GOTO LOOP_BREAK
+		CLEARLINE LINECOUNT - LINE_C
+	NEXT
+	CLEARLINE LINECOUNT - LINE_C
+	TEMP = TEMP < 19 ? TEMP + 1 # 1
+WEND
+$LOOP_BREAK
+REDRAW P_REDRAW
+LOCALS:0 '= "「...」", "「......」", "「.........Hmm?」"
+CALL PRINT_GROUP(LOCALS, 3, 350)
+IF TFLAG:193
+	PRINTFORMDL ...After {TFLAG:194} \@ TFLAG:194 == 1 ? hour # hours\@, Eiki's mood has finally improved.
+	PRINTFORMDW %\@ TFLAG:193 > 1 ? Eiki loses 1 hate mark # Eiki's anger has subsided \@%.
+ELSE
+	PRINTFORMDL ...Even after {TFLAG:194} \@ TFLAG:194 == 1 ? hour # hours\@, Eiki doesn't show the slightest hint of weariness.
+	PRINTFORMDL Rather, she seems to become more enthusiastic with time, and seems to be thoroughly enjoying this lecture.
+ENDIF
+PRINTFORML
+PRINTFORMDW But you've reached your limit...
+RETURN 1
+
+;================================
+;カスタムコマンド1_スイッチ操作
+;================================
+@KOJO_COM_NAME_K30_1
+RESULTS = Adjust Toy Intensity
+
+@KOJO_COM_ABLE_K30_1
+SIF !TEQUIP:30:アナルバイブ || !SHIRAHU(30)
+	RETURN 0
+SIF TFLAG:COMABLE管理 > 1 || CFLAG:30:うふふ || CFLAG:MASTER:うふふ
+	RETURN 0
+SIF TCVAR:30:364 < 1 || !TCVAR:30:365 || TIME:1 - TCVAR:30:368 < 10
+	RETURN 0
+RETURN 1
+
+@KOJO_COM_K30_1
+;強弱切替え
+TCVAR:30:365 = TCVAR:30:365 == 1 ? 2 # 1
+;-------------------------------------------------
+;COM別FLAGの設定
+;-------------------------------------------------
+;行為者
+TCVAR:116 = PLAYER
+TFLAG:理性削り = 1
+;-------------------------------------------------
+;適当にソース追加処理
+;-------------------------------------------------
+;弱
+IF TCVAR:30:365 == 1
+	SOURCE:露出 = 50
+	SOURCE:屈従 = 50
+	SOURCE:欲情 = 100
+	SOURCE:受動 = 100
+	SOURCE:反感 = 10
+	LOCAL = 2
+;強
+ELSE
+	SOURCE:露出 = 150
+	SOURCE:屈従 = 150
+	SOURCE:欲情 = 50
+	SOURCE:受動 = 50
+	SOURCE:反感 = 20
+	LOCAL = 5
+ENDIF
+SIF HITOKE(1)
+	TIMES SOURCE:露出 , 2.50
+;-------------------------------------------------
+;経験の処理
+;-------------------------------------------------
+EXP:Ａ経験 ++
+EXP:PLAYER:道具使用経験 ++
+TIME += LOCAL
+TCVAR:30:368 = TIME:1 + LOCAL 
+RETURN 1
+
+@M_KOJO_MESSAGE_COM_K30_271
+#DIM TGT
+LOCAL = K30_FIND_AROUND()
+TGT = GROUPMATCH(LOCAL, 49, RANDOM_CHARANUM) ? 0 # LOCAL
+IF TCVAR:30:365 == 1
+	PRINTFORMDL You reset the switch in your pocket back to "low".
+	IF NOWEX:Ａ絶頂
+		PRINTFORMDL But Eiki's stimulated body can no longer resist the oncoming orgasm...
+		CALL K30_PRINT_VIBE_DATE
+		PRINTFORMW
+		STRDATA LOCALS
+			DATAFORM 「%K30_C_NAME(MASTER)%, even if you, lower it now... It's too lateHPH」\n「I can't, stop it anymore...HPH」
+			DATAFORM 「...You want me, to "wait"...?」\n「Nothing short, of pulling it out...can stop it nowHPH」
+			DATAFORM 「...Stopping, now...is impossibleHPH」\n「Even slowly, like this... I'll...HPH」
+		ENDDATA
+		CALL HPH_PRINT, LOCALS, "W"
+		RETURN 1
+	ELSE
+		PRINTDATADL
+			DATAFORM Eiki is trying to get her roused body under control with a series of deep breaths.
+			DATAFORM Eiki lets out a sigh of relief as she is freed from the overpowering pleasure.
+			DATAFORM Eiki exhales deeply as she wipes the sweat from her brow.
+		ENDDATA
+		IF K30_BE_SEEN() && !TFLAG:デート道中
+			PRINTFORMDL Once she's confirmed that %\@ TGT ? %CALLNAME:TGT% doesn't suspect # no one suspects \@% anything, she finally calms down a little.
+		ELSE
+			PRINTFORMDL ...But the look in her eyes as she glances at you has a hint of craving in it.
+		ENDIF
+	ENDIF
+	CALL K30_PRINT_VIBE_DATE
+	PRINTFORMW
+	CALL HPH_PRINT, @"「HaaHPH Haa...haa...HPH」", "L"
+	PRINTFORML
+	IF K30_BE_SEEN() && !TFLAG:デート道中
+		STRDATA LOCALS
+			DATAFORM 「There's no problem...%K30_C_NAME(TGT,2)% hasn't, noticed anything...HPH」\n「So it's okay... I'll be fine, with anything...HPH」
+			DATAFORM 「...I feel like, I'm so much more sensitive...than usual...HPH」\n「Doing something like this, in front of %K30_C_NAME(TGT,2)%...」\n「There's no going back for me...is thereHPH」
+			DATAFORM 「Even though %K30_C_NAME(TGT,2)% is here... You're quite relentless, aren't youHPH」\n「...Thanks to that, my head...feels faint...HPH」
+		ENDDATA
+	ELSE
+		STRDATA LOCALS
+			DATAFORM 「...I believe, I've caught my breath.」\n「But...」\n「When I think...how it might come again, at any moment...HPH」
+			DATAFORM 「Though I was just thinking...how long this might continue...」\n「Now that it's subsided...」\n「...I find myself...wanting moreHPH」
+			DATAFORM 「Fuu...HPH」\n「I was...able to endure itHPH」\n「I look forward...to my next reward...HPH」
+		ENDDATA
+	ENDIF
+	CALL HPH_PRINT, LOCALS, "W"
+ELSE
+	PRINTFORMDL You flick the switch in your pocket to the "high" setting...
+	PRINTFORMW
+	CALL K30_PRINT_VIBE_DATE
+	FONTSTYLE 3
+	PRINTFORML
+	LOCALS = %TEXTR("Ohー Guhー Ahー/Uuー Ahー/Ahー Hiiー Kuhー/Ahーー Kahー/AhーHPH AhhーHPHHPH Ahー Guhー")%HPHHPHHPH
+	IF K30_BE_SEEN() && !TFLAG:デート道中
+		CALL HPH_PRINT, @"（%LOCALS%）", "L"
+		FONTREGULAR
+		PRINTFORML
+		PRINTFORMDW ...Eiki just barely manages to hold in her voice.
+	ELSE
+		CALL HPH_PRINT, @"「%LOCALS%」", "L"
+		FONTREGULAR
+		PRINTFORML
+		PRINTFORMDW ...Eiki starts making some sounds very unbefitting of a Yama.
+	ENDIF
+	PRINTFORML
+	IF TCVAR:30:382 
+		PRINTDATADL
+			DATAFORM With a surge of pleasure coming hot on the heels of her last orgasm, Eiki twists and turns trying to endure.
+			DATAFORM Eiki is rooted to the spot, the sudden wave of pleasure being multiplied by her still-sensitive body.
+			DATAFORM Eiki is desperately shaking her head back and forth, seemingly unable to endure the neverending pleasure.
+		ENDDATA
+	ELSEIF K30_BE_SEEN() && !TFLAG:デート道中
+		PRINTDATADL
+			DATAFORM Eiki takes a trembling step backwards, as if trying to avoid the gaze of \@ TGT ? %CALLNAME:TGT% # others \@.
+			DATAFORM Eiki tries to avoid alerting \@ TGT ? %CALLNAME:TGT% # others \@ to her clearly unnatural condition.
+			DATAFORM Eiki contorts her body into a clearly forced posture as she desperately tries to keep up appearances in front of \@ TGT ? %CALLNAME:TGT% # others\@.
+		ENDDATA
+	ELSE
+		PRINTDATADL
+			DATAFORM Eiki wraps her arms tightly around herself, desperately trying to ride out the pleasure.
+			DATAFORM Eiki is rooted to the spot and seems to be having difficulty even breathing regularly.
+			DATAFORM Eiki contorts her thighs into a bizarre posture, tightly grasping the edges of her skirt.
+		ENDDATA
+	ENDIF
+	IF NOWEX:Ａ絶頂
+		PRINTFORMDL But the merciless pulsing of the anal vibrator quickly brings Eiki to her limit...
+	ELSEIF K30_BE_SEEN() && !TFLAG:デート道中
+		PRINTFORMDL The sight of Eiki trying to endure the pleasure without raising any suspicions brings a deep satisfaction to your sadistic side...
+	ELSE
+		PRINTFORMDL But realizing there's no one else around, she releases an unrestrained cry of ecstasy.
+	ENDIF
+	PRINTFORML
+	IF NOWEX:Ａ絶頂
+		TFLAG:194 = 19
+		STRDATA LOCALS
+			DATAFORM Ahgahー...!! NoHPH WaitHPH StopHPHHPH
+			DATAFORM Oh noHPH This isHPH T-Too, muchHPH Noooー～HPHHPH
+			DATAFORM Ahhhー...HPH AhHPHHPH Agah～～HPHHPH
+			DATAFORM Can't stoooppHPH My headHPH G-Goingー crazyHPH
+		ENDDATA
+		IF K30_BE_SEEN() && !TFLAG:デート道中
+			CALL HPH_PRINT, @"（%LOCALS%）", "L"
+			CALL HPH_PRINT, @"（Cumming HPH Right in front of %K30_C_NAME(TGT,2)%HPH Cumming! My b-buttーHPH CummーーingHPHHPH）", "W"
+		ELSE
+			CALL HPH_PRINT, @"「%LOCALS%」", "L"
+			CALL HPH_PRINT, @"「Feels, goooodHPH My buttHPH Feels so goodーHPHHPH」", "W"
+		ENDIF
+	ELSEIF K30_BE_SEEN() && !TFLAG:デート道中
+		CALL HPH_PRINT, @"（%K30_C_NAME(MASTER)%?! %TEXTR(@"Here, and now/Now, of all times/%HE_SHE(MASTER,1)% was aiming for this moment")%HPHHPH）", "L"
+		CALL HPH_PRINT, @"（Even though, %K30_C_NAME(TGT,2)% is right hereHPH %HE_SHE(TGT,1)%'sHPH Looking this wayHPHHPH）", "L"
+		CALL HPH_PRINT, @"（AuuーHPH This...pleasure, %\@ TCVAR:30:382 ? won't stopHPH It never stops # ahHPH Can't...hold, it in\@%HPHHPH）", "W"
+	ELSE
+		STRDATA LOCALS
+			DATAFORM 「...My, voice!! I can'tHPH TooHPH StrongHPHHPH」
+			DATAFORM 「...AmazingHPH It's so goodHPH I can'tHPH Stop shakingHPHHPH」
+			DATAFORM 「...Even though, I shouldn't... NoHPH It feels, too good... I can'tHPHHPH」
+		ENDDATA
+		CALL HPH_PRINT, LOCALS, "W"
+	ENDIF
+ENDIF
+RETURN 1

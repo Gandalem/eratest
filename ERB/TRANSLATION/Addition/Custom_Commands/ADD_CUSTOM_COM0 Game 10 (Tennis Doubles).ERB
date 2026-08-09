@@ -1,0 +1,153 @@
+@EXIST_ADD_GAME_INFO10
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+@ADD_GAME_INFO10(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+
+SELECTCASE O_DATA
+	CASE "NAME"
+		CALLF MAKE_STR(V_NAME, "Tennis (doubles)")
+	CASE "DESCRIPTION"
+		CALLF MAKE_STR(V_NAME, "a four-person tennis match")
+	CASE "MINPLAYERS"
+		CALLF MAKE_INT(V_NAME, 4)
+	CASE "MAXPLAYERS"
+		CALLF MAKE_INT(V_NAME, 4)
+	CASE "CHECKREQUIREMENTS"
+        IF !ADD_BANQUET_ACTIVITY_ALLOWED("TENNIS",1)
+        ELSEIF CFLAG:MASTER:現在位置 != CFLAG:ARG:現在位置 ;don't take from surrounding areas
+        ELSEIF !((ADD_BANQUET_CHARA_STATE(ARG) && CFLAG:ARG:BANQUET_ROLE >= ADD_BANQUET_ROLE_GUEST) || ARG == FLAG:デート相手)
+        ELSE
+			CALLF MAKE_INT(V_NAME, 1)
+        ENDIF
+	CASE "VALIDBETS"
+		CALLF MAKE_STR(V_NAME, ADD_GAME_STANDARD_BETS())
+	CASE "DURATION"
+		CALLF MAKE_INT(V_NAME, 30)
+ENDSELECT
+
+@ADD_GAME10
+#DIM DYNAMIC YOUR_TEAM, 2
+#DIM DYNAMIC OPPONENT_TEAM, 2
+#DIM DYNAMIC PLAYER_SKILL
+#DIM DYNAMIC OPPONENT_SKILL
+#DIM PLAYER_SCORE
+#DIM OPPONENT_SCORE
+#DIM DYNAMIC PLAYER_AFFINITY
+#DIM DYNAMIC OPPONENT_AFFINITY
+
+YOUR_TEAM:0 = MASTER
+IF FLAG:デート相手 ;date takes priority as player's partner
+	YOUR_TEAM:1 = FLAG:デート相手
+	FOR LOCAL, 1, ADD_GAME_PARTICIPANT_COUNT
+		IF ADD_GAME_PARTICIPANTS:LOCAL != FLAG:デート相手
+			ARRAYSHIFT OPPONENT_TEAM, 1, ADD_GAME_PARTICIPANTS:LOCAL
+		ENDIF
+	NEXT
+ELSE ;random
+	CALL FISHER_YATES_SHAFFLE(3)
+	YOUR_TEAM:1 = ADD_GAME_PARTICIPANTS:(SHAFFLE_ARRAY:0 + 1)
+	OPPONENT_TEAM:0 = ADD_GAME_PARTICIPANTS:(SHAFFLE_ARRAY:1 + 1)
+	OPPONENT_TEAM:1 = ADD_GAME_PARTICIPANTS:(SHAFFLE_ARRAY:2 + 1)
+ENDIF
+
+CALL ADD_BANQUET_SET_OUTFIT21(MASTER)
+CALL ADD_BANQUET_SET_OUTFIT21(YOUR_TEAM:1)
+
+IF RELATION:MASTER:(YOUR_TEAM:1)
+    IF RELATION:MASTER:(YOUR_TEAM:1) < 100
+        PLAYER_AFFINITY = -((100-RELATION:MASTER:(YOUR_TEAM:1))*10)
+    ELSE
+        PLAYER_AFFINITY = RELATION:MASTER:(YOUR_TEAM:1) - 100 
+    ENDIF
+ENDIF
+
+IF RELATION:(OPPONENT_TEAM:0):(OPPONENT_TEAM:1) || RELATION:(OPPONENT_TEAM:1):(OPPONENT_TEAM:0)
+    IF MIN(RELATION:(OPPONENT_TEAM:0):(OPPONENT_TEAM:1), RELATION:(OPPONENT_TEAM:1):(OPPONENT_TEAM:0)) < 100
+        OPPONENT_AFFINITY = -((MIN(RELATION:(OPPONENT_TEAM:0):(OPPONENT_TEAM:1), RELATION:(OPPONENT_TEAM:1):(OPPONENT_TEAM:0)))*10)
+    ELSE
+        OPPONENT_AFFINITY = MIN(RELATION:(OPPONENT_TEAM:0):(OPPONENT_TEAM:1), RELATION:(OPPONENT_TEAM:1):(OPPONENT_TEAM:0)) - 100
+    ENDIF
+ENDIF
+
+PRINTFORML You and %CALLNAME:(YOUR_TEAM:1)% go up against %CALLNAME:(OPPONENT_TEAM:0)% and %CALLNAME:(OPPONENT_TEAM:1)%.
+
+;calculation is mostly based on combat and affinity, with some luck
+PLAYER_SKILL += MAX(ABL:(YOUR_TEAM:0):戦闘能力 * 100 + CFLAG:(YOUR_TEAM:0):今日の運勢 / 2, 0)
+PLAYER_SKILL += MAX(ABL:(YOUR_TEAM:1):戦闘能力 * 100 + CFLAG:(YOUR_TEAM:1):今日の運勢 / 2, 0)
+PLAYER_SKILL += PLAYER_AFFINITY
+
+OPPONENT_SKILL += MAX(ABL:(OPPONENT_TEAM:0):戦闘能力 * 100 + CFLAG:(OPPONENT_TEAM:0):今日の運勢 / 2, 0)
+OPPONENT_SKILL += MAX(ABL:(OPPONENT_TEAM:1):戦闘能力 * 100 + CFLAG:(OPPONENT_TEAM:1):今日の運勢 / 2, 0)
+OPPONENT_SKILL += OPPONENT_AFFINITY
+
+PLAYER_SCORE = RAND:MAX(PLAYER_SKILL,1)
+OPPONENT_SCORE = RAND:MAX(OPPONENT_SKILL,1)
+
+SIF PLAYER_SCORE == OPPONENT_SCORE
+    PLAYER_SCORE++
+
+IF PLAYER_SCORE > OPPONENT_SCORE
+    IF RELATION:MASTER:(YOUR_TEAM:1) == 1000
+        PRINTFORML Moving in perfect harmony, you and %CALLNAME:(YOUR_TEAM:1)% dance gracefully over the field, perfectly covering each other's blind spots.
+        PRINTFORML Your teamwork is so impeccable that it brings a tear to the spectators' eyes.
+        PRINTFORML %CALLNAME:(OPPONENT_TEAM:0)% and %CALLNAME:(OPPONENT_TEAM:1)% end up utterly defeated, and can only slink off in shame after witnessing such magnificence.
+    ELSEIF RELATION:MASTER:(YOUR_TEAM:1) > 100
+        PRINTFORML Your excellent teamwork with %CALLNAME:(YOUR_TEAM:1)% allows you to run circles around %CALLNAME:(OPPONENT_TEAM:0)% and %CALLNAME:(OPPONENT_TEAM:1)%, defeating them with ease.
+    ELSEIF INRANGE(RELATION:MASTER:(YOUR_TEAM:1), 1, 99)
+        IF OPPONENT_AFFINITY > 0
+            PRINTFORML Despite having a hard time working together with %CALLNAME:(YOUR_TEAM:1)%, you manage to overcome your opponents' teamwork through your individual skill.
+        ELSE
+            PRINTFORML Despite having a hard time working together with %CALLNAME:(YOUR_TEAM:1)%, you manage to overpower your opponents and come out victorious.
+        ENDIF
+    ELSE
+        SELECTCASE ABS(PLAYER_SCORE - OPPONENT_SCORE)
+            CASE IS <= 100
+                PRINTFORML It was a close match, but in the end you and %CALLNAME:(YOUR_TEAM:1)% are victorious.
+            CASE IS <= 400
+                PRINTFORML Holding the advantage throughout the match, you and you and %CALLNAME:(YOUR_TEAM:1)% secure victory without much difficulty.
+            CASEELSE
+                PRINTFORML You and %CALLNAME:(YOUR_TEAM:1)% dominate throughout the entire match, utterly demolishing %CALLNAME:(OPPONENT_TEAM:0)% and %CALLNAME:(OPPONENT_TEAM:1)%.
+        ENDSELECT
+    ENDIF
+
+	ADD_GAME_WINNERS:0 = YOUR_TEAM:0
+	ADD_GAME_WINNERS:1 = YOUR_TEAM:1
+	ADD_GAME_LOSERS:0 = OPPONENT_TEAM:0
+	ADD_GAME_LOSERS:1 = OPPONENT_TEAM:1
+	ADD_GAME_LOSER_COUNT = 2
+	ADD_GAME_WINNER_COUNT = 2
+ELSEIF OPPONENT_SCORE > PLAYER_SCORE
+    IF OPPONENT_AFFINITY > 0
+        PRINTFORML %CALLNAME:(OPPONENT_TEAM:0)% and %CALLNAME:(OPPONENT_TEAM:1)%'s excellent teamwork proves impossible to overcome, and you and %CALLNAME:(YOUR_TEAM:1)% end up as the losers.
+    ELSE
+        SELECTCASE ABS(PLAYER_SCORE - OPPONENT_SCORE)
+            CASE IS <= 100
+                PRINTFORML Both sides are evenly matched, but eventually %CALLNAME:(OPPONENT_TEAM:0)% and %CALLNAME:(OPPONENT_TEAM:1)% secure an advantage and win the match.
+            CASE IS <= 400
+                PRINTFORML %CALLNAME:(OPPONENT_TEAM:0)% and %CALLNAME:(OPPONENT_TEAM:1)% prove to be a formidable opponent, and end up victorious.
+            CASEELSE
+                PRINTFORML Unable to keep up with %CALLNAME:(OPPONENT_TEAM:0)% and %CALLNAME:(OPPONENT_TEAM:1)%, you suffer a crushing defeat at their hands.
+        ENDSELECT
+    ENDIF
+
+	ADD_GAME_WINNERS:0 = OPPONENT_TEAM:0
+	ADD_GAME_WINNERS:1 = OPPONENT_TEAM:1
+	ADD_GAME_LOSERS:0 = YOUR_TEAM:0
+	ADD_GAME_LOSERS:1 = YOUR_TEAM:1
+	ADD_GAME_LOSER_COUNT = 2
+	ADD_GAME_WINNER_COUNT = 2
+ENDIF
+
+;chance to proc red thread, somewhat better odds than through standard actions
+IF !RAND:3 && YOUR_TEAM:1 == FLAG:デート相手
+    LOCAL = TARGET
+    TARGET = YOUR_TEAM:1
+    CALL Add_RedThread
+    TARGET = LOCAL
+ENDIF

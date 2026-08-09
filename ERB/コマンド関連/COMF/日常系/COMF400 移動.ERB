@@ -1,0 +1,741 @@
+;-------------------------------------------------
+;移動
+;日常系コマンド、レベル1
+;-------------------------------------------------
+@COM400
+#DIM 入浴拒否
+#DIM 虫かご
+#DIM 忍び込み
+#DIM 立ち止まり対象
+#DIM BUTTON戻る
+#DIM BUTTON切替左
+#DIM BUTTON切替中
+#DIM BUTTON切替右
+#DIM 入れません
+#DIM ANIMATION_SEED
+#DIM PREV_REDRAW
+BUTTON戻る = MAXROOM + 1
+BUTTON切替左 = MAXROOM + 2
+BUTTON切替中 = MAXROOM + 4
+BUTTON切替右 = MAXROOM + 4
+入れません = 0
+ANIMATION_SEED = 0
+PREV_REDRAW = CURRENTREDRAW()
+
+;NAS movement stuff
+IF CapacityStats:MASTER:3 <= 0
+	IF LEGS_BOUND(MASTER)
+		DRAWLINE
+		PRINTFORMW Can't move with your legs bound like this...
+		RETURN -1
+	ELSEIF IsPartCrippled(MASTER,81) && IsPartCrippled(MASTER,91)
+		DRAWLINE
+		PRINTFORMW %PARSE("Your")% legs are too damaged to even consider moving...
+		RETURN -1
+	ELSE
+		DRAWLINE
+		PRINTFORMW %PARSE("You")% simply don't have the ability to move...
+		RETURN -1
+	ENDIF
+ENDIF
+
+;Map Animation Code
+$MAPANIMATION
+LINESTART = LINECOUNT
+SIF ANIMATERECOLOREDMAPS && !FLAG:70
+	ANIMATION_SEED ++
+
+;人数カウントをリセット
+VARSET COUNTCHARA
+;部屋の人数カウントを設定
+FOR LOCAL, 1, CHARANUM
+	COUNTCHARA:(CFLAG:LOCAL:現在位置) ++
+NEXT
+入浴拒否 = 0
+CALL TURN_RESET
+
+DRAWLINE
+;
+;	// 自宅マップの表示を新描画方式に
+;
+IF RECOLOREDMAPS
+	CALL DRAW_COLOREDMAP(ANIMATION_SEED)
+ELSE
+	CALL DRAW_MAP
+ENDIF
+;qol custom code, prints destination
+IF FLAG:移動先表示 < 4
+	PRINTL
+	TRYCALLFORM MAP_{MAIN_MAP}_{TFLAG:マップ切り替え}
+ENDIF
+PRINTL
+
+PRINTFORML Current position {(CFLAG:MASTER:現在位置)}: %THE_CASE_SHIFT(NAME_FROM_PLACE(CFLAG:MASTER:現在位置))%
+
+CALL LS_MOVE_PRINT() ;Custom code, display tasks during Lunatic Survival.
+
+IF FLAG:察知モード == 1
+	PRINT Color Legend: 
+	CALL COLORMESSAGE("Resident　", C_H_PINK, 0)
+	CALL COLORMESSAGE("Working　", C_D_ORANGE, 0)
+	CALL COLORMESSAGE("Asleep　", C_N_BLUE, 0)
+	CALL COLORMESSAGE("Mob　", C_D_PINK, 0)
+	CALL COLORMESSAGE("Idle Activity", C_YELLOW, 0)
+	PRINTL
+ELSEIF FLAG:察知モード == 2
+	PRINT Cleanliness: 
+	CALL COLORMESSAGE("　High  ", C_CREAM, 0)
+	CALL COLORMESSAGE("　Medium  ", C_YELLOW , 0)
+	CALL COLORMESSAGE("　Low　  ", C_V_PINK, 0)
+	CALL COLORMESSAGE("Garbage Mountain", C_RED, 0)
+	PRINTL
+ENDIF
+
+PRINTFORML [   0] - Return to %PARSE("your")% room
+PRINTFORM Return to closest:
+;NAS: closest toilet
+SIF CAN_ACCIDENT(MASTER,1) || CAN_ACCIDENT(MASTER,2)
+PRINTBUTTON " [Toilet] ", 3001
+PRINTBUTTON " [Bath] ", 3002
+PRINTBUTTON " [Study Area] ", 3003
+PRINTBUTTON " [Kitchen] ", 3004
+PRINTBUTTON " [Training Spot] ", 3005
+PRINTBUTTON " [Garden] ", 3006
+PRINTBUTTON " [Water Spot] ", 3007
+PRINTBUTTON " [Laundry] ", 3008
+PRINTL
+
+FOR LOCAL, MINROOM(), MAXROOM
+	SIF !(CAN_MOVE(CFLAG:MASTER:現在位置, LOCAL) & 1)
+		CONTINUE
+	SIF NAME_FROM_PLACE(LOCAL) == ""
+		CONTINUE
+	SELECTCASE FLAG:移動先表示
+		CASE 1, 3
+			PRINTFORML [{LOCAL, 4}] - %THE_CASE_SHIFT(NAME_FROM_PLACE(LOCAL))%
+		CASE 2, 4
+			PRINTFORM [{LOCAL, 4}] - %THE_CASE_SHIFT(NAME_FROM_PLACE(LOCAL)),5,LEFT%
+		CASE 0, 5
+	ENDSELECT
+NEXT
+;qol custom code, add extra line after printing rows
+SIF FLAG:移動先表示 == 2 || FLAG:移動先表示 == 4
+	PRINTL
+IF !CAN_MOVE(CFLAG:MASTER:現在位置, ENTRANCE) & 1 && CFLAG:MASTER:現在位置 != ENTRANCE
+	SIF FLAG:移動先表示 == 1
+		PRINTL
+	PRINTFORML [{ENTRANCE, 4}] - %THE_CASE_SHIFT(NAME_FROM_PLACE(ENTRANCE))%
+ELSEIF FLAG:移動先表示 == 1
+	PRINTL
+ENDIF
+PRINTFORM [{BUTTON戻る, 4}] - Return　　
+PRINTBUTTON "＜]", BUTTON切替左
+PRINTBUTTON "Change Map ", BUTTON切替中
+PRINTFORM ({TFLAG:マップ切り替え})
+PRINTBUTTON "[＞", BUTTON切替右
+;custom code alignment
+PRINTPLAIN 　　
+IF FLAG:察知モード == 1
+	LOCALS = (People)　
+ELSEIF FLAG:察知モード == 2
+	LOCALS = (Dirt)　
+ELSE
+	LOCALS = 　
+ENDIF
+SIF TALENT:MASTER:居場所察知 || TALENT:MASTER:汚部屋察知
+	PRINTBUTTON @"[Y] - Detection mode%LOCALS%", "Y"
+;----------------------
+SIF TALENT:MASTER:居場所察知 && FLAG:察知モード == 1
+	PRINTBUTTON "[Z] - Whereabouts perception　", "Z"
+SIF TALENT:MASTER:汚部屋察知 && FLAG:察知モード == 2
+	PRINTBUTTON "[X] - Cleanliness detection　", "X"
+PRINTBUTTON "[C] - Change Display Mode　　 ", "C"
+IF TALENT:MASTER:体型 < -4 && !CFLAG:MASTER:同行
+	IF CFLAG:MASTER:同行
+		PRINTL
+		PRINT (It's much easier to move when carried)
+	ELSE
+		PRINTL
+		PRINT (It's hard to walk alone in this state...)
+	ENDIF
+ENDIF
+	IF CapacityStats:MASTER:3 > 100
+		PRINTL
+		PRINTFORM (It's much easier to move due to having {CapacityStats:MASTER:3}\% moving)
+	ELSEIF CFLAG:MASTER:同行
+		PRINTL
+		PRINT (It's much easier to move when carried)	
+	ELSEIF CapacityStats:MASTER:3 >= 100
+	ELSE
+		PRINTL
+		PRINTFORM (It's hard to walk with only {CapacityStats:MASTER:3}\% moving)
+	ENDIF
+
+DO
+	;Map Animation Code
+	TOOLTIP_SETDELAY 100
+	IF ANIMATERECOLOREDMAPS && !FLAG:70
+		REDRAW PREV_REDRAW
+		TINPUTS ANIMATERECOLOREDMAPS,"UPDATE",0,""
+	ELSE
+		INPUTS
+	ENDIF
+	TOOLTIP_SETDELAY 500
+	;システム系を先に処理
+	SELECTCASE RESULTS
+	CASE "UPDATE"
+		PREV_REDRAW = CURRENTREDRAW()
+		REDRAW 0
+		CLEARLINE LINECOUNT - LINESTART
+		BREAK
+	;察知系
+	CASE "Z", "z", "X", "x"
+		IF TALENT:MASTER:居場所察知 && (RESULTS == "Z" || RESULTS == "z")
+			CALL HITOSAGASI(,1) ;qol custom code
+		ELSEIF TALENT:MASTER:汚部屋察知 && (RESULTS == "X" || RESULTS == "x")
+			CALL OHEYA_CHECK
+		ENDIF
+		$INPUT_LOOP
+		INPUT
+		IF RESULT == 0
+			RESTART
+		ELSEIF RESULT == -1 && (RESULTS == "Z" || RESULTS == "z") ;qol custom code
+			CALL BROAD_HITOSAGASI
+			RETURN 1
+		;-----------------------------------
+		;移動範囲外
+		ELSEIF IN_HOME(RESULT) != 1 || GET_MAPID(CFLAG:MASTER:現在位置) != MAIN_MAP
+			TFLAG:マップ切り替え = 0
+			PRINTW Outside of movement range.
+			RETURN -1
+		;-----------------------------
+		ELSEIF MAP_CAN_MOVE(RESULT) == 0
+			CALL CANNOT_MOVE_MESSAGE(RESULT)
+			GOTO INPUT_LOOP
+		ELSEIF IN_HOME(RESULT) == 1
+			CALL SKIP_MOVE(CFLAG:MASTER:現在位置, RESULT)
+			RETURN
+		ENDIF
+	;察知切り替え
+	CASE "Y", "y"
+		IF TALENT:MASTER:居場所察知 && TALENT:MASTER:汚部屋察知
+			FLAG:察知モード += 1
+			SIF FLAG:察知モード >= 3
+				FLAG:察知モード = 0
+		ELSEIF TALENT:MASTER:居場所察知
+			FLAG:察知モード = !FLAG:察知モード
+		ELSEIF TALENT:MASTER:汚部屋察知
+			FLAG:察知モード = (!FLAG:察知モード) * 2
+		ENDIF
+		RESTART
+	;表示切り替え
+	CASE "C", "c"
+		FLAG:移動先表示 += 1
+		;Qol custom code, more options
+		SIF FLAG:移動先表示 > 5
+			FLAG:移動先表示 = 0
+		RESTART
+	CASE ""
+		CONTINUE
+	ENDSELECT
+
+	;半角数字の場合のみ判定を続行
+	IF ISNUMERIC(RESULTS)
+		RESULT = TOINT(RESULTS)
+	ELSE
+		CALL CANNOT_MOVE_MESSAGE(0)
+		CONTINUE
+	ENDIF
+	;システム系を先に処理
+	SELECTCASE RESULT
+	CASE BUTTON戻る, CFLAG:MASTER:現在位置
+		RETURN -1
+	CASE BUTTON切替左
+		TFLAG:マップ切り替え -= 1
+		SIF TFLAG:マップ切り替え <= 0
+			TFLAG:マップ切り替え = MAP_PAGES
+		RESTART
+	CASE BUTTON切替右
+		TFLAG:マップ切り替え += 1
+		SIF TFLAG:マップ切り替え > MAP_PAGES
+			TFLAG:マップ切り替え = 1
+		RESTART
+	;私室に戻る
+	CASE 0
+		IF IN_HOME(CFLAG:MASTER:初期位置) != 1
+			PRINTW Initial position is invalid. Returning to default position.
+			CFLAG:MASTER:初期位置 = デフォルト初期位置
+		ENDIF
+		;custom code
+		SIF CFLAG:MASTER:現在位置 != CFLAG:MASTER:初期位置
+			CALL SKIP_MOVE(CFLAG:MASTER:現在位置, CFLAG:MASTER:初期位置)
+		RETURN
+	CASE 3001 TO 3008
+	;NAS: auto toilet
+		CALL AutoGoPlaceShits(MASTER,RESULT-3001)
+		RETURN
+	ENDSELECT
+
+	;残るは通常の場所の選択もしくは誤入力
+
+	;TWの方針として非推奨なんだけど手打ち入力でこれがあると入力文字数減って便利なんだ
+	SIF INRANGE(RESULT, 1, 99)
+		RESULT += MAIN_MAP * 100
+	LOCAL:15 = RESULT
+	;同じ場所はキャンセル
+	IF RESULT == CFLAG:MASTER:現在位置
+		RETURN -1
+	;移動範囲外 bug fix re-added to prevent crashes and walking into void
+	ELSEIF IN_HOME(RESULT) != 1
+		TFLAG:マップ切り替え = 0
+		PRINTW Outside of movement range.
+		CONTINUE
+	;-----------------------------
+	;移動不可能なら弾くよ
+	ELSEIF MAP_CAN_MOVE(RESULT) == 0
+		IF TFLAG:移動不能メッセージ == 999
+			;-------------------------------------
+			;NAS custom code: lockpicking
+			;-------------------------------------
+			CALL NAS_LOCKPICKING(LOCAL:15)
+			IF RESULT == LOCAL:15
+				GOTO BYPASS
+			ELSE
+				RETURN
+			ENDIF
+		ELSE
+			;-------------------------------------
+			CALL CANNOT_MOVE_MESSAGE(RESULT)
+			CONTINUE
+		ENDIF
+	;移動する
+	ELSE
+		;NAS custom code: lockpicking
+		$BYPASS
+		CALL SKIP_MOVE(CFLAG:MASTER:現在位置, RESULT)
+		RETURN
+	ENDIF
+LOOP 1
+;Map Animation Code
+SIF ANIMATERECOLOREDMAPS && !FLAG:時間停止
+	GOTO MAPANIMATION
+
+;移動
+@COM_ABLE400
+;移動実行判定
+SIF !TFLAG:100
+	RETURN 0
+;一括管理
+SIF GLOBAL_COMABLE(400)
+	RETURN RESULT
+SIF CFLAG:うふふ
+	RETURN 0
+SIF CFLAG:MASTER:イタズラ
+	RETURN 0
+SIF CFLAG:MASTER:添い寝中
+	RETURN 0
+;自宅でない
+SIF AT_HOME(MASTER) == 0
+	RETURN 0
+;LoG Custom Code
+SIF SaveIsEZB && LoG_TutorialProgress < 60
+	RETURN 0
+RETURN 1
+
+@SKIP_MOVE(ARG, 最終目的地)
+#DIM 暫定目的地,10
+#DIM 暫定目的地決定回数
+#DIM 最終目的地
+#DIM 直前位置
+#DIM 出発地点
+#DIM 経過時間
+#DIM 中継地点,20
+#DIM 中継回数
+#DIM RELAY_COUNT
+#DIM 直前の目的地
+#DIM TSP消費倍率
+
+;ARG:0	出発位置
+;ARG:1	最終目的地
+VARSET LOCAL
+VARSET 中継地点
+暫定目的地 = 最終目的地
+経過時間 = 0
+中継回数 = 0
+TFLAG:マップ切り替え = 0
+
+出発地点 = CFLAG:MASTER:現在位置
+FLAG:自室施錠 = 0 ;custom code, unlocks door
+
+;discard movements to areas OUTSIDE the map
+IF GET_MAPID(最終目的地) != MAIN_MAP
+	SETCOLOR C_RED
+	PRINTL
+	PRINTFORML %"-"*89%
+	PRINTFORML Map navigation error resulting in an invalid map
+	PRINTFORML Character: {MASTER} %NAME:MASTER%
+	PRINTFORML Current Place: {出発地点} %NAME_FROM_PLACE(出発地点)%
+	PRINTFORML Destination: {最終目的地} %NAME_FROM_PLACE(最終目的地)%
+	PRINTFORML Moving to: {暫定目的地} %NAME_FROM_PLACE(暫定目的地)%
+	PRINTFORML !REPORT THIS!
+	PRINTFORML %"-"*89%
+	RESETCOLOR
+	FORCEWAIT
+	RETURN 0
+ENDIF
+
+;movement sound
+PLAYSOUND "se/Move1.m4a"
+
+;自動掃除
+CALL AUTO_SWEEP
+
+IF (CAN_MOVE(CFLAG:MASTER:現在位置, 暫定目的地) & 1)
+	直前位置 = ARG
+	経過時間 = 1
+	CFLAG:MASTER:現在位置 = 最終目的地
+	RESULT = 最終目的地
+	GOTO STOP
+;custom code, disabled as it serves no purpose
+; ELSE
+; 	TRYCALLFORM SKIP_MOVE_{MAIN_MAP}(最終目的地)
+ENDIF
+
+出発地点 = CFLAG:MASTER:現在位置
+直前の目的地 = -1
+
+CALLF MOVEMENT_NEXT_LOCATIONS(出発地点, 最終目的地)
+FOR 中継回数,0,20
+	;custom code, reworked
+	; WHILE !(CAN_MOVE(出発地点, 暫定目的地) & 1)
+	; 	TRYCALLFORM SKIP_MOVE_{MAIN_MAP}(暫定目的地,出発地点)
+	; 	[IF_DEBUG]
+	; 	PRINTFORML Can't move directly to {暫定目的地}%STR_TR(8000 + 暫定目的地)% from {出発地点}%STR_TR(8000 + 出発地点)%, going to {RESULT}%STR_TR(8000 + RESULT)% instead.
+	; 	[ENDIF]
+	; 	IF 直前の目的地 == RESULT ;custom code, rewritten to prevent crashing
+	; 		;THROW 無限ループが発生しています。
+	; 		CALL COLORMESSAGE(@"＊WARNING＊: Cannot find a path from {CFLAG:MASTER:現在位置} %STR_TR(8000 + CFLAG:MASTER:現在位置)% to {最終目的地} %STR_TR(8000 + 最終目的地)%. Teleporting directly to destination.", C_YELLOW, 1)
+	; 		CALL COLORMESSAGE(@"Please report this issue so it can be properly fixed.", C_YELLOW, 2)
+	; 		直前位置 = ARG
+	; 		経過時間 = 1
+	; 		CFLAG:MASTER:現在位置 = 最終目的地
+	; 		RESULT = 最終目的地
+	; 		GOTO STOP
+	; 	ENDIF
+	; 	直前の目的地 = 暫定目的地
+	; 	暫定目的地 = RESULT
+	; WEND
+	暫定目的地 = RESULT:中継回数
+	IF 暫定目的地 < 0 ;should be impossible, but just in case
+		SETCOLOR C_RED
+		PRINTL
+		PRINTFORML %"-"*89%
+		PRINTFORML Map navigation error resulting in an infinite movement loop
+		PRINTFORML Teleporting directly to destination
+		PRINTFORML Character: {MASTER} %NAME:MASTER%
+		PRINTFORML Current Place: {出発地点} %NAME_FROM_PLACE(出発地点)%
+		PRINTFORML Destination: {最終目的地} %NAME_FROM_PLACE(最終目的地)%
+		PRINTFORML Moving to: {暫定目的地} %NAME_FROM_PLACE(暫定目的地)%
+		PRINTFORML !REPORT THIS!
+		PRINTFORML %"-"*89%
+		RESETCOLOR
+		直前位置 = ARG
+		経過時間 = 1
+		CFLAG:MASTER:現在位置 = 最終目的地
+		RESULT = 最終目的地
+		GOTO STOP
+	ENDIF
+	[IF_DEBUG]
+	SETCOLOR C_YELLOW
+	PRINTFORML Temporary destination number {中継回数+1} determined as {暫定目的地} %NAME_FROM_PLACE(暫定目的地)%.
+	RESETCOLOR
+	[ENDIF]
+	直前の目的地 = -1
+	経過時間 += 1
+	中継地点:中継回数 = 暫定目的地
+	SIF CAN_MOVE(暫定目的地,最終目的地) & 1
+		BREAK
+	;custom code, reworked
+	; 出発地点 = 暫定目的地
+	; 暫定目的地 = 最終目的地
+NEXT
+IF 経過時間 >= 20
+	SETCOLOR C_RED
+	PRINTL
+	PRINTFORML %"-"*89%
+	PRINTFORML Navigation error on COM400 resulting in a forcefully ended movement loop
+	PRINTFORML !REPORT THIS!
+	PRINTFORML %"-"*89%
+	RESETCOLOR
+	;THROW
+	FORCEWAIT
+ENDIF
+
+直前位置 = 暫定目的地
+
+FOR RELAY_COUNT,1,中継回数 + 1
+	LOCAL:3 = 0
+	FOR LOCAL,0,CHARANUM
+		;NAS: Non 0 MASTER
+		SIF LOCAL == MASTER
+			CONTINUE
+		IF CFLAG:LOCAL:現在位置 == 中継地点:(RELAY_COUNT-1)
+			LOCAL:3 = LOCAL
+			BREAK
+		ENDIF
+	NEXT
+	;Custom formatting
+	PRINTFORM When going through %NAME_FROM_PLACE_THE(中継地点:(RELAY_COUNT-1))%, 
+	IF LOCAL:3
+		CALL KOJO_ACTIVE_INFO(LOCAL:3) ;addition custom code, duplicated characters
+		PRINTFORML %PARSE("you come")% across %CALLNAME:(LOCAL:3)%.
+		SIF LS_RESTRICTION("Pass character") ;Custom code, restrict passing during Lunatic Survival.
+			GOTO FORCESTOP
+		IF IsDead:(TFLAG:運搬):0 && !KnowsDeadBodies:(LOCAL:3):(TFLAG:運搬) && !IsDead:(LOCAL:3):0 && !FLAG:70 && !CFLAG:(TFLAG:運搬):出禁 && !TALENT:LOCAL:Raider
+		PRINTFORML %CALLNAME:(LOCAL:3)% found %PARSE("you")% carrying %CALLNAME:(TFLAG:運搬)%'s dead body!
+		CALL FIND_DEATH(LOCAL:3,TFLAG:運搬,1)
+		CALL SET_REP(LOCAL:3,18,,1)
+		CALL GET_ANGRY(LOCAL:3, 1)
+		ENDIF
+		IF FLAG:立ち止まり == 2
+			;立ち止まらない
+		ELSEIF FLAG:立ち止まり == 1 && !RESULT
+			;口上がある場合のみ
+		ELSE
+			CALL ASK_M("Greet in passing",!FLAG:70,"Ignore and keep moving",1,"Stop",1)
+			IF RESULT == 2
+				$FORCESTOP ;Custom code.
+				CALL KOJO_MESSAGE_SEND("EVENT",4,LOCAL:3,1,0)
+				経過時間 = RELAY_COUNT
+				CFLAG:MASTER:現在位置 = 中継地点:(RELAY_COUNT - 1)
+				RESULT = 中継地点:RELAY_COUNT
+				GOTO STOP
+			ELSEIF RESULT == 1
+				CALL KOJO_MESSAGE_SEND("EVENT",4,LOCAL:3,3,0)
+			ELSE
+				CALL KOJO_MESSAGE_SEND("EVENT",4,LOCAL:3,2,0)
+			ENDIF
+		ENDIF
+	ELSE
+		PRINTFORML you meet no one.
+	ENDIF
+NEXT
+
+経過時間 = 中継回数 + 1
+CFLAG:MASTER:現在位置 = 最終目的地
+RESULT = 最終目的地
+
+$STOP
+IF IN_TOILET(RESULT)
+	LOCAL:1 = RESULT; nas customs
+	CALL トイレ侵入(RESULT)
+	SIF RESULT == -1
+		CFLAG:MASTER:現在位置 = 直前位置
+	SIF RESULT == -1 ;nas customs
+		CALL EnterPottyLinePromptPlayer(LOCAL:1)
+ELSEIF BATHCHECK(RESULT)
+	LOCAL:1 = IN_ROOM_MEMBER("MIN", RESULT, "CFLAG", 6)
+	IF !LOCAL:1 && !CFLAG:MASTER:同行
+		PRINTFORMW You arrive and enter the bathing area.
+	ELSEIF LOCAL:1 && BATH_REMOVE_COND(LOCAL:1) && !CFLAG:MASTER:同行
+		PRINTFORMW You are kicked out by %CALLNAME:(LOCAL:1)% who is taking a bath...
+		CALL KOJO_MESSAGE_SEND("EVENT",11,LOCAL:1,1,0)
+		CFLAG:MASTER:現在位置 = 直前位置
+	ELSEIF LOCAL:1 && !CFLAG:MASTER:同行
+		IF FLAG:70 == 1
+			PRINTFORMW Seems like %CALLNAME:(LOCAL:1)% is taking a bath...
+		ELSE
+			PRINTFORMW %CALLNAME:(LOCAL:1)% is in the bath, and meets your eyes...
+			CALL KOJO_MESSAGE_SEND("EVENT",11,LOCAL:1,2,0)
+		ENDIF
+		CFLAG:MASTER:現在位置 = 最終目的地
+	ELSE
+		FOR LOCAL, 1, CHARANUM
+			IF BATH_REMOVE_COND(LOCAL) && CFLAG:LOCAL:同行
+				PRINTFORMW You try to take a bath with %CALLNAME:LOCAL%, but %HE_SHE(LOCAL)% refuses.
+				CALL KOJO_MESSAGE_SEND("EVENT",23,LOCAL,1,0)
+				CFLAG:MASTER:現在位置 = 直前位置
+				GOTO END
+			ELSEIF LOCAL:1 && BATH_REMOVE_COND(LOCAL:1)
+				PRINTFORMW You are kicked out by %CALLNAME:(LOCAL:1)% who is taking a bath...
+				CALL KOJO_MESSAGE_SEND("EVENT",11,LOCAL:1,1,0)
+				CFLAG:MASTER:現在位置 = 直前位置
+				GOTO END
+			ENDIF
+		NEXT
+		FOR LOCAL, 1, CHARANUM
+			IF CFLAG:LOCAL:同行
+				PRINTFORMW Seems like %CALLNAME:LOCAL% agrees to take a bath together.
+				CALL KOJO_MESSAGE_SEND("EVENT",23,LOCAL,2,0)
+				BREAK
+			ENDIF
+		NEXT
+		CFLAG:MASTER:現在位置 = 最終目的地
+	ENDIF
+ELSEIF RESULT == 54
+	CALL 虫かご侵入(RESULT)
+	SIF RESULT == -1
+		CFLAG:MASTER:現在位置 = 直前位置
+ELSEIF LOCK:(RESULT)
+	LOCAL:4 = RESULT
+	LOCAL:9 = 0 ;bug fix custom code
+	LOCAL:10 = 0 ;bug fix custom code
+	LOCAL:11 = 0 ;bug fix custom code
+	LOCAL:2 = 0 ;bug fix
+	IF FLAG:70 == 1
+		FOR LOCAL, 1, CHARANUM
+			SIF !CFLAG:LOCAL:睡眠 && CFLAG:LOCAL:現在位置 == LOCAL:4 && CFLAG:LOCAL:311 == RESULT ;bug fix custom code
+				LOCAL:11 = 1
+			SIF CFLAG:LOCAL:現在位置 != LOCAL:4 ;bug fix custom code, check if target is at destination
+				CONTINUE
+			IF CFLAG:LOCAL:311 == RESULT && CFLAG:LOCAL:睡眠 && !CFLAG:LOCAL:出禁
+				PRINTFORMW It seems like %CALLNAME:LOCAL% is sleeping.
+				LOCAL:9 = 1 ;bug fix custom code
+			ENDIF
+		NEXT
+		;移動成立
+		CFLAG:MASTER:現在位置 = 最終目的地
+		IF LOCAL:11 ;bug fix
+			PRINTFORML It seems like the owner of this room is here.
+			PRINTFORMW This can probably get you kicked out as soon as Time Stop is released...
+		ENDIF
+	ELSEIF FLAG:70 == 0
+		FOR LOCAL, 1, CHARANUM
+			SIF IsDead:LOCAL:0
+				CONTINUE
+			SIF CFLAG:LOCAL:同行 && CFLAG:LOCAL:311 != RESULT ;bug fix
+				LOCAL:2 = 1
+			SIF CFLAG:LOCAL:同行 && CFLAG:LOCAL:311 == RESULT ;bug fix
+				LOCAL:10 = 1
+			SIF CFLAG:LOCAL:現在位置 != LOCAL:4 ;bug fix custom code
+				CONTINUE
+			IF CFLAG:LOCAL:311 == RESULT && CFLAG:LOCAL:睡眠 && !CFLAG:LOCAL:出禁
+				PRINTFORMW It seems like %CALLNAME:LOCAL% is sleeping.
+				LOCAL:9 = 1
+			ELSEIF CFLAG:LOCAL:311 == RESULT && !CFLAG:LOCAL:睡眠 && !CFLAG:LOCAL:出禁
+				PRINTFORML It seems like %CALLNAME:LOCAL% is in %HIS_HER(LOCAL)% room.
+				PRINTFORMW A faint sound can be heard...
+				LOCAL:9 = 1 ;bug fix custom code
+			ENDIF
+			; IF CFLAG:LOCAL:同行 ;bug fix, moved above
+				; LOCAL:2 = 1
+			; ELSE
+				; LOCAL:2 = 0
+			; ENDIF
+		NEXT
+		IF LOCAL:2
+			;bug fix
+			PRINTFORMW Intruding someone else's room while accompanying somebody seems like a bad idea...
+			CFLAG:MASTER:現在位置 = 直前位置
+		ELSEIF LOCAL:10 ;bug fix
+			PRINTFORMW They let you in to their room for the duration of the accompaniment.
+		ELSEIF LOCAL:4 != CFLAG:MASTER:初期位置 && LOCAL:9 ;bug fix custom code
+			CALL ASK_YN("Sneak into the room","Give it up")
+			IF RESULT == 0
+				CALL 部屋に忍び込む(LOCAL:4, 直前位置)
+				GOTO END
+			ELSEIF RESULT == 1
+				CFLAG:MASTER:現在位置 = 直前位置
+			ENDIF
+		ENDIF
+	ENDIF
+; ELSEIF TFLAG:宴会場 == RESULT ;addition custom code, disabled for new banquet system
+; 	CALL ENKAI_SINKOU()
+ENDIF
+CALL ADD_BANQUET_ARRIVAL() ;addition custom code
+$END
+[IF_DEBUG]
+PRINTFORML Moved {経過時間} times
+[ENDIF]
+
+TSP消費倍率 = 5
+SIF TALENT:MASTER:100 < -4
+	TSP消費倍率 += 15
+SIF TFLAG:運搬
+	TSP消費倍率 += 3
+IF FLAG:70 == 1 || (GETBIT(FLAG:瞬間移動, 1) && !CFLAG:MASTER:同行 && BASE:MASTER:TSP > TSP消費倍率 * 経過時間)
+	BASE:MASTER:TSP -= TSP消費倍率 * 経過時間
+	SIF TFLAG:運搬
+		CFLAG:(TFLAG:運搬):現在位置 = CFLAG:MASTER:現在位置
+ELSE
+	SIF TALENT:MASTER:100 < -4 && !CFLAG:MASTER:同行
+		TIME += 7 * 経過時間
+	TIME += 2 * 経過時間
+	RESULT = 0 ;custom code atw
+	FOR LOCAL, 1, CHARANUM ;custom code atw
+		SIF CFLAG:LOCAL:同行
+			CALL KOJO_CHECK(LOCAL, "CUSTOM_MOVEMENT", , 経過時間)
+		CONTINUE
+	NEXT
+	IF CFLAG:93:同行 && !GETBIT (FLAG:プール, 0) && !RESULT ;custom code atw
+		TIME += 2 * 経過時間
+		BASE:MASTER:体力 = MAX(BASE:MASTER:体力 - (5 * 経過時間), 500)
+	ENDIF
+ENDIF
+	SIF TFLAG:運搬
+		CFLAG:(TFLAG:運搬):現在位置 = CFLAG:MASTER:現在位置
+;21/09/01 自由行動に対応するフレーバー追加
+IF CFLAG:MASTER:現在位置 == FA16_HOLE:0 && !FA16_HOLE:1
+	IF (50 - (CapacityStats:MASTER:1/20)) < RAND:100
+		PRINTFORMW ...There was a pitfall at your feet, but you easily sidestep it.
+		FA16_HOLE:1 = 1
+	ELSE
+		PRINTFORMW %PARSE("You fall")% down into a pitfall!!!
+		SELECTCASE RAND(15) + TFLAG:幸運補正 
+			CASE IS < 2
+				PRINTFORML Ee-yow!!!
+				PRINTFORML You end up falling on your ass, hard...
+				CALL RECOVER(MASTER, -50, "体力", "Ow, my butt!")
+				WAIT
+			CASE IS > 12
+				MONEY += 100
+				PRINTFORML ... %PARSE("You find")% a hundred yen at the bottom of the pit!
+				PRINTFORMW 　Money:%金額表示(MONEY)%
+		ENDSELECT
+		IF TALENT:MASTER:妊娠
+		CALL COLORMESSAGE(@"The baby inside %PARSE("your")% belly died. How cruel...",C_RED,2,1)
+		TALENT:MASTER:妊娠 = 0
+		CFLAG:MASTER:妊娠経過日数 = 0
+		ENDIF
+		TIME += 3
+		FA16_HOLE:1 = 2
+		FA16_HOLE:2 = TIME
+	ENDIF
+ENDIF
+
+;place
+IF CFLAG:MASTER:現在位置 == 最終目的地
+    IF (InRoom(最終目的地) && !InRoom(出発地点)) || (BEDROOM(最終目的地) && !BEDROOM(出発地点))
+	PLAYSOUND "se/アルミドア閉める.m4a"
+	ENDIF
+ENDIF
+
+PREVCOM = 400
+STR:0 = %TRAINNAME_TR(400)%
+;NEXTCOMに何かしらの値が入っている場合はそれを書き換えない
+;そうでないばあい-1でリセット
+SIF NEXTCOM == 0
+	NEXTCOM = -1
+
+
+;-----------------------------------------------------------
+;移動不能時の処理
+;ARG=移動しようとした場所ID
+;-----------------------------------------------------------
+@CANNOT_MOVE_MESSAGE(ARG)
+IF !ARG || TFLAG:移動不能メッセージ == 998 || NAME_FROM_PLACE(ARG) == "" ;bug fix - moved arguments around to prevent crashes
+	PRINTFORMW Invalid input
+	CLEARLINE 2
+	REUSELASTLINE
+ELSEIF TFLAG:移動不能メッセージ == 999
+	PRINTFORMW It's locked.
+	CLEARLINE 2
+	REUSELASTLINE
+ELSEIF LS_RESTRICTION("Move",ARG) ;Custom code, print denial message if restricted during Lunatic Survival.
+	CALL LS_RESTRICT_LOCATION_MESSAGE(ARG)
+	CLEARLINE 2
+	REUSELASTLINE
+ELSE
+	TRYCALLFORM MAP_CANNOT_WORD_{MAIN_MAP}(ARG)
+ENDIF
+TFLAG:移動不能メッセージ = 0

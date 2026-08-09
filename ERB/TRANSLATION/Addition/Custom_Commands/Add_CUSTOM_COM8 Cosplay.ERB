@@ -1,0 +1,169 @@
+@ADD_CUSTOM_COM8
+#DIM CHARA
+#DIM SET_ID
+#DIMS CATEGORY
+;rejected completely
+SIF TFLAG:192 < 0
+    RETURN -1
+
+RESETCOLOR
+
+PRINTFORMDL Whose outfit should be changed?
+
+CALL ASK_YN(@"%CALLNAME:MASTER%'s", @"%CALLNAME:TARGET%'s")
+IF RESULT
+    CHARA = TARGET
+ELSE
+    CHARA = MASTER
+ENDIF
+TFLAG:193 = CHARA
+
+$CLOTHES_SELECTION
+PRINTFORMDL What sort of costume should %CALLNAME:CHARA% wear?
+CALL ASK_M("Normal Costume",1,"Cosplay Costume",1,"Special Character Costume",1,"Imitate Another Character",1,"Stop Cosplaying",TCVAR:CHARA:EVENT_CLOTHING_SET,"Cancel",1)
+LOCAL = RESULT
+SELECTCASE LOCAL
+    CASE 0
+        CATEGORY '= "基本衣装セット"
+    CASE 1
+        CATEGORY '= "コスプレ衣装セット"
+    CASE 2
+        CATEGORY '= "キャラ特殊衣装セット"
+    CASE 4
+        SIF !TCVAR:CHARA:EVENT_CLOTHING_SET
+            RETURN -1
+        ;end cosplay
+        CALL RESET_EVENT_CLOTHES(CHARA)
+        TFLAG:194 = 0
+        TIME += 5
+        RETURN 0
+    CASE 5
+        RETURN -1
+ENDSELECT
+
+IF LOCAL == 3 ;character costume
+    LOCAL:1 = OBJNAME_TO_ID(0, "GET", "キャラリスト", "普段着模倣可能キャラリスト")
+
+	FOR LOCAL:2, 0, CHARANUM
+        SIF LOCAL:2 == CHARA
+            CONTINUE
+		SIF !GET_INT(LOCAL:2, "キャラリスト", LOCAL:1, "判定")
+			CONTINUE
+        PRINTFORMLCD [{LOCAL:2}] %CALLNAME:(LOCAL:2)%
+	NEXT
+    PRINTFORMDL
+    PRINTFORMDL [0] - Return
+    DO
+        INPUT
+        LOCAL:2 = RESULT
+        SELECTCASE LOCAL:2
+        CASE 0
+            GOTO CLOTHES_SELECTION
+        CASEELSE
+            IF LOCAL:2 < CHARANUM && GET_INT(LOCAL:2, "キャラリスト", LOCAL:1, "判定")
+                SET_ID = LOCAL:2 + 100
+                BREAK
+            ENDIF
+            REUSELASTLINE Invalid input
+            CONTINUE
+        ENDSELECT
+    LOOP 1
+ELSE
+    PRINTFORMDL Which costume should %CALLNAME:CHARA% wear?
+    PRINTFORML 
+    CALL CLASS_LIST_TR("衣装セット", CATEGORY)
+    PRINTFORML 
+    PRINTFORML [0] - Return
+    DO
+        INPUT
+        SET_ID = RESULT
+        SELECTCASE SET_ID
+        CASE 0
+            GOTO CLOTHES_SELECTION
+        CASEELSE
+            SIF GET_INT(0, "衣装セット" , SET_ID, CATEGORY)
+                BREAK
+            REUSELASTLINE Invalid input
+            CONTINUE
+        ENDSELECT
+    LOOP 1
+ENDIF
+
+;select clothes
+TFLAG:194 = SET_ID
+
+;check specific outfit
+IF CHARA > 0
+    CALL KOJO_MESSAGE_SEND("SUCCESS",-1,TARGET,-1,-1)
+    RESETCOLOR
+    IF TFLAG:192 < 0
+        PRINTFORMDL %CALLNAME:CHARA% refuses to wear this costume.
+        RETURN -1
+    ENDIF
+ENDIF
+
+PRINTFORMD %CALLNAME:CHARA% changes into 
+IF SET_ID < 100
+    PRINTFORMDL %LISTING_TR(GET_STR(0, "衣装セット", SET_ID, "名前"))%.
+ELSE
+    PRINTFORMDL %CALLNAME:(SET_ID-100)%'s outfit.
+ENDIF
+
+CALL SET_EVENT_CLOTHES(CHARA, SET_ID)
+TCVAR:CHARA:COSPLAY_SEX = 1
+
+TIME += 5
+RETURN 1
+
+@ADD_CUSTOM_COM_ABLE8
+;会話実行判定
+SIF !TFLAG:100
+	RETURN 0
+;一括管理
+SIF TFLAG:102 != 2
+	RETURN 0
+SIF !TARGET
+    RETURN 0
+;睡眠中
+SIF CFLAG:睡眠
+	RETURN 0
+;気力0
+SIF BASE:MASTER:気力 <= 0
+	RETURN 0
+;停止中は不可
+SIF FLAG:70
+	RETURN 0
+SIF CFLAG:うふふ != 1
+    RETURN 0
+;already wearing an alternate outfit, only allow changing it if it was because of cosplay
+SIF TCVAR:本来の服装 && !TCVAR:COSPLAY_SEX
+    RETURN 0
+
+RETURN 1
+
+@ADD_CUSTOM_MESSAGE_COM8
+;check whose clothes were changed
+IF TFLAG:193 == 0
+    IF TFLAG:194 == 0
+        PRINTFORMDL You put your normal clothes back on.
+    ELSE
+        PRINTFORMD You put on 
+        IF TFLAG:194 < 100
+            PRINTFORMDL the %LISTING_TR(GET_STR(0, "衣装セット", TFLAG:194, "名前"))%.
+        ELSE
+            PRINTFORMDL %CALLNAME:(TFLAG:194-100)%'s outfit.
+        ENDIF
+    ENDIF
+
+ELSE
+    IF TFLAG:194 == 0
+        PRINTFORMDL %CALLNAME:TARGET% puts %HIS_HER(TARGET)% normal clothes back on.
+    ELSE
+        PRINTFORMD %CALLNAME:TARGET% puts on 
+        IF TFLAG:194 < 100
+            PRINTFORMDL the %LISTING_TR(GET_STR(0, "衣装セット", TFLAG:194, "名前"))%.
+        ELSE
+            PRINTFORMDL %CALLNAME:(TFLAG:194-100)%'s outfit.
+        ENDIF
+    ENDIF
+ENDIF

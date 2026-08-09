@@ -1,0 +1,522 @@
+;-------------------------------------------------
+;Facesitting
+;You sit on the 2hu's face.
+;-------------------------------------------------
+@ADD_CUSTOM_COM170
+#DIM nDealer
+#DIM nTarget
+SIF ISSKIP()
+	RETURN -1
+
+PRINTFORML You are currently sitting on \@ TEQUIP:MASTER:FaceSittingOn ? %CALLNAME:(TEQUIP:MASTER:FaceSittingOn-1)% # no one \@.
+IF TEQUIP:MASTER:FaceSitting
+	PRINTFORML You are being sat on by %CALLNAME:(TEQUIP:MASTER:FaceSitting-1)%.
+ELSE
+	PRINTFORML You are not being sat on
+ENDIF
+
+{
+CALL ASK_M(
+@"Sit on %CALLNAME:TARGET%", TEQUIP:(MASTER):FaceSittingOn != TARGET,
+@"Have %CALLNAME:TARGET% sit on you", TEQUIP:(MASTER):FaceSitting-1 != (TARGET),
+"Release", TEQUIP:FaceSitting || TEQUIP:MASTER:FaceSitting || TEQUIP:FaceSittingOn || TEQUIP:MASTER:FaceSittingOn, 
+"Cancel", 1)
+}
+SELECTCASE RESULT
+CASE 0
+	multiComTargets = MASTER
+	multiComTargets:1 = TARGET
+CASE 1
+	multiComTargets = TARGET
+	multiComTargets:1 = MASTER
+CASE 2
+	TEQUIP:FaceSitting = 0
+	TEQUIP:FaceSittingOn = 0
+	TEQUIP:MASTER:FaceSitting = 0
+	TEQUIP:MASTER:FaceSittingOn = 0
+CASE 4
+	RETURN -1
+ENDSELECT
+TIME++
+CALL NAS_FaceSitting(RESULT==2)
+RETURN 1
+
+@NAS_FaceSitting(releasing=0)
+#DIM DYNAMIC bothSitting
+#DIM DYNAMIC releasing
+
+;着脱の処理
+
+IF !releasing
+	; TEQUIP:(multiComTargets:1):FaceSitting = !TEQUIP:(multiComTargets:1):FaceSitting
+	;facesitter cannot be sitting
+	TEQUIP:(multiComTargets:0):FaceSitting = 0
+	TEQUIP:(multiComTargets:1):FaceSitting = (multiComTargets:0)+1
+	TEQUIP:(multiComTargets:0):FaceSittingOn = (multiComTargets:1)+1
+ENDIF
+;-------------------------------------------------
+;COM別FLAGの設定
+;-------------------------------------------------
+;行為者
+TCVAR:(multiComTargets:1):116 = multiComTargets
+;奉仕快楽フラグ
+TCVAR:multiComTargets:108 = 1
+
+CSTR:(multiComTargets:1):10 += @"{multiComTargets}/"
+;TCVAR:2 射精箇所フラグ（-1=コンドーム 1=膣内 2=アナル 3=手淫 4=口淫 5=パイズリ 6=素股 7=足コキ 8=体表 9=アナル奉仕 10=道具 11=触手 12=Ａ責め 13=Ｖ責め）
+TCVAR:(multiComTargets:1):2 = 18
+;強度
+TCVAR:(multiComTargets:1):4 = 900
+
+;-------------------------------------------------
+;ソース追加処理
+;-------------------------------------------------
+;消費体力、気力
+IF FLAG:70 == 1
+	BASE:multiComTargets:TSP -= 50
+	SOURCE:(multiComTargets):快Ｃ = 300
+	SOURCE:(multiComTargets):露出 = 500
+	SOURCE:(multiComTargets):征服 = 500
+	SOURCE:(multiComTargets:1):快Ｍ = 300
+	SOURCE:(multiComTargets:1):苦痛 = 2000
+
+ELSE
+	DOWNBASE:(multiComTargets:1):体力 += 30
+	DOWNBASE:(multiComTargets:1):気力 += 100
+
+	SOURCE:(multiComTargets):快Ｃ = 300
+	SOURCE:(multiComTargets):露出 = 500
+	SOURCE:(multiComTargets):征服 = 500
+	SOURCE:(multiComTargets:1):快Ｍ = 300
+	SOURCE:(multiComTargets:1):苦痛 = 2000
+	SOURCE:(multiComTargets:1):露出 = 300
+	SOURCE:(multiComTargets:1):屈従 = 800
+	SOURCE:(multiComTargets:1):逸脱 = 1200
+	SOURCE:(multiComTargets:1):反感 = 400
+ENDIF
+
+;-------------------------------------------------
+;特殊ソース処理
+;-------------------------------------------------
+;抑圧、抵抗持ちには、抑鬱ソース追加
+SIF TALENT:(multiComTargets:1):自己愛 < 0 || TALENT:(multiComTargets:1):抵抗
+	SOURCE:(multiComTargets:1):鬱屈 += 40
+
+;-------------------------------------------------
+;経験の処理
+;-------------------------------------------------
+;give exp
+EXP:Ｍ経験 ++
+IF FLAG:70 == 1
+	IF HETEROSEX((multiComTargets:1),multiComTargets)
+		EXP:multiComTargets:(50 + HETEROSEX((multiComTargets:1),multiComTargets)) += 1
+	ENDIF
+ELSE
+	;同性愛　レズなら戻り値1ゲイなら戻り値2
+	IF HETEROSEX((multiComTargets:1),multiComTargets)
+		EXP:(multiComTargets:1):(50 + HETEROSEX((multiComTargets:1),multiComTargets)) += 1
+		EXP:multiComTargets:(50 + HETEROSEX((multiComTargets:1),multiComTargets)) += 1
+	ENDIF
+ENDIF
+TIME++
+RETURN 1
+
+;-------------------------------------------------
+;装着継続の処理
+;-------------------------------------------------
+@ADD_CUSTOM_EQUIP_COM170(ARG)
+#DIM DYNAMIC sittingOn
+sittingOn = (TEQUIP:ARG:FaceSitting)-1
+;fallback if character doesn't exist
+IF !INRANGE(sittingOn,0,CHARANUM-1)
+	TEQUIP:ARG:FaceSitting = 0
+	TEQUIP:ARG:FaceSittingOn = 0
+	RETURN
+ENDIF
+
+;insert plug
+PRINTL ＜Face Sitting＞
+
+CSTR:ARG:10 += @"{sittingOn}/"
+TCVAR:ARG:2 = 18
+TCVAR:ARG:4 = 450
+
+IF FLAG:70 == 1
+	BASE:MASTER:TSP -= 100
+	SOURCE:ARG:快Ｍ += 550
+
+	;フィストなどのAへの大きな苦痛は先に処理しておく
+	;EXP:Ａ経験をみる
+	LOCAL = 750
+	LOCAL:1 = 600
+	IF EXP:ARG:Ｍ経験 < EXPLV:1
+		TIMES LOCAL , 3.00
+	ELSEIF EXP:ARG:Ｍ経験 < EXPLV:2
+		TIMES LOCAL , 2.50
+	ELSEIF EXP:ARG:Ｍ経験 < EXPLV:3
+		TIMES LOCAL , 2.40
+	ELSEIF EXP:ARG:Ｍ経験 < EXPLV:4
+		TIMES LOCAL , 2.00
+	ELSEIF EXP:ARG:Ｍ経験 < EXPLV:5
+		TIMES LOCAL , 1.80
+	ELSEIF EXP:ARG:Ｍ経験 >= EXPLV:5
+		TIMES LOCAL , 1.60
+	ENDIF
+
+ELSE
+
+
+	DOWNBASE:ARG:体力 += 10
+	DOWNBASE:ARG:気力 += 50
+
+	SOURCE:sittingOn:快Ｃ += 800
+	SOURCE:sittingOn:露出 += 500
+	SOURCE:sittingOn:征服 += 400
+	SOURCE:sittingOn:達成 += 500
+	SOURCE:sittingOn:露出 += 250
+	SOURCE:ARG:快Ｍ += 800
+	SOURCE:ARG:受動 += 100
+	SOURCE:ARG:露出 += 10
+	SOURCE:ARG:逸脱 += 20
+	SOURCE:ARG:恭順 += 300
+	SOURCE:ARG:屈従 += 500
+	EXP:ARG:Ｍ経験 ++
+
+	IF IsPadded(SittingOn)
+		;diapered
+		SOURCE:sittingOn:快Ｃ += 150
+		SOURCE:sittingOn:征服 += 350
+		SOURCE:sittingOn:達成 += 250
+		;poopy
+		;overloaded gives scat exp
+		IF SoiledSelf:SittingOn:1
+			EXP:ARG:GeneralPoopExp++
+			SOURCE:ARG:恐怖 += 970
+			SOURCE:ARG:屈従 += 750
+			SOURCE:ARG:受動 += 250
+			SOURCE:ARG:不潔 += 340
+		ELSEIF SoiledDiaper(SittingOn,2,,75)
+			SOURCE:ARG:恐怖 += 675
+			SOURCE:ARG:屈従 += 600
+			SOURCE:ARG:受動 += 250
+			SOURCE:ARG:不潔 += 220
+		ELSEIF SoiledDiaper(SittingOn,2,,40)
+			SOURCE:ARG:恐怖 += 675
+			SOURCE:ARG:屈従 += 600
+			SOURCE:ARG:受動 += 250
+			SOURCE:ARG:不潔 += 130
+		ELSEIF SoiledDiaper(SittingOn,2,,15)
+			SOURCE:ARG:恐怖 += 330
+			SOURCE:ARG:屈従 += 200
+			SOURCE:ARG:受動 += 75
+		ENDIF
+		;peed in
+		IF SoiledSelf:SittingOn:0
+			;leaking
+			EXP:ARG:GeneralPeeExp++
+			SOURCE:ARG:恐怖 += 500
+			SOURCE:ARG:液体 += 250
+			SOURCE:ARG:屈従 += 600
+			SOURCE:ARG:受動 += 300
+			SOURCE:ARG:不潔 += 240
+		ELSEIF SoiledDiaper(SittingOn,1,,70)
+			SOURCE:ARG:恐怖 += 300
+			SOURCE:ARG:屈従 += 400
+			SOURCE:ARG:受動 += 200
+			SOURCE:ARG:不潔 += 130
+		ELSEIF SoiledDiaper(SittingOn,1,,40)
+			SOURCE:ARG:恐怖 += 210
+			SOURCE:ARG:屈従 += 300
+			SOURCE:ARG:受動 += 150
+		ELSEIF SoiledDiaper(SittingOn,1,,20)
+			SOURCE:ARG:恐怖 += 140
+			SOURCE:ARG:屈従 += 220
+			SOURCE:ARG:受動 += 150
+		ENDIF
+	ELSEIF EQUIP:SittingOn:6
+		;wearing pantsu
+		SOURCE:sittingOn:快Ｃ += 200
+		SOURCE:sittingOn:性行動 += 170
+		SOURCE:sittingOn:達成 += 250
+		;poopy
+		IF SoiledSelf:SittingOn:1
+			;overloaded gives scat exp
+			EXP:ARG:GeneralPoopExp++
+			SOURCE:ARG:恐怖 += 970
+			SOURCE:ARG:屈従 += 750
+			SOURCE:ARG:受動 += 250
+			SOURCE:ARG:不潔 += 470
+		ELSEIF SoiledDiaper(SittingOn,2,,75)
+			SOURCE:ARG:恐怖 += 675
+			SOURCE:ARG:屈従 += 600
+			SOURCE:ARG:受動 += 250
+			SOURCE:ARG:不潔 += 320
+		ELSEIF SoiledDiaper(SittingOn,2,,40)
+			SOURCE:ARG:恐怖 += 675
+			SOURCE:ARG:屈従 += 600
+			SOURCE:ARG:受動 += 250
+			SOURCE:ARG:不潔 += 320
+		ELSEIF SoiledDiaper(SittingOn,2,,15)
+			SOURCE:ARG:恐怖 += 330
+			SOURCE:ARG:屈従 += 200
+			SOURCE:ARG:受動 += 75
+			SOURCE:ARG:不潔 += 100
+		ENDIF
+		;peed in 
+		IF SoiledSelf:SittingOn:0
+			;leaking
+			EXP:ARG:GeneralPeeExp++
+			SOURCE:ARG:恐怖 += 500
+			SOURCE:ARG:液体 += 320
+			SOURCE:ARG:屈従 += 600
+			SOURCE:ARG:受動 += 300
+			SOURCE:ARG:不潔 += 340
+		ELSEIF SoiledDiaper(SittingOn,1,,70)
+			SOURCE:ARG:恐怖 += 300
+			SOURCE:ARG:液体 += 270
+			SOURCE:ARG:屈従 += 400
+			SOURCE:ARG:受動 += 200
+			SOURCE:ARG:不潔 += 130
+		ELSEIF SoiledDiaper(SittingOn,1,,40)
+			SOURCE:ARG:恐怖 += 210
+			SOURCE:ARG:液体 += 170
+			SOURCE:ARG:屈従 += 300
+			SOURCE:ARG:受動 += 150
+			SOURCE:ARG:不潔 += 50
+		ELSEIF SoiledDiaper(SittingOn,1,,20)
+			SOURCE:ARG:恐怖 += 140
+			SOURCE:ARG:液体 += 90
+			SOURCE:ARG:屈従 += 220
+			SOURCE:ARG:受動 += 150
+		ENDIF
+	ELSE
+		;no panties
+		SOURCE:sittingOn:快Ｃ += 400
+		SOURCE:sittingOn:性行動 += 350
+		SOURCE:sittingOn:達成 += 300
+		SOURCE:sittingOn:受動 += 175
+		;dirtiness
+		IF (STAIN:SittingOn:4 & Dirt_Scat)
+			EXP:ARG:GeneralPoopExp++
+			;give a bit of awe
+			SOURCE:ARG:恐怖 += 970
+			SOURCE:ARG:屈従 += 750
+			SOURCE:ARG:受動 += 250
+			SOURCE:ARG:不潔 += 350
+		ENDIF
+		IF (STAIN:SittingOn:4 & Dirt_Pee)
+			EXP:ARG:GeneralPeeExp++
+			SOURCE:ARG:恐怖 += 100
+			SOURCE:ARG:液体 += 160
+			SOURCE:ARG:屈従 += 200
+			SOURCE:ARG:受動 += 100
+			SOURCE:ARG:不潔 += 100
+		ENDIF
+	ENDIF
+
+	;-------------------------------------------------
+	;特殊ソース処理
+	;-------------------------------------------------
+	;抑圧、抵抗持ちには、抑鬱ソース追加
+	SIF TALENT:ARG:自己愛 < 0 || TALENT:ARG:抵抗
+		SOURCE:ARG:鬱屈 += 20
+
+	;Being face sat, gets M Exp
+	LOCAL = 750
+	LOCAL:1 = 600
+	IF EXP:ARG:Ｍ経験 < EXPLV:1
+		TIMES LOCAL , 3.00
+	ELSEIF EXP:ARG:Ｍ経験 < EXPLV:2
+		TIMES LOCAL , 2.50
+	ELSEIF EXP:ARG:Ｍ経験 < EXPLV:3
+		TIMES LOCAL , 2.40
+	ELSEIF EXP:ARG:Ｍ経験 < EXPLV:4
+		TIMES LOCAL , 2.00
+	ELSEIF EXP:ARG:Ｍ経験 < EXPLV:5
+		TIMES LOCAL , 1.80
+	ELSEIF EXP:ARG:Ｍ経験 >= EXPLV:5
+		TIMES LOCAL , 1.60
+	ENDIF
+	SOURCE:ARG:苦痛 += LOCAL
+	SOURCE:ARG:反感 += LOCAL:1
+ENDIF
+RETURN 1
+
+@ADD_CUSTOM_MESSAGE_COM170
+#DIM DYNAMIC isStained = 0
+#DIM DYNAMIC smells = 0
+#DIM DYNAMIC stink = 0
+
+IF FLAG:70 == 1
+ELSEIF CFLAG:MASTER:イタズラ == 2
+ELSE
+	;解除時
+	IF !TEQUIP:(multiComTargets:1):FaceSitting
+		;i forgot about removing
+		PRINTFORML %PARSE("You lift your",,,multiComTargets)% %HIP(multiComTargets)% from %PARSE("your",,,multiComTargets:1)% face and gently %PARSE("stand",,,multiComTargets)% back up using %PARSE("your",5,,multiComTargets)% arms as support.
+		PRINTFORM \@ multiComTargets:1 == MASTER ? You # %TNAME((multiComTargets:1),1)% \@
+		;Ａ経験180以上＋淫乱か娼婦
+		IF EXP:(multiComTargets:1):Ｍ経験 > 180 && TALENT:(multiComTargets:1):淫乱
+			PRINTFORM  %PARSE("glance",,,multiComTargets)% at %PARSE("you",,,multiComTargets)%, almost begging for more as %PARSE("you look",5,,multiComTargets:1)% rather unsatisfied
+		;Ａ経験140以上＋淫乱か娼婦
+		ELSEIF EXP:(multiComTargets:1):Ｍ経験 > 140 
+			PRINTFORM  %PARSE("look",,,multiComTargets:1)% disappointed as %PARSE("you get",,,multiComTargets)% back up, wanting some more
+		;Ａ経験100以上＋淫乱か娼婦
+		ELSEIF EXP:(multiComTargets:1):Ｍ経験 > 100
+			PRINTFORM  %PARSE("blush",,,multiComTargets:1)% as %PARSE("you look",,,multiComTargets:1)% at %PARSE("you",6,,multiComTargets)%, breathing heavilly
+		;Ａ経験70以上＋淫乱か娼婦
+		ELSEIF EXP:(multiComTargets:1):Ｍ経験 > 70
+			PRINTFORM  %PARSE("smile",,,multiComTargets:1)% and %PARSE("let",,,multiComTargets:1)% out a heavy breath
+		;Ａ経験40以上
+		ELSEIF EXP:(multiComTargets:1):Ｍ経験 > 40
+			PRINTFORM  %PARSE("start",,,multiComTargets:1)% to breathe in as %PARSE("you look",5,,multiComTargets:1)% at %PARSE("you",6,,multiComTargets)%
+		;Ａ経験20以上
+		ELSEIF EXP:(multiComTargets:1):Ｍ経験 > 20
+			PRINTFORM  %PARSE("breathe",,,multiComTargets:1)% in an out with a hiccup, giving a sigh of relief
+		;それ以外
+		ELSE
+			PRINTFORM  %PARSE("hyperventilate",,,multiComTargets:1)%, regaining %PARSE("your",5,,multiComTargets:1)% lost breath in a panicked state
+		ENDIF
+		PRINTFORML ...
+	ELSE
+		;You lift up the helm of your skirt as you get down on to your legs, the soaked fabric of your panties contacting TARGET's face.
+		;TARGET moans as a whiff of love juice, your vagina, and your penis harmonize into a pleasurable scent...
+
+		PRINTFORM %PARSE("You",,,multiComTargets)% 
+		IF GETBIT(TEQUIP:multiComTargets:0, 3)
+			PRINTFORM %PARSE("keep",,,multiComTargets)% %PARSE("your",4,,multiComTargets)% pants on as %PARSE("you get",1,,multiComTargets)% down on %PARSE("your",4,,multiComTargets)% legs,
+		ELSEIF GETBIT(TEQUIP:multiComTargets:0, 0)
+			PRINTFORM %PARSE("lift",,,multiComTargets)% up the helm of %PARSE("your",4,,multiComTargets)% skirt as %PARSE("you get",1,,multiComTargets)% down on to %PARSE("your",4,,multiComTargets)% legs,
+		ELSE
+			PRINTFORM %PARSE("get",1,,multiComTargets)% down on to %PARSE("your",4,,multiComTargets)% legs,
+		ENDIF
+		PRINTFORM %" the "%
+		;emphesize urine soaked and pooped in
+		LOCALS =
+		IF EX:multiComTargets:放尿 >= 4  || (SoiledDiaper(multiComTargets,1,,33) && DOMINANT_LIQUID_SOIL(multiComTargets) == 0)
+			LOCALS += @"%FSYN("peed_in", , multiComTargets)%、"
+			SETBIT smells, 62
+		ENDIF
+		IF EX:multiComTargets:Defecation >= 4 || (SoiledDiaper(multiComTargets,2,,15) && DOMINANT_SOLID_SOIL(multiComTargets) == 0)
+			LOCALS += @"%FSYN("pooped_in", , multiComTargets)%、"
+			SETBIT smells, 63
+		ENDIF
+		IF PALAM:multiComTargets:潤滑 >= PALAMLV:4
+			LOCALS += @"%FSYN("wet:d", , multiComTargets)%、"
+			SETBIT smells, 2
+		ENDIF
+
+		SIF LOCALS != ""
+		PRINTFORM %LIST_IN_STRING(LOCALS)+" "%
+
+		;clothing check
+		IF IsDiapered(multiComTargets)
+			PRINTFORM %"padding "%
+		ELSEIF EQUIP:multiComTargets:6
+			PRINTFORM %"fabric "%
+		ELSE
+			PRINTFORM %"body"%
+		ENDIF
+		SIF EQUIP:multiComTargets:6
+		PRINTFORM of %PARSE("your",,,multiComTargets)% %PeeProtectType(multiComTargets,2)%
+
+		PRINTFORML %@" contacting %PARSE("your",,,multiComTargets:1)% face."%
+
+		PRINTFORM \@ multiComTargets:1 == MASTER ? Your # %TNAME((multiComTargets:1),1)% \@
+		;Ａ経験180以上＋淫乱か娼婦
+		IF EXP:(multiComTargets:1):Ｍ経験 > 180 && TALENT:(multiComTargets:1):淫乱
+			PRINTFORM \@ multiComTargets:1 == MASTER ? # 's \@ face has melted, %PARSE("your",4,,multiComTargets:1)% %HIP((multiComTargets:1))% spreading on its own...
+		;Ａ経験140以上＋淫乱か娼婦
+		ELSEIF EXP:(multiComTargets:1):Ｍ経験 > 140 
+			PRINTFORM  %PARSE("moan",,,multiComTargets:1)% as a whiff of 
+		;Ａ経験100以上＋淫乱か娼婦
+		ELSEIF EXP:(multiComTargets:1):Ｍ経験 > 100
+			PRINTFORM  %PARSE("blush",,,multiComTargets:1)%, %HIS_HER((multiComTargets:1))% upper body quivering in anticipation
+		;Ａ経験70以上＋淫乱か娼婦
+		ELSEIF EXP:(multiComTargets:1):Ｍ経験 > 70
+			PRINTFORM  
+		;Ａ経験40以上
+		ELSEIF EXP:(multiComTargets:1):Ｍ経験 > 40
+			PRINTFORM  %PARSE("start",,,multiComTargets:1)% to breathe in as 
+		;Ａ経験20以上
+		ELSEIF EXP:(multiComTargets:1):Ｍ経験 > 20
+			PRINTFORM  %PARSE("struggle",,,multiComTargets:1)% to find a gap to breathe as 
+		;それ以外
+		ELSE
+			PRINTFORM  can't seem to breathe as 
+		ENDIF
+		PRINTFORM %PARSE("your",,,multiComTargets)%
+		SIF HAS_VAGINA(multiComTargets)
+			SETBIT smells, 0
+
+		SIF HAS_PENIS(multiComTargets)
+			SETBIT smells, 1
+
+		LOCALS =
+		FOR LOCAL, 63, -1, -1
+			IF GETBIT(smells,LOCAL)
+				SELECTCASE LOCAL
+				CASE 0
+					LOCALS += @"%FSYN("vagina", , multiComTargets)%、"
+				CASE 1
+					LOCALS += @"%TINKO_TR(multiComTargets, 1)%、"
+					stink += 1
+				CASE 2
+					LOCALS += @"%FSYN("juice", , multiComTargets)%、"
+					stink += 2
+				CASE 62
+					LOCALS += @"%FSYN("pee:n", , multiComTargets)%、"
+					stink -= 1
+				CASE 63
+					LOCALS += @"%FSYN("poo:n", , multiComTargets)%、"
+					stink -= 3
+				ENDSELECT
+			ENDIF
+		NEXT
+
+		;smells
+		;stink variable is used. positive means good, negative means bad smells
+		PRINTFORM %@" %LIST_IN_STRING(LOCALS)% harmonizes into a"%
+
+		SELECTCASE stink
+		CASE IS >= 5
+			PRINTFORM %" divine "%
+		CASE 4
+			PRINTFORM %" irresistible "%
+		CASE 3
+			PRINTFORM %" wonderful "%
+		CASE 2
+			PRINTFORM %" pleasurable "%
+		CASE 1
+			PRINTFORM %" pleasing "%
+		CASE 0
+			PRINTFORM %" neutral "%
+		CASE -1
+			PRINTFORM %" unpleasant "%
+		CASE -2
+			PRINTFORM %" pungent "%
+		CASE -3
+			PRINTFORM %" rancid "%
+		CASE -4
+			PRINTFORM %" horrific "%
+		CASE IS <= -5
+			PRINTFORM %" reeking "%
+		ENDSELECT
+
+		PRINTL scent...
+	ENDIF
+ENDIF
+
+
+
+@ADD_CUSTOM_COM_ABLE170
+
+;バイブ実行判定
+SIF !TFLAG:100
+	RETURN 0
+
+SIF !CFLAG:うふふ
+	RETURN 0
+SIF TARGET == MASTER
+	RETURN 0
+RETURN 1

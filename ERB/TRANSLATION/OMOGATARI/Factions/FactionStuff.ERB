@@ -1,0 +1,2450 @@
+;=============================================================================================================
+; Faction
+;=============================================================================================================
+@EXIST_Faction_ID
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+;GET_INT(C_ID, "Weapon", P_ID, "Accuracy")
+
+;要素名→ID変換用関数
+;必要なら各オブジェクトで同様に作成のこと
+@Faction_ID(ARG:0, ARGS:0, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS V_NAME                  ;作成する変数名
+#DIMS C_NAME, OBJ_ID_LAST + 1 ;データ保持
+#DIM  O_ID                    ;参照用
+IF ARGS:0 == "RESET"
+	VARSET C_NAME
+	FOR O_ID, 1, OBJ_ID_LAST + 1
+		C_NAME:O_ID = %GET_STR(, "Faction", O_ID, "Name")%
+	NEXT
+ELSE
+	O_ID = FINDELEMENT(C_NAME, ESCAPE(ARGS:0), , , 1)
+	CALLF MAKE_INT(V_NAME, O_ID)
+ENDIF
+
+@FactionStatus(ARG)
+SIF !nFactions
+	RETURN
+
+PRINTFORML Faction Status:
+FOR LOCAL, 0, MaxFactions
+	SIF !FactionRelationCompElse(ARG, LOCAL)
+		CONTINUE
+
+	PRINTFORM %FactionName(LOCAL),40,LEFT%: 
+	CALL InfamyLabelL(ARG,LOCAL)
+NEXT
+
+@InfamyLabelL(ARG,ILL_FACTION)
+#DIM ILL_FACTION
+
+PRINTFORM Fame: {FactionFame:ARG:ILL_FACTION,6}
+RESETCOLOR
+PRINTFORM  |
+PRINTFORM Infanmy: {FactionInfamy:ARG:ILL_FACTION,6}
+RESETCOLOR
+PRINTFORM  | 
+
+PRINTFORM %FACTION_RELATION_STRING(ARG,ILL_FACTION)%
+
+RESETCOLOR
+PRINTL
+
+@FACTION_RELATION_STRING(ARG,ARG:1)
+#FUNCTIONS
+#DIM FRS_FAME
+#DIM FRS_INFAMY
+VARSET FAC_RELATION_STR
+
+FRS_FAME = FactionFameCompElse(ARG,ARG:1)
+FRS_INFAMY = FactionInfamyCompElse(ARG,ARG:1)
+
+FOR LOCAL:12, 0, MaxFactions
+	SIF !STRLENS(FactionName(LOCAL:12))
+		CONTINUE
+	IF FactionRank:ARG:(ARG:12) && FactionTeamPermaHostile:(ARG:1):(LOCAL:12)
+		FAC_RELATION_STR '= "Permanently Hostile"
+		RETURNF FAC_RELATION_STR
+	ENDIF
+NEXT
+
+IF FactionPermaHostile:ARG:(ARG:1)
+	FAC_RELATION_STR '= "Permanently Hostile"
+	RETURNF FAC_RELATION_STR
+ELSEIF FactionPermaFriendly:ARG:(ARG:1)
+	FAC_RELATION_STR '= "Permanently Friendly"
+	RETURNF FAC_RELATION_STR
+ENDIF
+
+
+TRYCALLFORMF FACTION_RELATION_STRING{ARG:1}(ARG,ARG:1)
+
+SIF STRLENS(FAC_RELATION_STR)
+	RETURNF FAC_RELATION_STR
+
+SELECTCASE FRS_FAME
+CASE IS > 75000
+	SELECTCASE FRS_INFAMY
+	CASE IS > 75000
+	FAC_RELATION_STR '= @"Wild Child"
+	CASE IS > 50000
+	FAC_RELATION_STR '= @"Dark Hero"
+	CASE IS > 25000
+	FAC_RELATION_STR '= @"Good-Natured Rascal"
+	CASEELSE
+	FAC_RELATION_STR '= @"Idolized"
+	ENDSELECT	
+CASE IS > 50000
+	SELECTCASE FRS_INFAMY
+	CASE IS > 75000
+	FAC_RELATION_STR '= @"Soft-Hearted Devil"
+	CASE IS > 50000
+	FAC_RELATION_STR '= @"Unpredictable"
+	CASE IS > 25000
+	FAC_RELATION_STR '= @"Smiling Troublemaker"
+	CASEELSE
+	FAC_RELATION_STR '= @"Liked"
+	ENDSELECT		
+CASE IS > 25000
+	SELECTCASE FRS_INFAMY
+	CASE IS > 75000
+	FAC_RELATION_STR '= @"Merciful Thug"
+	CASE IS > 50000
+	FAC_RELATION_STR '= @"Sneering Punk"
+	CASE IS > 25000
+	FAC_RELATION_STR '= @"Mixed"
+	CASEELSE
+	FAC_RELATION_STR '= @"Accepted"
+	ENDSELECT		
+CASEELSE
+	SELECTCASE FRS_INFAMY
+	CASE IS > 75000
+	FAC_RELATION_STR '= @"Vilified"
+	CASE IS > 50000
+	FAC_RELATION_STR '= @"Hated"
+	CASE IS > 25000
+	FAC_RELATION_STR '= @"Shunned"
+	CASEELSE
+	FAC_RELATION_STR '= @"Neutral"
+	ENDSELECT
+ENDSELECT
+
+RETURNF FAC_RELATION_STR
+
+@FACTION_RANK_STRING(ARG=-1,ARG:1)
+#FUNCTIONS
+RETURNF FACTION_RANK_STRING_INDE(ARG:1,FactionRank:ARG:(ARG:1),FactionDivision:ARG:(ARG:1))
+
+
+@FACTION_RANK_STRING_INDE(ARG,ARG:1,ARG:2)
+#FUNCTIONS
+VARSET FAC_RANK_STR
+TRYCALLFORMF FACTION_RANK_STRING{ARG}(ARG:1,ARG:2)
+
+SIF STRLENS(FAC_RANK_STR)
+	RETURNF FAC_RANK_STR
+
+SELECTCASE ARG:1
+CASE 6
+	FAC_RANK_STR '= @"Leader"
+CASE 5
+	FAC_RANK_STR '= "Lieutenant"
+CASE 4
+	FAC_RANK_STR '= "Officer"
+CASE 3
+	FAC_RANK_STR '= "Sr. Member"
+CASE 2
+	FAC_RANK_STR '= @"Member"
+CASE 1
+	FAC_RANK_STR '= @"Jr. Member"
+CASE 0
+	FAC_RANK_STR '= @""
+ENDSELECT
+
+RETURNF FAC_RANK_STR
+
+@FACTION_DIVISION_STRING(ARG,ARG:1,ARG:2)
+#FUNCTIONS
+VARSET FAC_DIV_STR
+TRYCALLFORMF FACTION_DIV_STRING{ARG}(ARG:1,ARG:2)
+
+SIF STRLENS(FAC_DIV_STR)
+	RETURNF FAC_DIV_STR
+
+SELECTCASE ARG:1
+CASE 0
+	FAC_RANK_STR '= @"General Units"
+ENDSELECT
+
+RETURNF FAC_DIV_STR
+
+
+@AddInfamy(nTarget,nFaction,nPoints,ignoreAsso=0)
+#DIM nTarget
+#DIM nFaction
+#DIM nPoints
+#DIM ignoreAsso
+
+CALL FactionChangeRelation(nTarget,nFaction,nPoints,ignoreAsso,0,1)
+
+@AddFame(nTarget,nFaction,nPoints,ignoreAsso=0)
+#DIM nTarget
+#DIM nFaction
+#DIM nPoints
+#DIM ignoreAsso
+
+CALL FactionChangeRelation(nTarget,nFaction,nPoints,ignoreAsso,0,0)
+
+@FactionChangeRelation(nTarget,nFaction,nPoints,ignoreAsso=0,targetIsFaction=0,isInfamy=0)
+#DIM nTarget
+#DIM nFaction
+#DIM nPoints
+#DIM ignoreAsso
+#DIM targetIsFaction
+#DIM isInfamy
+
+SIF !ignoreAsso
+CALLF StoreFactionTitles(targetIsFaction ? MASTER # nTarget,nFaction)
+
+SIF !nFactions
+	RETURN
+
+IF !targetIsFaction
+	SIF FactionPermaHostile:nTarget:nFaction || FactionPermaFriendly:nTarget:nFaction
+		RETURN
+
+	SIF TALENT:nTarget:妄想の産物
+		RETURN
+	IF isInfamy
+	FactionInfamy:nTarget:nFaction = LIMIT(FactionInfamy:nTarget:nFaction + nPoints,0,100000)
+	ELSE
+	ENDIF
+ELSE
+	IF isInfamy
+	FactionTeamInfamy:nFaction:nTarget = LIMIT(FactionTeamInfamy:nFaction:nTarget + nPoints,0,100000)
+	ELSE
+	FactionTeamFame:nTarget:nFaction = LIMIT(FactionTeamFame:nTarget:nFaction + nPoints,0,100000)
+	ENDIF
+ENDIF
+IF isInfamy
+SETCOLOR nPoints > 0 ? C_RED # C_GREEN
+ELSE
+SETCOLOR nPoints < 0 ? C_RED # C_GREEN
+ENDIF
+PRINTFORML %FactionName(nFaction)% \@ isInfamy ? Infamy # Fame \@ \@ nPoints > 0 ? Gained # Lost\@: {ABS(nPoints)} (\@ targetIsFaction ? %FactionName(nTarget)% # %CALLNAME:nTarget% \@)
+RESETCOLOR
+
+SIF !ignoreAsso
+CALL CheckForFacitonTitleChanges(targetIsFaction ? MASTER # nTarget, @"\@ targetIsFaction ? the %FactionName(nTarget)%'s # %PARSE("your",,,nTarget)% \@ \@ isInfamy ? hostile # friendly \@ actions")
+
+
+@AddCombatInfamy(nTarget,nVictim,nDivideFactor)
+#DIM nTarget
+#DIM nVictim
+#DIM nDivideFactor
+
+SIF !nFactions
+	RETURN
+
+SIF TALENT:nVictim:妄想の産物 || TALENT:nTarget:妄想の産物
+	RETURN
+
+FOR LOCAL, 0, MaxFactions
+	IF FactionInfamy:nVictim:LOCAL-FactionFame:nVictim:LOCAL > 25000
+		CALL AddFame(nTarget,LOCAL,FactionInfamy:nVictim:LOCAL/nDivideFactor)
+	ELSEIF FactionFame:nVictim:LOCAL > 25000
+		CALL AddInfamy(nTarget,LOCAL,FactionFame:nVictim:LOCAL/nDivideFactor)		
+	ENDIF	
+NEXT
+
+@FactionColor(ARG,nFaction)
+#FUNCTION
+#DIM nFaction
+
+SELECTCASE FactionRelationCompElse(ARG,nFaction)
+CASE IS > 0
+SETCOLOR Color_Gradient_PER(C_BLUE,C_GREEN,MIN(FactionFameCompElse(ARG,nFaction)/1000,100))
+CASE IS < 0
+SETCOLOR Color_Gradient_PER(C_BLUE,C_D_RED,MIN(FactionInfamyCompElse(ARG,nFaction)/1000,100))
+CASEELSE
+SETCOLOR C_BLUE
+ENDSELECT
+
+
+
+@EverybodyHatesEveryone()
+#FUNCTION
+
+FOR LOCAL,0,CHARANUM
+	FOR LOCAL:1,0,MaxFactions
+		FactionFame:LOCAL:(LOCAL:1) = 0
+		FactionInfamy:LOCAL:(LOCAL:1) = 100000
+		FactionPermaHostile:LOCAL:(LOCAL:1) = 1
+	NEXT
+NEXT
+
+@AIA_ASSAIANS
+IF RAND(100) < 90
+	RETURN
+ENDIF
+
+SIF !nRyona || SaveIsEZB
+	RETURN
+;SIF	!nNecro
+;	RETURN
+SIF FLAG:70
+	RETURN
+
+SIF StateOfEmergency < 5
+	RETURN	
+
+SIF !Omogatari_Raids()
+	RETURN
+
+CALL FACTION_ASSAIANS(MASTER,0)
+
+;RECEIVING is the person being targeted
+;ATTACKING is the person who's looking at ARG's faction infamy
+;Goes off from a 0 to 1000 scale
+;1000 is guaranteed, 0 is never
+;RESULT:1 is the faction or relation
+;RESULT:2 is the chance that it's lethal
+@HostileAffinity(RECEIVING,ATTACKING)
+#FUNCTION
+#DIM RECEIVING
+#DIM ATTACKING
+#DIM nFaction,2
+#DIM nHate
+#DIM inControlArea
+#DIM HA_THRESHOLD
+VARSET nHate
+VARSET RESULT
+
+
+IF RELATION:ATTACKING:RECEIVING > 100
+	;return relation
+	RESULT:1 = RELATION:ATTACKING:RECEIVING
+	RETURNF 0
+ELSEIF TALENT:ATTACKING:8 || TALENT:ATTACKING:3
+	RETURNF 0
+ELSEIF RELATION:ATTACKING:RECEIVING < 100 && RELATION:ATTACKING:RECEIVING
+	IF nSocialFighting
+		SELECTCASE RELATION:ATTACKING:RECEIVING
+		; CASE IS >= 90
+		; 	RESULT:2 = MAX(RESULT:2,0)
+		; 	nHate = MAX(nHate,10)
+		; CASE IS >= 80
+		; 	RESULT:2 = MAX(RESULT:2,0)
+		; 	nHate = MAX(nHate,25)
+		; CASE IS >= 70
+		; 	RESULT:2 = MAX(RESULT:2,0)
+		; 	nHate = MAX(nHate,50)
+		; CASE IS >= 60
+		; 	RESULT:2 = MAX(RESULT:2,100)
+		; 	nHate = MAX(nHate,100)
+		CASE IS >= 50
+			RESULT:2 = MAX(RESULT:2,50)
+			nHate = MAX(nHate,50)
+		CASE IS >= 40
+			RESULT:2 = MAX(RESULT:2,100)
+			nHate = MAX(nHate,200)
+		CASE IS >= 30
+			RESULT:2 = MAX(RESULT:2,150)
+			nHate = MAX(nHate,500)
+		CASE IS >= 20
+			RESULT:2 = MAX(RESULT:2,250)
+			nHate = MAX(nHate,650)
+		CASE IS >= 10
+			RESULT:2 = MAX(RESULT:2,500)
+			nHate = MAX(nHate,800)
+		CASEELSE
+			RESULT:2 = MAX(RESULT:2,1000)
+			nHate = MAX(nHate,1000)
+		ENDSELECT
+	ENDIF
+ELSEIF MARK:ATTACKING:3 >= 4 && RECEIVING == MASTER
+	RESULT:2 = MAX(RESULT:2,1000)
+	nHate = MAX(nHate,1000)
+ENDIF
+
+IF (TALENT:ATTACKING:Bloodlust >= 3 || CharaTrauma:ATTACKING:0 == 2) && nSocialFighting
+	;with bloodlust, 30% of being lethal
+	RESULT:2 = MAX(RESULT:2,300)
+	nHate = MAX(nHate,100)
+ENDIF
+
+SIF !nFactions || FactionDateTruce:RECEIVING:0 || FactionDateTruce:ATTACKING:0
+	RETURNF nHate
+
+FOR nFaction, 0, MaxFactions
+	inControlArea = FactionMainArea:GET_MAPID(CFLAG:ATTACKING:300) == nFaction
+	HA_THRESHOLD = inControlArea ? 25000 # 50000
+	;affiliated
+	SIF FactionFame:ATTACKING:nFaction - FactionInfamy:ATTACKING:nFaction < 25000 && !FactionRank:ATTACKING:nFaction
+		CONTINUE
+	SIF FactionRank:ATTACKING:nFaction && FactionRank:RECEIVING:nFaction
+		CONTINUE
+	
+	FOR nFaction:1,0,MaxFactions
+		SIF (GETBIT(FactionWarring:nFaction:(nFaction:1),1) || GETBIT(FactionWarring:nFaction:(nFaction:1),2)) && FactionRank:RECEIVING:(nFaction:1)
+			CONTINUE
+		IF FactionRelationComp2(RECEIVING,nFaction:0,nFaction:1) < -HA_THRESHOLD || (FactionRank:RECEIVING:(nFaction:1) && GETBIT(FactionWarring:nFaction:(nFaction:1),0))
+			;return the faction name
+			RESULT:1 = nFaction
+			RESULT:2 = MAX(RESULT:2,1000)
+			nHate = MAX(nHate,1000)
+		ENDIF
+	NEXT
+NEXT
+RETURNF nHate
+
+;ARG is the person being targeted
+;nTarget is the person who's looking at ARG's faction infamy
+@FriendlyAffinity(ARG,nTarget)
+#FUNCTION
+#DIM nTarget
+#DIM nEnemy
+#DIM nFaction,2
+VARSET RESULT
+
+IF RELATION:nTarget:ARG > 100
+	;return relation
+	RESULT:1 = RELATION:nTarget:ARG
+	RETURNF 1
+ELSEIF (TALENT:nTarget:7 || TALENT:nTarget:3) && ARG == MASTER
+	RETURNF 1
+ELSEIF RELATION:nTarget:ARG <= 50 && RELATION:nTarget:ARG
+	RETURNF 0
+ELSEIF MARK:nTarget:3 && ARG == MASTER
+	RETURNF 0
+ENDIF
+
+SIF !nFactions
+	RETURNF 0
+
+FOR nFaction, 0, MaxFactions
+	SIF FactionRank:nTarget:nFaction && FactionRank:ARG:nFaction
+		RETURNF 1
+	SIF FactionFame:nTarget:nFaction - FactionInfamy:nTarget:nFaction < 25000
+		CONTINUE
+
+	FOR nFaction:1,0,MaxFactions
+		IF FactionRelationComp2(ARG,nFaction:0,nFaction:1) >= 25000
+			;return the faction name
+			RESULT:1 = nFaction
+			RETURNF 1
+		ENDIF
+	NEXT
+NEXT
+RETURNF 0
+
+@FightIsPossible(ATTACKING,RECEIVING)
+#FUNCTION
+#DIM RECEIVING
+#DIM ATTACKING
+;EasyBattle
+SIF SaveIsEZB
+	RETURNF 0
+;Invalid character
+SIF RECEIVING > CHARANUM || RECEIVING < 0 || ATTACKING == RECEIVING
+	RETURNF 0
+;Not in the same location
+SIF CFLAG:ATTACKING:現在位置 != CFLAG:(RECEIVING):現在位置
+	RETURNF 0
+SIF ATTACKING == RECEIVING
+	RETURNF 0
+;Are targets alive?
+SIF !SHIRAHU(RECEIVING)
+	RETURNF 0
+SIF !SHIRAHU(ATTACKING)
+	RETURNF 0
+;Restrain mode
+SIF TEQUIP:ATTACKING:拘束
+	RETURNF 0
+;Dead calm block
+SIF COMBAT_AGGRESSIVENESS(ATTACKING) < RAND(1000)
+	RETURNF 0
+;If 2hu is ded
+SIF TCVAR:(RECEIVING):Grievous_Harm
+	RETURNF 0
+
+IF RECEIVING == MASTER
+	;Hate 3
+	SELECTCASE MARK:ATTACKING:反発刻印
+	CASE IS >= 4
+		RETURNF 2
+	CASE 3
+		RETURNF RAND(100) < 30 ? 2 # 1
+	CASE 2
+		RETURNF RAND(100) < 30 ? 1 # 0
+	CASE 1
+	CASEELSE
+	ENDSELECT
+	SIF FLAG:POSTAL >= 3
+		RETURNF 2
+ENDIF
+
+;Hostile affinity
+
+H = HostileAffinity(RECEIVING,ATTACKING)
+
+IF H && RAND(1000) < H
+	RETURNF RAND(1000) < RESULT:2 ? 2 # 1
+ENDIF
+;Postal mode
+SIF FLAG:POSTAL >= 4
+	RETURNF 2
+
+@AverageRep(ARG,nFaction)
+#FUNCTION
+#DIM nFaction
+RETURNF FactionFame:ARG:nFaction - FactionInfamy:ARG:nFaction
+
+@ChkGetMilitary(MAP)
+#FUNCTION
+#DIM MAP
+SELECTCASE MAP
+CASE 0
+	RETURNF 0
+CASE 2
+	RETURNF 1	
+CASE 3
+	RETURNF 2	
+CASE 5
+	RETURNF 8
+CASE 6
+	RETURNF 3	
+CASE 7
+	RETURNF 4
+CASE 8
+	RETURNF 5	
+CASE 9
+	RETURNF 6	
+CASE 10
+	RETURNF 7
+CASEELSE
+	RETURNF -1
+ENDSELECT
+
+@FactionExist(ARG)
+#FUNCTION
+SIF ARG >= MaxFactions
+	RETURNF 0
+SIF !STRLENS(FactionName(ARG))
+	RETURNF 0
+SIF FactionDisabled:ARG
+	RETURNF 0
+SIF ARG == 99
+	RETURNF PlayersFactionMade
+RETURNF 1
+
+@FactionName(ARG)
+#FUNCTIONS
+#DIMS FU_NAME
+RETURNF FactionNames:ARG
+
+@FactionUnit(ARG)
+#FUNCTIONS
+#DIMS FU_NAME
+RETURNF FactionMemberName:ARG
+
+
+@FactionAbriv(ARG)
+#FUNCTIONS
+#DIMS FU_NAME
+RETURNF FactionAbbreviation:ARG
+
+
+;calculates raid points and intimidation factor based on skill, talents, and weapon
+@IntimidationFactor(ARG)
+#FUNCTION
+#DIM DYNAMIC IF_POINTS
+VARSET IF_POINTS
+
+IF_POINTS += IntimidationFactor_Step1(ARG)
+IF_POINTS += IntimidationFactor_Step2(ARG)
+IF_POINTS =  IF_POINTS*IntimidationFactor_Step3(ARG,1)/100
+RETURNF IF_POINTS
+
+;combats
+@IntimidationFactor_Step1(ARG)
+#FUNCTION
+#DIM DYNAMIC IFS_POINTS
+#DIM DYNAMIC AblUsed
+IF STRCOUNT(GET_STR(ARG, "Weapon", EQUIP:ARG:Weapon, "Class"), "Blunt") || STRCOUNT(GET_STR(ARG, "Weapon", EQUIP:ARG:Weapon, "Class"), "Blade")
+    AblUsed:0 = ABL:ARG:Melee     
+ELSEIF GROUPMATCH(GET_STR(ARG, "Weapon", EQUIP:ARG:Weapon, "Type"),"Firearm","Explosive","Bow") && EQUIP:ARG:Weapon   
+    AblUsed:0 = ABL:ARG:Shooting       
+ELSE
+    AblUsed:0 = ABL:ARG:戦闘能力      
+ENDIF
+IFS_POINTS = AblUsed*100
+IFS_POINTS += EsperPoints(ARG)/100
+RETURNF IFS_POINTS
+
+;weapon
+@IntimidationFactor_Step2(ARG)
+#FUNCTION
+#DIM DYNAMIC IFS_POINTS
+; SIF Equip:ARG:Weapon
+	IFS_POINTS += (MIN(GetWeaponScore(EQUIP:ARG:Weapon,ARG)/3,5000))
+RETURNF IFS_POINTS
+
+;talents
+@IntimidationFactor_Step3(ARG,ARG:1)
+#FUNCTION
+#DIM DYNAMIC IFS_POINTS
+IFS_POINTS = 100
+
+SELECTCASE TALENT:ARG:11
+CASE 1
+	TIMES IFS_POINTS, 1.1
+CASE -1
+	TIMES IFS_POINTS, 0.8
+ENDSELECT
+
+SELECTCASE TALENT:ARG:12
+CASE 1
+	TIMES IFS_POINTS, 1.1
+CASE -1
+	TIMES IFS_POINTS, 0.9
+ENDSELECT
+
+SELECTCASE TALENT:ARG:13
+CASE 1
+	TIMES IFS_POINTS, 1.3
+CASE -1
+	TIMES IFS_POINTS, 0.7
+ENDSELECT
+
+SELECTCASE TALENT:ARG:21
+CASE 2
+	TIMES IFS_POINTS, 1.7
+CASE 1
+	TIMES IFS_POINTS, 1.3
+CASE -1
+	TIMES IFS_POINTS, 0.7
+ENDSELECT
+
+RETURNF IFS_POINTS
+
+@INIT_FACTIONS
+#DIM T_ID
+
+VARSET FactionMainArea, -1
+CALLF FactionUnitTableCreate
+
+IF SaveIsEZB
+	VARSET FactionDisabled, 1
+	CALL ADDFACTION_INIT(98)
+	FOR LOCAL,0,CHARANUM
+		FactionRank:LOCAL:98 = EZB_ESSENTIAL(LOCAL)
+	NEXT
+ELSE
+	;filter out outsiders
+	FOR LOCAL,0,MaxFactions
+		SIF LOCAL%5 == 0
+			CALL ANIMATION_LOAD_NAS(LOCAL, 0, MaxFactions, @"Initializing factions..." ) ;nas loading
+
+		SIF LOCAL == 98
+			CONTINUE
+		CALL ADDFACTION_INIT(LOCAL)
+	NEXT
+
+	;main areas
+	FactionMainArea:0 = 0
+	FactionMainArea:1 = -1
+	FactionMainArea:2 = 1
+	FactionMainArea:3 = 2
+	FactionMainArea:4 = -1
+	FactionMainArea:5 = -1 
+	FactionMainArea:6 = 3
+	FactionMainArea:7 = 5
+	FactionMainArea:8 = 5
+	FactionMainArea:9 = 6
+	FactionMainArea:10 = 7
+	FactionMainArea:11 = 9
+	FactionMainArea:19 = -1
+ENDIF
+
+;full control on main factions
+FOR LOCAL,0,VARSIZE("FactionMainArea")
+	SIF FactionMainArea:LOCAL == -1
+		CONTINUE
+	FactionAreaControl:(FactionMainArea:LOCAL):LOCAL = 1000
+NEXT
+
+
+@FactionVisting(nFaction)
+#DIM nFaction
+#DIM FV_ID
+#DIM raidPoints
+#DIM PeopleSpawned
+#DIM nEnemy
+#DIM DYNAMIC FactionGroup
+VARSET PeopleSpawned
+raidPoints = nFactionPatrolPointMax
+
+PRINTFORM 【A group of %TOLOWER(Pluralizer(FactionUnit(nFaction)))% from 
+CALLF FactionColor(MASTER,nFaction)
+PRINTFORM %FactionName(nFaction)% 
+RESETCOLOR
+PRINTFORMW have come to visit.】
+
+FactionGroup = RAND(1,65536)
+VARSET FactionRaidRankSpawn
+WHILE raidPoints > 0 && PeopleSpawned < MAX_MOBS
+	PeopleSpawned ++
+	CALL FactionEnemySpawn(nFaction,raidPoints,0)
+	FV_ID = CHARANUM-1
+	IF CFLAG:FV_ID:(450 + MAIN_MAP)
+		CFLAG:FV_ID:現在位置 = CFLAG:FV_ID:(450 + MAIN_MAP)
+	ELSE
+		CFLAG:FV_ID:現在位置 = MAXROOM
+	ENDIF
+	CFLAG:FV_ID:デート中 = MAIN_MAP
+	CFLAG:FV_ID:拠点来訪 = 1
+	CFLAG:FV_ID:最後に来訪した日 = DAY
+	CFLAG:FV_ID:PatrolGroup = FactionGroup
+
+	;set times
+	CFLAG:FV_ID:来訪時間 = TIME
+	CFLAG:FV_ID:帰宅時間 = TIME + 800
+	SIF CFLAG:FV_ID:帰宅時間 > 1440
+		CFLAG:FV_ID:帰宅時間 = CFLAG:FV_ID:帰宅時間-1440
+	CFLAG:FV_ID:起床時間 = TIME
+	CFLAG:FV_ID:就寝時間 = TIME + 800
+	SIF CFLAG:FV_ID:就寝時間 > 1440
+		CFLAG:FV_ID:就寝時間 = CFLAG:FV_ID:就寝時間-1440
+	;=============
+	
+	TCVAR:FV_ID:Arrival_Time = TIME ;addition custom code, keep track of arrival time
+	CALL Add_Special_NPC_Travel(FV_ID) ;addition custom code, handle special travel mechanics
+WEND
+
+@MOB_SET_ARRIVE_TIME(ARG, MSRT_TIME = 800)
+#DIM MSRT_TIME
+;set times
+CFLAG:ARG:来訪時間 = TIME
+CFLAG:ARG:帰宅時間 = TIME + MSRT_TIME
+SIF CFLAG:ARG:帰宅時間 > 1440
+	CFLAG:ARG:帰宅時間 = CFLAG:ARG:帰宅時間-1440
+CFLAG:ARG:起床時間 = TIME
+CFLAG:ARG:就寝時間 = TIME + MSRT_TIME
+SIF CFLAG:ARG:就寝時間 > 1440
+	CFLAG:ARG:就寝時間 = CFLAG:ARG:就寝時間-1440
+;=============
+TCVAR:ARG:Arrival_Time = TIME ;addition custom code, keep track of arrival time
+
+@FactionEnemySpawn(nFaction,raidPoints,isRaider=0,nSide = 1)
+#DIM nFaction
+#DIM nEnemy
+#DIM isRaider
+#DIM DYNAMIC FES_ENEMIES,100
+#DIM FES_COUNT
+#DIM FES_RANK
+#DIM nSide
+#DIM REF raidPoints
+#DIMS FES_FILTERS
+#DIM DYNAMIC nCurrentChara
+
+VARSET FES_ENEMIES
+VARSET FactionRaidRankSpawn
+
+FES_FILTERS '= @"faction = {nFaction}、"
+
+$LOOP
+FES_COUNT = DT_SELECT("FactionUnits", LIST_IN_STRING(FES_FILTERS,," and"," and"), "", FES_ENEMIES)
+SIF !FES_COUNT 
+	RETURN
+
+nEnemy = RAND(0,FES_COUNT)
+FES_RANK = DT_CELL_GET("FactionUnits", FES_ENEMIES:nEnemy, "rank", 1)
+SIF !FES_RANK
+	FES_RANK = 2
+;if this unit will get them into the negatives
+IF FactionUnits:nFaction:FES_RANK - (FactionRaidRankSpawn:FES_RANK+1) < 0
+	FES_FILTERS += @"rank <> {FES_RANK}、"
+	GOTO LOOP
+ELSE
+	FactionRaidRankSpawn:FES_RANK ++
+ENDIF
+
+raidPoints -= (RaidPointCost(FES_ENEMIES:nEnemy))
+nCurrentChara = FREE_MOB_SLOT()
+CALL SpawnMobEnemy(nCurrentChara,FES_ENEMIES:nEnemy)
+;PRINTFORML Spawned %NAME:FREE_MOB_SLOT(1)%, a %TempMobName:0%.
+SIF !FactionRank:(nCurrentChara):nFaction
+	FactionRank:(nCurrentChara):nFaction = 1
+SIF isRaider 
+	CALLF AddCombatant(nCurrentChara,nSide)
+; PRINTFORMW {nCurrentChara} %CALLNAME:nCurrentChara% | FACTION {nFaction} | SIDE {nSide}
+RETURN nCurrentChara
+
+
+@FACTION_VISITORS_CONTROL
+SIF GET_MAPID(CFLAG:MASTER:300) != MAIN_MAP
+	RETURN
+SIF !nFactions || SaveIsEZB
+	RETURN
+SIF nFactionPatrolChanceMultiplier == 0
+	RETURN
+SIF nFactionPatrol == 0
+	RETURN
+SIF !SHIRAHU(MASTER) || inTrain != 1
+	RETURN
+FOR LOCAL,0,MAXFactions
+	SIF !FactionExist(LOCAL)
+		CONTINUE
+	SIF !GETBIT(FactionPatrolArea:LOCAL,MAIN_MAP) && FactionMainArea:MAIN_MAP != LOCAL
+		CONTINUE
+	IF FactionMainArea:MAIN_MAP >= 0
+	SIF FactionTeamRelation(LOCAL,FactionMainArea:MAIN_MAP) < -50000
+		CONTINUE
+	ENDIF
+	SIF RAND:(MAX(1,(NASCheat:4 ? 15 # 90)*100/nFactionPatrolChanceMultiplier))
+		CONTINUE
+	CALL FactionVisting(LOCAL)
+NEXT
+
+
+@FactionRelation(ARG,nFaction)
+#FUNCTION
+#DIM DYNAMIC nFaction
+RETURNF FactionFame:ARG:nFaction - FactionInfamy:ARG:nFaction
+
+@FactionTeamRelation(ARG,nFaction)
+#FUNCTION
+#DIM DYNAMIC nFaction
+RETURNF FactionTeamFame:ARG:nFaction - FactionTeamInfamy:ARG:nFaction
+
+;FR_Faction:0 Current faction
+;FR_Faction:1 Faction being compared to
+
+@FactionFameComp2(ARG,FR_Faction:0,FR_Faction:1)
+#FUNCTION
+#DIM DYNAMIC FR_Faction,2
+#DIM DYNAMIC FR_FactionPoints
+FR_FactionPoints = FactionFame:ARG:(FR_Faction:0)
+
+;association current faction
+;gives interpretation by other faction.
+IF FactionRank:ARG:(FR_Faction:0)
+	FR_FactionPoints += (FactionTeamFame:(FR_Faction:1):(FR_Faction:0)*FACTION_RANK_ASSOCIATION_MULT(FactionRank:ARG:(FR_Faction:0))/100)
+ELSE
+	FR_FactionPoints += FactionNonMemberFame:(FR_Faction:0)
+ENDIF
+IF FactionRank:ARG:(FR_Faction:1)
+	FR_FactionPoints += (FactionTeamFame:(FR_Faction:0):(FR_Faction:1)*FACTION_RANK_ASSOCIATION_MULT(FactionRank:ARG:(FR_Faction:1))/100)
+ENDIF
+RETURNF FR_FactionPoints
+
+@FactionInfamyComp2(ARG,FR_Faction:0,FR_Faction:1)
+#FUNCTION
+#DIM DYNAMIC FR_Faction,2
+#DIM DYNAMIC FR_FactionPoints
+FR_FactionPoints = FactionInfamy:ARG:(FR_Faction:0)
+
+;association current faction
+;gives interpretation by other faction.
+IF FactionRank:ARG:(FR_Faction:0)
+	FR_FactionPoints += (FactionTeamInfamy:(FR_Faction:1):(FR_Faction:0)*FACTION_RANK_ASSOCIATION_MULT(FactionRank:ARG:(FR_Faction:0))/100)
+ELSE
+	FR_FactionPoints += FactionNonMemberInfamy:(FR_Faction:0)
+ENDIF
+IF FactionRank:ARG:(FR_Faction:1)
+	FR_FactionPoints += (FactionTeamInfamy:(FR_Faction:0):(FR_Faction:1)*FACTION_RANK_ASSOCIATION_MULT(FactionRank:ARG:(FR_Faction:1))/100)
+ENDIF
+RETURNF FR_FactionPoints
+
+
+@FactionRelationComp2(ARG,FR_Faction:0,FR_Faction:1)
+#FUNCTION
+#DIM DYNAMIC FR_Faction,2
+#DIM DYNAMIC FR_FactionPoints
+FR_FactionPoints = FactionFameComp2(ARG,FR_Faction:0,FR_Faction:1)
+FR_FactionPoints -= FactionInfamyComp2(ARG,FR_Faction:0,FR_Faction:1)
+RETURNF FR_FactionPoints
+;============================================
+;Compares one faction's relations to all you have joined
+;============================================
+@FactionFameCompElse(ARG,FR_FACTION)
+#FUNCTION
+#DIM DYNAMIC FR_Faction,2
+#DIM DYNAMIC FR_FactionPoints
+#DIM DYNAMIC FR_MaxPoints
+VARSET FR_MaxPoints
+FR_FactionPoints = FactionFame:ARG:FR_FACTION
+IF !FactionRank:ARG:FR_FACTION
+	FR_FactionPoints += FactionNonMemberFame:(FR_Faction:0)
+ENDIF
+
+FOR FR_FACTION:1, 0, MaxFactions
+	IF FactionRank:ARG:(FR_Faction:1)
+		FR_MaxPoints += MAX(FR_MaxPoints,(FactionTeamFame:(FR_Faction:0):(FR_Faction:1)*FACTION_RANK_ASSOCIATION_MULT(FactionRank:ARG:(FR_Faction:1))/100))
+	ENDIF
+NEXT
+
+FR_FactionPoints += FR_MaxPoints
+
+RETURNF FR_FactionPoints
+
+@FactionInfamyCompElse(ARG,FR_FACTION)
+#FUNCTION
+#DIM DYNAMIC FR_Faction,2
+#DIM DYNAMIC FR_FactionPoints
+#DIM DYNAMIC FR_MaxPoints
+VARSET FR_MaxPoints
+FR_FactionPoints = FactionInfamy:ARG:FR_FACTION
+IF !FactionRank:ARG:FR_FACTION
+	FR_FactionPoints += FactionNonMemberInfamy:(FR_Faction:0)
+ENDIF
+
+FOR FR_FACTION:1, 0, MaxFactions
+	IF FactionRank:ARG:(FR_Faction:1)
+		FR_MaxPoints = MAX(FR_MaxPoints,(FactionTeamInfamy:(FR_Faction:0):(FR_Faction:1)*FACTION_RANK_ASSOCIATION_MULT(FactionRank:ARG:(FR_Faction:1))/100))
+	ENDIF
+NEXT
+
+FR_FactionPoints += FR_MaxPoints
+
+RETURNF FR_FactionPoints
+
+@FactionRelationCompElse(ARG,FR_FACTION)
+#FUNCTION
+#DIM DYNAMIC FR_Faction
+#DIM DYNAMIC FR_FactionPoints
+FR_FactionPoints = FactionFameCompElse(ARG,FR_FACTION)
+FR_FactionPoints -= FactionInfamyCompElse(ARG,FR_FACTION)
+RETURNF FR_FactionPoints
+;============================================
+
+@FactionsEmployed(ARG)
+#FUNCTION
+#DIM DYNAMIC FE_COUNT
+VARSET FE_COUNT
+FOR LOCAL,0,MAXFACTIONS
+	SIF FactionRank:ARG:LOCAL
+		FE_COUNT ++
+NEXT
+RETURNF FE_COUNT
+
+
+@CHANGE_FACTION_EXP(ARG,nFaction,nEXP)
+#DIM nFaction
+#DIM nExp
+SIF !FactionRank:ARG:nFaction
+	RETURN 0
+FactionExperience:ARG:nFaction += nEXP
+CALL COLORMESSAGE(@"+{nExp} %FactionAbriv(nFaction)% Faction EXP (%CALLNAME:ARG%, now {FactionExperience:ARG:nFaction})",nEXP > 0 ? C_YELLOW # C_ORANGE,1,1)
+RETURN 1
+
+
+@AfterDayFactionStuff
+#DIM ADFS_AREA
+#DIM ADFS_FACTION
+#DIM ADFS_TARGET
+
+;factions enabled
+SIF !nFactions
+	RETURN
+
+;Passive Infamy Loss
+FOR ADFS_FACTION,0,MAXFactions
+	SIF !FactionExist(ADFS_FACTION)
+		CONTINUE
+	FOR LOCAL,0,CHARANUM
+		SIF !FactionInfamy:LOCAL:ADFS_FACTION
+			CONTINUE
+		SKIPDISP LOCAL != MASTER
+		CALL AddInfamy(LOCAL,ADFS_FACTION,-RAND(1,500))
+		SKIPDISP 0
+	NEXT
+NEXT
+SKIPDISP 0
+
+FOR ADFS_FACTION,0,MAXFactions
+	SIF !FactionExist(ADFS_FACTION)
+		CONTINUE
+	IF STRLENS(FactionResearching:ADFS_FACTION)
+		;research project
+		CALL CONTRIBUTE_RESEARCH_PROJECT(ADFS_FACTION,RAND(25,250))
+	ELSE
+		;target researcch 
+		CALL FISHER_YATES_SHAFFLE(DT_ROW_LENGTH("ResearchProject"))
+		FOR ADFS_TARGET,0,DT_ROW_LENGTH("ResearchProject")
+			SIF RESEARCH_DONE(ADFS_FACTION,DT_CELL_GETS("ResearchProject", SHAFFLE_ARRAY:ADFS_TARGET, "defName"))
+				CONTINUE
+			SIF TechLevelStrToInt(DT_CELL_GETS("ResearchProject", SHAFFLE_ARRAY:ADFS_TARGET, "techLevel")) > nMaxTech
+				CONTINUE
+
+			IF RESEARCH_PRERECS_DONE(ADFS_FACTION,DT_CELL_GETS("ResearchProject", SHAFFLE_ARRAY:ADFS_TARGET, "defName"))
+			CALLF START_RESEARCH_PROJECT(ADFS_FACTION,DT_CELL_GETS("ResearchProject", SHAFFLE_ARRAY:ADFS_TARGET, "defName"))
+			PRINTFORML %FactionName(ADFS_FACTION)% has started research on %DT_CELL_GETS("ResearchProject", SHAFFLE_ARRAY:ADFS_TARGET, "label")%.
+			SIF !benchMarkStart
+				WAIT
+			BREAK
+			ENDIF
+		NEXT
+	ENDIF
+NEXT
+
+;Start patroling
+FOR ADFS_FACTION,0,MAXFactions
+	SIF !FactionExist(ADFS_FACTION)
+		CONTINUE
+	FOR ADFS_AREA,0,20
+		SIF !GET_EXISTMAP(ADFS_AREA)
+			CONTINUE
+		SIF GETBIT(FactionPatrolArea:ADFS_FACTION,ADFS_AREA)
+			CONTINUE
+		SIF RAND:200
+			CONTINUE
+		CALL COLORMESSAGE(@"%FactionName(ADFS_FACTION)% has decided to start patrolling %GET_MAPNAME(ADFS_AREA)%!",C_YELLOW,benchMarkStart ? 1 # 2,1)
+		SETBIT FactionPatrolArea:ADFS_FACTION, ADFS_AREA
+		FactionAreaControl:ADFS_FACTION:ADFS_Area = MAX(FactionAreaControl:ADFS_FACTION:ADFS_Area,150)
+	NEXT
+	;Wars
+	FOR ADFS_TARGET,0,MaxFactions
+		;lieutendent
+		SIF FactionRank:MASTER:(ADFS_FACTION) >= 5
+			BREAK
+		SIF !FactionExist(ADFS_TARGET)
+			CONTINUE
+		CALL FactionAllianceCheck(ADFS_FACTION, ADFS_TARGET)
+		CALL FactionTruceCheck(ADFS_FACTION, ADFS_TARGET)
+		FOR ADFS_AREA,0,20
+			SIF !GET_EXISTMAP(ADFS_AREA)
+				CONTINUE
+			IF !GETBIT(FactionWarringAreas:(ADFS_FACTION):(ADFS_TARGET), ADFS_AREA)
+				CALL FACTION_WAR_CHECK(ADFS_FACTION, ADFS_TARGET, ADFS_AREA)
+			ENDIF
+		NEXT
+	NEXT
+NEXT
+
+;Random Joins
+FOR LOCAL,0,MaxFactions
+	SIF !FactionExist(LOCAL)
+		CONTINUE
+		
+	ADFS_GAIN_SUB:LOCAL:1 = FACTION_RECRUIT_RAND(LOCAL,50,2000)
+	ADFS_GAIN_SUB:LOCAL:2 = FACTION_RECRUIT_RAND(LOCAL,50,1000)
+	ADFS_GAIN_SUB:LOCAL:3 = FACTION_RECRUIT_RAND(LOCAL,50,200)
+	SIF !RAND(5)
+		ADFS_GAIN_SUB:LOCAL:3 = FACTION_RECRUIT_RAND(LOCAL,0,5)
+	CALL ADFS_MOVE_SUB_TO_TOTAL(LOCAL)
+NEXT
+
+
+;Propaganda Signs
+FOR LOCAL,0,VARSIZE("FacionPropagandaSign")
+	IF FacionPropagandaSign:LOCAL > -1
+		ADFS_GAIN_SUB:(FacionPropagandaSign:LOCAL):1 = FACTION_RECRUIT_RAND(LOCAL,50,2000)
+		ADFS_GAIN_SUB:(FacionPropagandaSign:LOCAL):2 = FACTION_RECRUIT_RAND(LOCAL,50,1000)
+		ADFS_GAIN_SUB:(FacionPropagandaSign:LOCAL):3 = FACTION_RECRUIT_RAND(LOCAL,50,200)
+	ENDIF
+NEXT
+
+FOR ADFS_FACTION,0,MAXFactions
+	SIF ADFS_UNIT_COUNT_CHANGED(ADFS_FACTION,1)
+	CALL COLORMESSAGE(@"Thanks the the propaganda signs, the %FactionName(ADFS_FACTION)% gained %LIST_IN_STRING(ADFS_GAIN_UNITS_LIST_STR(ADFS_Faction,1))%!",C_YELLOW,benchMarkStart ? 1 # 2,1)
+NEXT
+
+;daily pay
+FOR ADFS_FACTION,0,MAXFactions
+	ADFS_INCOME_SUB:ADFS_FACTION = RAND(FACTION_TREASURY_DAILY(ADFS_FACTION)*90/100,FACTION_TREASURY_DAILY(ADFS_FACTION)*120/100)
+	CALL ADFS_MOVE_INCOME_SUB_TO_TOTAL(ADFS_FACTION)
+NEXT
+
+;total change
+FOR ADFS_FACTION,0,MAXFactions
+	SIF !FactionExist(ADFS_FACTION)
+		CONTINUE
+	VARSET LOCALS
+	CALL ADFS_MOVE_SUB_TO_TOTAL(ADFS_FACTION)
+	SIF ADFS_UNIT_COUNT_CHANGED(ADFS_FACTION)
+		CALL COLORMESSAGE(@"%FactionName(ADFS_FACTION)% gained %LIST_IN_STRING(ADFS_GAIN_UNITS_LIST_STR(ADFS_Faction))%!",C_YELLOW ,benchMarkStart ? 1 # 2,1)
+	CALL ADFS_MOVE_TOTAL(ADFS_FACTION)
+
+	CALL ADFS_MOVE_INCOME_SUB_TO_TOTAL(ADFS_FACTION)
+	SIF ADFS_INCOME_CHANGED(ADFS_FACTION)
+		CALL COLORMESSAGE(@"%FactionName(ADFS_FACTION)% gained %金額表示(ADFS_INCOME:ADFS_FACTION)%! (now %金額表示(FactionWealth:ADFS_FACTION+(ADFS_INCOME:ADFS_FACTION))%)",C_YELLOW ,benchMarkStart ? 1 # 2,1)
+	CALL ADFS_MOVE_INCOME_TOTAL(ADFS_FACTION)
+NEXT
+
+@ADFS_GAIN_UNITS_LIST_STR(ARG,IsSub)
+#FUNCTIONS
+#DIM isSub
+#DIM GULS_CHANGE
+VARSET LOCALS
+FOR LOCAL,6,-1,-1
+	IF IsSub
+		GULS_CHANGE = ADFS_GAIN_SUB:ARG:LOCAL
+	ELSE
+		GULS_CHANGE = ADFS_GAIN:ARG:LOCAL
+	ENDIF
+	SIF GULS_CHANGE
+		LOCALS += @"{GULS_CHANGE} %PLNOUN(FACTION_RANK_STRING_INDE(ARG,LOCAL),GULS_CHANGE)%、"
+NEXT
+RETURNF LOCALS
+
+@ADFS_UNIT_COUNT_CHANGED(ARG,isSub=0)
+#FUNCTION
+#DIM isSub
+FOR LOCAL,0,7
+	IF IsSub
+		SIF ADFS_GAIN_SUB:ARG:LOCAL
+			RETURNF 1
+	ELSE
+		SIF ADFS_GAIN:ARG:LOCAL
+			RETURNF 1
+	ENDIF
+NEXT
+
+@ADFS_MOVE_SUB_TO_TOTAL(ARG)
+FOR LOCAL,0,7
+	ADFS_GAIN:ARG:LOCAL += ADFS_GAIN_SUB:ARG:LOCAL
+	ADFS_GAIN_SUB:ARG:LOCAL = 0
+NEXT
+
+@ADFS_MOVE_TOTAL(ARG)
+FOR LOCAL,0,7
+	FactionUnits:ARG:LOCAL += ADFS_GAIN:ARG:LOCAL
+	ADFS_GAIN:ARG:LOCAL = 0
+NEXT
+
+@ADFS_INCOME_CHANGED(ARG,isSub=0)
+#FUNCTION
+#DIM isSub
+IF IsSub
+	SIF ADFS_INCOME_SUB:ARG
+		RETURNF 1
+ELSE
+	SIF ADFS_INCOME:ARG
+		RETURNF 1
+ENDIF
+
+
+@ADFS_MOVE_INCOME_SUB_TO_TOTAL(ARG)
+ADFS_INCOME:ARG += ADFS_INCOME_SUB:ARG
+ADFS_INCOME_SUB:ARG = 0
+
+@ADFS_MOVE_INCOME_TOTAL(ARG)
+FactionWealth:ARG += ADFS_INCOME:ARG
+ADFS_INCOME:ARG = 0
+
+@EXP_DEMAND_FACTION_RANK(ARG)
+#FUNCTION
+SELECTCASE ARG
+CASE 0
+;unemployed
+CASE 1
+;junior
+CASE 2
+;member
+RETURNF 25
+CASE 3
+;senior
+RETURNF 200
+CASE 4
+;officer
+RETURNF 650
+CASE 5
+;lieu
+RETURNF 1500
+CASE 6
+;leader
+RETURNF 3000
+ENDSELECT
+
+@FACTION_RANK_ASSOCIATION_MULT(ARG)
+#FUNCTION
+SELECTCASE ARG
+CASE 0
+;unemployed
+CASE 1
+;junior
+RETURNF 25
+CASE 2
+;member
+RETURNF 50
+CASE 3
+;senior
+RETURNF 75
+CASEELSE
+;officer
+RETURNF 100
+ENDSELECT
+
+@FACTION_TECH_NEEDED(ARG)
+#FUNCTION
+SELECTCASE ARG
+CASE 0
+;animal
+CASE 1
+;neolithic
+RETURNF 1
+CASE 2
+;medieval
+RETURNF 50
+CASE 3
+;senior
+RETURNF 75
+CASE 4
+;early industrial
+RETURNF 500
+CASE 5
+;midworld
+RETURNF 1000
+CASE 6
+RETURNF 3500
+CASE 7
+;ultratech
+RETURNF 10000
+CASEELSE
+;archotech
+RETURNF 50000
+ENDSELECT
+
+@FACTION_SALARY(nFaction,ARG)
+#FUNCTION
+#DIM nFaction
+VARSET FAC_SALARY
+TRYCALLFORMF FACTION_SALARY_{nFaction}(ARG)
+SIF FAC_SALARY
+	RETURNF FAC_SALARY
+
+SELECTCASE ARG
+CASE 0
+;unemployed
+CASE 1
+;junior
+RETURNF 3000
+CASE 2
+;member
+RETURNF 5000
+CASE 3
+;senior
+RETURNF 10000
+CASE 4
+;officer
+RETURNF 20000
+CASE 5
+;lieu
+RETURNF 35000
+CASE 6
+;leader
+RETURNF 50000
+ENDSELECT
+
+RETURNF FAC_SALARY
+
+@FACTION_MAX_LEVEL(nFaction,ARG)
+#FUNCTION
+#DIM nFaction
+
+SELECTCASE ARG
+CASE 0
+;unemployed
+CASE 1
+;junior
+RETURNF 3
+CASE 2
+;member
+RETURNF 5
+CASE 3
+;senior
+RETURNF 6
+CASE 4
+;officer
+RETURNF 7
+CASE 5
+;lieu
+RETURNF 8
+CASE 6
+;leader
+RETURNF 10
+ENDSELECT
+
+@FACTION_MAX_HP(nFaction,ARG)
+#FUNCTION
+#DIM nFaction
+
+SELECTCASE ARG
+CASE 0
+;unemployed
+CASE 1
+;junior
+RETURNF 2500
+CASE 2
+;member
+RETURNF 3500
+CASE 3
+;senior
+RETURNF 4500
+CASE 4
+;officer
+RETURNF 6500
+CASE 5
+;lieu
+RETURNF 8000
+CASE 6
+;leader
+RETURNF 10500
+ENDSELECT
+
+
+@StoreFactionTitles(ARG,nFaction)
+#FUNCTION
+#DIM nFaction
+VARSET FationTitleBefore
+VARSET TempFactionFame
+VARSET TempFactionInfamy
+FOR LOCAL,0,MaxFactions
+	FationTitleBefore:LOCAL '= FACTION_RELATION_STRING(ARG,LOCAL)
+	TempFactionFame:LOCAL = FactionFameCompElse(ARG,LOCAL)
+	TempFactionInfamy:LOCAL = FactionInfamyCompElse(ARG,LOCAL)
+NEXT
+
+@CheckForFacitonTitleChanges(ARG,CFFTC_REASON)
+#DIM nFaction
+#DIM CFFTC_CHANGED
+#DIMS CFFTC_REASON
+#DIMS CFTTC_SPLIT, MaxFactions
+VARSET FactionRelationChangedList
+VARSET FactionRelationChangedListID
+FOR LOCAL,0,MaxFactions
+	CFFTC_CHANGED = FationTitleBefore:LOCAL != FACTION_RELATION_STRING(ARG,LOCAL)
+	IF CFFTC_CHANGED
+		FactionRelationChangedList += @"%FactionAbriv(LOCAL)%、"
+		FactionRelationChangedListID += @"{LOCAL}、"
+	ENDIF
+NEXT
+
+IF FactionRelationChangedList != ""
+	SETCOLOR C_ORANGE
+	PRINTFORML \@ STRCOUNT(FactionRelationChangedList,"、") == 1 ? %LIST_IN_STRING(FactionRelationChangedList)% has # %NUM_COUNT(STRCOUNT(FactionRelationChangedList,"、"),,1)% %PLNOUN("faction",STRCOUNT(FactionRelationChangedList,"、"))% have \@ changed relationships on %PARSE("you",,,ARG)% due to %CFFTC_REASON%.
+	RESETCOLOR
+	SPLIT FactionRelationChangedListID, "、", CFTTC_SPLIT
+	FOR LOCAL,0,MaxFactions
+		SIF !STRLENS(CFTTC_SPLIT:LOCAL)
+			BREAK
+		PRINTFORM %FactionName(TOINT(CFTTC_SPLIT:LOCAL)),30,LEFT%: 
+		SELECTCASE TempFactionFame:(TOINT(CFTTC_SPLIT:LOCAL)) - TempFactionInfamy:(TOINT(CFTTC_SPLIT:LOCAL))
+		CASE IS > 0
+		SETCOLOR Color_Gradient_PER(GETCONFIG("TEXT COLOR"),C_GREEN,MIN(TempFactionFame:(TOINT(CFTTC_SPLIT:LOCAL))/1000,100))
+		CASE IS < 0
+		SETCOLOR Color_Gradient_PER(GETCONFIG("TEXT COLOR"),C_D_RED,MIN(TempFactionInfamy:(TOINT(CFTTC_SPLIT:LOCAL))/1000,100))
+		ENDSELECT
+		PRINTFORM 【%FationTitleBefore:(TOINT(CFTTC_SPLIT:LOCAL))%】
+		RESETCOLOR
+		PRINTFORM  -> 
+		SELECTCASE FactionRelationCompElse(ARG,(TOINT(CFTTC_SPLIT:LOCAL)))
+		CASE IS > 0
+		SETCOLOR Color_Gradient_PER(GETCONFIG("TEXT COLOR"),C_GREEN,MIN(FactionFameCompElse(ARG,(TOINT(CFTTC_SPLIT:LOCAL)))/1000,100))
+		CASE IS < 0
+		SETCOLOR Color_Gradient_PER(GETCONFIG("TEXT COLOR"),C_D_RED,MIN(FactionInfamyCompElse(ARG,(TOINT(CFTTC_SPLIT:LOCAL)))/1000,100))
+		ENDSELECT
+		PRINTFORM 【%FACTION_RELATION_STRING(ARG,TOINT(CFTTC_SPLIT:LOCAL))%】
+		RESETCOLOR
+		PRINTL
+	NEXT
+	FORCEWAIT
+ENDIF
+
+
+@JoinFaction(ARG,nFaction,isResign=0)
+#DIM nFaction
+#DIM isResign
+CALLF StoreFactionTitles(ARG,nFaction)
+IF isResign
+FactionRank:ARG:nFaction = 0
+ELSE
+FactionRank:ARG:nFaction = 1 
+SKIPDISP 1
+CALL FactionRankLevelingUp(ARG,nFaction,1)
+SKIPDISP 0
+ENDIF
+CALL CheckForFacitonTitleChanges(ARG,@"your \@ isResign ? resignation from # new association with \@ %FactionAbriv(nFaction)%")
+
+@FactionThreatPoints(ARG=-1,nFaction)
+#FUNCTION
+#DIM nFaction
+#DIM DYNAMIC FTP = 0
+
+;unit
+FTP += (1*LIMIT(FactionUnits:nFaction:1/3,0,15000)) ;junior
+FTP += (1*LIMIT(FactionUnits:nFaction:2/3,0,15000)) ;member
+FTP += (2*LIMIT(FactionUnits:nFaction:3/3,0,15000)) ;senior
+FTP += (25*LIMIT(FactionUnits:nFaction:4/3,0,1500)) ;officer
+FTP += (100*LIMIT(FactionUnits:nFaction:5/3,0,1500)) ;officer
+FTP += (300*LIMIT(FactionUnits:nFaction:6,0,3)) ;leader
+
+;wealth
+FTP += (LIMIT(FactionWEalth:nFaction/3000,0,15000))
+
+
+;technical
+SELECTCASE FactionTech:nFaction
+CASE 0
+TIMES FTP, 0.3
+CASE 1
+TIMES FTP, 0.4
+CASE 2
+TIMES FTP, 0.5
+CASE 3
+TIMES FTP, 0.75
+CASE 4
+TIMES FTP, 0.9
+CASE 5
+TIMES FTP, 1
+CASE 6
+TIMES FTP, 1.4
+CASE 7
+TIMES FTP, 1.7
+CASEELSE
+TIMES FTP, 2
+ENDSELECT
+
+;infamy
+IF ARG > -1
+	SELECTCASE FactionRelationCompElse(ARG,nFaction)
+	CASE IS <= -15000
+	TIMES FTP, 0.3
+	CASE IS <= -25000
+	TIMES FTP, 0.5
+	CASE IS <= -50000
+	TIMES FTP, 0.8
+	CASE IS <= -75000
+	CASEELSE
+	RETURNF 0
+	ENDSELECT
+ENDIF
+
+RETURNF FTP
+
+@FactionThreatPrint(ARG,nFaction)
+#DIM nFaction
+
+SELECTCASE FactionThreatPoints(ARG,nFaction) - IntimidationFactor(ARG)
+CASE IS >= 30000
+	SETCOLOR C_P_PURPLE
+	LOCALS '= "Peril"
+CASE IS >= 10000
+	SETCOLOR C_D_RED
+	LOCALS '= "Extreme"
+CASE IS >= 8000
+	SETCOLOR C_RED
+	LOCALS '= "V. High"
+CASE IS >= 5000
+	SETCOLOR C_ORANGE
+	LOCALS '= "High"
+CASE IS >= 2000
+	SETCOLOR C_YELLOW
+	LOCALS '= "Medium"
+CASE IS >= 1000
+	SETCOLOR C_GREEN
+	LOCALS '= "Low"
+CASE IS >= 500
+	SETCOLOR C_AQUA
+	LOCALS '= "V. Low"
+CASEELSE
+	LOCALS '= ""
+ENDSELECT
+
+IF FactionDateTruce:ARG:0 
+	SETCOLOR C_TEAL
+	LOCALS '= "Truce"
+ENDIF
+SELECTCASE IN_TRUCE_FACTION(ARG,nFaction)
+CASE 1
+	SETCOLOR C_TEAL
+	LOCALS '= "Truce"
+CASE 2
+	SETCOLOR C_N_BLUE
+	LOCALS '= "Allied"
+ENDSELECT
+IF FactionRank:ARG:nFaction
+	SETCOLOR C_N_BLUE
+	LOCALS '= "Allied"
+ENDIF
+
+PRINTFORM %LOCALS,8%
+RESETCOLOR
+
+@IN_TRUCE_FACTION(ARG,nFaction)
+#FUNCTION
+#DIM nFaction
+FOR LOCAL,0,MaxFactions
+	SIF !FactionRank:ARG:LOCAL
+		CONTINUE
+	SIF LOCAL == nFaction
+		CONTINUE
+	SIF GETBIT(FactionWarring:nFaction:LOCAL,2)
+		RETURNF 2
+	SIF GETBIT(FactionWarring:nFaction:LOCAL,1)
+		RETURNF 1
+NEXT
+
+@FactionUnitTableCreate
+#DIMS nTableName
+#FUNCTION
+
+nTableName '= "FactionUnits"
+
+DT_CREATE nTableName
+DT_COLUMN_ADD nTableName, "faction", "int32"
+DT_COLUMN_ADD nTableName, "unit name"
+DT_COLUMN_ADD nTableName, "race"
+DT_COLUMN_ADD nTableName, "hp", "int32"
+DT_COLUMN_ADD nTableName, "rank", "int32"
+DT_COLUMN_ADD nTableName, "combat level", "int32"
+DT_COLUMN_ADD nTableName, "desired weapon"
+DT_COLUMN_ADD nTableName, "desired underwear"
+FOR LOCAL,0,VARSIZE("EQUIP")
+DT_COLUMN_ADD nTableName, @"equip {LOCAL}", "int32"
+NEXT
+
+
+;Determins cost of raid points via multiple things
+;1. Rank of the unit
+;2. Unit Health
+;3. Unit Skill
+;4. Unit equipment relative to technical level
+;5. Bionics if any
+;Minimum of 35 points, maximum of 10000
+@RaidPointCost(ARG)
+#FUNCTION
+#DIM F_ID
+#DIM DYNAMIC RPC
+#DIM DYNAMIC RPC_WEAP
+#DIM DYNAMIC RPC_WEAP_SCORE
+F_ID = DT_CELL_GET("FactionUnits",ARG,"faction",1)
+VARSET RPC
+
+;rank
+SELECTCASE DT_CELL_GET("FactionUnits",ARG,"rank",1)
+CASE 1
+RPC -= 50
+CASE 2
+CASE 3
+RPC += 100
+CASE 4
+RPC += 200
+CASE 5
+RPC += 500
+CASE 6
+RPC += 1000
+ENDSELECT
+
+;health
+;2000 STA is standard, 1 raid point per 20 HP
+;less HP means less raid points used.
+RPC += ((DT_CELL_GET("FactionUnits",ARG,"hp",1)-2000)/15)
+
+;Skill
+;20 per skill point
+RPC += (DT_CELL_GET("FactionUnits",ARG,"combat level",1)*35)
+
+;Weapon
+
+RPC_WEAP = (DT_CELL_GET("FactionUnits",ARG,"equip 24",1))
+IF RPC_WEAP
+	RPC += (WeaponRaidPointCost(F_ID,RPC_WEAP))
+ELSE
+	RPC += WeapPoolRaidCost(F_ID,DT_CELL_GETS("FactionUnits",ARG,"desired weapon",1))
+ENDIF
+
+RETURNF LIMIT(RPC,35,10000)
+
+@WeaponRaidPointCost(ARG,nWeap)
+#FUNCTION
+#DIM nWeap
+#DIM nWeapTech
+#DIM DYNAMIC RPC_WEAP_SCORE
+VARSET RPC_WEAP_SCORE
+RPC_WEAP_SCORE = GetWeaponScore(nWeap,CSV_CHARANUM())/15
+
+IF nWeap >= VAR_TEMP_MAX
+	nWeapTech = GET_INT(CSV_CHARANUM(), "Weapon", GET_INT(CSV_CHARANUM(), "WeaponPreset", nWeap-1000, "Base Weapon"), "Tech Level")
+ELSE
+	nWeapTech = GET_INT(CSV_CHARANUM(), "Weapon", nWeap, "Tech Level")
+ENDIF
+SELECTCASE MAX(nWeapTech,GET_INT(CSV_CHARANUM(), "Weapon", nWeap, "Youjutsu Tier")) - FactionTech:ARG
+CASE IS <= -4
+	;free
+	TIMES RPC_WEAP_SCORE, 0
+CASE -3
+	TIMES RPC_WEAP_SCORE, 0.2
+CASE -2
+	TIMES RPC_WEAP_SCORE, 0.4
+CASE -1
+	TIMES RPC_WEAP_SCORE, 0.7
+CASE 0
+CASE 1
+	TIMES RPC_WEAP_SCORE, 1.3
+CASE 2
+	TIMES RPC_WEAP_SCORE, 2
+CASE 3
+	TIMES RPC_WEAP_SCORE, 2.5
+CASE IS >= 4
+	TIMES RPC_WEAP_SCORE, 4
+ENDSELECT
+RETURNF (RPC_WEAP_SCORE)
+
+@WeapPoolRaidCost(ARG,ARGS)
+#FUNCTION
+#DIM DYNAMIC RPC_WEAP_SCORE
+#DIMS SELECTION_OFFERING, 200
+#DIM DYNAMIC RPC_COUNT
+#DIM DYNAMIC RPC_TOTAL
+VARSET RPC_WEAP_SCORE
+VARSET RPC_COUNT
+VARSET RPC_TOTAL
+
+RPC_COUNT = MakeDesiredWeapon(ARGS,1)
+SPLIT RESULTS, "/",SELECTION_OFFERING
+SIF !RPC_COUNT
+	RETURNF 0
+
+FOR LOCAL,0,VARSIZE("SELECTION_OFFERING")
+	SIF !TOINT(SELECTION_OFFERING:LOCAL)
+		BREAK
+	RPC_TOTAL += WeaponRaidPointCost(ARG,TOINT(SELECTION_OFFERING:LOCAL))
+NEXT
+
+RPC_TOTAL /= RPC_COUNT
+RETURNF RPC_TOTAL
+
+
+
+@SHOW_FACTION_JOIN_REQUIREMENTS(ARG,FU_FACTION)
+#DIM FU_FACTION
+CALLF FACTION_JOIN_REQUIREMENTS_GET(ARG,FU_FACTION)
+
+CALL COLORMESSAGE(@"□Condition to be emplyed in %FactionAbriv(FU_FACTION)%", C_AQUA, 1)
+PRINTFORML 
+FOR LOCAL,0,VARSIZE("FactionJoinCondition")
+	SIF !STRLENS(FactionJoinConditionMessage:LOCAL)
+		CONTINUE
+	PRINT 　
+	CALL COND_COLORMESSAGE(FactionJoinCondition:LOCAL,FactionJoinConditionMessage:LOCAL)
+NEXT
+
+@FACTION_JOIN_REQUIREMENTS_GET(ARG,FU_FACTION)
+#FUNCTION
+#DIM FU_FACTION
+VARSET FactionJoinCondition
+VARSET FactionJoinConditionMessage
+IF EXISTFUNCTION(@"FACTION_JOIN_REQURIE_{FU_FACTION}")
+	TRYCALLFORMF FACTION_JOIN_REQURIE_{FU_FACTION}(ARG)
+ELSE
+	FactionJoinConditionMessage:0 '= @"Relations better than -25000 (Current:{FactionRelationCompElse(ARG,FU_FACTION)})"
+	FactionJoinCondition:0 = FactionRelationCompElse(ARG,FU_FACTION) > -25000
+ENDIF
+
+@FACTION_JOIN_ELEGIBLE(ARG,FU_FACTION)
+#FUNCTION
+#DIM FU_FACTION
+#DIM FUE_COUNT, 2
+VARSET FUE_COUNT
+CALLF FACTION_JOIN_REQUIREMENTS_GET(ARG,FU_FACTION)
+
+
+FOR LOCAL,0,VARSIZE("FactionJoinCondition")
+	;non-blanks
+	SIF !STRLENS(FactionJoinConditionMessage:LOCAL)
+		CONTINUE
+	;eligible
+	SIF FactionJoinCondition:LOCAL
+		FUE_COUNT ++
+	FUE_COUNT:1 ++
+NEXT
+
+RETURNF FUE_COUNT >= FUE_COUNT:1
+
+@FactionFriendlyCount(F_ID)
+#FUNCTION
+#DIM F_ID
+#DIM DYNAMIC FFC_COUNT
+VARSET FFC_COUNT
+
+FOR LOCAL, 0, MAXFACTIONS
+	SIF !FactionExist(LOCAL)
+		CONTINUE
+	SIF FactionTeamFame:(F_ID):(LOCAL) - FactionTeamInfamy:(F_ID):(LOCAL) < 25000
+		CONTINUE
+	FFC_COUNT ++
+NEXT
+
+RETURNF FFC_COUNT
+
+@FactionEnemyCount(F_ID)
+#FUNCTION
+#DIM F_ID
+#DIM DYNAMIC FFC_COUNT
+VARSET FFC_COUNT
+
+FOR LOCAL, 0, MAXFACTIONS
+	SIF !FactionExist(LOCAL)
+		CONTINUE
+	SIF FactionTeamInfamy:(F_ID):(LOCAL) - FactionTeamFame:(F_ID):(LOCAL) < 25000 && !GETBIT(FactionWarring:F_ID:LOCAL,0)
+		CONTINUE
+	SIF GETBIT(FactionWarring:F_ID:LOCAL,1) || GETBIT(FactionWarring:F_ID:LOCAL,2)
+		CONTINUE
+	FFC_COUNT ++
+NEXT
+
+RETURNF FFC_COUNT
+
+
+@ADDFACTION_INIT(ARG)
+#DIM AFI_COUNT
+FactionDisabled:ARG = GET_INT(MASTER,"Faction", ARG, "Outsider")
+TRYCALLFORM FACTION_INIT{ARG}
+FactionNames:ARG '= GET_STR(MASTER,"Faction", ARG, "Name")
+FactionAbbreviation:ARG '= GET_STR(MASTER,"Faction", ARG, "Abriv")
+FactionMemberName:ARG '= GET_STR(MASTER,"Faction", ARG, "Unit")
+SIF !FactionDisabled:ARG
+	FactionDisabled:ARG = (GET_STR(MASTER,"Faction", ARG, "Name") == "0")
+
+;raiders
+CALL ADDFACTION_INIT_UNITS(ARG)
+
+
+
+;patroling areas have 30% control 
+FOR LOCAL:1,0,20
+	SIF !GETBIT(FactionPatrolArea:ARG,LOCAL:1)
+		CONTINUE
+	SIF !FactionAreaControl:ARG:(LOCAL:1)
+		FactionAreaControl:ARG:(LOCAL:1) = 300
+NEXT
+
+CALL COMPLETE_RESEARCH_PREVIOUS(ARG)
+
+@ADDFACTION_INIT_UNITS(ARG)
+#DIM T_ID
+FOR LOCAL:1,0,100
+	VARSET TempFactionFame
+	VARSET TempFactionInfamy
+	VARSET TempMobFaction
+	VARSET TempMobName
+	VARSET TempMobEquip
+	VARSET TempMobSex, -1
+	VARSET TempMobCost
+	VARSET TempMobDesiredWeap
+	VARSET TempMobYoujutsuLevel
+	TRYCALLFORM RAIDER_{ARG}%TOSTR(LOCAL:1,"00")%
+	SIF !STRLENS(TempMobName)
+		CONTINUE
+	{
+	DT_ROW_ADD @"FactionUnits",
+	"faction", ARG,
+	"unit name", TempMobName,
+	"race", TempMobRace,
+	"hp", TempMobHP,
+	"rank", TempMobFaction:ARG,
+	"combat level", TempMobCombatLevel,
+	"desired weapon", TempMobDesiredWeap,
+	}
+	T_ID = RESULT
+	FOR LOCAL:2,0,VARSIZE("EQUIP")
+		SIF TempMobEquip:(LOCAL:2)
+			DT_CELL_SET "FactionUnits", T_ID, @"equip {LOCAL:2}", TempMobEquip:(LOCAL:2), 1
+	NEXT
+	FOR LOCAL:2,0,64
+		SIF TempMobYoujutsuLevel:(LOCAL:2)
+			DT_CELL_SET "FactionUnits", T_ID, @"youjutsu {LOCAL:2}", TempMobYoujutsuLevel:(LOCAL:2), 1
+	NEXT
+NEXT
+
+@FactionDestroyCheck(FactionbBeDestroy = -1, FactionDestroyer = -1)
+#DIM DYNAMIC FactionbBeDestroy
+#DIM DYNAMIC FactionDestroyer
+
+;already destroyed
+SIF FactionDisabled:FactionbBeDestroy == 1
+	RETURN 0
+;EZB
+SIF SaveIsEZB
+	RETURN 0
+
+;unknown
+SIF FactionDestroyer == -1
+	RETURN 0
+
+;remaining officer
+SIF FactionUnits:FactionbBeDestroy:6 > 0 || FactionUnits:FactionbBeDestroy:5 > 0 || FactionUnits:FactionbBeDestroy:4 > 0
+RETURN 0
+
+;has control
+FOR LOCAL,0,20
+	;map doesns't exist
+	SIF !GET_EXISTMAP(LOCAL)
+		CONTINUE
+	SIF FactionAreaControl:FactionbBeDestroy:LOCAL > 0
+		RETURN 0
+NEXT
+
+CALL FactionDestroy(FactionbBeDestroy, FactionDestroyer)
+RETURN 1
+
+@FactionDestroy(FactionbBeDestroy=-1, FactionDestroyer=-1, isSurrender = 0)
+#DIM DYNAMIC FactionbBeDestroy
+#DIM DYNAMIC FactionDestroyer
+#DIM DYNAMIC FD_RESEARCH_BE
+#DIM DYNAMIC FD_RESEARCH_DE
+#DIM DYNAMIC isSurrender
+VARSET FD_RESEARCH_BE
+VARSET FD_RESEARCH_DE
+
+IF FactionDestroyer == -1
+	DEBUGPRINTFORML @FactionDestroy ERROR: Cannot destroy a faction with an undefined capturer.
+	RETURN
+ELSE
+ENDIF	
+
+IF isSurrender
+SETCOLOR C_RED
+CALL FactionColorName(MASTER,FactionbBeDestroy)
+SETCOLOR C_RED
+PRINTFORM  have surrenderd to 
+CALL FactionColorName(MASTER,FactionDestroyer)
+SETCOLOR C_RED
+PRINTFORML !
+ELSE
+SETCOLOR C_RED
+CALL FactionColorName(MASTER,FactionbBeDestroy)
+SETCOLOR C_RED
+PRINTFORM  have been defeated by 
+CALL FactionColorName(MASTER,FactionDestroyer)
+SETCOLOR C_RED
+PRINTFORML  due to having destroyed all leaders and territory!
+ENDIF
+PRINTFORM All assets from 
+CALL FactionColorName(MASTER,FactionbBeDestroy)
+SETCOLOR C_RED
+PRINTFORM  have been taken by 
+CALL FactionColorName(MASTER,FactionDestroyer)
+PRINTFORML !
+
+;units
+FOR LOCAL,0,VARSIZE("FactionUnits",1)
+	FactionUnits:FactionDestroyer:LOCAL += FactionUnits:FactionbBeDestroy:LOCAL
+NEXT
+;wealth
+FactionWealth:FactionDestroyer += FactionWealth:FactionbBeDestroy
+
+FOR LOCAL,0,DT_ROW_LENGTH("ResearchProject")
+	SIF RESEARCH_DONE(FactionDestroyer,DT_CELL_GETS("ResearchProject",LOCAL,"defName"))
+		CONTINUE
+	SIF !FACTION_RESEARCH_PROGRESS(FactionbBeDestroy,DT_CELL_GETS("ResearchProject",LOCAL,"defName"))
+		CONTINUE
+	FD_RESEARCH_DE = FACTION_RESEARCH(FactionDestroyer, DT_CELL_GETS("ResearchProject",LOCAL,"defName"))
+	FD_RESEARCH_BE = FACTION_RESEARCH(FactionbBeDestroy,DT_CELL_GETS("ResearchProject",LOCAL,"defName"))
+	IF !FD_RESEARCH_DE
+		{
+		DT_ROW_ADD @"ResearchProgress",
+		"defName", @"%DT_CELL_GETS("ResearchProject",LOCAL,"defName")%",
+		"progress", FACTION_RESEARCH_PROGRESS(FactionbBeDestroy,DT_CELL_GETS("ResearchProject",LOCAL,"defName")),
+		"researched", 0,
+		"faction", FactionDestroyer,
+		}
+		FD_RESEARCH_DE = RESULT
+		CONTINUE
+	ENDIF
+
+	DT_CELL_SET "ResearchProgress", FD_RESEARCH_DE, "progress", LIMIT(DT_CELL_GET("ResearchProgress",FD_RESEARCH_DE, "progress",1)+DT_CELL_GET("ResearchProgress",FD_RESEARCH_BE, "progress",1),0,DT_CELL_GET("ResearchProject",LOCAL, "baseCost")), 1
+NEXT
+
+FactionDisabled:FactionbBeDestroy = 1
+WAIT
+
+@FACTION_TREASURY_DAILY(nFaction)
+#FUNCTION
+#DIM nFaction
+#DIM nValue = 3000
+nValue = 3000
+
+SIF RESEARCH_DONE(nFaction, "InvestmentTrust")
+	nValue += 500
+SIF RESEARCH_DONE(nFaction, "StockMarket")
+	nValue += 1000
+SIF RESEARCH_DONE(nFaction, "RealEstateManagement")
+	nValue += 1500
+;tech level
+nValue += (FactionTech:nFaction*1000)
+
+;multiplier
+nValue = nValue*FACTION_TREASURY_MULT(nFaction)/100
+
+RETURNF nValue
+
+@FACTION_TREASURY_MULT(nFaction)
+#FUNCTION
+#DIM nFaction
+#DIM nMult = 100
+nMult = 100
+
+SIF RESEARCH_DONE(nFaction, "Cupellation")
+	TIMES nMult, 1.05
+SIF RESEARCH_DONE(nFaction, "DoubleCropping")
+	TIMES nMult, 1.1
+SIF RESEARCH_DONE(nFaction, "SelectiveBreeding")
+	TIMES nMult, 1.15
+
+RETURNF nMult
+
+@FACTION_RECRUIT_LIMIT(nFaction)
+#FUNCTION
+#DIM nFaction
+#DIM nMult = 100
+nMult = 100
+
+SIF RESEARCH_DONE(nFaction, "LargeBarracks")
+	TIMES nMult, 1.10
+SIF RESEARCH_DONE(nFaction, "DoubleCropping")
+	TIMES nMult, 1.15
+SIF RESEARCH_DONE(nFaction, "SelectiveBreeding")
+	TIMES nMult, 1.20
+
+RETURNF nMult
+
+@FACTION_RECRUIT_RATE(nFaction)
+#FUNCTION
+#DIM nFaction
+#DIM nMult = 100
+nMult = 100
+
+SIF RESEARCH_DONE(nFaction, "PublicOrators")
+	TIMES nMult, 1.10
+SIF RESEARCH_DONE(nFaction, "TenguLeaflets")
+	TIMES nMult, 1.15
+SIF RESEARCH_DONE(nFaction, "SelectiveBreeding")
+	TIMES nMult, 1.20
+
+RETURNF nMult
+
+@FACTION_RECRUIT_RAND(nFaction,nRecruitValue:0,nRecruitValue:1,nRandomness=1)
+#FUNCTION
+#DIM DYNAMIC nFaction
+#DIM DYNAMIC nRecruitValue,2
+#DIM DYNAMIC nRandomness
+
+nRecruitValue:0 = nRecruitValue:0*FACTION_RECRUIT_RATE(nFaction)/100
+nRecruitValue:1 = nRecruitValue:1*FACTION_RECRUIT_RATE(nFaction)/100
+
+nRecruitValue:1 = nRecruitValue:1*FACTION_RECRUIT_LIMIT(nFaction)/100
+
+RETURNF RAND(nRecruitValue:0,nRecruitValue:1)
+
+@SELECT_FACTION_DIPLOMACY(nFactionRepresent)
+#DIM nFactionRepresent
+#DIM nInput
+
+PRINTL Choose a faction to conduct diplomacy with:
+FOR LOCAL,0,MaxFactions
+	SIF !FactionExist(LOCAL)
+		CONTINUE
+	SIF LOCAL == nFactionRepresent
+		CONTINUE
+	PRINTFORML [{LOCAL,3}] - %FactionName(LOCAL)%
+NEXT
+PRINTL
+PRINTFORML [999] - Cancel
+INPUT
+nInput = RESULT
+SELECTCASE nInput
+CASE 0 TO MAXFACTIONS
+	SIF !FactionExist(nInput)
+		RETURN
+	SIF nInput == nFactionRepresent
+		RETURN
+	CALL FACTION_DIPLOMACY(nFactionRepresent,nInput)
+	SIF RESULT == 999
+		RESTART
+CASE 999
+	RETURN
+ENDSELECT
+
+@FACTION_DIPLOMACY(nFactionRepresent,nFactionTarget)
+#DIM nFactionRepresent
+#DIM nFactionTarget
+#DIM FD_LINECOUNT, 3
+#DIM FD_SURRENDER_PTS
+#DIM FD_RECRUITER
+#DIM FD_RESULT
+
+FD_RECRUITER = FACTION_RECRUITER(nFactionTarget)
+
+FD_SURRENDER_PTS = (FactionThreatPoints(-1,nFactionTarget)*2 + 500)
+
+DRAWLINE
+PRINTFORM Negotiating with 
+CALL FactionColorName(MASTER,nFactionTarget)
+PRINT  representing 
+CALL FactionColorName(MASTER,nFactionRepresent)
+PRINTL
+DRAWLINE
+
+VARSET FD_LINECOUNT
+FD_LINECOUNT = LINECOUNT
+DO
+CLEARLINE LINECOUNT - FD_LINECOUNT
+IF nFactionWar
+CALL PRINTLINE, "Manage Relations"
+SIF !FactionTruceAble(nFactionRepresent, nFactionTarget)
+SETCOLOR C_GRAY
+PRINTFORMLC [  0] - Propose ceasefire
+RESETCOLOR
+SIF !FactionAllianceAble(nFactionRepresent, nFactionTarget)
+SETCOLOR C_GRAY
+PRINTFORMLC [  1] - Propose alliance
+RESETCOLOR
+SIF !GETBIT(FactionWarring:nFactionRepresent:nFactionTarget,2)
+SETCOLOR C_GRAY
+PRINTFORMLC [  4] - Renounce alliance
+RESETCOLOR
+PRINTL
+ENDIF
+CALL PRINTLINE, "Deepen Frendship"
+PRINTFORMLC [ 11] - Discuss
+PRINTFORMLC [ 12] - Donate troops
+;PRINTFORMLC [ 14] - Donate money
+PRINTL
+CALL PRINTLINE, "Demands"
+PRINTFORMLC [ 20] - Demand surrender
+PRINTFORMLC [ 21] - Demand troops
+SIF nFactionWar
+PRINTFORMLC [ 27] - Declare war
+PRINTFORMLC [ 28] - Attack
+PRINTL
+PRINTL
+PRINTFORML [999] - Cancel
+INPUT
+SELECTCASE RESULT
+CASE 0
+	SIF !nFactionWar
+		CONTINUE
+	SIF !FactionTruceAble(nFactionRepresent, nFactionTarget)
+	CONTINUE
+	PRINTFORML Do you want to announce a truce with %FactionName(nFactionTarget)%?
+	CALL ASK_YN
+	SIF !RESULT	
+		CALL FactionTreatyRecieve(nFactionRepresent, nFactionTarget,-1)
+CASE 1
+	SIF !nFactionWar
+		CONTINUE
+	SIF !FactionAllianceAble(nFactionRepresent, nFactionTarget)
+	CONTINUE
+	PRINTFORML Do you want to announce an alliance with %FactionName(nFactionTarget)%?
+	CALL ASK_YN
+	IF !RESULT	
+		CALL FactionAllianceCheck(nFactionRepresent, nFactionTarget, "「Bypass RNG」")
+		SIF !RESULT
+			PRINTFORMW Unfortunately, your alliance request was denied.
+	ENDIF
+CASE 4
+	SIF !GETBIT(FactionWarring:nFactionRepresent:nFactionTarget,2)
+		CONTINUE
+	PRINTFORML Do you want to renounce an alliance with %FactionName(nFactionTarget)%?
+	PRINTFORML You will no longer be allied with them.
+	CALL ASK_YN
+	IF !RESULT	
+		CALL FactionAllyLose(nFactionRepresent,nFactionTarget,-1)
+	ENDIF
+CASE 11
+
+	PRINTFORML You decided to improve relations with %ANAME(FD_RECRUITER)%......
+	;PRINTFORML Traditionally, for entertainment, money or 「pleasure」 have been the way to go.
+	PRINTFORML One or the other will need to be prepared for %ANAME(FD_RECRUITER)%...
+	DRAWLINE
+	; {
+	; CALL ASK_MULTI_JUDGE(
+	; 	@"Give money (Current funds:{MONEY:(CFLAG:MASTER:所属)})", 1, 
+	; 	"「Pleasure」", 1, 
+	; 	"Return", 1)
+	; }
+	{
+	CALL ASK_M(
+		@"Give money (Current funds: %金額表示(FactionWealth:nFactionRepresent)%)", 1, 
+		"Return", 1)
+	}
+	SELECTCASE RESULT
+	CASE 0
+		CALL FACTION_DONATE_MENU(nFactionTarget, nFactionRepresent, "「No Withdraw」")
+	;CASE 1
+	;	CALL DIPLOMACY_TALK_SEX(提供先)
+	ENDSELECT
+CASE 12
+		CALL FACTION_DONATE_TROOPS_MENU(nFactionTarget, nFactionRepresent, "")
+CASE 20
+	PRINTFORML Do you want to demand %FactionName(nFactionTarget)% to surrender?
+	{
+	CALL ASK_M(
+		@"Demand Surrender ({FactionThreatPoints(-1,nFactionRepresent)}pts vs. {FD_SURRENDER_PTS}pts)", FactionThreatPoints(-1,nFactionRepresent) >= FD_SURRENDER_PTS,
+		@"Back off", 1
+	)
+	}
+	SIF !RESULT
+		CALL FactionDestroy(nFactionTarget, nFactionRepresent, 1)
+CASE 27
+	SIF !nFactionWar
+		CONTINUE
+	PRINTFORML Where do you want to declare war on?
+	CALL FACTION_AREA_LIST(nFactionTarget,1)
+	PRINTL
+	PRINTFORML [999] - Cancel
+	INPUT
+	FD_RESULT = RESULT
+	SELECTCASE RESULT
+	CASE 999
+		RESTART
+	CASE 0 TO 20
+		IF FactionWarringAreas:nFactionRepresent:nFactionTarget
+			PRINTFORMW Can't declare war on an area you already declared war on.
+			CONTINUE
+		ENDIF
+		PRINTFORML Do you want to declare war on %FactionName(nFactionTarget)% on %GET_MAPNAME(FD_RESULT)%?
+		CALL ASK_YN()
+		SIF !RESULT
+			CALL FactionStartWar(nFactionRepresent,nFactionTarget,FD_RESULT)
+	ENDSELECT
+CASE 28
+	PRINTFORML Where do you want to attack?
+	CALL FACTION_AREA_LIST(nFactionTarget,1)
+	PRINTL
+	PRINTFORML [999] - Cancel
+	INPUT
+	FD_RESULT = RESULT
+	SELECTCASE RESULT
+	CASE 999
+		RESTART
+	CASE 0 TO 20
+		SIF !GET_EXISTMAP(FD_RESULT)
+			CONTINUE
+		DT_CLEAR "lcCombatants"
+		PRINTFORML Attacking %GET_MAPNAME(FD_RESULT)%.
+		IF SHIRAHU(MASTER)
+		PRINTFORML Do you want to join the battle?
+		CALL ASK_YN()
+		SIF !RESULT
+			CALL AddCombatantWithMessage(MASTER,0)
+		ENDIF
+		CALL FACTION_WAR_FIGHT(nFactionRepresent,nFactionTarget,FD_RESULT)
+		SIF lcWarResult >= 0
+			CALL FactionChangeRelation(nFactionTarget,nFactionRepresent,20000,0,1,1)
+		WAIT
+		RETURN
+	ENDSELECT
+CASE 999
+RETURN 999
+ENDSELECT
+LOOP 1
+
+@FACTION_AREA_LIST(nFactionTarget,isButton=0)
+#DIM nFactionTarget
+#DIM isButton
+#DIM nButton
+FOR LOCAL,0,20
+	SIF !GET_EXISTMAP(LOCAL)
+		CONTINUE
+	IF isButton
+	PRINTBUTTON @"%GET_MAPNAME(LOCAL),30,LEFT%: ", nButton+LOCAL
+	ELSE
+	PRINTFORMS @"%GET_MAPNAME(LOCAL),30,LEFT%: "
+	ENDIF
+	IF FactionMainArea:LOCAL == nFactionTarget
+		SETCOLOR C_YELLOW
+		LOCALS = Owned
+	ELSEIF GETBIT(FactionPatrolArea:nFactionTarget,LOCAL)
+		LOCALS = Patroling
+	ELSE
+		SETCOLOR C_GRAY
+		LOCALS = Not Patroling
+	ENDIF
+	PRINTFORM %LOCALS,15,LEFT%
+	RESETCOLOR
+	SELECTCASE FactionAreaControl:nFactionTarget:LOCAL/10
+	CASE IS > 90
+		SETCOLOR BARCOLORSET("青")
+	CASE IS > 75
+		SETCOLOR BARCOLORSET("緑")
+	CASE IS > 50
+		SETCOLOR BARCOLORSET("黄色")  
+	CASE IS > 25
+		SETCOLOR BARCOLORSET("オレンジ")
+	CASE IS > 0
+		SETCOLOR BARCOLORSET("赤")
+	CASE IS <= 0
+		SETCOLOR C_GRAY
+	ENDSELECT
+	PRINTFORM %@"%DecimalPlace(FactionAreaControl:nFactionTarget:LOCAL,1),5,RIGHT%\% Control",15,LEFT%
+	RESETCOLOR
+	PRINTL
+NEXT
+
+
+@FACTION_DONATE_MENU(nFactionTarget, nFactionRepresent = -1, OP = "")
+#DIM nFactionRepresent
+#DIM nFactionTarget
+#DIM 	 FU_CALC,5
+#DIMS OP
+#DIM FDM_MONEY,2 
+#DIM FDM_REPS,2 
+#DIMS FDM_REPRESENTATIVE
+#DIM FU_RESULT
+
+IF nFactionRepresent == -1
+	FDM_REPRESENTATIVE = %CALLNAME:MASTER%
+	FDM_REPS:0         = FactionFame:MASTER:nFactionTarget
+	FDM_REPS:1  	   = FactionInfamy:MASTER:nFactionTarget
+	FDM_MONEY:0 	   = MONEY
+ELSE
+	FDM_REPRESENTATIVE = %FactionName(nFactionRepresent)%
+	FDM_REPS:0         = FactionTeamFame:nFactionTarget:nFactionRepresent
+	FDM_REPS:1  	   = FactionTeamInfamy:nFactionTarget:nFactionRepresent
+	FDM_MONEY:0 	   = FactionWealth:nFactionRepresent
+ENDIF
+
+VARSET FU_CALC
+PRINTFORML How much do you want to donate? (\@ nFactionRepresent == -1 ? You # %FactionName(nFactionRepresent)% \@ currently \@ nFactionRepresent == -1 ? have # has\@ ¥%PALAM_NUM_NAS(FDM_MONEY)% in \@ nFactionRepresent == -1 ? your # their\@ possession)
+SIF !STRCOUNT(OP, "「No Withdraw」")
+PRINTFORML You can withdraw funds into your wallet if you are a %FACTION_RANK_STRING_INDE(nFactionTarget,5)% or higher
+PRINTFORML ¥100 per infamy lost, ¥200 per fame gained
+PRINTL
+FU_CALC:0 = (100000-FDM_REPS:0)*200
+FU_CALC:1 = (FDM_REPS:1)*100
+PRINTBUTTON @"[%PALAM_NUM_NAS(FU_CALC:0)% (Max Fame)]", FU_CALC:0
+PRINTL
+PRINTBUTTON @"[%PALAM_NUM_NAS(FU_CALC:1)% (Clear Infamy)]", FU_CALC:1
+PRINTL
+PRINTBUTTON @"[Cancel]", 0
+PRINTL
+INPUT
+FU_RESULT = RESULT
+SELECTCASE FU_RESULT
+CASE IS < -FactionWealth:nFactionTarget
+	PRINTFORMW I apologize but I'd hate to see %FactionName(nFactionTarget)% in debt.
+	RETURN
+CASE IS < 0
+	IF STRCOUNT(OP, "「No Withdraw」")
+		PRINTFORMW Can't withdraw funds!
+	ELSEIF FactionRank:MASTER:nFactionTarget < 5
+		PRINTFORMW Insufficient rank to withdraw funds from the faction (must be a %FACTION_RANK_STRING_INDE(nFactionTarget,5)% or higher)
+		RETURN
+	ENDIF
+	PRINTFORML Are you sure you want to withdraw ¥%PALAM_NUM_NAS(FU_RESULT)% from %FactionName(nFactionTarget)%?
+	PRINTFORML The faction will now have ¥%PALAM_NUM_NAS(FactionWealth:nFactionTarget-FU_RESULT)% in wealth.
+	CALL ASK_YN()
+	SELECTCASE RESULT
+	CASE 0
+		CALL GET_MONEY_YEN(FU_RESULT,2)
+		FactionWealth:nFactionTarget -= FU_RESULT
+	CASE 1
+		RETURN
+	ENDSELECT
+CASE 0
+	RETURN
+CASE IS > FDM_MONEY
+	PRINTFORMW I apologize but I'd hate to see \@ nFactionRepresent == -1 ? you # the %FactionName(nFactionRepresent)% \@ in debt.
+	RETURN
+CASE 1 TO FDM_MONEY
+	PRINTFORML Are you sure you want to donate ¥%PALAM_NUM_NAS(FU_RESULT)% to %FactionName(nFactionTarget)%?
+	PRINTFORML \@ nFactionRepresent == -1 ? You # %FactionName(nFactionRepresent)% \@ will gain {FU_RESULT/200} fame and lose {FU_RESULT/100} infamy.
+	CALL ASK_YN()
+	SELECTCASE RESULT
+	CASE 0
+		IF nFactionRepresent == -1
+		CALL FACTION_GIVE_MONEY(nFactionTarget,FU_RESULT)
+		ELSE
+		CALLF StoreFactionTitles(MASTER,nFactionTarget)
+		CALL COLORMESSAGE(@"%FactionName(nFactionRepresent)% Paid ¥%DIGIT_GROUP(FU_RESULT)%, Total: %DIGIT_GROUP(FactionWealth:nFactionRepresent)%->%DIGIT_GROUP(MAX(0, FactionWealth:nFactionRepresent - FU_RESULT))%", C_YELLOW, 2)
+		FactionWealth:nFactionRepresent = FactionWealth:nFactionRepresent - FU_RESULT
+		CALL FactionChangeRelation(nFactionRepresent,nFactionTarget,FU_RESULT/200,0,1,0)
+		CALL FactionChangeRelation(nFactionRepresent,nFactionTarget,-(FU_RESULT/100),0,1,1)
+		CALL FactionChangeRelation(nFactionTarget,nFactionRepresent,FU_RESULT/200,0,1,0)
+		CALL FactionChangeRelation(nFactionTarget,nFactionRepresent,-(FU_RESULT/100),0,1,1)
+		CALL FACTION_GET_MONEY_YEN(nFactionTarget, FU_RESULT, 2)
+		CALL CheckForFacitonTitleChanges(MASTER,@"%PARSE("your",,,MASTER)% donation")
+		ENDIF
+
+		WAIT
+	CASE 1
+		RETURN
+	ENDSELECT
+ENDSELECT 
+
+@FACTION_GIVE_MONEY(nFactionTarget,nAmount)
+#DIM nFactionTarget
+#DIM nAmount
+
+CALLF StoreFactionTitles(MASTER,nFactionTarget)
+CALL PAY_MONEY_YEN(nAmount,2)
+CALL AddFame(MASTER,nFactionTarget,nAmount/200,1)
+CALL AddInfamy(MASTER,nFactionTarget,-(nAmount/100),1)
+CALL FACTION_GET_MONEY_YEN(nFactionTarget, nAmount, 2)
+CALL CheckForFacitonTitleChanges(MASTER,@"%PARSE("your",,,MASTER)% donation")
+
+@FACTION_GET_MONEY_YEN(nFactionTarget, VALUE, PRINT_TYPE)
+#DIM VALUE
+#DIM PRINT_TYPE;表示形式　0=通常　1=L　2=W
+#DIM nFactionTarget
+SIF VALUE <= 0
+	RETURN
+CALL COLORMESSAGE(@"%FactionName(nFactionTarget)% Received %金額表示(VALUE)%, Total: %DIGIT_GROUP(FactionWealth:nFactionTarget)%->%DIGIT_GROUP(FactionWealth:nFactionTarget+VALUE)%", C_YELLOW, PRINT_TYPE)
+FactionWealth:nFactionTarget += VALUE
+
+
+@FACTION_DONATE_TROOPS_MENU(nFactionTarget, nFactionRepresent = -1, OP = "")
+#DIM nFactionRepresent
+#DIM nFactionTarget
+#DIM FU_CALC,5
+#DIMS OP
+#DIM FDM_MONEY,2 
+#DIM FDM_REPS,2 
+#DIMS FDM_REPRESENTATIVE
+#DIM FU_RESULT
+#DIM FU_UNIT_TYPE
+#DIM FU_GIVING, 7
+#DIM FU_LINECOUNT
+#DIM CONST FU_GET_FAME = 100, 300, 500, 1000, 3000, 10000
+
+IF nFactionRepresent == -1
+	RETURN
+ELSE
+	FDM_REPRESENTATIVE = %FactionName(nFactionRepresent)%
+	FDM_REPS:0         = FactionTeamFame:nFactionTarget:nFactionRepresent
+	FDM_REPS:1  	   = FactionTeamInfamy:nFactionTarget:nFactionRepresent
+ENDIF
+
+VARSET FU_CALC
+VARSET FU_GIVING
+PRINTFORML How many troops do you want to donate?
+PRINTFORML %FactionName(nFactionRepresent)% Troops:
+FU_LINECOUNT = LINECOUNT
+DO
+	CLEARLINE LINECOUNT - FU_LINECOUNT
+	VARSET FU_CALC
+	FOR LOCAL,1,6
+		PRINTBUTTON @"%FACTION_RANK_STRING_INDE(nFactionRepresent,LOCAL),10%: %PALAM_NUM_NAS(FactionUnits:nFactionRepresent:LOCAL),6%", LOCAL
+		SIF FU_GIVING:LOCAL
+		PRINTFORM  (Giving {FU_GIVING:LOCAL})
+		PRINTFORM  ({FU_GET_FAME:LOCAL} fame per unit)
+		PRINTL
+		FU_CALC += (FU_GIVING:LOCAL*FU_GET_FAME)
+	NEXT
+	PRINTL
+	FU_CALC:1 = FU_CALC*2
+	PRINTFORML You will gain {FU_CALC} fame and lose {FU_CALC:1} infamy.
+	PRINTL
+	PRINTBUTTON @"[Donate]", 1500
+	PRINTL
+	PRINTBUTTON @"[Clear]", 1501
+	PRINTL
+	PRINTBUTTON @"[Cancel]", 0
+	PRINTL
+	INPUT
+	FU_RESULT = RESULT
+	SELECTCASE FU_RESULT
+	CASE 0
+		RETURN
+	CASE 1 TO 6
+		FU_UNIT_TYPE = FU_RESULT
+		FDM_MONEY = FactionUnits:nFactionRepresent:FU_UNIT_TYPE
+		PRINTFORML How many %PLURALIZER(FACTION_RANK_STRING_INDE(nFactionRepresent,FU_UNIT_TYPE))% do you want to donate? (%FactionName(nFactionRepresent)% currently has %PALAM_NUM_NAS(FDM_MONEY)% %PLURALIZER(FACTION_RANK_STRING_INDE(nFactionRepresent,FU_UNIT_TYPE))%)
+		PRINTL
+		PRINTBUTTON @"[Cancel]", -1
+		INPUT
+		FU_RESULT = RESULT
+		SELECTCASE RESULT
+		CASE IS > FDM_MONEY
+			PRINTFORMW I apologize but I'd hate to see the %FactionName(nFactionRepresent)% in troop debt.
+			RETURN
+		CASE 0 TO FDM_MONEY
+			FU_GIVING:FU_UNIT_TYPE = FU_RESULT
+		CASE -1
+		ENDSELECT
+	CASE 1500
+		PRINTFORML Are you sure you want to donate these troops to %FactionName(nFactionTarget)%?
+		FOR LOCAL,1,6
+			SIF !FU_GIVING:LOCAL
+				CONTINUE
+			PRINTFORMS @"%FACTION_RANK_STRING_INDE(nFactionRepresent,LOCAL),10%: %PALAM_NUM_NAS(FactionUnits:nFactionRepresent:LOCAL),6%"
+			PRINTFORM  (Giving {FU_GIVING:LOCAL})
+			PRINTFORM  ({FU_GET_FAME:LOCAL} fame per unit)
+			PRINTFORM  (will have %PALAM_NUM_NAS(FactionUnits:nFactionRepresent:LOCAL-FU_GIVING:LOCAL)% left)
+			PRINTL
+		NEXT
+		PRINTFORML %FactionName(nFactionRepresent)% will gain {FU_CALC} fame and lose {FU_CALC*2} infamy.
+		CALL ASK_YN()
+		SELECTCASE RESULT
+		CASE 0
+			CALLF StoreFactionTitles(MASTER,nFactionTarget)
+			FOR LOCAL,1,6
+				FactionUnits:nFactionRepresent:LOCAL -= (FU_GIVING:LOCAL)
+				FactionUnits:nFactionTarget:LOCAL -= (FU_GIVING:LOCAL)
+			NEXT
+			CALL FactionChangeRelation(nFactionRepresent,nFactionTarget,FU_CALC,0,1,0)
+			CALL FactionChangeRelation(nFactionRepresent,nFactionTarget,-(FU_CALC*2),0,1,1)
+			CALL FactionChangeRelation(nFactionTarget,nFactionRepresent,FU_CALC,0,1,0)
+			CALL FactionChangeRelation(nFactionTarget,nFactionRepresent,-(FU_CALC),0,1,1)
+			CALL CheckForFacitonTitleChanges(MASTER,@"%PARSE("your",,,MASTER)% donation")
+			WAIT
+		CASE 1501
+			VARSET FU_GIVING
+		CASE 1
+			RETURN
+		ENDSELECT
+	ENDSELECT 
+LOOP 1
+
+
+@FACTION_RECRUITER(ARG)
+#FUNCTION
+#DIM nRecruiter
+nRecruiter = -1
+;find recruiter
+FOR LOCAL,0,CHARANUM
+	IF TALENT:LOCAL:Recruiter == ARG+1
+		RETURNF LOCAL
+		BREAK
+	ENDIF
+NEXT
+IF nRecruiter == -1
+	;no recruiter found, we must create one.
+	ADDCHARA CSV_CHARANUM()
+	TARGET = CHARANUM-1
+	TALENT:TARGET:301 = 1
+	FactionRank:TARGET:ARG = 4
+	TALENT:TARGET:Recruiter = ARG+1
+	CFLAG:TARGET:300 = SUKIMA()
+	nRecruiter = TARGET
+	NAME:TARGET '= @"%FactionAbriv(ARG)% Recruiter"
+	CALLNAME:TARGET '= @"%FactionAbriv(ARG)% Recruiter"
+	RETURNF TARGET
+ENDIF
+
+
+@FACTION_DATE_TRUCE(ARG)
+PRINTFORML A dating truce has been filed for %CALLNAME:ARG%.
+PRINTFORMW All conflict between %CALLNAME:ARG% is now prohibited.
+FactionDateTruce:ARG:0 = 1
+
+@FACTION_RENOUNCE_DATE_TRUCE(ARG)
+PRINTFORML The dating truce for %CALLNAME:ARG% has been renounced
+PRINTFORMW All conflict to and from %CALLNAME:ARG% is now possible.
+FactionDateTruce:ARG:0 = 0
+
+
+@FACTION_LOSE_UNIT(ARG,ARG:1,Value)
+#DIM Value
+
+FactionUnits:ARG:(ARG:1) -= Value
+CALL COLORMESSAGE(@"-{Value} %FACTION_RANK_STRING_INDE(ARG,ARG:1)% (%FactionName(ARG)%, now {FactionUnits:ARG:(ARG:1)})",C_RED,1,1)

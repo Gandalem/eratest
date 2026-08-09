@@ -1,0 +1,86 @@
+;イベント発生判定。EVXのXを一括置換で空いてる数字に変えてください。
+@GO_OUT_CONDITION_EV32
+SIF GETBIT(TFLAG:一日一回, 9)
+	RETURN 0
+SIF RAND:3
+	RETURN 0
+SIF !nFactions
+	RETURN 0
+SIF !RaidGraceElapsed()
+	RETURN 0
+
+CALL GO_OUT_EV32
+RETURN RESULT
+
+;イベント本体。最後はRETURN 1でお願いします。
+@GO_OUT_EV32
+#DIM nEnemy = -1
+#DIM nPrice = 2500
+
+CALLF FISHER_YATES_SHUFFLE_F(MaxFactions)
+FOR LOCAL,0,MaxFactions
+	SIF !FactionExist(LOCAL)
+		CONTINUE
+	LOCAL:1 = SHAFFLE_ARRAY:(LOCAL)
+	BREAK
+NEXT
+SIF nEnemy == -1
+	RETURN 0
+
+PRINTFORML On the way you suddenly encounter a checkpoint set up by %FactionName(nEnemy)%!
+
+SELECTCASE FactionRelationCompElse(MASTER,nEnemy)
+CASE IS <= -50000
+PRINTFORML They're agitated by your presence and being fighting you.
+CALL FACTION_ASSAIANS(MASTER, nEnemy) 
+CASEELSE
+nPrice = 2500 - (FactionRelationCompElse(MASTER,nEnemy)/10)
+ENDSELECT
+
+IF nPrice <= 0
+	PRINTFORML Due to being respected by %FactionName(nEnemy)%, they let you pass for free.
+	GOTO ENDEVENT
+ENDIF
+
+PRINTFORML They ask you to pay up %金額表示(nPrice)% to pass.
+{
+	CALL ASK_M(
+		@"Pay %金額表示(nPrice)%", MONEY >= nPrice,
+		@"Attack (becomes hostile)", 1,
+		@"Go home", 1
+	)
+}
+SELECTCASE RESULT
+CASE 0
+	PRINTFORML You pay the asking price to the faction.
+	CALL FACTION_GIVE_MONEY(nEnemy,nPrice)
+	PRINTFORML They lower their weapons and let you pass.
+CASE 1
+	PRINTFORML You decide to attack the checkpoint.
+	CALL FACTION_ASSAIANS(MASTER, nEnemy) 
+	GOTO ENDEVENT
+CASEELSE
+	PRINTFORML You decide to turn back.
+	CFLAG:MASTER:デート中 = CFLAG:MASTER:現在位置 / 100
+ENDSELECT
+
+
+$ENDEVENT
+SETBIT TFLAG:一日一回, 9
+RETURN 1
+
+[SKIPSTART]
+※補足事項
+・発生タイミングは時止め無しの拠点帰還時、一日一回
+・CFLAG:現在位置は移動直前のまま
+・FLAG:デート相手にデート相手のキャラ番号、0ならあなた一人
+・キャラ変数を使う場合はキャラ番号の指定が必要
+・お出かけイベントの成否に係わらず、この次にデート後イベントも発生機会あります
+
+経験変動処理の後に動くのでEXP加算が次ターンに持ち越されます
+この関数内で例えばMASTERの射精経験を3足す時は
+EXP:MASTER:射精経験 +=3
+TCVAR:MASTER:射精経験 += 3
+PRINTFORML 射精経験 +3(%CALLNAME:MASTER%)
+こうするとスマートに見えます
+[SKIPEND]

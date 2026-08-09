@@ -1,0 +1,726 @@
+;CREDIT TO Mr. Lee
+;https://gitgud.io/era-games-zh/touhou/eratoho-ymaem-lee
+;https://gitgud.io/era-games-zh/touhou/eratw-sub-modding
+
+;Converted for TW compabibility
+;Now isn't dependent on Flandre
+
+;REGEX FOR REPLACING:
+;PRINTFORML (.+)
+;CALL PRINT_GPC("L", @"$1", CHARA)
+
+;PRINTFORMW (.+)
+;CALL PRINT_GPC("W", @"$1", CHARA)
+
+;PRINTFORMDL (.+)
+;CALL PRINT_GP("L", @"$1")
+
+;PRINTFORMDW (.+)
+;CALL PRINT_GP("W", @"$1")
+
+@VNGalIDraw()
+	#DIM inited
+	#DIM index
+	IF !inited
+		;参数自动设定
+		LOADGLOBAL
+		SIF !nVNGlobals:drawing && !nVNGlobals:wordPrint && !nVNGlobals:hearts && !nVNGlobals:printFlsuhTime && !nVNGlobals:printFlushAdd
+			CALLF VNGlobalConfigInit
+		SAVEGLOBAL
+		;SIF VNConfig:GIAutoSetting
+			CALL VNGalIConfigInit()
+		FOR index, 0, VARSIZE("VNGid")
+			VNGid:index = VNApplyGid()
+		NEXT
+		inited = 1
+	ENDIF
+	;清空
+	CBGCLEAR
+	;背景
+	CALL VNGalIBG()
+	;chara
+	CALL VNGalIDrawChara()
+	;ui
+	CALL VNGalIDrawUi()
+
+;绘制背景
+@VNGalIBG
+	GDISPOSE VNGid:9
+	GCREATE VNGid:9, MAX(CLIENTWIDTH(),1), MAX(CLIENTHEIGHT(),1)
+	GCLEAR VNGid:9, 0xff000000 + GETBGCOLOR()
+	CBGSETG VNGid:9, 0, 0, -1
+;GalImageinput
+@VNGalIInput
+	#DIM choice
+	WHILE 1
+		CBGCLEAR
+		;绘制问题
+		CALL VNGalIDraw()
+		CALL VNGalIDrawButton()
+		;绘制按钮
+		INPUTMOUSEKEY 15
+		IF RESULT == 1 && RESULT:1 == 0x100000
+			choice = VNGalIChoiceButton()
+			SIF choice != -1
+				RETURN choice
+		ENDIF
+	WEND
+
+;画按钮
+@VNGalIDrawButton(initFlag = 0)
+	#DIM startX
+	#DIM startY
+	#DIM nowX
+	#DIM nowY
+	#DIM nameMax
+	#DIM index
+	#DIM initFlag
+	#DIM darkPoint, VARSIZE("VNGalChoiceList")
+	#DIM buttonHeight
+	#DIM width
+	#DIM height
+	#DIM fontWidth
+	#DIM fontHeight
+	#DIM mousePosX
+	#DIM mousePosY
+	#DIM choice
+	#DIM sizeRatio
+	;初始化
+	IF initFlag
+		VARSET darkPoint, 150
+	ENDIF
+	;统计按钮信息
+	FOR nameMax, 0, VARSIZE("VNGalChoiceList")
+		SIF VNGalChoiceList:nameMax == ""
+			BREAK
+	NEXT
+	nameMax --
+	SIF nameMax == 0
+		THROW [芙兰口上ERROR]未设置按钮列表
+	buttonHeight = SPRITEHEIGHT("flan按钮左") * VNConfig:GIUiSize
+	;计算中心位置
+	width = CLIENTWIDTH() / 2
+	height = CLIENTHEIGHT() *13/32
+	sizeRatio = 100
+
+	;Custom code
+	;Allow for more buttons, resize if needed
+	IF buttonHeight*nameMax > HEIGHT
+		sizeRatio = (height*100/(buttonHeight*nameMax))
+		buttonHeight = MAX(1,buttonHeight * (sizeRatio)/100)
+	ENDIF
+	;====================
+	;创建桌面
+	GDISPOSE VNGid:0
+	GCREATE VNGid:0, width + VNConfig:GIButtonWidth / 2, height + (buttonHeight * nameMax + VNConfig:GIButtonSpace * (nameMax - 1) / 2)
+	;按钮亮度处理
+	mousePosX = MOUSEX()
+	mousePosY = height + (buttonHeight * nameMax + VNConfig:GIButtonSpace * (nameMax - 1) / 2) + MOUSEY()
+	choice = VNGalIChoiceButton()
+	FOR index, 0, nameMax
+		IF choice == index
+			darkPoint:index -= 50
+			SIF darkPoint:index < 0
+				darkPoint:index = 0
+		ELSE
+			darkPoint:index += 20
+			SIF darkPoint:index > 150
+				darkPoint:index = 150
+		ENDIF
+	NEXT
+	FOR index, 0, nameMax
+		;底
+		;创建桌面
+		GDISPOSE VNGid:20
+		GCREATE VNGid:20, VNConfig:GIButtonWidth - VNSpriteW("flan按钮左") - VNSpriteW("flan按钮右"), buttonHeight
+		GCLEAR VNGid:20, 0xff7b0000
+		GDRAWG VNGid:0, VNGid:20, width - VNConfig:GIButtonWidth / 2 + VNSpriteW("flan按钮右"), 0 + (buttonHeight + VNConfig:GIButtonSpace) * index, VNConfig:GIButtonWidth - VNSpriteW("flan按钮左") - VNSpriteW("flan按钮右"), buttonHeight, 0, 0, VNConfig:GIButtonWidth - VNSpriteW("flan按钮左") - VNSpriteW("flan按钮右"), buttonHeight
+		;两边
+		GDRAWSPRITE VNGid:0, "flan按钮左", width - VNConfig:GIButtonWidth / 2, 0 + (buttonHeight + VNConfig:GIButtonSpace) * index, VNSpriteW("flan按钮左"), VNSpriteH("flan按钮左", sizeRatio)
+		GDRAWSPRITE VNGid:0, "flan按钮右", width + VNConfig:GIButtonWidth / 2 - VNSpriteW("flan按钮右"), 0 + (buttonHeight + VNConfig:GIButtonSpace) * index, VNSpriteW("flan按钮右"), VNSpriteH("flan按钮右", sizeRatio)
+		;水晶
+		GDRAWSPRITE VNGid:0, @"flan水晶{index * 2}", width - VNConfig:GIButtonWidth / 2, (12*sizeRatio/100) * VNConfig:GIUiSize + (buttonHeight + VNConfig:GIButtonSpace) * index, VNSpriteW(@"flan水晶{index * 2}"), VNSpriteH(@"flan水晶{index * 2}", sizeRatio)
+		GDRAWSPRITE VNGid:0, @"flan水晶{index * 2 + 1}", width + VNConfig:GIButtonWidth / 2 - VNSpriteW("flan按钮右") + 3 * VNConfig:GIUiSize, (12*sizeRatio/100) * VNConfig:GIUiSize + (buttonHeight + VNConfig:GIButtonSpace) * index, VNSpriteW(@"flan水晶{index * 2}"), VNSpriteH(@"flan水晶{index * 2}", sizeRatio)
+		;阴影
+		;左
+		GDISPOSE VNGid:20
+		GDISPOSE VNGid:21
+		GDISPOSE VNGid:22
+		GCREATE VNGid:20, VNSpriteW("flan水晶阴影左"), VNSpriteH("flan水晶阴影左", sizeRatio)
+		GDRAWSPRITE VNGid:20, "flan水晶阴影左", 0, 0, VNSpriteW("flan水晶阴影左"), VNSpriteH("flan水晶阴影左", sizeRatio)
+		GCREATE VNGid:21, VNSpriteW("flan水晶阴影左"), VNSpriteH("flan水晶阴影左", sizeRatio)
+		GCREATE VNGid:22, VNSpriteW("flan水晶阴影左"), VNSpriteH("flan水晶阴影左", sizeRatio)
+		GCLEAR VNGid:21, 0xffffff00 + darkPoint:index
+		GDRAWGWITHMASK VNGid:22, VNGid:20, VNGid:21, 0, 0
+		GDRAWG VNGid:0, VNGid:22, width - VNConfig:GIButtonWidth / 2, (12*sizeRatio/100) * VNConfig:GIUiSize + (buttonHeight + VNConfig:GIButtonSpace) * index, VNSpriteW("flan水晶阴影左"), VNSpriteH("flan水晶阴影左", sizeRatio), 0, 0, VNSpriteW("flan水晶阴影左"), VNSpriteH("flan水晶阴影左", sizeRatio)
+		;右
+		GDISPOSE VNGid:20
+		GDISPOSE VNGid:21
+		GDISPOSE VNGid:22
+		GCREATE VNGid:20, VNSpriteW("flan水晶阴影右"), VNSpriteH("flan水晶阴影右", sizeRatio)
+		GDRAWSPRITE VNGid:20, "flan水晶阴影右", 0, 0, VNSpriteW("flan水晶阴影右"), VNSpriteH("flan水晶阴影右", sizeRatio)
+		GCREATE VNGid:21, VNSpriteW("flan水晶阴影右"), VNSpriteH("flan水晶阴影右", sizeRatio)
+		GCREATE VNGid:22, VNSpriteW("flan水晶阴影右"), VNSpriteH("flan水晶阴影右", sizeRatio)
+		GCLEAR VNGid:21, 0xffffff00 + darkPoint:index
+		GDRAWGWITHMASK VNGid:22, VNGid:20, VNGid:21, 0, 0
+		GDRAWG VNGid:0, VNGid:22, width + VNConfig:GIButtonWidth / 2 - VNSpriteW("flan按钮右") + 3 * VNConfig:GIUiSize, (12*sizeRatio/100) * VNConfig:GIUiSize + (buttonHeight + VNConfig:GIButtonSpace) * index, VNSpriteW("flan水晶阴影右"), VNSpriteH("flan水晶阴影右", sizeRatio), 0, 0, VNSpriteW("flan水晶阴影左"), VNSpriteH("flan水晶阴影左", sizeRatio)
+		;框
+		GDRAWSPRITE VNGid:0, "flan横框", width - VNConfig:GIButtonWidth / 2 + VNSpriteW("flan按钮右"), 0 + (buttonHeight + VNConfig:GIButtonSpace) * index, VNConfig:GIButtonWidth - VNSpriteW("flan按钮左") - VNSpriteW("flan按钮右"), VNSpriteH("flan横框", sizeRatio)
+		GDRAWSPRITE VNGid:0, "flan横框", width - VNConfig:GIButtonWidth / 2 + VNSpriteW("flan按钮右"), 0 + (buttonHeight + VNConfig:GIButtonSpace) * index + buttonHeight - VNSpriteH("flan横框", sizeRatio), VNConfig:GIButtonWidth - VNSpriteW("flan按钮左") - VNSpriteW("flan按钮右"), VNSpriteH("flan横框", sizeRatio)
+		;字
+		GSETFONT VNGid:0, GETFONT(), VNConfig:GIButtonTextSize
+		GSETPEN VNGid:0, 0xff000000 + color_mix(GETDEFCOLOR(), darkPoint:index, GETFOCUSCOLOR(), 150 - darkPoint:index), 0
+		GGETTEXTSIZE VNGalChoiceList:index, GGETFONT(VNGid:0), VNConfig:GIButtonTextSize
+		fontWidth = RESULT:0
+		fontHeight = RESULT:1
+		GDRAWTEXT VNGid:0, VNGalChoiceList:index, width - fontWidth / 2,  buttonHeight / 2 + (buttonHeight + VNConfig:GIButtonSpace) * index - fontHeight / 2
+
+	NEXT
+	CBGSETG VNGid:0, 0, 0, -11
+
+;获取鼠标位置
+@VNGalIChoiceButton()
+	#FUNCTION
+	#DIM nameMax
+	#DIM width
+	#DIM height
+	#DIM mousePosX
+	#DIM mousePosY
+	#DIM index
+	#DIM buttonHeight
+	#DIM sizeRatio
+	;统计按钮信息
+	FOR nameMax, 0, VARSIZE("VNGalChoiceList")
+		SIF VNGalChoiceList:nameMax == ""
+			BREAK
+	NEXT
+	nameMax --
+	SIF nameMax == 0
+		THROW [VNStuff ERROR] 未设置按钮列表
+	buttonHeight = SPRITEHEIGHT("flan按钮左") * VNConfig:GIUiSize
+	;计算中心位置
+	width = CLIENTWIDTH() / 2
+	height = CLIENTHEIGHT() *13/32
+	;Custom code
+	;Allow for more buttons, resize if needed
+	IF buttonHeight*nameMax > HEIGHT
+		sizeRatio = (height*100/(buttonHeight*nameMax))
+		buttonHeight = buttonHeight * (sizeRatio)/100
+	ENDIF
+	;====================
+	;鼠标坐标
+	mousePosX = MOUSEX()
+	mousePosY = height + (buttonHeight * nameMax + VNConfig:GIButtonSpace * (nameMax - 1) / 2) + MOUSEY()
+	FOR index, 0, nameMax
+		{
+		SIF (mousePosX >= width - VNConfig:GIButtonWidth / 2 && mousePosX <= width + VNConfig:GIButtonWidth / 2) &&
+			(mousePosY >= (buttonHeight + VNConfig:GIButtonSpace) * index) && mousePosY <= (buttonHeight + VNConfig:GIButtonSpace) * index + buttonHeight
+		}
+			RETURNF index
+	NEXT
+	RETURNF -1
+
+;画人
+@VNGalIDrawChara()
+	;旁白
+	SIF VNGalChara < 0
+		RETURN
+	;创建桌面
+	GDISPOSE VNGid:1
+	GCREATE VNGid:1, VNConfig:GICharaLeft + VNConfig:GICharaSize, VNConfig:GIHeight + VNConfig:GIBottle + VNConfig:GICharaSize + VNConfig:GICharaBottle
+	;获取人的精灵图
+	;三号大佬的图
+	; IF EXISTFUNCTION("i1011DrawMain")
+	; 	;调教ing
+	; 	IF VNTraining == 1
+	; 		SETVAR "I1011Mood", 0
+	; 		SETVAR "I1011Underwear", 0
+	; 		SETVAR "I1011Wear", 0
+	; 	ELSE
+	; 		SETVAR "I1011Mood", 0
+	; 		SETVAR "I1011Underwear", 1
+	; 		SETVAR "I1011Wear", 1
+	; 	ENDIF
+	; 	GDRAWSPRITE VNGid:1, i1011DrawMain(0), VNConfig:GICharaLeft, 0, VNConfig:GICharaSize, VNConfig:GICharaSize
+	; ELSE
+		SELECTCASE VNGalMood
+			CASE "Happy"
+				LOCALS '= "笑顔"
+			CASE "Angry"
+				LOCALS '= "怒り"
+			; CASE "Sing"
+			; CASE "Confuse"
+			; CASE "Surprise"
+			;CASE "In Heat"
+			;	LOCALS '= ""
+			CASEELSE
+				LOCALS '= "通常"
+		ENDSELECT
+		CALL GET_BASE_RESOURCE(VNGalChara,"立ち絵",,LOCALS)
+		LOCALS:1 '= RESULTS
+			; SIF !SPRITECREATED(LOCALS:1)
+			; 	SPRITECREATE LOCALS:1
+		GDRAWSPRITE VNGid:1, LOCALS:1, VNConfig:GICharaLeft, 0, VNConfig:GICharaSize, VNConfig:GICharaSize
+	;ENDIF
+	CBGSETG VNGid:1, 0, 0, -9
+
+;绘制ui
+@VNGalIDrawUi()
+	#DIM index
+	#DIM tmpH
+	#DIM tmpW
+	#DIM DYNAMIC line
+	#DIM DYNAMIC textLong
+	#DIMS char
+	#DIMS colorList, 999
+	;创建桌面
+	GDISPOSE VNGid:2
+	GCREATE VNGid:2, VNConfig:GIWidth + VNConfig:GILeft, VNConfig:GIBottle + VNConfig:GIHeight
+	;背景
+	GDISPOSE VNGid:20
+	GCREATE VNGid:20, VNConfig:GIWidth - 14 * VNConfig:GIUiSize, VNConfig:GIHeight - 14 * VNConfig:GIUiSize
+	GCLEAR VNGid:20, 0xff7b0000
+	{
+	GDRAWG VNGid:2, VNGid:20,
+	VNConfig:GILeft + 7 * VNConfig:GIUiSize,
+	7 * VNConfig:GIUiSize,
+	VNConfig:GIWidth - 14 * VNConfig:GIUiSize,
+	VNConfig:GIHeight - 14 * VNConfig:GIUiSize,
+	0,
+	0,
+	VNConfig:GIWidth - 14 * VNConfig:GIUiSize,
+	VNConfig:GIHeight - 14 * VNConfig:GIUiSize
+	}
+	
+	;框
+	GDRAWSPRITE VNGid:2, "flan左上角", VNConfig:GILeft, 0, 14 * VNConfig:GIUiSize, 14 * VNConfig:GIUiSize
+	GDRAWSPRITE VNGid:2, "flan右上角", VNConfig:GIWidth + VNConfig:GILeft - 14 * VNConfig:GIUiSize, 0, 14 * VNConfig:GIUiSize, 14 * VNConfig:GIUiSize
+	GDRAWSPRITE VNGid:2, "flan左下角", VNConfig:GILeft, 0 + VNConfig:GIHeight - 14 * VNConfig:GIUiSize, 14 * VNConfig:GIUiSize, 14 * VNConfig:GIUiSize
+	GDRAWSPRITE VNGid:2, "flan右下角", VNConfig:GIWidth + VNConfig:GILeft - 14 * VNConfig:GIUiSize, 0 + VNConfig:GIHeight - 14 * VNConfig:GIUiSize, 14 * VNConfig:GIUiSize, 14 * VNConfig:GIUiSize
+	;横框
+	GDRAWSPRITE VNGid:2, "flan横框", VNConfig:GILeft + 14 * VNConfig:GIUiSize, 6 * VNConfig:GIUiSize, VNConfig:GIWidth - 28 * VNConfig:GIUiSize, VNSpriteH("flan横框")
+	GDRAWSPRITE VNGid:2, "flan横框", VNConfig:GILeft + 14 * VNConfig:GIUiSize, VNConfig:GIHeight - 8 * VNConfig:GIUiSize, VNConfig:GIWidth - 28 * VNConfig:GIUiSize, VNSpriteH("flan横框")
+	;竖框
+	GDRAWSPRITE VNGid:2, "flan竖框", VNConfig:GILeft + 6 * VNConfig:GIUiSize, 14 * VNConfig:GIUiSize, VNSpriteW("flan竖框"), VNConfig:GIHeight - 28 * VNConfig:GIUiSize
+	GDRAWSPRITE VNGid:2, "flan竖框", VNConfig:GILeft + VNConfig:GIWidth - 8 * VNConfig:GIUiSize, 14 * VNConfig:GIUiSize, VNSpriteW("flan竖框"), VNConfig:GIHeight - 28 * VNConfig:GIUiSize
+	;LED
+	GDRAWSPRITE VNGid:2, "flan水晶", VNConfig:GILeft + VNConfig:GIWidth - (14 + SPRITEWIDTH("flan水晶")) * VNConfig:GIUiSize, 0, SPRITEWIDTH("flan水晶") * VNConfig:GIUiSize, SPRITEHEIGHT("flan水晶") * VNConfig:GIUiSize
+	;名字
+	IF VNGCharaName() != ""
+		GSETFONT VNGid:2, GETFONT(), VNConfig:GINameSize
+		GDRAWTEXT VNGid:2, VNGCharaName(), VNConfig:GINameX + VNConfig:GILeft, VNConfig:GINameY
+	ENDIF
+	;文本
+	;设置字体
+	GSETFONT VNGid:2, GETFONT(), VNConfig:GITextSize
+	;获取颜色list
+	SPLIT VNGalTextColor, "_", colorList
+	FOR index, 0, STRLENSU(VNGalText)
+		char '= SUBSTRINGU(VNGalText, index, 1)
+		;换行
+		IF char == "\n" || textLong * VNConfig:GITextSize / 2 >= VNConfig:GITextLong
+			textLong = 0
+			line ++
+			;主动换行
+			SIF char == "\n"
+				CONTINUE
+		ENDIF
+		;设置颜色
+		GSETPEN VNGid:2, 0xff000000 + TOINT(colorList:index), 0
+		GDRAWTEXT VNGid:2, char, VNConfig:GITextX + VNConfig:GILeft + textLong * VNConfig:GITextSize / 2, VNConfig:GITextY + line * VNConfig:GITextHeight
+		;长度记录
+		textLong += STRLENS(char)
+	NEXT
+	;输出
+	CBGSETG VNGid:2, 0, 0, -10
+
+
+;打印一堆点
+@VNGSleep
+	CALL PRINT_GP("L", "...\n......\n.........")
+
+@VNGWait
+	CALL PRINT_GP("W", "")
+
+;仿gal打印
+@PRINT_GP(mod, text, color = -1)
+	#DIMS mod
+	#DIMS text
+	#DIM color
+	;说话者是旁白
+	VNGalChara = -9999
+	SIF color == -1
+		color = GETDEFCOLOR()
+	CALL VNPrintMain, mod, text, color
+
+;角色打印
+;chara正值/0为登录番号
+@PRINT_GPC, mod, text, chara, color=0
+	#DIMS mod
+	#DIMS text
+	#DIM chara
+	#DIM charaNo
+	#DIM DYNAMIC color
+	;记录说话者
+	VNGalChara = chara
+	charaNo = ABS(chara)
+	IF !color
+		CALL SET_KOJO_COLOR(chara)
+		color = GETCOLOR()
+		RESETCOLOR
+	ENDIF
+	CALL VNPrintMain, mod, text, color
+
+@VNPrintMain, mod, text, color
+	#DIMS mod
+	#DIMS text
+	#DIM color
+	#DIM printMod
+	SELECTCASE mod
+		CASE "SL"
+			printMod = 0
+		CASE "L"
+			printMod = 1
+		CASE "W"
+			printMod = 2
+		CASEELSE
+			THROW [VNStuff ERROR] Unknown printing type
+	ENDSELECT
+	CALL VNGPrint(text, color, printMod, nVNGlobals:hearts, nVNGlobals:printFlsuhTime, nVNGlobals:printFlushAdd)
+
+;对话打印
+@VNGPrint(text, color, mod, printHeart = 1, flushTime = 15, addStep = 2)
+	#DIM color
+	#DIMS text
+	#DIMS printText
+	#DIM mod	;0NULL 1L 2W
+	#DIM printHeart ;决定是否会打印彩色的心
+	#DIM DYNAMIC step
+	#DIM DYNAMIC spearLine
+	#DIM DYNAMIC skip
+	#DIM line
+	#DIM index
+	#DIMS char
+	#DIM flushTime
+	#DIM addStep
+	#DIM DYNAMIC flushTimes ;刷新次数
+	#DIM bgColor;背景颜色
+	;非彩色模式
+	SIF TARGET != -1  && !FLAG:口上色
+		color = GETDEFCOLOR()
+
+	;仿GAL交互
+	IF nVNGlobals:drawing == 1
+		bgColor = 0x7b0000
+	ELSE
+		bgColor = GETBGCOLOR()
+	ENDIF
+
+	;记录行数
+	line = LINECOUNT
+	;判断是否为通用对话
+	IF (SUBSTRING(text, 0, 1) == "「" && SUBSTRING(text, STRLENS(text) - 2, 1) == "」")
+		printText '= SUBSTRING(text, 2, STRLENS(text) - 4)
+		spearLine = 1
+	ELSE
+		printText '= text
+	ENDIF
+	WHILE 1
+		VNGalText '= ""
+		VNGalTextColor '= ""
+		;禁用动画
+		IF TARGET != -1
+		SIF !VN_cartoon_play() || skip || !nVNGlobals:wordPrint
+			step = STRLENSU(printText) + 2
+		ELSE
+		SIF !VN_cartoon_play() || skip
+			step = STRLENSU(printText) + 2
+		ENDIF
+		VNGalTextColor += @"%TOSTR(color)%_"
+		SIF spearLine
+			VNGalText += "「"
+		
+		;动画
+		FOR index, 0, MIN(STRLENSU(printText), step)
+			char '= SUBSTRINGU(printText, index, 1)
+			IF char == "♥" && printHeart
+				VNGalTextColor += @"%TOSTR(color_mix(HeartColor, MIN(255, 128 * (step - index)), bgColor, 255 - MIN(255, 128 * (step - index))))%_"
+			ELSE
+				VNGalTextColor += @"%TOSTR(color_mix(color, MIN(255, 128 * (step - index)), bgColor, 255 - MIN(255, 128 * (step - index))))%_"
+			ENDIF
+			VNGalText += char
+		NEXT
+		VNGalTextColor += @"%TOSTR(color)%_"
+		SIF spearLine
+			VNGalText += "」"
+
+		;刷新立绘
+		;最后一句
+		IF step >= STRLENSU(printText) + 3
+			VNCartoonFlow = -1
+		;正常
+		ELSE
+			VNCartoonFlow ++
+		ENDIF
+
+		;显示
+		CALL VNPrintShow()
+		;增加步长
+		step += addStep
+		SIF step >= STRLENSU(printText) + 3
+			BREAK
+		
+		flushTimes ++
+		INPUTMOUSEKEY flushTime
+		SELECTCASE RESULT
+			;鼠标按下
+			CASE 1
+				skip = 1
+			;键盘按下
+			CASE 3
+				skip = 1
+		ENDSELECT
+		CLEARLINE LINECOUNT - line
+		CBGCLEAR
+	WEND
+	RESETCOLOR
+	;打印模式处理
+	SELECTCASE mod
+		CASE 0
+		CASE 1
+			TWAIT 1000, 0
+		CASE 2
+			WAIT
+			SIF !MESSKIP()
+			PLAYSOUND "se/キー音.m4a"
+		CASEELSE
+			THROW [芙兰口上ERROR]错误的打印模式(mod = {mod})
+	ENDSELECT
+	CLEARLINE LINECOUNT - line
+	CBGCLEAR
+	;打印历史信息
+	SETCOLOR color
+	PRINTSL text
+	RESETCOLOR
+
+@ASK_GSetQ(question:0, question:1, question:2, question:3, question:4, question:5, question:6, question:7, question:8, question:9)
+	#DIMS question, VARSIZE("VNGalChoiceList")
+	#DIM index
+	FOR index, 0, VARSIZE("VNGalChoiceList")
+		VNGalChoiceList:index '= question:index
+	NEXT
+
+@ASK_GSetQR(questionList)
+	#DIMS REF questionList
+	#DIM arrSize
+	#DIM index
+	arrSize = VARSIZE("questionList")
+	FOR index, 0, VARSIZE("VNGalChoiceList")
+		;超范围
+		IF index >= arrSize
+			VNGalChoiceList:index '= ""
+		;正常
+		ELSE
+			VNGalChoiceList:index '= questionList:index
+		ENDIF
+	NEXT
+
+@ASK_GInput()
+	#DIM line
+	#DIM out
+	#DIM height
+	line = LINECOUNT
+	SELECTCASE nVNGlobals:drawing
+		;Era
+		CASE 0
+			CALL VNTextInput()
+		;GAL
+		CASE 1
+			CALL VNGalIInput()
+		CASEELSE
+			THROW [VNStuff ERROR] Invalid printing mode (nVNGlobals:drawing = {nVNGlobals:drawing})
+	ENDSELECT
+	out = RESULT
+	PLAYSOUND "se/キー音.m4a"
+	CLEARLINE LINECOUNT - line
+	CBGCLEAR
+	RETURN out
+
+;-------------------------------------------
+;标准打印函数
+;-------------------------------------------
+@VNP(mod, text, color = -1, autoCharaColor = 1)
+	#DIMS mod
+	#DIMS text
+	#DIM color
+	#DIM autoCharaColor	;自动角色颜色分析
+	#DIM charaNo
+	;未知的打印模式
+	SIF !GROUPMATCH(mod, "", "S", "L", "W")
+		THROW [VNStuff ERROR] Unknown print mode
+	;禁用颜色/默认值
+	IF !FLAG:口上色 || color == -1
+		color = GETDEFCOLOR()
+	;自动角色颜色分析
+	ELSEIF autoCharaColor
+		;登录番号
+		IF color >= 0 && color < CHARANUM
+			CALL SET_KOJO_COLOR(color)
+			color = GETCOLOR()
+			RESETCOLOR
+		; ;NO编号
+		; ELSEIF color >= -6000 && color <= -1000
+		; 	charaNo = -color
+		; 	color = VNGetCharaColor(charaNo)
+		ENDIF
+	ENDIF
+	SETCOLOR color
+	IF mod == "S"
+		PRINTSINGLES text
+	ELSE
+		PRINTS text
+	ENDIF
+	RESETCOLOR
+	SELECTCASE mod
+		CASE "L"
+			PRINTL
+		CASE "W"
+			WAIT
+	ENDSELECT
+
+@VNSpriteH(spriteName,sizeRatio=100)
+#FUNCTION
+#DIMS spriteName
+#DIM DYNAMIC sizeRatio
+RETURNF SPRITEHEIGHT(spriteName) * VNConfig:GIUiSize * sizeRatio/100
+
+@VNSpriteW(spriteName,sizeRatio=100)
+#FUNCTION
+#DIMS spriteName
+#DIM DYNAMIC sizeRatio
+RETURNF SPRITEWIDTH(spriteName) * VNConfig:GIUiSize * sizeRatio/100
+
+@VNTextPrint()
+	#DIM index
+	#DIMS char
+	#DIMS colorList, 999
+	;获取颜色list
+	SPLIT VNGalTextColor, "_", colorList
+	FOR index, 0, STRLENSU(VNGalText)
+		char '= SUBSTRINGU(VNGalText, index, 1)
+		;设置颜色
+		SETCOLOR TOINT(colorList:index)
+		PRINTS char
+	NEXT
+
+@VNTextInput
+	#DIM index
+	FOR index, 0, VARSIZE("VNGalChoiceList")
+		IF VNGalChoiceList:index != ""
+			PRINTFORML [{index,2}] %VNGalChoiceList:index%
+		ELSE
+			BREAK
+		ENDIF
+	NEXT
+	WHILE 1
+		INPUT
+		IF RESULT >= 0 && RESULT < VARSIZE("VNGalChoiceList") && VNGalChoiceList:RESULT != ""
+			RETURN RESULT
+		ELSE
+			PRINTW Invalid Input
+			CLEARLINE 2
+		ENDIF
+	WEND
+
+@VN_cartoon_play
+	#FUNCTION
+;	SIF !(FLAG:10 & 1024)
+;		RETURNF 0
+	MESSKIP
+	SIF RESULT
+		RETURNF 0
+	RETURNF 1
+
+@VNPrintShow()
+	SELECTCASE nVNGlobals:drawing
+		;Normal
+		CASE 0
+			CALL VNTextPrint()
+		;GAL
+		CASE 1
+			CALL VNGalIDraw()
+		CASEELSE
+			THROW [芙兰口上ERROR]位置的打印模式(nVNGlobals:drawing = {nVNGlobals:drawing})
+	ENDSELECT
+
+@VNGalSetMood(moodName)
+	#DIMS moodName
+	SIF !GROUPMATCH(moodName, "", "Happy", "Love", "Angry", "Sing", "Confuse", "Surprise", "In Heat")
+		THROW [芙兰口上ERROR]错误的心情(moodName = %moodName%)
+	VNGalMood '= moodName
+
+;得到chara的ymNO
+;-1是旁白
+@VNGCharaNo()
+	#FUNCTION
+	SIF VNGalChara == -9999
+		RETURNF -1
+	SIF VNGalChara < 0
+		RETURNF -VNGalChara
+	RETURNF NO:VNGalChara
+
+;获取名字
+@VNGCharaName()
+	#FUNCTIONS
+	SIF VNGalChara == -9999
+		RETURNF ""
+	;this will never happen, i hope
+	; SIF VNGalChara < 0
+	; 	RETURNF CSVNAME(VNRealNo(-VNGalChara))
+	RETURNF NAME:VNGalChara
+;申请gid
+@VNApplyGid()
+#FUNCTION
+#DIM gid
+WHILE GCREATED(gid)
+	; IF GID IS EXIST THEN CONTINUE
+	gid ++
+WEND
+GCREATE gid, 1, 1
+RETURNF gid
+
+;自动设置
+@VNGalIConfigInit()
+VNConfig:GIWidth = CLIENTWIDTH() - 50
+VNConfig:GIHeight = 200
+VNConfig:GILeft = 25
+VNConfig:GIBottle = 0
+VNConfig:GIUiSize = 2
+VNConfig:GINameX = 25
+VNConfig:GINameY = 25
+VNConfig:GITextX = 60
+VNConfig:GITextY = 60
+VNConfig:GINameSize = 25
+VNConfig:GITextSize = 20
+VNConfig:GITextHeight = 22
+VNConfig:GITextLong = VNConfig:GIWidth - VNConfig:GITextY * 2
+VNConfig:GICharaSize = 495
+VNConfig:GICharaLeft = 200
+VNConfig:GICharaBottle = -30
+VNConfig:GIButtonWidth = CLIENTWIDTH() / 2
+VNConfig:GIButtonSpace = 30
+VNConfig:GIButtonTextSize = 25
+
+
+@VNGlobalConfigInit()
+#FUNCTION
+nVNGlobals:drawing = 0
+nVNGlobals:wordPrint = 0
+nVNGlobals:hearts = 1
+nVNGlobals:printFlsuhTime = 15
+nVNGlobals:printFlushAdd = 3
+
+@VNGetFont()
+#FUNCTIONS
+;RETURNF GETFONT()
+RETURNF "Times New Roman"

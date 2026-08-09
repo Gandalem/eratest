@@ -1,0 +1,110 @@
+@UNIQUE_FA_14(CHARA, ARGS,時間係数)
+#DIM CHARA
+#DIM CHAIN
+#DIM 現在地
+#DIM メッセージ表示
+#DIM 時間係数
+#DIMS FROG_STATE
+現在地 = CFLAG:CHARA:現在位置
+メッセージ表示 = 現在地 == CFLAG:MASTER:現在位置 ? 1 # 0
+
+UNIQUE_FA_NAME:CHARA = freezing frogs
+
+SELECTCASE ARGS
+	CASE "発生"
+		SIF BASE:CHARA:気力 <= 500
+			RETURN 0
+		SIF !WATERAREA(現在地)
+			RETURN 0
+		IF メッセージ表示
+			PRINTFORMD Cirno starts to freeze frogs by the 
+			SELECTCASE WATERAREA(現在地)
+				CASE 1
+					PRINTFORMDL lake.
+				CASE 2
+					PRINTFORMDL side of the river.
+			ENDSELECT
+		ENDIF
+		FROG_STATE =
+		;返し値は行動時間
+		RETURN 150
+	CASE "行動中"
+		IF 現在地 == GET_MAP_REPLACEMENT(P708大蝦蟇の池) && !RAND:10 ;caught by giant toad
+			IF メッセージ表示
+				PRINTFORMDL While Cirno is absorbed in playing with the frogs, a giant shadow suddenly looms over her.
+				IF ABL:CHARA:戦闘能力 < 6
+					PRINTFORMDL Then, it pulls out its long tongue and wraps it around Cirno, pulling her in and swallowing her in one big gulp.
+					CALL CHARA_TEXT(CHARA, "「Waaaaaaaaaaaaaah!」", "w")
+					PRINTFORMDL Instinctively, she freezes the giant toad from within, running away in fright.
+					PRINTFORMDW The giant toad seems to be a little shocked by the sudden attack, but does not appear to be harmed.
+				ELSE
+					PRINTFORMDW However, it doesn't do anything but watch, seemingly hesitant to act directly against her.
+				ENDIF
+			ENDIF
+			;massive stamina hit, sent to sleep
+			IF ABL:CHARA:戦闘能力 < 6
+				CALL RECOVER(CHARA, -MAXBASE:CHARA:体力, "体力", "Swallowed by giant toad")
+				CALL RUNOFF(CHARA)
+				Activity_Duration:CHARA = 0
+				Activity_Type:CHARA = 0
+			ENDIF
+		ELSEIF メッセージ表示
+			IF FROG_STATE == "frozen"
+				LOCAL = 0
+				SELECTCASE ABL:CHARA:戦闘能力
+					CASE IS >= 6
+						PRINTFORMDW The frog Cirno froze casually hops away when it defrosts, not even realizing what happened.
+						RETURN
+					CASE 5
+						LOCAL = !RAND:20
+					CASE 4
+						LOCAL = !RAND:10
+					CASE 3
+						LOCAL = !RAND:6
+					CASE 2
+						LOCAL = !RAND:4
+					CASE 1
+						LOCAL = !RAND:3
+				ENDSELECT
+				IF LOCAL
+					PRINTFORMDW Despite her best efforts, the poor frog Cirno froze shatters into pieces.
+				ELSE
+					PRINTFORMDW The frog Cirno froze eventually thaws, none the worse for wear.
+				ENDIF
+				FROG_STATE =
+			ELSE
+				PRINTFORMDL Cirno is freezing a frog.
+
+				IF ABL:CHARA:戦闘能力 >= 6
+					PRINTFORMDW It's frozen in an instant, forming a perfectly smooth ball of ice.
+				ELSE
+					PRINTFORMDW She steadily freezes the frog, encasing it in ice.
+				ENDIF
+				FROG_STATE = frozen
+			ENDIF
+		ENDIF
+	CASE "完了"
+		SIF メッセージ表示
+			PRINTFORMDW Cirno has grown bored of freezing frogs.
+	CASE "中断"
+		;中断メッセージはうふふ突入時等でも表示されてしまうので表示しない
+	CASE "付き合う"
+		PRINTFORMDL You watch Cirno as she freezes a frog.
+		IF TFLAG:193 < 0
+			PRINTFORMDW It's not very interesting.
+		ELSE
+			PRINTFORMDW It's fun to see her enthusiasm.
+		ENDIF
+	CASE "ソース"
+		DOWNBASE:MASTER:気力 += 20 * 時間係数
+		DOWNBASE:TARGET:気力 += 20 * 時間係数
+		SOURCE:歓楽 = (100 + ((ABL:親密 + ABL:MASTER:話術技能) * 50)) * 時間係数
+		SOURCE:受動 = (60 + ((ABL:従順 + ABL:MASTER:話術技能) * 30)) * 時間係数
+ENDSELECT
+
+@M_KOJO_自由行動判定_K14(ARG)
+;if frog freezing is possible, always do that
+SIF WATERAREA(CFLAG:[[チルノ]]:現在位置) && ARG > 0
+	RETURN -1
+RETURN 0
+

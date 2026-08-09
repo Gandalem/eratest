@@ -1,0 +1,127 @@
+@ボッシュート(ARG) ;custom code, added ARG, modded to restore legacy KOJO EVENT 9 cases
+;パンツ没収、収集
+;NAS: baby
+;also added a C knowledge requirement because an idiot wouldn't know if you're pilfering pantsu/omutsu
+SIF IS_BABY(TARGET)
+	RETURN 0
+;SIF !CFLAG:TARGET:パンツ2 && STRLENS(CSTR:MASTER:12)
+SIF !CFLAG:TARGET:パンツ2 && FLAG:パンツ輸送 && ABL:TARGET:43 > UniversalRank("C") && TCVAR:Common_Sense_Alteration_Status <= 25 && FLAG:催眠強度 <= 25 ;hypnosis patch
+	CALL パンツ没収(TARGET, ARG)
+;料理持ってたら食われる
+IF  DISH_NAME != ""
+	SIF DISH_ASSI == TARGET
+		RETURN 0
+	SIF CFLAG:TARGET:同行
+		RETURN 0
+	LOCAL:1 = 0
+	IF DISH_TYPE == "デザート"
+		SIF TIME_PROGRESS(TCVAR:デザート空腹時刻)
+			LOCAL:1 = 1
+	ELSE
+		SIF TIME_PROGRESS(TCVAR:TARGET:空腹時刻)
+			LOCAL:1 = 1
+	ENDIF
+	IF LOCAL:1 && RAND:( ITEM:保温ジャー && GETBIT(nThermalJarMods, ThermalJar_StealProtectionUpgrade) ? 10 # 5 ) == 0 && !GROUPMATCH(SELECTCOM, 413, 484) ;addition custom code
+		CALL Add_PreventFoodTheft ;addition custom code
+		SIF RESULT == 1
+			RETURN
+		;----------------------------------------------
+		PRINTL 
+		PRINTFORMW %CALLNAME:TARGET% finds the %EX_DISH_NAME% you are carrying...
+		IF RESULT == 2 ;if codepad is installed on the thermal jar
+			CALL Add_ThermalJarCodePad
+			SIF RESULT || TCVAR:TARGET:盗み食い抑制
+				RETURN
+		ENDIF
+		CALL Com_Food_Check(TARGET, 1) ;com custom code
+		SIF RESULT
+			RETURN
+		;----------------------------------------------
+		PRINTFORMW !
+		PRINTFORMW ...!!
+		CALL KOJO_MESSAGE_SEND("EVENT",14,TARGET,-1,-1)
+		;抑制フラグ入ってたら抜ける
+		SIF TCVAR:TARGET:盗み食い抑制
+			RETURN
+		IF DISH_DRG
+			CALL MESSAGE_EAT_DISH_DRG(TARGET)
+			WAIT
+		ELSE
+			PRINTFORMW And eats it.
+		ENDIF
+		;NAS trauma
+		SOURCE:MASTER:Trauma += TALENT:MASTER:137 ? 3500 # 1000
+		CALL 食事(TARGET)
+		CALL RESET_DISH
+	ENDIF
+ENDIF
+
+@パンツ没収(ARG, ARG:1) ;custom code, added ARG:1, modded to restore legacy KOJO EVENT 9 cases
+;パンツ没収、収集
+SIF LS_RESTRICTION("Panties search") ;Custom code, restrict panty searching during Lunatic Survival.
+	RETURN
+LOCAL:1 = RAND:2
+SIF FLAG:願掛け内容 == 202
+	LOCAL:1 = RAND:3
+IF  !LOCAL:1 && CFLAG:ARG:ノーパン != 2
+	PRINTL  
+	PRINTFORMW %CALLNAME:ARG% finds you suspicious and searches you...
+	PRINTFORMW 
+	PRINTFORMW 
+	PRINTFORMW 
+	IF TALENT:MASTER:ぱんつ密輸 && RAND:10
+		PRINTFORMW But you skillfully deceive %CALLNAME:ARG%.
+		;CALL KOJO_MESSAGE_SEND("EVENT",9,ARG,0,2)
+		;custom code, added KOJO event call
+		CALL KOJO_MESSAGE_SEND("EVENT",90,ARG,0,1)
+	ELSE
+		;addition custom code
+		IF RAND(100) < GetDodgeChance(MASTER)
+			PRINTFORMW But you skillfully dodge %CALLNAME:ARG%.
+			RETURN 0
+		ELSE
+		CALL Add_SeedOfUnknownForm("panties", ARG)
+		SIF RESULT > 0
+			RETURN 0
+		ENDIF
+		SELECTCASE GET_INT(ARG, "Religion", TALENT:ARG:Religion, "Panty Stealing")
+		CASE -1
+			PRINTFORML Panty theft is against %CALLNAME:ARG%'s religion and leaves you be.
+			RETURN 0
+		CASE 0
+			PRINTFORML %CALLNAME:ARG% sees no use for your pilfered panties and leaves you be.
+			RETURN 0
+		CASE 1
+			PRINTFORMW Your pilfered panties are confiscated.
+			SIF !CFLAG:弱み握り
+				PRINTFORMW %CALLNAME:ARG% can use this to blackmail you!
+			CFLAG:ARG:弱み握り += 5
+			CALL SET_REP(ARG,2,,1)
+			;custom code,  modded to restore legacy KOJO EVENT 9 cases
+			CALL KOJO_MESSAGE_SEND("EVENT",9,ARG,0,ARG:1)
+		CASE 2, 3
+			PRINTFORMW %CALLNAME:ARG% eye's glimmer as %HE_SHE(ARG)% steals your pilfered panties.
+			CALL SET_REP(ARG,2,1,1)
+			PRINTFORMW %CALLNAME:ARG% also demands that you forfeit your %PeeProtectType(MASTER,2)% as well.
+			CALL ASK_YN("Surrender them", "Resist")
+			SELECTCASE RESULT
+			CASE 0
+			PRINTFORMW You let %CALLNAME:ARG% take off your %PeeProtectType(MASTER,2)% as %HE_SHE(ARG)% puts them in %HIS_HER(ARG)% pocket
+			CALLF PANTY_REWORK_CHANGE(MASTER,0)
+			;incon precept
+			IF GET_INT(ARG, "Religion", TALENT:ARG:Religion, "Incontinence") > 0 && nOmutsu
+				PunishChange:MASTER:0 = MAX(5,PunishChange:MASTER:0)
+				CALL RandomUnderwearCheck(ARG,3)
+			ENDIF
+			CASE 1
+			PRINTFORMW %CALLNAME:ARG% gets angry at you.
+			CALL GET_ANGRY(ARG)
+			ENDSELECT
+		ENDSELECT
+		;--------------------
+		;CSTR:MASTER:12 =
+		;VARSET PANTS_TEMP
+		;FLAG:パンツ輸送 = 0
+		CALL CLEAR_HAVE_COLLECTION()
+	ENDIF
+ENDIF

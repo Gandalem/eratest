@@ -1,0 +1,378 @@
+;;;ラッパー関数
+@カラム生成, funcColumn, columnMenu:0, columnMenu:1, columnMenu:2, columnMenu:3, columnMenu:4, columnMenu:5, columnMenu:6, columnMenu:7, columnMenu:8, columnMenu:9, columnMenu:10, columnMenu:11, columnMenu:12, columnMenu:13, columnMenu:14
+#DIMS funcColumn
+#DIMS DYNAMIC columnMenu, 15
+#DIM DYNAMIC COL_LINECOUNT
+;NAS: Added a colum linecount
+
+COL_LINECOUNT = LINECOUNT
+REDRAW 0
+DO
+	CLEARLINE LINECOUNT - COL_LINECOUNT
+	CALL カラム生成2, funcColumn, columnMenu:0, columnMenu:1, columnMenu:2, columnMenu:3, columnMenu:4, columnMenu:5, columnMenu:6, columnMenu:7, columnMenu:8, columnMenu:9, columnMenu:10, columnMenu:11, columnMenu:12, columnMenu:13, columnMenu:14
+	SIF LOOP_BREAK
+		BREAK
+LOOP 1
+
+
+@カラム生成2, funcColumn, columnMenu:0, columnMenu:1, columnMenu:2, columnMenu:3, columnMenu:4, columnMenu:5, columnMenu:6, columnMenu:7, columnMenu:8, columnMenu:9, columnMenu:10, columnMenu:11, columnMenu:12, columnMenu:13, columnMenu:14
+#DIM DYNAMIC lCount
+#DIM DYNAMIC COL2_LINE
+;MAX_LINEは可変にしてみる
+;#DIM CONST MAX_LINE = 30
+#DIM 表示カラム
+#DIM DYNAMIC 文字数計算用
+#DIM DYNAMIC 行文字数 = STRLENSU(GETLINESTR("─"))
+#DIM DYNAMIC 平文文字数
+#DIMS DYNAMIC columnMenu, 15
+#DIM DYNAMIC columnNumber
+#DIMS funcColumn
+#DIM DYNAMIC columnLinesSave,3
+REDRAW 0
+
+LOOP_BREAK = 0
+TRYCALLFORM %funcColumn%_HEADER
+
+
+ARRAYCOPY "columnMenu", "カラム名"
+
+FOR lCount, 0, VARSIZE("columnMenu")
+	IF columnMenu:lCount == ""
+		columnNumber = lCount
+		BREAK
+	ENDIF
+NEXT
+
+;CALL CHECKDRAWLINE
+
+FOR lCount, 0, VARSIZE("columnMenu")
+	文字数計算用 = MAX(STRLENSU(columnMenu:lCount)+3, 文字数計算用)
+NEXT
+
+;罫線3つ分引いてSTRLENSU→STRLENS変換で2倍
+平文文字数 = (行文字数-文字数計算用-3)*2
+
+;VARSET カラム行
+VARSET columnDivLOG
+VARSET columnLinesSave
+
+CALL columnDivRESIZE, 0, (行文字数-文字数計算用-3)*100, MAX_LINE*GETCONFIG("一行の高さ")
+CALL columnDivMOVE, 0, (文字数計算用+2)*100, MAX_LINE*GETCONFIG("一行の高さ")
+
+;NAS: For English use, replaces spaces with underscores
+CALLFORM %funcColumn%_%TOUPPER(REPLACE(columnMenu:選択カラム," ","_"))%
+SIF LOOP_BREAK
+	RETURN
+
+;this is scuffed as fuck but i guess this works okay.
+;we grab the linecount, print the footer, and clear the lines
+;save line
+columnLinesSave:1 = columnDiv:0:LINE
+;print to get linecount
+TRYCALLFORM %funcColumn%_FOOTER_%TOUPPER(REPLACE(columnMenu:選択カラム," ","_"))%
+;set line delta
+columnLinesSave:2 = columnDiv:0:LINE-(columnLinesSave:1)
+;clear lines
+FOR COL2_LINE,columnLinesSave:1,columnDiv:0:LINE+1
+	columnDivLOG:0:(COL2_LINE) =
+NEXT
+;set linecount to the max lines
+columnDiv:0:LINE = MAX_LINE-columnLinesSave:2-2
+;===================================================
+
+FOR COL2_LINE, 0, MAX_LINE+2
+	FOR lCount, 0, 行文字数
+		SELECTCASE COL2_LINE
+			CASE 0
+				SELECTCASE lCount
+					CASE 0
+						PRINT ┌
+					CASE 行文字数-1
+						PRINT ┐
+					CASEELSE
+						IF lCount == 文字数計算用+1 && 選択カラム != 0
+							PRINT ┬
+						ELSE
+							PRINT ─
+						ENDIF
+				ENDSELECT
+			CASE MAX_LINE+1
+				SELECTCASE lCount
+					CASE IS < 文字数計算用+1
+						PRINT 　
+					CASE 文字数計算用+1
+						PRINT └
+					CASE 行文字数-1
+						PRINT ┘
+					CASEELSE
+						PRINT ─
+				ENDSELECT
+			CASEELSE
+				IF COL2_LINE/2 < columnNumber
+					IF COL2_LINE%2
+						SELECTCASE lCount
+							CASE 0
+								PRINTFORM │[%TOSTR(COL2_LINE/2-90,"00")%] %columnMenu:(COL2_LINE/2), (文字数計算用-3)*2, LEFT%
+							CASE 行文字数-1
+								PRINT │
+							CASE IS > 文字数計算用
+								IF lCount == 文字数計算用+1
+									IF 選択カラム != COL2_LINE/2
+										PRINTPLAIN │
+									ELSE
+										PRINTPLAIN 　
+									ENDIF
+								ELSEIF lCount == 文字数計算用+2
+									PRINTFORM %" ", 平文文字数, LEFT%
+								ENDIF
+						ENDSELECT
+					ELSE
+						SELECTCASE lCount
+							CASE 0
+								PRINT ├
+							CASE IS <= 文字数計算用
+								PRINT ─
+							CASE 文字数計算用+1
+								IF 選択カラム < COL2_LINE/2
+									IF COL2_LINE == (選択カラム*2)+2
+										PRINTPLAIN ┐
+									ELSE
+										PRINTPLAIN ┤
+									ENDIF
+								ELSE
+									IF COL2_LINE == (選択カラム*2)
+										PRINTPLAIN ┘
+									ELSE
+										PRINTPLAIN ┤
+									ENDIF
+								ENDIF
+							CASE 行文字数-1
+								PRINTPLAIN │
+							CASE 文字数計算用+2
+								PRINTFORM %" ", 平文文字数, LEFT%
+						ENDSELECT
+					ENDIF
+				ELSEIF COL2_LINE/2 == columnNumber && COL2_LINE%2 == 0
+					SELECTCASE lCount
+						CASE 0
+							PRINT └
+						CASE IS <= 文字数計算用
+							PRINT ─
+						CASE 文字数計算用+1
+							IF COL2_LINE == (選択カラム*2)+2
+								PRINTPLAIN ┐
+							ELSE
+								PRINTPLAIN ┤
+							ENDIF
+						CASE 行文字数-1
+							PRINTPLAIN │
+						CASE 文字数計算用+2
+							PRINTFORM %" ", 平文文字数, LEFT%
+					ENDSELECT
+				ELSE
+					SELECTCASE lCount
+						CASE IS < 文字数計算用+1
+							PRINT 　
+						CASE 文字数計算用+1
+							PRINTPLAIN │
+						CASE 行文字数-1
+							PRINTPLAIN │
+						CASE 文字数計算用+2
+							PRINTFORM %" ", 平文文字数, LEFT%
+					ENDSELECT
+				ENDIF
+		ENDSELECT
+	NEXT
+	IF COL2_LINE == MAX_LINE+1 
+		TRYCALLFORM %funcColumn%_FOOTER_%TOUPPER(REPLACE(columnMenu:選択カラム," ","_"))%
+		columnDiv:0:LINE = MAX_LINE
+		CALL columnDivSHOW
+		BREAK
+	ELSE
+		PRINTL 
+	ENDIF
+NEXT
+
+INPUT
+;DEBUGPRINTFORML {RESULT}
+SELECTCASE RESULT
+	CASE -90 TO VARSIZE("columnMenu")-90
+		選択カラム = RESULT+90
+		CRESULT:1 = -1
+	CASE 1467
+		IF funcColumn == "NAS_SETTINGS"
+			CALL CHEAT_MENU()
+		ELSE
+			GOTO CaseElse
+		ENDIF
+	CASEELSE
+		$CaseElse
+		CRESULT:0 = 選択カラム
+		CRESULT:1 = RESULT
+		CALLFORM %funcColumn%_%TOUPPER(REPLACE(columnMenu:選択カラム," ","_"))%_INPUT
+		REDRAW 1
+ENDSELECT
+
+@columnDivCREATE, ARG
+SIF columnDiv:ARG:CREATED
+	RETURN 0
+
+columnDiv:ARG:CREATED = 1
+RETURN 1
+
+@columnDivRESIZE, ARG, ARG:1, ARG:2
+columnDiv:ARG:WIDTH = ARG:1
+columnDiv:ARG:HEIGHT = ARG:2
+
+@columnDivMOVE, ARG, ARG:1, ARG:2
+columnDiv:ARG:XPOS = ARG:1
+columnDiv:ARG:YPOS = -ARG:2
+
+;NAS: Added BUTTON argument
+
+@columnDivPRINT, ARG, ARGS, ARGS:1, ARG:1 = -1, ARGS:2 = ""
+CALL columnDivSHIFT(ARG, ARGS, ARGS:1, ARG:1, ARGS:2)
+
+@columnDivPRINTL, ARG, ARGS, ARGS:1, ARG:1 = -1, ARGS:2 = ""
+CALL columnDivSHIFT(ARG, ARGS, ARGS:1, ARG:1, ARGS:2)
+;;#; columnDivLOG:ARG:(columnDiv:ARG:LINE) += @" ({columnDiv:ARG:LINE})"
+columnDiv:ARG:LINE++
+
+; NAS Note: Enter forgot to create this function so it doesn't work
+; Possibly added during V35?
+; @columnDivIMG, ARG, ARGS, ARG:1, ARG:2
+; CALL GCREATESTACK, ARGS
+; columnDivLOG:ARG:(columnDiv:ARG:LINE) += @"<img src='%ESCAPE(ARGS)%' srcb='' width='{ARG:1}' height='{ARG:2}'>"
+
+
+;NAS: Added BUTTON argument
+
+@columnDivSHIFT, ARG, ARGS, ETC, BUTTON = -1, DESC = ""
+#DIM DYNAMIC lCount
+#DIMS DYNAMIC ETC
+#DIM DYNAMIC BUTTON
+#DIMS DYNAMIC DESC
+
+SIF TOINT(@"0x%ETC%")
+	ARGS = <font color='#%ETC%'>%ARGS%</font>
+IF BUTTON > -1
+	ARGS = <button value='{BUTTON}' title='%HTML_ESCAPE(DESC)%'>%ARGS%</button>
+ELSEIF DESC != ""
+	ARGS = <nobutton title='%HTML_ESCAPE(DESC)%'>%ARGS%</nobutton>
+ENDIF
+
+columnDivLOG:ARG:(columnDiv:ARG:LINE) += ARGS
+
+@columnDivBGCOLOR, ARG, ARG:1
+columnDiv:ARG:BGCOLOR = ARG:1
+
+@columnDivBORDER, ARG, ARG:1
+columnDiv:ARG:BORDER = ARG:1
+
+@columnDivBCOLOR, ARG, ARG:1
+columnDiv:ARG:BCOLOR = ARG:1
+
+@columnDivRADIUS, ARG, ARG:1
+columnDiv:ARG:RADIUS = ARG:1
+
+@columnDivSHOW
+#DIM DYNAMIC lCount
+#DIM DYNAMIC lCount2
+#DIM DYNAMIC lCount3
+#DIMS DYNAMIC HTML
+#DIMS DYNAMIC REVERSELOG, 10000
+#DIM DYNAMIC LOGCOUNT
+
+#DIMS DYNAMIC TEXT_DESC, 10
+#DIM DYNAMIC BUTTON, 10
+#DIMS DYNAMIC BUTTON_STRING, 10
+#DIM DYNAMIC BUTTON_CODE
+#DIM DYNAMIC BRACKET, 2
+#DIM DYNAMIC BUTTON_COUNT
+#DIM DYNAMIC START_LOCATION
+
+#DIM DYNAMIC REROUTE_COUNT
+
+CLEARLINE 1
+
+;BUTTONの数値が指定されたBUTTON番号と一致すると困るので、BUTTON_CODEされなさそうな数値に 元ネタ分かる人はすごい
+VARSET BUTTON, -3189415
+
+HTML += "<nobr>"
+
+FOR lCount, 0, 10
+	SIF columnDiv:lCount:0 == 0
+		CONTINUE
+	HTML += @"<div rect='{columnDiv:lCount:XPOS}, {columnDiv:lCount:YPOS}px, {columnDiv:lCount:WIDTH}, {columnDiv:lCount:HEIGHT}px'"
+	
+	SIF columnDiv:lCount:BGCOLOR
+		HTML += @"color='#%CONVERT(columnDiv:lCount:BGCOLOR, 16)%' "
+	SIF columnDiv:lCount:BORDER
+		HTML += @"border='{columnDiv:lCount:BORDER}px' "
+	SIF columnDiv:lCount:BCOLOR
+		HTML += @"bcolor='#%CONVERT(columnDiv:lCount:BCOLOR, 16)%' "
+	SIF columnDiv:lCount:RADIUS
+		HTML += @"radius='{columnDiv:lCount:RADIUS}px' "
+	
+	HTML += ">"
+
+	FOR lCount2, 0, columnDiv:lCount:LINE
+		SIF MAX_LINE <= lCount2
+			BREAK
+		VARSET TEXT_DESC
+		TEXT_DESC:0 = %columnDivLOG:lCount:lCount2%
+		START_LOCATION = 0
+		FOR lCount3, 0, 10
+			BRACKET = STRFINDU(TEXT_DESC:lCount3, "[")
+			BRACKET:1 = STRFINDU(TEXT_DESC:lCount3, "]")
+
+			IF BRACKET != -1 && BRACKET:1 != -1 && STRFIND(columnDivLOG:lCount:lCount2, "<button") == -1 && STRFIND(columnDivLOG:lCount:lCount2, "<nobutton") == -1
+				;STRFIND系使うと"[～]"の範囲を取得してるので"["と"]"を省くために+1と-1する
+				BUTTON_STRING:lCount3 = %SUBSTRINGU(TEXT_DESC:lCount3, BRACKET+1, BRACKET:1-BRACKET-1)%
+				SIF ISNUMERIC(BUTTON_STRING:lCount3)
+					BUTTON:lCount3 = TOINT(BUTTON_STRING:lCount3)
+			ENDIF
+			START_LOCATION = STRFINDU(TEXT_DESC:lCount3, "[", BRACKET:1)
+			;DEBUGPRINTFORML START_LOCATION {START_LOCATION}
+			IF START_LOCATION > 0
+				TEXT_DESC:(lCount3+1) = %SUBSTRINGU(TEXT_DESC:lCount3, START_LOCATION, -1)%
+				IF lCount3 == 0
+					TEXT_DESC:lCount3 = %SUBSTRINGU(TEXT_DESC:lCount3, 0, START_LOCATION)%
+				ELSE
+					TEXT_DESC:lCount3 = %SUBSTRINGU(TEXT_DESC:lCount3, BRACKET, START_LOCATION-BRACKET)%
+				ENDIF
+			ELSE
+				BREAK
+			ENDIF
+		NEXT
+		FOR lCount3, 0, 10
+			IF BUTTON:lCount3 != -3189415
+				HTML += @"<button value ='{BUTTON:lCount3}'>%TEXT_DESC:lCount3%</button>"
+			ELSEIF BUTTON_STRING:lCount3 != ""
+				HTML += @"<button value ='%BUTTON_STRING:lCount3%'>%TEXT_DESC:lCount3%</button>"
+			ELSE
+				HTML += @"%TEXT_DESC:lCount3%"
+			ENDIF
+		NEXT
+		HTML += "<br>"
+		VARSET BUTTON, -3189415
+		VARSET BUTTON_STRING
+	NEXT
+	columnDiv:lCount:LINE = 0
+	HTML += "</div></nobr>"
+NEXT
+
+;DEBUGPRINTFORML %HTML%
+HTML_PRINT HTML
+
+;;;現在表示してる最後の行がDRAWLINE行かどうかをチェックし、そうでなければDRAWLINEを引く関数
+@CHECKDRAWLINE
+SIF HTML_TOPLAINTEXT(HTML_GETPRINTEDSTR(0)) != DRAWLINESTR
+	DRAWLINE
+
+;;;上記CHECKDRAWLINEのWAIT付き版
+@CHECKDRAWLINEW
+IF HTML_TOPLAINTEXT(HTML_GETPRINTEDSTR(0)) != DRAWLINESTR
+	WAIT
+	DRAWLINE
+ENDIF

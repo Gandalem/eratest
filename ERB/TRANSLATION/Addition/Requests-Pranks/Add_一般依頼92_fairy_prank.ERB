@@ -1,0 +1,1028 @@
+;Basic procedure to add a new scenario:
+;1. Add the target character to the VICTIM_WEIGHTS array in @IRAI_一般92_Select_Target, if it hasn't been added before
+;2. Add the scenario id to @IRAI_一般92_Select_Scenario, with the appropriate conditions
+;3. Add a function with the name @PRANK_SCENARIO_[scenario id](STATE) to Add_一般依頼92_fairy_prank_scenarios.ERB (see @PRANK_SCENARIO_clownpiece_madness for an example)
+;   -The "prank" and "failure" state are mandatory and should be added to every scenario
+;   -"success" and "punishment" are optional. These can be added to add specific dialogue when appropriate
+;   -If the "success" and "punishment" states aren't set, dialogue for that character should be added to @IRAI_一般92_Success_Message and @IRAI_一般92_Punishment_Message, if none are present yet
+;   -These functions allow dialogue to be used for multiple scenarios
+
+@EXIST_一般依頼92
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+@一般依頼92(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+SELECTCASE O_DATA
+CASE "依頼名"
+	CALLF MAKE_STR(V_NAME, "Staking your life on a prank")
+CASE "依頼内容表示"
+    IF CFLAG:ARG:依頼状況 > 1
+	    CALLF MAKE_STR(V_NAME, @"Go to %CALLNAME:IRAI_SLOT_TO_PERSON(SEARCH_IRAI_SLOT(CFLAG:ARG:依頼内容))%'s home and pull off a great prank")
+    ELSE
+	    CALLF MAKE_STR(V_NAME, @"Pull off a great prank at the target's home")
+    ENDIF
+CASE "依頼報酬表示"
+	CALLF MAKE_STR(V_NAME, @"Experience in a random skill")
+CASE "依頼実行コマンド名"
+	CALLF MAKE_STR(V_NAME, @"Begin Prank On %CALLNAME:IRAI_SLOT_TO_PERSON(SEARCH_IRAI_SLOT(CFLAG:ARG:依頼内容))%")
+CASE "依頼内容"
+	CALLF MAKE_INT(V_NAME, MAKE_IRAI_DATA(IRAI_一般92_Select_Target(ARG), "prank"))
+CASE "依頼サブ"
+	CALLF MAKE_INT(V_NAME, 0)
+CASE "依頼期限"
+	CALLF MAKE_INT(V_NAME, 10)
+CASE "依頼発生率"
+    CALLF MAKE_INT(V_NAME, 30)
+CASE "依頼発生条件"
+    IF nRequestDisable:req_Pranks
+    ELSE
+        SIF TALENT:ARG:妖精
+            CALLF MAKE_INT(V_NAME, 1)
+    ENDIF
+CASE "依頼受託可能条件"
+	CALLF MAKE_INT(V_NAME, 1)
+CASE "依頼実行可能条件"
+    SIF !FLAG:70
+	    CALLF MAKE_INT(V_NAME, 1)
+CASE "依頼消滅条件"
+	SIF nRequestDisable:req_Pranks || Add_Request_Should_Discard(ARG)
+		CALLF MAKE_INT(V_NAME, 1)
+ENDSELECT
+
+@IRAI_一般92(CHARA, IRAI_ID, SCENE)
+#DIM  CHARA
+#DIM  IRAI_ID
+#DIMS SCENE
+#DIM  CLIENT_ID
+#DIM  TARGET_ID
+#DIM  PRANK_RESULT
+CLIENT_ID = IRAI_ID_TO_CLIENT(IRAI_ID)
+TARGET_ID = IRAI_SLOT_TO_PERSON(SEARCH_IRAI_SLOT(IRAI_ID))
+SELECTCASE SCENE
+CASE "依頼条件表示"
+CASE "依頼実行時"
+    IF Add_Fairy_Prank_Evil_Shenanigans == -1
+        CALL PrankTypeToggle
+        PRINTW
+    ENDIF
+
+    DEBUGPRINTFORML IRAI_ID = {IRAI_ID}|CLIENT_ID = {CLIENT_ID} (%CALLNAME:CLIENT_ID%)| TARGET_ID = {TARGET_ID} (%CALLNAME:TARGET_ID%)
+    Add_CULPRIT = CLIENT_ID
+    Add_VICTIM = TARGET_ID
+    VARSET Add_ACCOMPLICES
+    Add_ACCOMPLICECOUNT = 0
+
+    IF STRLENS(Add_Fairy_Prank_Debug_Scenario)
+        SIF Add_SCENARIO == "kojo"
+            CALL KOJO_MESSAGE_SEND("EVENT", 0, Add_VICTIM, 0, 0, "FAIRY_PRANK", "scenarios")
+        Add_SCENARIO '= Add_Fairy_Prank_Debug_Scenario
+    ELSE
+        CALL KOJO_MESSAGE_SEND("EVENT", 0, Add_VICTIM, 0, 0, "FAIRY_PRANK", "scenarios")
+        Add_SCENARIO '= IRAI_一般92_Select_Scenario(RESULT)
+    ENDIF
+
+    CALL IRAI_一般92_Find_Accomplices
+    PRANK_RESULT = IRAI_一般92_Determine_Success()
+    DEBUGPRINTFORML Prank scenario: '%Add_SCENARIO%' Result: {PRANK_RESULT}
+    TIME += 25
+    Add_Temp_Fairy_Prank_Resolution = -1
+    SELECTCASE PRANK_RESULT
+        CASE -1
+            TRYCALLFORM PRANK_SCENARIO_%Add_SCENARIO%("failure")
+            SIF !RESULT
+                PRINTFORMW Error: Prank failure scenario for %Add_SCENARIO% is not implemented.
+            Add_Temp_Fairy_Prank_Resolution = 1
+            RETURN IRAI_CONST_RESULT("実行して失敗")
+        CASE 0
+            TRYCALLFORM PRANK_SCENARIO_%Add_SCENARIO%("prank")
+            SIF !RESULT
+                PRINTFORMW Error: Prank scenario for %Add_SCENARIO% is not implemented.
+            PRINTW
+            PRINTFORML Unfortunately, %CALLNAME:TARGET_ID% caught you running away.
+            IF CLIENT_ID == 6 && !RAND:3 ;Luna is very clumsy
+                PRINTFORML As you try to make your escape, you spot %CALLNAME:CLIENT_ID% falling to the ground after tripping over %SPLIT_G(@"a branch:a rock:%HIS_HER(CLIENT_ID)% own feet:nothing")%.
+                PRINTFORML Do you want to go back and help %HIM_HER(CLIENT_ID)% back up?
+                CALL ASK_YN
+                SELECTCASE RESULT
+                    CASE 0
+                        IF RAND:40 < ((ABL:MASTER:戦闘能力+TALENT:MASTER:伐採Lv+TALENT:MASTER:釣りLv+TALENT:MASTER:採集Lv+TALENT:MASTER:調合Lv)/2)
+                            PRINTFORML With your incredible talents, you manage to pick %CALLNAME:CLIENT_ID% up and escape before %CALLNAME:TARGET_ID% catches up to you.
+                            PRINTFORML That right there is why you're the best.
+                            CALL CHANGE_CFLAG(2, CLIENT_ID, 100)
+                            CALL CHANGE_CFLAG(4, CLIENT_ID, 100)
+                            Add_Temp_Fairy_Prank_Resolution = 4
+                            Add_Fairy_Prank_Success++ ;add an extra point
+                            CALL AddFame(MASTER,8,2000)
+                            RETURN IRAI_CONST_RESULT("実行して成功")
+                        ELSE
+                            PRINTFORML %CALLNAME:CLIENT_ID% manages to flee thanks to your help, but unfortunately, you lose your own chance to escape.
+                            CALL CHANGE_CFLAG(2, CLIENT_ID, 100)
+                            CALL CHANGE_CFLAG(4, CLIENT_ID, 100)
+                            Add_Temp_Fairy_Prank_Resolution = 5
+                        ENDIF
+                    CASE 1
+                        PRINTFORML It's every man (and fairy) for themselves, and you leave %CALLNAME:CLIENT_ID% to %HIS_HER(CLIENT_ID)% tragic fate while you make your escape.
+                        CALL CHANGE_CFLAG(2, CLIENT_ID, -5) ;she's mildly upset over being left behind, but not enough to consider it a betrayal
+                        CALL CHANGE_CFLAG(4, CLIENT_ID, -2)
+                        Add_Temp_Fairy_Prank_Resolution = 6
+                        RETURN IRAI_CONST_RESULT("実行して成功")
+                ENDSELECT
+            ELSEIF ABL:MASTER:戦闘能力 > ABL:CLIENT_ID:戦闘能力
+                PRINTFORML Throw %CALLNAME:CLIENT_ID% under the bus?
+                CALL ASK_YN
+                SELECTCASE RESULT
+                CASE 0 ;i hope you enjoy your thirty pieces of silver
+                    IF RAND:(ABL:MASTER:戦闘能力 - ABL:CLIENT_ID:戦闘能力 + 1)
+                        PRINTFORML Deciding that your life is more valuable than %HIS_HERS(CLIENT_ID)%, you give %CALLNAME:CLIENT_ID% a powerful shove and make %HIM_HER(CLIENT_ID)% fall to the ground, giving you a means of escape.
+                        PRINTFORML %HE_SHE(CLIENT_ID, 1)% sounds like %HE_SHE(CLIENT_ID)%'s pretty upset, but you consider it to be a necessary sacrifice for the greater good.
+                        CALL CHANGE_CFLAG(2, CLIENT_ID, -500)
+                        CALL CHANGE_CFLAG(4, CLIENT_ID, -200)
+                        Add_Temp_Fairy_Prank_Resolution = 7
+                    ELSE
+                        PRINTFORML %CALLNAME:CLIENT_ID% sees through your attempt to throw %HIM_HER(CLIENT_ID)% to the wolves, and manages to trip you up, allowing %HIM_HER(CLIENT_ID)% to get away.
+                        PRINTFORML There's no means of escape for you now.
+                        CALL CHANGE_CFLAG(2, CLIENT_ID, -200)
+                        CALL CHANGE_CFLAG(4, CLIENT_ID, -100)
+                        Add_Temp_Fairy_Prank_Resolution = 8
+                        TRYCALLFORM PRANK_SCENARIO_%Add_SCENARIO%("punishment")
+                        SIF !RESULT
+                            CALL IRAI_一般92_Punishment_Message
+                    ENDIF
+                    Add_Fairy_Prank_Betrayal++
+                    CALL AddInfamy(MASTER,8,10000)
+                    RETURN IRAI_CONST_RESULT("実行して失敗")
+                CASE 1
+                    IF RAND:30 < ((ABL:MASTER:戦闘能力+TALENT:MASTER:伐採Lv+TALENT:MASTER:釣りLv+TALENT:MASTER:採集Lv+TALENT:MASTER:調合Lv)/2)
+                        PRINTFORML Using your many skills in creative ways, you manage to escape before %CALLNAME:TARGET_ID% catches up to you.
+                        PRINTFORML You can consider this a perfectly executed operation.
+                        CALL CHANGE_CFLAG(2, TARGET_ID, -20)
+                        CALL CHANGE_CFLAG(4, TARGET_ID, -10)
+                        CALL AddCombatInfamy(MASTER,TARGET_ID,20)
+                        CALL AddCombatInfamy(CLIENT_ID,TARGET_ID,20)
+                        Add_Temp_Fairy_Prank_Resolution = 2
+                        RETURN IRAI_CONST_RESULT("実行して成功")
+                    ENDIF
+                ENDSELECT
+            ENDIF
+            SIF Add_Temp_Fairy_Prank_Resolution == -1 ;only set here if not set during escape
+                Add_Temp_Fairy_Prank_Resolution = 3
+
+            CALL AddCombatInfamy(MASTER,TARGET_ID,20)
+            CALL AddCombatInfamy(CLIENT_ID,TARGET_ID,20)
+            TRYCALLFORM PRANK_SCENARIO_%Add_SCENARIO%("punishment")
+            SIF !RESULT
+                CALL IRAI_一般92_Punishment_Message
+        CASE 1
+            TRYCALLFORM PRANK_SCENARIO_%Add_SCENARIO%("prank")
+            SIF !RESULT
+                PRINTFORMW Error: Prank scenario for %Add_SCENARIO% is not implemented.
+            PRINTW
+            TRYCALLFORM PRANK_SCENARIO_%Add_SCENARIO%("success")
+            SIF !RESULT
+                CALL IRAI_一般92_Success_Message
+            PRINTW
+            Add_Temp_Fairy_Prank_Resolution = 0
+            TIME += 30
+        CASEELSE
+            PRINTFORMW Invalid result for prank. Please report. ({PRANK_RESULT})
+    ENDSELECT
+	RETURN IRAI_CONST_RESULT("実行して成功")
+CASE "依頼成功時"
+    SIF !RAND:2
+        EXP:MASTER:会話経験 += 5
+    SIF !RAND:2
+        EXP:MASTER:学習経験 += 5
+    SIF !RAND:2
+        EXP:MASTER:料理経験 += 5
+    SIF !RAND:2
+        EXP:MASTER:調合経験 += 5
+	SOURCE:恭順 = 1500
+	SOURCE:歓楽 = 1000
+	CALL CHANGE_CFLAG(2, CLIENT_ID, 25)
+	CALL CHANGE_CFLAG(4, CLIENT_ID, 20)
+	CALL KIGEN_CHANGE(CLIENT_ID, 100, 2)
+    Add_Fairy_Prank_Success++
+    CALL AddFame(MASTER,8,2000)
+
+    SELECTCASE Add_Temp_Fairy_Prank_Resolution
+        CASE 0
+            PRINTFORM %CALLNAME:CLIENT_ID% 
+        CASE 2
+            PRINTFORML %CALLNAME:CLIENT_ID% seems to be glad that both of you managed to get away.
+            PRINTFORM %HE_SHE(CLIENT_ID, 1)% 
+        CASE 3
+            PRINTFORML %CALLNAME:CLIENT_ID% asks if you are okay, after %HE_SHE(CLIENT_ID)% lost sight of you during the escape.
+            PRINTFORM %HE_SHE(CLIENT_ID, 1)% 
+        CASE 4
+            PRINTFORML %CALLNAME:CLIENT_ID% seems to be extremely grateful for you saving %HIM_HER(CLIENT_ID)%.
+            PRINTFORM %HE_SHE(CLIENT_ID, 1)% 
+        CASE 5
+            PRINTFORML %BREAKENG(@"%CALLNAME:CLIENT_ID% seems to be extremely grateful for you saving %HIM_HER(CLIENT_ID)%, but also feels very guilty over leaving you behind.")%
+            PRINTFORM %HE_SHE(CLIENT_ID, 1)% 
+        CASE 6
+            PRINTFORML %CALLNAME:CLIENT_ID% appears to be pretty upset over having been left behind, but it doesn't seem that %HE_SHE(CLIENT_ID)% blames you for it.
+            PRINTFORM Regardless of what happened, %HE_SHE(CLIENT_ID)% 
+    ENDSELECT
+
+    PRINTFORM tells you how happy %HE_SHE(CLIENT_ID)% was to work on this prank with you, and 
+    IF (TALENT:CLIENT_ID:恋慕 || TALENT:CLIENT_ID:思慕) && CFLAG:CLIENT_ID:溜まってる度 < 500
+        PRINTFORMW gives you a gentle peck on the cheek.
+    ELSEIF (CFLAG:CLIENT_ID:既成事実 & 合意_うふふ) && CFLAG:CLIENT_ID:溜まってる度 >= 500
+        PRINTFORMW with a flushed look on %HIS_HER(CLIENT_ID)% face, asks if you'd like another reward.
+        BASE:CLIENT_ID:ムード += 600
+        CFLAG:CLIENT_ID:溜まってる度  += 300
+        PALAM:CLIENT_ID:欲情 += 5000
+    ELSE
+        PRINTFORMW %SPLIT_G(@"gives you a high five:gives you a little applause:curtsies before you")%. 
+    ENDIF
+    ;CALL IRAI_一般92_Title_Progress()
+CASE "依頼失敗時"
+	CALL CHANGE_CFLAG(2, CLIENT_ID, -10)
+	CALL CHANGE_CFLAG(4, CLIENT_ID, -5)
+	CALL KIGEN_CHANGE(CLIENT_ID, 100, -1)
+    SELECTCASE Add_Temp_Fairy_Prank_Resolution
+        CASE 1
+            PRINTFORMW %CALLNAME:CLIENT_ID% is disappointed over the prank's failure, and ends up blaming you for it.
+        CASE 7
+            PRINTFORMW Looks like %CALLNAME:CLIENT_ID% is extremely angry about you stabbing %HIM_HER(CLIENT_ID)% in the back.
+        CASE 8
+            PRINTFORMW %BREAKENG(@"Even though %HE_SHE(CLIENT_ID)% got the better of you, it looks like %CALLNAME:CLIENT_ID% is still extremely angry about your attempted betrayal.")%
+    ENDSELECT
+
+    ;CALL IRAI_一般92_Title_Progress
+ENDSELECT
+
+@IRAI_一般92_Select_Target(CULPRIT)
+#FUNCTION
+#DIM CULPRIT
+#DIM VICTIM_WEIGHTS, キャラクタ数上限 ;potential targets and their weights
+
+;set up defaults
+VICTIM_WEIGHTS:1 = 1
+VICTIM_WEIGHTS:15 = 1
+VICTIM_WEIGHTS:17 = 1
+VICTIM_WEIGHTS:26 = 1
+VICTIM_WEIGHTS:30 = 1
+VICTIM_WEIGHTS:60 = 1
+VICTIM_WEIGHTS:64 = 1
+VICTIM_WEIGHTS:68 = 1
+VICTIM_WEIGHTS:71 = 1
+VICTIM_WEIGHTS:72 = 1
+VICTIM_WEIGHTS:80 = 2
+VICTIM_WEIGHTS:99 = 1
+
+CALLF IRAI_一般92_Adjust_Weights_Per_Culprit(CULPRIT, VICTIM_WEIGHTS)
+
+;remove inaccessible characters from the list
+FOR LOCAL, 1, CHARANUM - 1
+    SIF CFLAG:LOCAL:出禁
+        VICTIM_WEIGHTS:LOCAL = 0
+    SIF VICTIM_WEIGHTS:LOCAL < 0 ;should never happen, but would fuck with ARRAY_HIT if it occurs
+        THROW Victim weight for {LOCAL} is a negative value ({VICTIM_WEIGHTS:LOCAL})
+NEXT
+
+LOCAL = ARRAY_HIT(VICTIM_WEIGHTS, CHARANUM - 1)
+IF LOCAL < 0
+    PRINTFORML Warning: No valid targets available.
+    PRINTFORML Defaulting to %CALLNAME:1%.
+    ;not ideal, but shouldn't cause issues
+    RETURNF 1
+ENDIF
+RETURNF LOCAL
+
+@IRAI_一般92_Adjust_Weights_Per_Culprit(CULPRIT, VICTIM_WEIGHTS)
+#FUNCTION
+#DIM CULPRIT
+#DIM REF VICTIM_WEIGHTS
+
+;mostly targets close to their home get higher weights
+SELECTCASE CULPRIT
+    CASE 5
+        VICTIM_WEIGHTS:1 = 3
+        VICTIM_WEIGHTS:17 = 2
+    CASE 6
+        VICTIM_WEIGHTS:1 = 3
+        VICTIM_WEIGHTS:17 = 2
+    CASE 7
+        VICTIM_WEIGHTS:1 = 3
+        VICTIM_WEIGHTS:17 = 2
+    CASE 13 ;no adjustments
+    CASE 14
+        VICTIM_WEIGHTS:15 = 3
+    CASE 18 ;no adjustments
+    CASE 19 ;no adjustments
+    CASE 111
+        VICTIM_WEIGHTS:99 = 5
+    CASE 118
+        VICTIM_WEIGHTS:68 = 0 ;doesn't start shit at home
+ENDSELECT
+
+@IRAI_一般92_Select_Scenario(CUSTOM_COUNT)
+#FUNCTIONS
+#DIM CUSTOM_COUNT
+#DIMS VALID_SCENARIOS, 20 ;increase if needed
+#DIM SCENARIO_INDEX
+
+SCENARIO_INDEX = 0
+
+SELECTCASE Add_CULPRIT
+    CASE 5
+        VALID_SCENARIOS:(SCENARIO_INDEX++) = sunny_light_bending
+    CASE 14
+        VALID_SCENARIOS:(SCENARIO_INDEX++) = cirno_freezing
+    CASE 111
+        VALID_SCENARIOS:(SCENARIO_INDEX++) = clownpiece_madness
+ENDSELECT
+
+SIF OUTROOF(CFLAG:MASTER:現在位置)
+    VALID_SCENARIOS:(SCENARIO_INDEX++) = generic_pitfall
+
+IF CUSTOM_COUNT
+    FOR LOCAL, 0, RESULT ;allow adding it multiple times to keep the chance correct
+        VALID_SCENARIOS:(SCENARIO_INDEX++) = kojo
+    NEXT
+    GOTO SKIPSCENARIOCHECK
+ENDIF
+
+SELECTCASE Add_VICTIM
+    CASE 1
+        SIF DAY:2 == 4
+            VALID_SCENARIOS:(SCENARIO_INDEX++) = reimu_snowman
+        VALID_SCENARIOS:(SCENARIO_INDEX++) = reimu_offerings
+    CASE 15
+        VALID_SCENARIOS:(SCENARIO_INDEX++) = sakuya_fairy_rebellion
+        VALID_SCENARIOS:(SCENARIO_INDEX++) = sakuya_wine
+    CASE 17
+        VALID_SCENARIOS:(SCENARIO_INDEX++) = alice_doll_makeover
+        VALID_SCENARIOS:(SCENARIO_INDEX++) = alice_doll_enlargement
+    CASE 26
+        VALID_SCENARIOS:(SCENARIO_INDEX++) = yukari_hag
+        VALID_SCENARIOS:(SCENARIO_INDEX++) = yukari_wine
+    CASE 30
+        SIF Add_Fairy_Prank_Evil_Shenanigans
+            VALID_SCENARIOS:(SCENARIO_INDEX++) = eiki_stamp_swap
+        VALID_SCENARIOS:(SCENARIO_INDEX++) = eiki_trendy_hat
+    CASE 60
+        VALID_SCENARIOS:(SCENARIO_INDEX++) = parsee_bridge_waxing
+    CASE 64
+        VALID_SCENARIOS:(SCENARIO_INDEX++) = yuugi_concoction
+    CASE 68
+        VALID_SCENARIOS:(SCENARIO_INDEX++) = yuuka_scarecrow
+    CASE 71
+        IF Add_Fairy_Prank_Evil_Shenanigans
+            VALID_SCENARIOS:(SCENARIO_INDEX++) = shinmyoumaru_shake
+            VALID_SCENARIOS:(SCENARIO_INDEX++) = shinmyoumaru_spider
+        ENDIF
+        VALID_SCENARIOS:(SCENARIO_INDEX++) = shinmyoumaru_bowl
+    CASE 72
+        VALID_SCENARIOS:(SCENARIO_INDEX++) = eirin_chemicals
+    CASE 80
+        VALID_SCENARIOS:(SCENARIO_INDEX++) = akyuu_ink
+        VALID_SCENARIOS:(SCENARIO_INDEX++) = akyuu_fairyfication
+        VALID_SCENARIOS:(SCENARIO_INDEX++) = akyuu_snack_theft
+        SIF Add_Fairy_Prank_Evil_Shenanigans
+            VALID_SCENARIOS:(SCENARIO_INDEX++) = akyuu_ridicule
+    CASE 99
+        VALID_SCENARIOS:(SCENARIO_INDEX++) = toyohime_astronauts
+ENDSELECT
+
+$SKIPSCENARIOCHECK
+SIF SCENARIO_INDEX == 0
+    THROW No valid prank scenario for %CALLNAME:Add_VICTIM%
+
+RETURNF VALID_SCENARIOS:(RAND:SCENARIO_INDEX)
+
+@IRAI_一般92_Find_Accomplices()
+#DIM NUM_TARGET
+NUM_TARGET = GET_TARGETNUM()
+
+FOR LOCAL, 1, NUM_TARGET + 1
+    LOCAL:1 = TARGET:LOCAL
+	SIF !SHIRAHU(LOCAL:1)
+		CONTINUE
+    SIF Add_VICTIM == LOCAL:1
+        CONTINUE
+    SIF Add_CULPRIT == LOCAL:1
+        CONTINUE
+
+    ;other fairies, Suwako, Nue, Tewi, Shinmyoumaru, Seija
+    IF TALENT:(LOCAL:1):妖精 || GROUPMATCH(LOCAL:1, 33, 41, 53, 71, 97)
+        PRINTFORML %CALLNAME:(LOCAL:1)% notices your scheming and decides to join in.
+        Add_ACCOMPLICES:(Add_ACCOMPLICECOUNT++) = LOCAL:1
+        SIF Add_ACCOMPLICECOUNT >= 3
+            BREAK
+    ENDIF
+NEXT
+
+@IRAI_一般92_Determine_Success()
+#FUNCTION
+#DIM ACCOMPLICESCORE
+#DIM PRANK_RESULT
+#DIM MAX_CHANCE
+MAX_CHANCE = 25 + CFLAG:MASTER:今日の運勢 / 100
+SELECTCASE RAND:MAX_CHANCE
+    CASE 0 TO 1
+        DEBUGPRINTFORML Crit fail
+        RETURNF -1 ;crit fail
+    CASE 2 TO 3
+        DEBUGPRINTFORML Crit partial
+        RETURNF 0 ;partial success
+    CASE 4 TO (4+MAX_CHANCE / 15)
+        DEBUGPRINTFORML Crit success
+        RETURNF 1 ;crit success
+    CASEELSE
+        ACCOMPLICESCORE = 0
+        FOR LOCAL, 0, Add_ACCOMPLICECOUNT
+            SIF Add_ACCOMPLICES:LOCAL > 0
+                ACCOMPLICESCORE++
+        NEXT
+        ;check player and fairy knowledge against victim's knowledge + combat, plus accomplices, plus random factor, plus bonus for sleeping victim
+        ;possibly adjust difficulty based on prank?
+        LOCAL:1 = ABL:MASTER:教養 + ABL:Add_CULPRIT:教養 + ACCOMPLICESCORE + (SHIRAHU(Add_VICTIM) != 1 ? 2 # 0) + RAND:6
+        LOCAL:2 = (GetCombatAbility(Add_VICTIM) + ABL:Add_VICTIM:教養)
+
+        DEBUGPRINTFORML Prank score: {LOCAL:1}
+        DEBUGPRINTFORML Prank difficulty: {LOCAL:2}
+        PRANK_RESULT = LOCAL:1 - LOCAL:2
+
+        IF PRANK_RESULT > 0
+            RETURNF 1
+        ELSEIF PRANK_RESULT > -2
+            RETURNF 0
+        ELSE
+            RETURNF -1
+        ENDIF
+ENDSELECT
+
+@IRAI_一般92_Success_Message
+SELECTCASE Add_VICTIM
+    CASE 1
+    CASE 15
+    CASE 17
+    CASE 26
+    CASE 30
+    CASE 60
+    CASE 64
+    CASE 68
+        SELECTCASE RAND:1
+            CASE 0
+                PRINTFORML As you make your escape, you suddenly feel an almost palpable sense of dread, as if a powerful grudge just made itself manifest.
+                PRINTFORML You should probably steer clear of the Garden of the Sun until things calm down.
+                CALL KIGEN_CHANGE(Add_VICTIM, 100, -2)
+                CFLAG:Add_VICTIM:ブチギレ = 1
+        ENDSELECT
+        RETURN
+    CASE 71
+    CASE 72
+    CASE 80
+        SELECTCASE RAND:3
+            CASE 0
+                PRINTFORML As you escape the premises, you hear a quiet sobbing in the distance.
+                PRINTFORML You almost feel a little guilty.
+            CASE 1
+                PRINTFORML As you escape the premises, %CALLNAME:Add_VICTIM% spouts a litany of curses entirely unbefitting of such a dignified %PRINT_MALE("boy", Add_VICTIM)%.
+                PRINTFORML You should probably sleep with one eye open tonight.
+            CASE 2
+                PRINTFORML As you escape the premises, You hear %CALLNAME:Add_VICTIM% yell something to %HIS_HER(Add_VICTIM)% servants about starting the fairy genocide, as they try to calm %HIM_HER(Add_VICTIM)% down.
+                PRINTFORML That's not really your problem, though.
+                FOR LOCAL, 1, CHARANUM - 1
+                    IF TALENT:LOCAL:妖精
+                        CALL AddInfamy(LOCAL,1,10000)
+                    ENDIF
+                NEXT
+        ENDSELECT
+        RETURN
+    CASE 99
+ENDSELECT
+;generic
+PRINTFORML You successfully escape before %CALLNAME:Add_VICTIM% realizes your involvement.
+
+@IRAI_一般92_Punishment_Message
+; IF MAXBASE:MASTER:TSP >= 3000 && BASE:MASTER:TSP >= 3000
+; 	PRINTFORML Use TSP to make your getaway?
+; 	CALL ASK_YN
+; 	IF !RESULT
+; 		PRINTFORML Using a considerable amount of your power, you run away as far as you can, escaping your punishment.
+;         PRINTFORML Though something tells you %CALLNAME:Add_VICTIM% won't be too happy about that anyway...
+; 		BASE:MASTER:TSP -= 3000
+;         CFLAG:Add_VICTIM:ブチギレ = 1
+; 		RETURN 1
+; 	ENDIF
+; ENDIF
+CALL IRAI_一般92_Punishment_Save_NAS
+SIF RESULT
+    RETURN 1
+
+PRINTFORML You try to make your escape, but %CALLNAME:Add_VICTIM% quickly catches up to you.
+
+IF CFLAG:Add_VICTIM:好感度 >= 1500
+    PRINTFORML %CALLNAME:Add_VICTIM% scolds you harshly, but then lets out a sigh.
+    PRINTFORML Though %HE_SHE(Add_VICTIM)% looks pissed off, %HE_SHE(Add_VICTIM)% suggests that there's a way for you to redeem yourself.
+    PRINTFORML Hopefully it's not anything overly cruel... But to your surprise, all %HE_SHE(Add_VICTIM)% wants is to run a little chore for %HIM_HER(Add_VICTIM)%.
+ELSE
+    PRINTFORML You beg for forgiveness, but %HE_SHE(Add_VICTIM)%'s having none of it.
+    CFLAG:Add_VICTIM:ブチギレ = 1
+ENDIF
+
+IF (CALLNAME:MASTER == "Anon" || CALLNAME:MASTER == "Player") && !RAND:1000 && Add_Fairy_Prank_Evil_Shenanigans ;i am a man of my word, someone, somewhere, will get their ass fingered
+    TCVAR:Add_VICTIM:カウンター行動 = 29
+    CALL CCOMF29(Add_VICTIM)
+    RETURN
+ELSEIF !RAND:4
+    CALL Add_Punishment_Framework(Add_VICTIM, 8)
+    RETURN
+ENDIF
+
+SELECTCASE Add_VICTIM
+    CASE 1;reimu
+        CALL Add_Punishment_Framework(Add_VICTIM, 10)
+        SIF RESULT
+            RETURN
+        SELECTCASE RAND:1
+            CASE 0
+                CALL Add_Forced_Cleaning(Add_VICTIM, 10)
+        ENDSELECT
+    CASE 15;sakuya
+        IF !Add_Fairy_Prank_Evil_Shenanigans
+            CALL Add_Punishment_Framework(Add_VICTIM, 10)
+            SIF RESULT
+                RETURN
+            CALL Add_Forced_Cleaning(Add_VICTIM, 10)
+            RETURN
+        ENDIF
+        
+        SELECTCASE RAND:3
+            CASE 0 ;wheel of knives
+                PRINTFORML %CALLNAME:Add_VICTIM% ties your limbs to a large wheel, with your arms and legs spread out.
+                PRINTFORML While %CALLNAME:16% watches, some hobgoblins spin the wheel and %CALLNAME:Add_VICTIM% begins throwing knives at you.
+                IF HostileAffinity(MASTER,16) >= 200 && Add_Fairy_Prank_Evil_Shenanigans >= 2
+                    PRINTFORML Unfortunately, %HIS_HER(Add_VICTIM)% aim is a way off, causing all of the knives to end up impaled on you, making you bleed out...
+                    CALLF BroadDamage(MASTER,"torso",GET_INT(16, "Weapon", Add_VICTIM, "Damage"),1,Add_VICTIM,"2")
+                    CALL SET_HISTORY_DEATH(MASTER,16,2)
+                ELSEIF TALENT:Add_VICTIM:機嫌 < 0 || !RAND:10
+                    PRINTFORML Unfortunately, %HIS_HER(Add_VICTIM)% aim is a little off, and several knives end up hitting you.
+                    CALLF BroadDamage(MASTER,"torso",GET_INT(16, "Weapon", Add_VICTIM, "Damage")/3,1,Add_VICTIM,"2")
+                    ;DOWNBASE:MASTER:体力 += 150
+                ELSE
+                    PRINTFORML Fortunately, %HE_SHE(Add_VICTIM)% has good aim, and all the knives end up narrowly missing you.
+                ENDIF
+                DOWNBASE:MASTER:体力 += 200
+                DOWNBASE:MASTER:気力 += 200
+	            CALL KIGEN_CHANGE(16, 75, 1) ;the mistress has a good time, at least
+                TIME += 60
+            CASE 1 ;bloodletting
+                PRINTFORML %CALLNAME:Add_VICTIM% drags you off to a small room, where %HE_SHE(Add_VICTIM)% elegantly and skillfully drains a good chunk of your blood.
+                PRINTFORML It didn't hurt, but you do feel rather anemic now.
+                DOWNBASE:MASTER:体力 += 400
+                DOWNBASE:MASTER:気力 += 100
+                DOWNBASE:MASTER:精力 += 500
+                DOWNBASE:MASTER:Blood += 1000
+                TIME += 30
+            CASE 2 ;playmate
+                PRINTFORML %CALLNAME:Add_VICTIM% pushes you down into the basement, and locks you inside.
+                PRINTFORML %BREAKENG(@"As you try to break the lock, you suddenly feel your hair stand on end, and you hear a voice coming from behind, which asks you if are %HIS_HER(50)% new playmate.")%
+                PRINTFORML You spend several hours "playing" with %CALLNAME:50% until you find an opportunity to trick %HIM_HER(50)% into breaking the lock, whereupon you make your escape.
+                DOWNBASE:MASTER:体力 += 400
+                DOWNBASE:MASTER:気力 += 400
+	            CALL KIGEN_CHANGE(16, 100, 1) ;imouto-sama enjoyed it
+                TIME += 120
+        ENDSELECT
+    CASE 17;alice
+        CALL Add_Punishment_Framework(Add_VICTIM, 10)
+        SIF RESULT
+            RETURN
+        SELECTCASE RAND:1
+            CASE 0
+                PRINTFORML %CALLNAME:Add_VICTIM% has you help %HIM_HER(Add_VICTIM)% as %HE_SHE(Add_VICTIM)% works, holding cloth, carrying around supplies, and modeling for outfits.
+                DOWNBASE:MASTER:体力 += 250
+                DOWNBASE:MASTER:気力 += 250
+        ENDSELECT
+    CASE 26;yukari
+        CALL Add_Punishment_Framework(Add_VICTIM, 10)
+        SIF RESULT
+            RETURN
+        SELECTCASE RAND:1
+            CASE 0
+                PRINTFORML %CALLNAME:Add_VICTIM% appears from a gap in front of you, and asks if you really thought you'd get away with this.
+                IF TALENT:MASTER:度胸 == 1
+                    PRINTFORM You boldly proclaim that life is all about taking chances, before 
+                ELSEIF TALENT:MASTER:応答 == 1
+                    PRINTFORM You tell %HIM_HER(Add_VICTIM)% that it seemed like a really good idea at the time, before 
+                ELSEIF HostileAffinity(MASTER,Add_VICTIM) >= 200
+                    PRINTFORM You tell %HIM_HER(Add_VICTIM)% that you really just wanted to kill %HIM_HER(Add_VICTIM)%.
+                    CALL KNIFE_FIGHT(MASTER,Add_VICTIM,1,1)
+                    RETURN
+                ELSE
+                    PRINTFORM You don't have an answer to that question, so, not waiting for a response, 
+                ENDIF
+                PRINTFORML %CALLNAME:Add_VICTIM% opens a gap underneath you.
+                PRINTFORML ...You don't want to talk about what you saw behind it.
+                DOWNBASE:MASTER:体力 += 400
+                DOWNBASE:MASTER:気力 += 600
+        ENDSELECT
+    CASE 30;Eiki
+        CALL Add_Punishment_Framework(Add_VICTIM, 10)
+        SIF RESULT
+            RETURN
+        SELECTCASE RAND:1
+            CASE 0
+                PRINTFORML %CALLNAME:Add_VICTIM% begins one of %HIS_HER(Add_VICTIM)% trademark lectures.
+                PRINTFORMW You'd best prepare yourself for a long session.
+                CALL ASK_YN("Resist","Surrender")
+                IF !RESULT
+                    PRINTFORML You decide you had enough and start fighting %CALLNAME:Add_VICTIM%.
+                    IF nRyona
+                        CALL KNIFE_FIGHT(MASTER,Add_VICTIM,1,1)
+                    ENDIF
+                ELSE
+                    TIME += 30
+                    PRINTFORML (30 minutes later)
+                    PRINTFORMW %BREAKENG(@"%CALLNAME:Add_VICTIM% talks about how causing so much trouble for others can only end with you being sent to hell, to suffer until your soul is finally purified.")%
+                    TIME += 45
+                    PRINTFORML (45 minutes later)
+                    PRINTFORMW %BREAKENG(@"%TNAME(Add_VICTIM, 1)% moves on to talking about your various character flaws that %HE_SHE(Add_VICTIM)%'s observed, listing each in explicit detail.")%
+                    TIME += 60
+                    PRINTFORML (60 tedious minutes later)
+                    PRINTFORMW %BREAKENG(@"Showing no signs of stopping, %CALLNAME:Add_VICTIM% starts describing the kinds of punishments that would await you in hell. It's all rather gruesome.")%
+                    TIME += 60
+                    PRINTFORML (Yet another 60 minutes later)
+                    PRINTFORMW %BREAKENG(@"%TNAME(Add_VICTIM, 1)% now begins talking about the various problems in hell, as well as general complains about %HIS_HER(Add_VICTIM)% work. You feel as if %HE_SHE(Add_VICTIM)%'s gotten a little off-topic...")%
+                    TIME += 15
+                    PRINTFORML (15 calm minutes later)
+                    PRINTFORML %CALLNAME:Add_VICTIM% requests for some tea to be brought over, as %HE_SHE(Add_VICTIM)% feels it's time for a break.
+                    PRINTFORMW You enjoy a nice moment together.
+                    TIME += 60
+                    PRINTFORML (60 long minutes later)
+                    PRINTFORMW %BREAKENG(@"Returning to the subject at hand, %TNAME(Add_VICTIM)% continues to talk about your personal failings, though you feel as if %HE_SHE(Add_VICTIM)%'s just nitpicking at this point.")%
+                    TIME += 90
+                    PRINTFORML (60 incredibly exhausting minutes later)
+                    PRINTFORML %BREAKENG(@"Nearing the end of %HIS_HER(Add_VICTIM)% lecture, %CALLNAME:Add_VICTIM% starts talking about various good deeds you can perform to make up for your misdeeds.")%
+                    PRINTFORMW You're glad it's finally over.
+                    DOWNBASE:MASTER:気力 += 1000
+                ENDIF
+        ENDSELECT
+    CASE 60;parsee
+        IF TALENT:Add_VICTIM:恋慕 && !MARK:Add_VICTIM:反発刻印 && RAND:3
+            CALL Add_Forced_Date(Add_VICTIM, 10)
+        ELSE
+            SELECTCASE RAND:1
+                CASE 0
+                    PRINTFORML As punishment, Parsee makes you clean the entirety of the bridge.
+                    PRINTFORML When you finally finish, the bridge shines like it never did before, and you feel exhausted like you never did before.
+                    DOWNBASE:MASTER:体力 += 500
+                    DOWNBASE:MASTER:気力 += 300
+            ENDSELECT
+        ENDIF
+    CASE 64;yuugi
+        IF TALENT:Add_VICTIM:恋慕 && !MARK:Add_VICTIM:反発刻印 && RAND:4
+            CALL Add_Forced_Date(Add_VICTIM, 10)
+        ELSE
+            SELECTCASE RAND:1
+                CASE 0
+                    PRINTFORML %BREAKENG(@"%CALLNAME:Add_VICTIM% gives you a hearty pat on the back for your courage to prank an oni like that, and tells you that you can make it up to %HIM_HER(Add_VICTIM)% by buying %HIM_HER(Add_VICTIM)% a drink or twelve, as %HE_SHE(Add_VICTIM)% drags you to the nearest bar.")%
+                    PRINTFORML Your poor wallet is the real victim here.
+                    TIME += 180
+                    DOWNBASE:MASTER:体力 += 150
+                    DOWNBASE:MASTER:気力 += 100
+                    BASE:Add_VICTIM:酒気 += 500
+                    BASE:MASTER:酒気 += 500
+                    CALL PAY_MONEY_YEN(MIN(10000, MONEY:0/2), 2)
+            ENDSELECT
+        ENDIF
+    CASE 68;yuuka
+        CALL Add_Punishment_Framework(Add_VICTIM, 10)
+        SIF RESULT
+            RETURN
+        SELECTCASE RAND:1
+            CASE 0
+                IF TALENT:Add_VICTIM:機嫌 > 0 || TALENT:Add_VICTIM:恋慕
+                    PRINTFORML Fortunately, %CALLNAME:Add_VICTIM% is in a good mood, and %HE_SHE(Add_VICTIM)% merely forces you to perform backbreaking labor for the rest of the day.
+                    DOWNBASE:MASTER:体力 += 400
+                    DOWNBASE:MASTER:気力 += 300
+                    TIME += 240
+                ELSEIF !Add_Fairy_Prank_Evil_Shenanigans
+                    CALL Add_Forced_Cleaning(Add_VICTIM, 20)
+                ELSEIF AutoReviveCondition(MASTER)
+                    PRINTFORML Aware of your immortality, %CALLNAME:Add_VICTIM% holds nothing back, and beats you until you're nothing but a stain on the pavement.
+                    CALL SET_HISTORY_DEATH(MASTER,68,3)    	
+                    ;PRINTFORML You revive shortly afterwards, but the pain won't leave you for a while.
+                    ;DOWNBASE:MASTER:体力 += 800
+                    ;DOWNBASE:MASTER:気力 += 500
+                    TIME += 60
+                ELSE
+                    PRINTFORML %CALLNAME:Add_VICTIM% gives you a beatdown you won't soon forget.
+                    CALLF BroadDamage(MASTER,"fullbody",400,6,Add_VICTIM,"fists")
+                    DOWNBASE:MASTER:体力 += 400
+                    DOWNBASE:MASTER:気力 += 200
+                    TIME += 60
+                ENDIF
+        ENDSELECT
+    CASE 71;shinmyoumaru
+        CALL Add_Punishment_Framework(Add_VICTIM, 10)
+        SIF RESULT
+            RETURN
+        SELECTCASE RAND:1
+            CASE 0
+                IF TALENT:MASTER:体型 == -5 ;inchling
+                    PRINTFORML %CALLNAME:Add_VICTIM% keeps chasing you down and repeatedly smacks you on the head with %HIS_HER(Add_VICTIM)% mallet until %HE_SHE(Add_VICTIM)% gets tired.
+                    PRINTFORML Seeing the two tiny creatures running in circles makes for a comical scene to the onlookers, but it's rather painful for you.
+                    DOWNBASE:MASTER:体力 += 200
+                    DOWNBASE:MASTER:気力 += 200
+                    TIME += 60
+                ELSE
+                    PRINTFORML %CALLNAME:Add_VICTIM% uses the Miracle Mallet to shrink you down.
+                    PRINTFORML You spend the rest of the day hiding from nearby cats and birds.
+                    PRINTFORML When the magic wears off, you gain a new appreciation for your usual stature.
+                    DOWNBASE:MASTER:体力 += 300
+                    DOWNBASE:MASTER:気力 += 300
+                    TIME += 240
+                ENDIF
+        ENDSELECT
+    CASE 72;eirin
+        CALL Add_Punishment_Framework(Add_VICTIM, 10)
+        SIF RESULT
+            RETURN
+        IF TALENT:62:恋慕 && !RAND:3
+            PRINTFORML As %CALLNAME:Add_VICTIM% prepares for your punishment, %CALLNAME:62% appears and instead asks %CALLNAME:Add_VICTIM% to leave you in %HIS_HER(62)% care, which %CALLNAME:Add_VICTIM% accepts with some hesitation.
+            PRINTFORML You end up spending the rest of the day attending to %CALLNAME:62%'s whims. 
+            TIME += 300
+        ELSEIF !Add_Fairy_Prank_Evil_Shenanigans
+            CALL Add_Forced_Cleaning(Add_VICTIM, 20)
+            RETURN
+        ELSEIF Add_Fairy_Prank_Evil_Shenanigans == 2 || AutoReviveCondition(MASTER)
+            PRINTFORML You are strapped to an operating table as %CALLNAME:Add_VICTIM% meticulously dissects you to further %CALLNAME:52%'s education.
+            ;PRINTFORML You revive soon afterwards, but it was still a rather painful experience.
+			CALL SET_HISTORY_DEATH(MASTER,Add_VICTIM,"Surgery")
+            DOWNBASE:MASTER:体力 += 400
+            DOWNBASE:MASTER:気力 += 400
+        ELSE
+            PRINTFORML You end up being used as a test subject for some of %CALLNAME:Add_VICTIM%'s new medicines.
+            IF !RAND:2
+                PRINTFORML Fortunately, they work as intended.
+            ELSE
+                IF !RAND:2
+                PRINTFORML Unfortunately, there were some side effects, and you end up a little hairier than usual.
+                PRINTFORML You lose some time shaving off all the extra hair. 
+                TIME += 60
+                ELSE
+                PRINTFORML Unfortunately, %CALLNAME:72% got the quantity wrong and you overdose...
+                CALL SET_HISTORY_DEATH(MASTER,72,"OD")
+                ENDIF
+            ENDIF
+            TIME += 180
+            DOWNBASE:MASTER:体力 += 300
+            DOWNBASE:MASTER:気力 += 300
+        ENDIF
+    CASE 80;akyuu
+       IF !Add_Fairy_Prank_Evil_Shenanigans
+            CALL Add_Punishment_Framework(Add_VICTIM, 10)
+            SIF RESULT
+                RETURN
+            CALL Add_Forced_Cleaning(Add_VICTIM, 10)
+            RETURN
+        ENDIF
+        SELECTCASE RAND:2
+            CASE 0
+                PRINTFORML %BREAKENG(@"You are dragged into the Hieda residence basement by \@ (ABL:Add_VICTIM:Melee >= UniversalRank("S")) ? %CALLNAME:Add_VICTIM%'s servants # %CALLNAME:Add_VICTIM% \@, are tied up and dressed into a fairy costume, complete with a colorful wig, a silly hat, and a lovely %PRINT_MALE("pair of boy shorts_:dress", MASTER)%, to serve as a punching bag for %CALLNAME:Add_VICTIM%.")%
+                IF ABL:Add_VICTIM:Melee < UniversalRank("C")
+                    PRINTFORML %HIS_HER(Add_VICTIM, 1)% weak punches don't really hurt, but it's still pretty humiliating.
+                ELSEIF Level_To_Rank(ABL:Add_VICTIM:Melee) < (Level_To_Rank(UniversalRank("S")) - TALENT:MASTER:痛覚)
+                    PRINTFORML %HE_SHE(Add_VICTIM, 1)% packs a surprisingly strong punch in those thin arms of %HIS_HERS(Add_VICTIM)%.
+                ELSE
+                    PRINTFORML %HE_SHE(Add_VICTIM, 1)% delivers an oni-like beatdown to your body, leaving you to regret everything you've ever done.
+                ENDIF
+                CALLF BroadDamage(MASTER,"torso",ABL:Add_VICTIM:Melee * 100,6,Add_VICTIM,"fists")
+                DOWNBASE:MASTER:体力 += ABL:Add_VICTIM:Melee * 100
+                TIME += 120
+            CASE 1
+                PRINTFORML You spend some hours in the pillory, while passersby stop to mock you.
+                IF TALENT:MASTER:プライド
+                    PRINTFORML The humiliation hurts more than anyone could imagine.
+                    DOWNBASE:MASTER:気力 += 200
+                ENDIF
+                CALLF BroadDamage(MASTER,"crotch",200,2,Add_VICTIM,"pillory")
+                DOWNBASE:MASTER:気力 += 200
+                TIME += 180
+        ENDSELECT
+    CASE 99;toyohime
+        CALL Add_Punishment_Framework(Add_VICTIM, 10)
+        SIF RESULT
+            RETURN
+        SELECTCASE RAND:1
+            CASE 0
+                PRINTFORML In the middle of the public plaza, %CALLNAME:Add_VICTIM% forces you to perform a dogeza as penance for your sins.
+                CALL ASK_YN("Resist","Surrender")
+                IF !RESULT
+                    PRINTFORML Given that you're completely surrounded by heavily armed Lunarians, you use this as a test of your strength and start resisting. 
+                    IF nRyona
+                        FOR (LOCAL:1), 0, 3
+                            CALL SpawnMobEnemy(RANDOM_CHARANUM,17)
+                            CALL KNIFE_FIGHT(MASTER,RANDOM_CHARANUM,1,1)
+                        NEXT
+                    ENDIF
+                ELSE
+                    PRINTFORML Given that you're completely surrounded by heavily armed Lunarians, you see no other option but to obey, and bow deeply before %CALLNAME:Add_VICTIM%.
+                    IF TALENT:MASTER:プライド
+                        PRINTFORML You quietly vow to yourself that there will be a reckoning some day.
+                        DOWNBASE:MASTER:気力 += 200
+                    ENDIF
+                    TIME += 60
+                ENDIF
+                ;dignity -100
+        ENDSELECT
+CASEELSE
+    CALL Add_Punishment_Framework(Add_VICTIM, 10)
+    SIF RESULT
+        RETURN
+    CALL Add_Forced_Cleaning(Add_VICTIM, 10)
+    RETURN
+ENDSELECT
+
+[SKIPSTART]
+;a very long-term project for anyone pursuing it
+@IRAI_一般92_Title_Progress
+#DIM CURRENT_RANK
+#DIM CURRENT_SCORE
+#DIM REQUIRED_POINTS_PER_RANK, 16 ;first five ranks are considered negative
+REQUIRED_POINTS_PER_RANK:0  = -100
+REQUIRED_POINTS_PER_RANK:1  = -75
+REQUIRED_POINTS_PER_RANK:2  = -50
+REQUIRED_POINTS_PER_RANK:3  = -25
+REQUIRED_POINTS_PER_RANK:4  = -10
+REQUIRED_POINTS_PER_RANK:5  = 0 ;neutral
+REQUIRED_POINTS_PER_RANK:6  = 5
+REQUIRED_POINTS_PER_RANK:7  = 10
+REQUIRED_POINTS_PER_RANK:8  = 25
+REQUIRED_POINTS_PER_RANK:9  = 50
+REQUIRED_POINTS_PER_RANK:10 = 100
+REQUIRED_POINTS_PER_RANK:11 = 150
+REQUIRED_POINTS_PER_RANK:12 = 200
+REQUIRED_POINTS_PER_RANK:13 = 250
+REQUIRED_POINTS_PER_RANK:14 = 300
+REQUIRED_POINTS_PER_RANK:15 = 300 ;also need all fairies to be fallen
+
+SIF TALENT:MASTER:FAIRY_FRIEND == 10 ;can never go lower again
+    RETURN
+
+CURRENT_RANK = TALENT:MASTER:FAIRY_FRIEND + 5 ;converted to array position
+SIF !INRANGE(CURRENT_RANK, 0, 15) ;should never happen
+    THROW Invalid value for CURRENT_RANK {CURRENT_RANK} Must be between 0 and 15
+CURRENT_SCORE = IRAI_一般92_Title_Score()
+
+IF TALENT:MASTER:FAIRY_FRIEND == 9 && CURRENT_SCORE >= 300 && IRAI_一般92_Fairy_Fucker() ;special promotion to final rank
+    CALL IRAI_一般92_Title_Increase_Rank(10)
+    WAIT
+ELSEIF CURRENT_RANK > 0 && CURRENT_SCORE < REQUIRED_POINTS_PER_RANK:CURRENT_RANK ;demoted
+    CALL IRAI_一般92_Title_Decrease_Rank(TALENT:MASTER:FAIRY_FRIEND - 1)
+    WAIT
+ELSEIF CURRENT_RANK < 14 && CURRENT_SCORE >= REQUIRED_POINTS_PER_RANK:(CURRENT_RANK+1) ;promoted
+    CALL IRAI_一般92_Title_Increase_Rank(TALENT:MASTER:FAIRY_FRIEND + 1)
+    WAIT
+ENDIF
+
+@IRAI_一般92_Title_Increase_Rank(NEW_RANK)
+#DIM NEW_RANK
+SELECTCASE NEW_RANK
+    CASE 10
+        PRINTFORML Fairy Friend, Prank Master, Fae Fucker... These titles are no longer enough to describe you.
+        PRINTFORML Having conquered the hearts and minds of every notable fairy in Gensokyo, they now consider you to be the [%GET_TALENTNAME_TR(GETNUM(TALENT, "FAIRY_FRIEND"), NEW_RANK, MASTER)%]!
+        PRINTFORML Rejoice, for you will forever be remembered by these little creatures as their greatest champion.
+    CASE 8 TO 9
+        PRINTFORML Having aided the fairies in so many of their ventures, you are now considered to be the [%GET_TALENTNAME_TR(GETNUM(TALENT, "FAIRY_FRIEND"), NEW_RANK, MASTER)%].
+    CASE 1 TO 7
+        PRINTFORML Having continuously aided the fairies with their pranks, you are now considered to be a [%GET_TALENTNAME_TR(GETNUM(TALENT, "FAIRY_FRIEND"), NEW_RANK, MASTER)%].
+    CASE 0
+        PRINTFORML Having aided them with their pranks, the fairies no longer appear to be distrustful of you.
+        PRINTFORML You are no longer considered to be [%GET_TALENTNAME_TR(GETNUM(TALENT, "FAIRY_FRIEND"), -1, MASTER)%].
+    CASE -3 TO -1
+        PRINTFORML Having aided them with their pranks, the fairies seem to have eased up a little in their distrust of you.
+        PRINTFORML You are now merely considered to be a [%GET_TALENTNAME_TR(GETNUM(TALENT, "FAIRY_FRIEND"), NEW_RANK, MASTER)%].
+    CASEELSE
+        PRINTFORML Having aided them with their pranks, the fairies seem to have eased up a little in their distrust of you.
+        PRINTFORML You are now merely considered to be the [%GET_TALENTNAME_TR(GETNUM(TALENT, "FAIRY_FRIEND"), NEW_RANK, MASTER)%].
+ENDSELECT
+TALENT:MASTER:FAIRY_FRIEND = NEW_RANK
+
+@IRAI_一般92_Title_Decrease_Rank(NEW_RANK)
+#DIM NEW_RANK
+
+SELECTCASE NEW_RANK
+    CASE -5
+        PRINTFORML After endless betrayals, your name has become a curse on the lips of the fairies, a word so vile it is only spoken in absolute disgust.
+        PRINTFORML You are now considered to be the [%GET_TALENTNAME_TR(GETNUM(TALENT, "FAIRY_FRIEND"), NEW_RANK, MASTER)%].
+    CASE -4
+        PRINTFORML Wherever you go, fairies turn around and quickly leave after they spot you, fearing your presence.
+        PRINTFORML You are now considered to be the [%GET_TALENTNAME_TR(GETNUM(TALENT, "FAIRY_FRIEND"), NEW_RANK, MASTER)%].
+    CASE -3 TO -2
+        PRINTFORML Your continuous betrayals have not gone unnoticed amongst the fairies.
+        PRINTFORML You are now considered to be a [%GET_TALENTNAME_TR(GETNUM(TALENT, "FAIRY_FRIEND"), NEW_RANK, MASTER)%].
+    CASE -1
+        PRINTFORML Having betrayed the fairies' trust, you are now considered to be [%GET_TALENTNAME_TR(GETNUM(TALENT, "FAIRY_FRIEND"), NEW_RANK, MASTER)%].
+    CASE 0
+        PRINTFORML In light of your betrayal, the fairies' goodwill towards you has disappeared.
+        PRINTFORML You are no longer considered to be a [%GET_TALENTNAME_TR(GETNUM(TALENT, "FAIRY_FRIEND"), 1, MASTER)%].
+    CASE 1 TO 7
+        PRINTFORML In light of your betrayal, the fairies' goodwill towards you has lessened.
+        PRINTFORML You are now merely considered to be a [%GET_TALENTNAME_TR(GETNUM(TALENT, "FAIRY_FRIEND"), NEW_RANK, MASTER)%].
+    CASEELSE
+        PRINTFORML In light of your betrayal, the fairies' goodwill towards you has lessened.
+        PRINTFORML You are now merely considered to be the [%GET_TALENTNAME_TR(GETNUM(TALENT, "FAIRY_FRIEND"), NEW_RANK, MASTER)%].
+ENDSELECT
+TALENT:MASTER:FAIRY_FRIEND = NEW_RANK
+
+@IRAI_一般92_Title_Score
+#FUNCTION
+RETURNF (Add_Fairy_Prank_Betrayal * -5) + Add_Fairy_Prank_Success
+[SKIPEND]
+
+@IRAI_一般92_Fairy_Fucker
+#FUNCTION
+LOCAL:1 = 0
+FOR LOCAL, 1, CHARANUM - 1
+    SIF CFLAG:LOCAL:出禁 ;disabled
+        CONTINUE
+    IF TALENT:LOCAL:妖精
+        SIF !(TALENT:LOCAL:恋慕 || TALENT:LOCAL:愛欲) || !(CFLAG:LOCAL:既成事実 & 合意_うふふ)
+            RETURNF 0 ;not yet conquered
+        LOCAL:1 = 1 ;at least one fairy exists
+    ENDIF
+NEXT
+
+RETURNF LOCAL:1
+
+;gives chance to boost foraging/fishing/cleaning/logging/gardening, depending on title rank
+@Add_Apply_Fairy_Title_Bonus(TASK)
+#FUNCTION
+#DIMS TASK
+
+;NAS: now uses faction rep
+SIF AverageRep(MASTER,8) < 1
+    RETURNF 0
+SIF GROUPMATCH((CFLAG:MASTER:現在位置 / 100),10,11) ;insufficient fairy presence on the moon (NAS: and makai)
+    RETURNF 0
+SIF RAND:100000 > AverageRep(MASTER,8)
+    RETURNF 0
+SIF FLAG:70
+    RETURNF 0
+
+SELECTCASE TASK
+    CASE "foraging"
+        PRINTFORML While you are foraging, a number of fairies join in.
+        PRINTFORML Together, you end up having a much easier time.
+        RETURNF (AverageRep(MASTER,8)/10000) * 2
+    CASE "fishing"
+        PRINTFORML While you are fishing, a handful of fairies join in.
+        PRINTFORML Their presence stimulates the waters, making the fish easier to catch.
+        RETURNF (AverageRep(MASTER,8)/10000)
+    CASE "cleaning"
+        PRINTFORML While you are cleaning, a bunch of fairies decide to join in.
+        PRINTFORML They're mostly just playing around, but their help is still appreciated.
+        RETURNF MAX(1, (AverageRep(MASTER,8)/10000) / 2)
+    CASE "logging"
+        PRINTFORML While you are working, a group of fairies start cheering you on.
+        PRINTFORML Inspired by their cheers, you find the work to be easier than usual.
+        RETURNF MAX(1, (AverageRep(MASTER,8)/10000) / 3)
+    CASE "gardening"
+        PRINTFORML As you work in the garden, a bunch of fairies start playing nearby.
+        PRINTFORML Their presence stimulates the garden, and the plants look noticeably healthier.
+        RETURNF 0 ;just a flavor message
+    CASE "farming"
+        PRINTFORML While you work the fields, some fairies play among the crops.
+        PRINTFORML Thanks to their attunement with nature, today's tending is more successful.
+        RETURNF MAX(1, TALENT:MASTER:FAIRY_FRIEND / 3)
+    CASE "harvesting20"
+        PRINTFORML Thanks to the fairies' influence, your yield has increased.
+        RETURNF RAND:(2+((AverageRep(MASTER,8)/10000)/2)) + 1
+    CASE "harvesting14"
+        PRINTFORML Thanks to the fairies' influence, your yield has increased.
+        RETURNF RAND:(1+((AverageRep(MASTER,8)/10000)/3)) + 1
+    CASE "harvesting7"
+        PRINTFORML Thanks to the fairies' influence, your yield has increased.
+        RETURNF RAND:(1+((AverageRep(MASTER,8)/10000)/4)) + 1
+    CASE "harvesting5"
+        PRINTFORML Thanks to the fairies' influence, your yield has increased.
+        RETURNF RAND:(1+((AverageRep(MASTER,8)/10000)/5)) + 1
+ENDSELECT
+RETURNF 0
+
+;debug functions
+@Add_PRANKEM()
+#FUNCTION
+FOR LOCAL, 1, CHARANUM - 1
+    IF TALENT:LOCAL:妖精
+        CALLF Add_SPECIAL_REQUEST_CREATION(LOCAL, 92, 100, 1, 1)
+    ENDIF
+NEXT
+
+@Create_Prank_Request(PRANK_TARGET, GIVER = -1, SPECIFIC_PRANK = "")
+#FUNCTION
+#DIM PRANK_TARGET
+#DIM GIVER
+#DIMS SPECIFIC_PRANK
+Add_Fairy_Prank_Debug_Scenario '= SPECIFIC_PRANK
+RETURNF Create_Request_With_IRAI_DATA(92, PRANK_TARGET, "prank", GIVER)

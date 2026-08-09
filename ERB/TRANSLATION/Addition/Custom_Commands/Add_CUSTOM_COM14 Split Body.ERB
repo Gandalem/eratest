@@ -1,0 +1,94 @@
+@ADD_CUSTOM_COM14
+#DIM DYNAMIC TOTAL_STA
+#DIM COPIES
+FOR LOCAL, 0, CHARANUM
+    SIF NO:LOCAL == MASTER
+        TOTAL_STA += BASE:LOCAL:体力
+NEXT
+COPIES = CMATCH(NO, MASTER) - 1
+
+PRINTFORMDL How many copies do you want? STA, ENE, and VIG will be split equally across all bodies.
+CALL ASK_M("Split into 5", COPIES == 4 ? -1 # TEQUIP:MASTER:DOPPELGANGER_MAX >= 4 || ITEM:THREEFOLD_BLESSING, "Split into 3", COPIES == 2 ? -1 # TEQUIP:MASTER:DOPPELGANGER_MAX >= 2 || ITEM:THREEFOLD_BLESSING, "Split into 2", COPIES == 1 ? -1 # TEQUIP:MASTER:DOPPELGANGER_MAX >= 1 || ITEM:THREEFOLD_BLESSING, "Dismiss copies", COPIES == 0 ? -1 # 1, "Cancel", 1)
+SELECTCASE RESULT
+    CASE 0
+        IF TOTAL_STA < 5000
+            PRINTFORMDL You do not have enough total stamina amongst your bodies to maintain this many bodies.
+            RETURN -1
+        ELSE
+            CALL ADD_CUSTOM_COM14_SPLIT_PLAYER(4)
+        ENDIF
+    CASE 1
+        IF TOTAL_STA < 3000
+            PRINTFORMDL You do not have enough total stamina amongst your bodies to maintain this many bodies.
+            RETURN -1
+        ELSE
+            CALL ADD_CUSTOM_COM14_SPLIT_PLAYER(2)
+        ENDIF
+    CASE 2
+        IF TOTAL_STA < 2000
+            PRINTFORMDL You do not have enough total stamina amongst your bodies to maintain this many bodies.
+            RETURN -1
+        ELSE
+            CALL ADD_CUSTOM_COM14_SPLIT_PLAYER(1)
+        ENDIF
+    CASE 3
+        CALL ADD_CUSTOM_COM14_SPLIT_PLAYER(0)
+    CASE 4
+        RETURN -1
+ENDSELECT
+
+TIME += 5
+RETURN 0
+
+@ADD_CUSTOM_COM14_SPLIT_PLAYER(BODY_COUNT)
+#DIM BODY_COUNT
+#DIM COPIES
+#DIM DYNAMIC TOTAL_STA
+#DIM DYNAMIC TOTAL_ENE
+#DIM DYNAMIC TOTAL_VIG
+COPIES = CMATCH(NO, MASTER) - 1
+
+FOR LOCAL, 0, CHARANUM
+    IF NO:LOCAL == MASTER
+        TOTAL_STA += BASE:LOCAL:体力
+        TOTAL_ENE += BASE:LOCAL:気力
+        TOTAL_VIG += BASE:LOCAL:精力
+    ENDIF
+NEXT
+
+IF !COPIES
+    PRINTFORMDL You split yourself into {BODY_COUNT + 1} bodies.
+ELSE
+    IF BODY_COUNT == 0
+        PRINTFORMDL You dismiss your copies and recover their remaining energy.
+    ELSE
+        PRINTFORMDL You dismiss your existing copies and split yourself into {BODY_COUNT + 1}.
+    ENDIF
+ENDIF
+
+CALL Add_Remove_Duplicates_Of_Character(MASTER)
+CALL Add_Handle_Duplicate_Deletion(0, 0)
+
+FOR LOCAL, 0, BODY_COUNT
+    CALL Add_Duplicate_Character(MASTER, @"%NAME:MASTER% ({LOCAL+1})", @"%NAME:MASTER% ({LOCAL+1})")
+NEXT
+
+FOR LOCAL, 0, CHARANUM
+    IF NO:LOCAL == MASTER
+        BASE:LOCAL:体力 = MAX(TOTAL_STA / (BODY_COUNT+1), 600) ;set a minimum
+        BASE:LOCAL:気力 = TOTAL_ENE / (BODY_COUNT+1)
+        BASE:LOCAL:精力 = TOTAL_VIG / (BODY_COUNT+1)
+    ENDIF
+NEXT
+CALL TARGETSET_CHACK
+
+@ADD_CUSTOM_COM_ABLE14
+SIF !TARGET
+    RETURN 0
+; SIF CFLAG:うふふ == 0
+;     RETURN 0
+SIF !TEQUIP:MASTER:DOPPELGANGER_MAX && !ITEM:THREEFOLD_BLESSING
+    RETURN 0
+RETURN 1
+
+@ADD_CUSTOM_MESSAGE_COM14

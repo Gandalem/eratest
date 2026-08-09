@@ -1,0 +1,300 @@
+@PRINT_STATE_TALENT_MOD(nCharacter)
+#DIM nCharacter
+#DIM MEMO_STR
+#DIMS strToPrint
+#DIMS OUTPUT
+#DIM DYNAMIC TLNT_CNT, 6
+#DIM DYNAMIC TLNT_NO, 6, 100
+
+TOOLTIP_SETDELAY 0
+TOOLTIP_SETDURATION 99999
+
+CALL PRINTBUTTON_EX("Personality",165,TFLAG:165, , , 1)
+IF !TFLAG:165
+	OUTPUT = 　
+	MEMO_STR = 0
+	;TALENT:200(汎用キャラ)は表示させない
+	FOR LOCAL, 0, 300
+		;only acquired talents
+		SIF !STRLENS(GET_TALENTNAME_TR(LOCAL, TALENT:nCharacter:LOCAL,nCharacter))
+			CONTINUE
+		;Gender-specific
+		SIF LOCAL == GETNUM(TALENT, "処女") && !(TALENT:nCharacter:性別 & 1)
+			CONTINUE
+		;童貞
+		SIF LOCAL == GETNUM(TALENT, "非童貞") && !(TALENT:nCharacter:性別 & 2)
+			CONTINUE
+		;男絶壁
+		IF LOCAL == GETNUM(TALENT, "バストサイズ") && (TALENT:nCharacter:性別 == 2)
+			SIF (TALENT:nCharacter:バストサイズ == -2)
+				CONTINUE
+		ENDIF
+		;掃除係は住んでる時だけ表示
+		SIF LOCAL == GETNUM(TALENT, "掃除係") && !CFLAG:nCharacter:神社在住
+			CONTINUE
+			
+		;Moved around so it goes "if adding this would break it, break the line, and then consider this added"
+		strToPrint = [%GET_TALENTNAME_TR(LOCAL, TALENT:nCharacter:LOCAL,nCharacter)%]
+		MEMO_STR += STRLENSU(strToPrint)
+		;PRINTFORMW %strToPrint%, length {STRLENS(strToPrint)}
+		IF MEMO_STR > 126 ;to be in line with "addiction" column
+			;break line with another HTML_PRINT because <br> doesn't add to LINECOUNT
+			HTML_PRINT OUTPUT
+			OUTPUT = 　
+			MEMO_STR = STRLENSU(strToPrint) ;grab the length of the current talent to print as a starting point of a new line
+		ENDIF
+
+		LOCALS '= TALENT_INFO(LOCAL, TALENT:nCharacter:LOCAL,nCharacter)
+		IF GROUPMATCH(LOCAL,0,3,73,74,75,76,77,78,122)
+			OUTPUT += MO_TALENT(strToPrint, LOCALS, "FF78C8", 1)
+			MEMO_STR += 2 ;try to compensate for BOLD fucking up the alignment
+		ELSEIF LOCAL == 8
+			OUTPUT += MO_TALENT(strToPrint, LOCALS, "FFCCFF")
+		ELSE
+			OUTPUT += MO_TALENT(strToPrint, LOCALS)
+		ENDIF
+	NEXT
+	HTML_PRINT OUTPUT
+ENDIF
+
+;take care of all the html garbage
+@MO_TALENT(strToPrint, strToolTip, strFont, nBold, nRainbow)
+#FUNCTIONS
+#DIMS strToPrint
+#DIMS strToolTip
+#DIMS strFont
+#DIM nBold
+#DIM nRainbow
+;get current font color by default
+SIF !STRLENS(strFont)
+	strFont '= TOSTR(GETCOLOR(),"X6")
+
+IF nRainbow
+LOCALS = %HTML_RAINBOW(strToPrint)%
+SIF nBold
+	LOCALS = <b>%LOCALS%</b>
+RETURNF @"<nonbutton title='%HTML_ESCAPE(strToolTip)%'>%LOCALS%</nonbutton>"
+ENDIF
+
+LOCALS '= HTML_ESCAPE(strToPrint)
+
+SIF nBold
+	LOCALS = <b>%LOCALS%</b>
+
+RETURNF @"<font color='#%strFont%'><nonbutton title='%HTML_ESCAPE(strToolTip)%'>%LOCALS%</nonbutton></font>"
+
+@PRINT_STATE_TALENT_MOD2(選択中キャラID)
+#DIM 選択中キャラID
+#DIM TLNT_CNT, 8
+#DIM TLNT_NO, 8, 100
+#DIM DYNAMIC CST_CNT, 8
+#DIM DYNAMIC CST_NO, 8, 100
+#DIM CAT
+#DIM ENTRY
+{
+#DIMS CONST TALENT_TYPE = 
+	"  Species  :",
+	"　Sexual   :",
+	"  Physical :", 
+	"  Mental   :",
+	"  Practical:",
+	"  Combat   :",
+	"  Belief   :",
+	"　Other    :"
+}
+#DIMS OUTPUT
+#DIM nTabSize = 150 ;line size at which the line will be broken, to be in line with "addiction" column
+
+VARSET TLNT_CNT
+VARSET TLNT_NO
+VARSET OUTPUT
+CALL PRINTBUTTON_EX("Personality",165,TFLAG:165, , , 1)
+IF !TFLAG:165
+	;TALENT:200(汎用キャラ)は表示させない
+	FOR LOCAL, 0, VARSIZE("TALENT") ; custom code: rape expansion
+		IF IGNORE_TALENT(LOCAL, 選択中キャラID) ;addition custom code
+			CONTINUE
+		ELSEIF !STRLENS(GET_TALENTNAME_TR(LOCAL, TALENT:選択中キャラID:LOCAL))
+			CONTINUE
+		;bunch of talents done with the endurance system instead
+		ELSEIF GROUPMATCH(LOCAL,112,105, 108, 109, 110, 111, 112, 1310, 1501, 1502, 56, 1514, 1500, 121, 105, 100,250,297,503,1216)
+			CONTINUE
+		;NAS: Races
+		ELSEIF TALENT_CATEGORY_RACE(LOCAL)
+			;種族,132=吸血鬼は被るので身体特徴に移動
+			TLNT_NO:0:(TLNT_CNT:0) = LOCAL
+			TLNT_CNT:0 ++
+		ELSEIF TALENT_CATEGORY_SEX(LOCAL)
+			;性的特徴
+			TLNT_NO:1:(TLNT_CNT:1) = LOCAL
+			TLNT_CNT:1 ++
+		ELSEIF TALENT_CATEGORY_PHYSICAL(LOCAL)
+			;身体的特徴
+			TLNT_NO:2:(TLNT_CNT:2) = LOCAL
+			TLNT_CNT:2 ++
+		ELSEIF TALENT_CATEGORY_MENTAL(LOCAL)
+			;精神的特徴
+			TLNT_NO:3:(TLNT_CNT:3) = LOCAL
+			TLNT_CNT:3 ++
+		ELSEIF TALENT_CATEGORY_PRACTICAL(LOCAL)
+			;技術的特徴
+			TLNT_NO:4:(TLNT_CNT:4) = LOCAL
+			TLNT_CNT:4 ++
+		ELSEIF TALENT_CATEGORY_COMBAT(LOCAL)
+			;技術的特徴
+			TLNT_NO:5:(TLNT_CNT:5) = LOCAL
+			TLNT_CNT:5 ++
+		ELSEIF TALENT_CATEGORY_BELIEF(LOCAL)
+			;Beliefs (Tech Know, Sex Know, ESP, Religion)
+			TLNT_NO:6:(TLNT_CNT:6) = LOCAL
+			TLNT_CNT:6 ++
+		ELSE
+			;その他
+			TLNT_NO:7:(TLNT_CNT:7) = LOCAL
+			TLNT_CNT:7 ++
+		ENDIF
+	NEXT
+
+	;カスタム素質読み込み
+	CALL KOJO_MESSAGE_SEND("CUSTOM_TALENT", 0, 選択中キャラID)
+	;カスタム素質特徴振り分け
+	FOR CAT, 0, MAX_CUSTOM_TALENT
+		SIF !CUSTOM_TALENT:選択中キャラID:CAT
+			CONTINUE
+		LOCAL = CUSTOM_TALENT_TYPE:選択中キャラID:CAT
+		IF INRANGE(LOCAL, 1, 7)
+			LOCAL --
+			CST_NO:LOCAL:(CST_CNT:LOCAL) = CAT
+			CST_CNT:LOCAL ++
+		ELSE
+			CST_NO:7:(CST_CNT:7) = CAT
+			CST_CNT:7 ++
+		ENDIF
+	NEXT
+
+	FOR CAT, 0, 8
+		OUTPUT = %TALENT_TYPE:CAT%
+		LOCALS = ""
+		
+		FOR LOCAL:6, 0, 9
+			LOCAL:7 = 30-(LOCAL:6*10)
+		FOR ENTRY, 0, TLNT_CNT:CAT
+			LOCAL = TLNT_NO:CAT:ENTRY
+			SIF TALENT_VALUE(LOCAL,選択中キャラID) != LOCAL:7
+				CONTINUE
+			;童貞
+			SIF LOCAL == 1 && !HAS_PENIS(選択中キャラID)
+				CONTINUE
+			;男絶壁
+			IF LOCAL == 105 && IS_MALE(選択中キャラID)
+				SIF (TALENT:選択中キャラID:バストサイズ <= -2) && IS_MALE(選択中キャラID)
+					CONTINUE
+			ENDIF
+			; ;掃除係は住んでる時だけ表示
+			; SIF LOCAL == GETNUM(TALENT, "掃除係") && !CFLAG:選択中キャラID:神社在住
+			; 	CONTINUE
+			LOCALS += GET_TALENTNAME_TR(LOCAL, TALENT:選択中キャラID:LOCAL)
+			IF STRLENS(LOCALS) > nTabSize
+				;break line with another HTML_PRINT because <br> doesn't add to LINECOUNT
+				LOCALS = " "
+				HTML_PRINT OUTPUT
+				OUTPUT '= "　　　　　　"
+				;OUTPUT += "\n　　　　　　"
+			ENDIF
+			LOCALS:1 '= @"[%GET_TALENTNAME_TR(LOCAL,TALENT:選択中キャラID:LOCAL, 選択中キャラID)%]"
+			LOCALS:2 '= TALENT_INFO(LOCAL, TALENT:選択中キャラID:LOCAL,選択中キャラID)
+			;素質によっては色変え
+			IF GROUPMATCH(LOCAL,0,1,3,4,6,7,73,74,75,76,77,78,1302,122,142) || GROUPMATCH(LOCAL,221,222,1504,1505, 1309, 231304, 1306, 1307, 1308)
+				;SETCOLOR 255, 120, 200
+				;FONTBOLD
+				OUTPUT += MO_TALENT(LOCALS:1, LOCALS:2, "FF78C8", 1)
+			ELSEIF GROUPMATCH(LOCAL,264,257,255)
+				OUTPUT += MO_TALENT(LOCALS:1, LOCALS:2, "FF78C8", 1, 1)
+			ELSEIF GROUPMATCH(LOCAL,GetNum(TALENT,"おもらし癖"))
+				IF GETBIT(TALENT:選択中キャラID:LOCAL, 0) && GETBIT(TALENT:選択中キャラID:LOCAL,1)
+				OUTPUT += MO_TALENT(LOCALS:1, LOCALS:2, "FF78C8", 1, 1)
+				ELSE
+				OUTPUT += MO_TALENT(LOCALS:1, LOCALS:2, "FF78C8", 1)
+				ENDIF
+			ELSEIF LOCAL == 8 || LOCAL == GetNum(TALENT,"Friend")
+				;SETCOLOR C_PINK
+				OUTPUT += MO_TALENT(LOCALS:1, LOCALS:2, "FFCCFF")
+			ELSE
+				OUTPUT += MO_TALENT(LOCALS:1, LOCALS:2, COLOR_FROM_VALUE(TALENT_VALUE(LOCAL,選択中キャラID),LOCAL,TALENT:選択中キャラID:LOCAL))
+			ENDIF
+			; RESETCOLOR
+			; FONTREGULAR
+		NEXT
+		NEXT
+		;LOCAL = TLNT_NO:(LOCAL:2):0
+		;LOCALS:1 '= TOLOWER(PRINT_GET_RACE(選択中キャラID))
+		;PRINTFORML LOCALS:1 - %LOCALS:1%
+		;PRINTFORML %GET_TALENTNAME_TR(LOCAL, TALENT:選択中キャラID:LOCAL)%
+		;If the character doesn't have duplicate race talents
+		IF CAT == 0 ;&& TLNT_CNT:0 == 0
+			;adjusted for duplicated characters
+			CALL PRINT_種族抽出_MOD(NO:選択中キャラID, REPLACE(OUTPUT, LOCALS:2, ""))
+			SIF RESULTS != ""
+				OUTPUT += RESULTS
+		ENDIF
+
+		;カスタム素質を表示
+		IF CST_CNT:CAT
+			FOR ENTRY, 0, CST_CNT:CAT
+				LOCAL = CST_NO:CAT:ENTRY
+
+				IF CUSTOM_TALENT:選択中キャラID:LOCAL
+					LOCALS:1 = %CUSTOM_TALENT_NAME:選択中キャラID:LOCAL%
+					LOCALS += LOCALS:1
+					IF STRLENS(@"%LOCALS%") > nTabSize
+						;break line with another HTML_PRINT because <br> doesn't add to LINECOUNT
+						HTML_PRINT OUTPUT
+						OUTPUT '= "　　　　　　"
+						LOCALS '= " "
+					ENDIF
+					IF CUSTOM_TALENT_COLOR:選択中キャラID:LOCAL == 2
+						OUTPUT += MO_TALENT(@"[%LOCALS:1%]", CUSTOM_TALENT_HTML_DESC:選択中キャラID:LOCAL, "FF78C8", 1)
+					ELSEIF CUSTOM_TALENT_COLOR:選択中キャラID:LOCAL == 1
+						OUTPUT += MO_TALENT(@"[%LOCALS:1%]", CUSTOM_TALENT_HTML_DESC:選択中キャラID:LOCAL, "FFCCFF")
+					ELSE
+						OUTPUT += MO_TALENT(@"[%LOCALS:1%]", CUSTOM_TALENT_HTML_DESC:選択中キャラID:LOCAL)
+					ENDIF
+				ENDIF
+			NEXT
+		ENDIF
+		SIF LOCALS != " "
+			HTML_PRINT OUTPUT
+	NEXT
+
+ENDIF
+
+@PRINT_種族抽出_MOD(選択中キャラID, ARGS)
+#DIM 選択中キャラID
+VARSET RESULTS 
+
+CALL KOJO_CHECK(選択中キャラID, "RACE")
+IF RESULT
+	RESULTS '= @"〈<nonbutton%COND_STR(@" title='%HTML_ESCAPE(RESULTS:1)%'", RESULTS:1 != "")%>%HTML_ESCAPE(RESULTS)%</nonbutton>〉"
+ELSE
+	RESULTS =
+	IF STRFIND(TOLOWER(ARGS), TOLOWER(PRINT_GET_RACE(選択中キャラID))) < 0 || GROUPMATCH(選択中キャラID, 69, 101, 137, RANDOM_CHARANUM) ;exceptions because strfind is shit
+		IF 選択中キャラID == MASTER && !STRLENS(HTML_ESCAPE(PRINT_GET_RACE(選択中キャラID))) ;hide empty subtag for player character during character creation, leave for others for possible bug quashing
+		ELSEIF INRANGE(選択中キャラID,0,CHARANUM-1)
+			RESULTS '= @"〈<nonbutton title='%HTML_ESCAPE(RACE_INFO(選択中キャラID))%'>%HTML_ESCAPE(PRINT_GET_RACE(選択中キャラID))%</nonbutton>〉"
+		ENDIF
+	ENDIF
+ENDIF
+
+@IGNORE_TALENT(TALENTNUM, CHARA)
+#FUNCTION
+#DIM TALENTNUM
+#DIM CHARA
+SELECTCASE TALENTNUM
+	;CASE GETNUM(TALENT, "NESTING")
+		;RETURNF FLAG:PREGNANCY_MODE == PREGNANCY_MODE_NONE
+	;CASE GETNUM(TALENT, "PREGNANCY_TYPE")
+		;RETURNF FLAG:PREGNANCY_MODE == PREGNANCY_MODE_NONE
+	;CASE GETNUM(TALENT, "HYPERFERTILE")
+		;RETURNF FLAG:PREGNANCY_MODE == PREGNANCY_MODE_NONE || INRANGE(TALENT:CHARA:PREGNANCY_TYPE, PREGNANCY_EGGS, PREGNANCY_CLUTCH)
+ENDSELECT
+RETURNF 0

@@ -1,0 +1,331 @@
+;custom code
+;==================================================
+;依頼口上・各依頼で共通の口上
+;==================================================
+@M_KOJO_IRAI_K61(ROLE, SCENE, IRAI_ID)
+#DIMS ROLE     ;キャラの立場、依頼者かそうでないか
+#DIMS SCENE    ;セリフの表示されるタイミング
+#DIM  IRAI_ID  ;依頼自体のID
+#DIM  CLIENT_ID;依頼者IDだけ抜き出したもの
+#DIM  CHK_ID   ;依頼IDだけ抜き出したもの
+#DIMS IRAI_NAME;依頼名
+CHK_ID    = IRAI_ID % 1000
+CLIENT_ID = IRAI_ID_TO_CLIENT(IRAI_ID)
+IRAI_NAME = %STR_DATA_IRAI(IRAI_ID, "依頼名", CLIENT_ID)%
+RESULT = 0
+IF CHK_ID > 100
+	TRYCALLFORM M_KOJO_IRAI_%IRAI_NAME%_K61(ROLE, SCENE, CLIENT_ID)
+ELSE
+	TRYCALLFORM M_KOJO_IRAI_{CHK_ID}_K61(ROLE, SCENE, CLIENT_ID)
+ENDIF
+SIF RESULT
+	RETURN 1
+;--------------------------------------------------
+;ここにあるのは各依頼で共通の口上です
+;依頼ごとの口上を表示した場合は共通の口上は表示されません
+;【】で囲ってあるのは口上前後の地の文や発生する処理です
+;WAITをするか等の目安にしてください（L,WはそれぞれPRINTFORML,PRINTFORMWの略）
+;--------------------------------------------------
+SELECTCASE SCENE
+CASE "依頼提示時"
+;●依頼を持ちかけられる時
+;【W どうやら［彼女］は［あなた］に頼み事があるようだ】
+;【◆口上】
+;【依頼データ表示】
+;【INPUT（受託するかY/N）】
+	
+CASE "依頼非受託時"
+;●内容だけ見て受託しなかった時
+;【L ［あなた］は丁重にお断りした】
+;【◆口上】
+;【W ［彼女］は残念そうな顔をしている】
+	
+CASE "依頼受託時"
+;●依頼を受託した時
+;【W ［あなた］は［彼女］の依頼を受けた】
+;【◆口上】
+	
+CASE "依頼確認時"
+;●[366]で依頼内容を依頼人に確認した時
+;【◆口上】
+;【依頼データ表示】
+;【INPUT（破棄するかY/N）】
+	
+CASE "依頼破棄時"
+;●受託した依頼を破棄する時
+;【◆口上】
+;【W 依頼を破棄しました。】
+	
+CASE "依頼実行直前"
+;●[367]で依頼を実行する時、実行処理の前に呼び出される
+;※依頼によって状況が大きく異なるので共通口上は非推奨
+;【◆口上】
+;【実行時の地の文・ソース等】
+;【▼下の口上に続く】
+	IF ROLE == "CLIENT"
+	;（共通）CLIENT：依頼実行の対象と依頼主（口上主）が同一の場合（主に特訓系ですが一緒に捜索等をした場合も含まれます）
+		
+	ELSEIF ROLE == "TARGET"
+	;（共通）TARGET：口上主が依頼実行の対象である場合（主に配達系ですが捜索等をした際、TARGETにしていた場合も含まれます）
+		
+	ENDIF
+CASE "依頼実行直後"
+;●[367]で依頼を実行する時、実行処理の後に呼び出される
+;※依頼によって状況が大きく異なるので共通口上は非推奨
+;【▲上の口上から続き】
+;【◆口上】
+;【達成時・CLIENT：▼下の口上に続く】
+;【達成時・TARGET：忘れずに［依頼主］に報告しよう】
+	IF ROLE == "CLIENT"
+	;（共通）CLIENT：依頼実行の対象と依頼主（口上主）が同一の場合（主に特訓系ですが一緒に捜索等をした場合も含まれます）
+		SELECTCASE CFLAG:CLIENT_ID:依頼状況
+		CASE 2
+		;実行後未解決
+			
+		CASE 3
+		;実行後達成
+			
+		CASE 6
+		;実行後失敗（現在「06_誰か教えて！」のみ）
+			
+		ENDSELECT
+	ELSEIF ROLE == "TARGET"
+	;（共通）TARGET：口上主が依頼実行の対象である場合（主に配達系ですが捜索等をした際、TARGETにしていた場合も含まれます）
+		SELECTCASE CFLAG:CLIENT_ID:依頼状況
+		CASE 2
+		;実行後未解決
+			
+		CASE 3
+		;実行後達成
+			
+		CASE 6
+		;実行後失敗（現在「06_誰か教えて！」のみ）
+			
+		ENDSELECT
+	ENDIF
+CASE "成功報告時"
+;●報告時（成功）
+;【依頼実行と報告が同時の時：▲上の口上から続き】
+;【◆口上】
+;【ソースの入手・アイテム等の報酬獲得】
+	
+CASE "失敗報告時"
+;○直接失敗報告は現在「06_誰か教えて！」のみ
+;●報告忘れ・期限切れになった際、遭遇時の最後に呼び出される
+;（遭遇時）【挨拶等】→【機嫌の良し悪し】→【劣情察知】→【祭日イベント】→【◆ココ！】（尚、依頼失敗判定があるとデートのお誘いは発生しません）
+;【◆口上】
+;○機嫌の変化や追加のペナルティ等は口上側で処理してください
+	
+CASE "依頼報告不要"
+;○一般依頼では現在「02_お花に水をあげて」「09_誰かの落とし物」のみ
+;●起床時、報告不要依頼を達成していた場合に呼ばれる口上
+;（起床時）【起床メッセージ】→【X時間寝た等】→【◆ココ！】→【おみくじ・補充等】→【一日開始】
+;○地の文はありません
+;○口上主がその場にいなくても表示されます（MASTERが寝る時のイベント口上と同じタイプ）
+	
+ENDSELECT
+RETURN 1
+
+;==================================================
+;Kaguya's Unique Request 1: Trial of Guts
+;==================================================
+@M_KOJO_IRAI_TRIAL_OF_GUTS_K61(ROLE, SCENE, CLIENT_ID)
+#DIMS ROLE     ;キャラの立場、依頼者かそうでないか
+#DIMS SCENE    ;セリフの表示されるタイミング
+#DIM  CLIENT_ID;依頼者IDだけ抜き出したもの
+;--------------------------------------------------
+;RETURN 0 の部分は共通の口上が表示されます
+;依頼ごとの口上を表示する部分は RETURN 0 を RETURN 1 にしてください
+;--------------------------------------------------
+SELECTCASE SCENE
+CASE "依頼提示時"
+	RETURN 0
+CASE "依頼非受託時"
+	RETURN 0
+CASE "依頼受託時"
+	RETURN 0
+CASE "依頼確認時"
+	RETURN 0
+CASE "依頼破棄時"
+	RETURN 0
+CASE "依頼実行直前"
+	;mokou goes full-on chuuni mode here, essentially
+	IF TALENT:恋慕 || TALENT:恋人
+		PRINTFORML 「Oh, it's you, %CALLNAME:MASTER%.」
+		PRINTFORMW 「What brings you to the forest in the dead of night?」
+	ELSE
+		PRINTFORMW 「So there are even fools who'd go out on a night like this, huh?」
+		PRINTFORMDL Who's that?
+		PRINTFORML 「You, obviously?」
+		PRINTFORMDW No, I'm not asking who's a fool.	
+		PRINTFORML 「I'm a human who's lived here for a long time.」
+		PRINTFORML 「I'm not here because I'm a fool.」
+		PRINTFORMW 「So, what are you doing here, fool?」
+	ENDIF
+	PRINTFORMDL A trial of guts.
+	PRINTFORML 「What! A trial of guts?!」
+	PRINTFORML 「Oh, since when have humans been this foolish?」
+	PRINTFORML 「You come all the way out here in the dead of night, with this lunatic full moon, and tons of youkai out, for a trial of guts, of all things?!」
+	PRINTFORML 「It's a miracle that you weren't killed by youkai yet.」
+	PRINTFORMW 「A trial of guts, seriously! If you die, it'll be your guts the youkai will feast on---」
+	PRINTFORMDW Well, I only came here because Kaguya said 'hey, go on out there,' so...
+	PRINTFORML 「What was that? Did you say "Kaguya"?」
+	PRINTFORMW 「You certainly uttered "ka―gu―ya".」
+	PRINTFORML 「Rrrgh! I figured your trial of guts was suspicious.」
+	PRINTFORMW 「Of course she'd be behind this.」
+	IF TALENT:恋人
+		PRINTFORML 「To think she'd trick my own lover into assassinating me...」
+	ELSEIF TALENT:[[輝夜]]:恋人
+		PRINTFORML 「Sending her own lover to kill me...」
+	ELSEIF TALENT:[[輝夜]]:妄信 && TALENT:MASTER:追加種族 == 4
+		PRINTFORML 「Sending her "dear husband" to kill me...」
+	ELSE
+		PRINTFORML 「Yeah, she goaded you into getting rid of me this time, didn't she?」
+	ENDIF
+	PRINTFORML 「She always, ALWAYS tries to do away with me!」
+	PRINTFORML 「Argh, and wasn't she the one who gave me this inconvenient body in the first place?!」
+	PRINTFORMDL Mokou is getting really worked up over this.
+	IF TALENT:恋人
+		PRINTFORMW 「Hmph. fine then. Even if it's you, %MASTERNAME:61%, I'll show you no mercy.」
+	ELSEIF TALENT:[[輝夜]]:恋人 || (TALENT:[[輝夜]]:妄信 && TALENT:MASTER:追加種族 == 4)
+		PRINTFORMW 「Hmph. So, how about I see for myself just how strong Kaguya's "dear husband" is?」
+	ELSE
+		PRINTFORML 「Hmph. So, how about I see for myself just how strong you messenger of Kaguya's are?」
+		PRINTFORMW 「If she sent you, you must be more powerful than her, right?」
+	ENDIF
+
+	PRINTFORML 「Don't go thinking I'm some ordinary human. I won't die. I'm completely unable to die. Thanks to that lousy Kaguya.」
+	PRINTFORML 「Yes, no matter how hard she tries to eliminate me, it won't do her any good at all.」
+	PRINTFORML 「She knows that, and she still sends you messengers. This cannot get any more annoying.」
+	PRINTFORML 「If you don't go all out, it's game over for your life.」
+	PRINTFORML 「There's no turning back now. It's a one-way street in the dead of night.」
+	PRINTFORMW 「Just what you wanted. Allow me to test your guts.」
+	RETURN 1
+CASE "依頼実行直後"
+	IF CFLAG:CLIENT_ID:依頼状況 == 2
+		PRINTFORML
+		PRINTFORML 「Cheer up! It's completely natural for me to win, after all.」
+		RETURN 1
+	ELSEIF CFLAG:CLIENT_ID:依頼状況 == 3
+	;勝利
+	;【▲上の口上から続き】
+	;【W ［彼女］を懲らしめた！】
+	;【◆口上】
+		PRINTFORML
+		PRINTFORML 「Aw, maaan. I can't take any mooore.」
+		PRINTFORMDW Mokou lies on the ground, barely able to move.
+		IF TALENT:MASTER:追加種族 == 4
+			PRINTFORMDL Even though she's immortal, her body still has its limits.
+			PRINTFORMDL You understand that quite well.
+			PRINTFORMDL Well, you've had enough fun for tonight. You help your fellow immortal back on her feet.
+			PRINTFORMW 「Ah, thanks. I really overdid it there.」
+			PRINTFORML 「You really never hold back, huh, %CALLNAME:MASTER%.」
+			PRINTFORML 「You should probably go back to Kaguya now. Tell her all about how you vanquished the dreadful immortal human of the bamboo forest.」
+			PRINTFORML 「I think I'll go sleep this off, though I expect I'll be quite sore tomorrow. You really did a number on me.」
+			PRINTFORMDW Mokou gives you a quick nod and walks off.
+			CALL CHANGE_CFLAG(2, [[妹紅]], 50)
+			CALL CHANGE_CFLAG(4, [[妹紅]], 30)
+		ELSE
+			PRINTFORMDL It's said that if you eat an immortal's guts, you'll become immortal too.
+			PRINTFORMDL You might not get another opportunity like this for a long time.
+			PRINTFORMDL Perhaps this is what Kaguya really meant by "trial of guts".
+
+			CALL ASK_YN("Eat her guts", "Leave it be")
+			IF !RESULT
+				PRINTFORML 「I can see that look in your eyes, but I don't recommend becoming immortal.」
+				PRINTFORML 「They might not look it, but these bruises you gave me are really painful.」
+				PRINTFORML 「Although I won't die even if it hurts.」
+				CALL ASK_YN("Go through with it anyway", "Leave it be")
+				IF !RESULT
+					PRINTFORMDL Are you really sure about it? Once you do this, there's no going back. Ever.
+					PRINTFORMDL %BREAKENG("You'll be cut off from the cycle of reincarnation, forced to exist even after all life on Earth dies and the planet is swallowed by the sun, your soul churning forever in torment.")%
+					CALL ASK_YN("Abandon your humanity", "Embrace the peace of inevitable death")
+					IF !RESULT
+						IF TALENT:恋慕
+							PRINTFORML 「I see you're really insistent on this. Fine, I'll help you out.」
+							PRINTFORMDW Mokou plunges her own hand deep into her chest, and pulls out her own liver.
+							PRINTFORML 「Ow. That hurts.」
+							PRINTFORML 「This is supposed to be what you need, right? Go ahead, I'll be fine.」
+							PRINTFORMDL Mokou holds out her liver to you, offering her own flesh with some hesitation.
+							CALL ASK_YN("Eat it", "Back off")
+							IF !RESULT
+								PRINTFORMDL You take Mokou's liver and eat it.
+								NOSKIP
+								REPEAT 8
+									REUSELASTLINE %"." * COUNT%
+									TWAIT 150, 1
+								REND
+								ENDNOSKIP
+								PRINTFORMDL Did it work? You don't feel anything happening.
+								PRINTFORML 「Nah, you're still mortal. I can feel it.」
+								PRINTFORML 「I guess it makes sense, the elixir is long gone, after all.」
+								PRINTFORML 「Well, it's better this way. Humans are supposed to die eventually.」
+								PRINTFORML 「Can you get me back home, though. It still hurts quite a bit.」
+								PRINTFORMDL You carry Mokou back home and put her to bed before leaving.
+								IF CFLAG:[[輝夜]]:口上セレクタ == 0 ;prevent possible issues with potential alternate kaguya dialogues that use these variables differently, so only trigger these for the main dialogue
+									CFLAG:[[輝夜]]:1092 = 1 ;consumed flesh this time
+									CFLAG:[[輝夜]]:1093 = 1 ;cannibal (permanent)
+								ENDIF
+							ELSE
+								PRINTFORML 「Now is when you decide to stop? Only after I pull out my liver?」
+								PRINTFORML 「Ah well.」
+								PRINTFORML 「Truth be told, while the idea of spending eternity with you sounds really appealing, I know it's better this way.」
+								PRINTFORML 「Humans aren't supposed to live this long, after all.」
+								PRINTFORMDW You decide to stay with Mokou until she recovers, before saying goodbye to her.
+							ENDIF
+						ELSE
+							PRINTFORML 「Oh, fine. It hurts too much to move, so boil me, roast me, whatever!」
+							PRINTFORML 「Just try not to get blood on my shirt, please.」
+							PRINTFORMDL You remove Mokou's shirt before pulling out a knife and pushing it inside Mokou's chest.
+							PRINTFORMDL Mokou grimaces as you gut her like a pig, but she doesn't say a word.
+							PRINTFORMDL You rip out her organs and feast upon them in a mad frenzy, gorging yourself on the immortal's flesh.
+							PRINTFORML 「Wow, you're a really messy eater, %CALLNAME:MASTER%.」
+							PRINTFORML 「There's no need to stuff yourself like that, I'm not going anywhere.」
+							PRINTFORMDW Eventually, your gruesome feast comes to an end.
+							NOSKIP
+							REPEAT 8
+								REUSELASTLINE %"." * COUNT%
+								TWAIT 150, 1
+							REND
+							ENDNOSKIP
+							PRINTFORMDL Did it work? You don't feel anything happening.
+							PRINTFORML 「Nah, you're still mortal. I can feel it.」
+							PRINTFORML 「Dunno if you can still call yourself a good person after this, though.」
+							PRINTFORMDL Was your gruesome act a complete waste of time? Did you throw away your human dignity for nothing?
+							PRINTFORML 「Eh, it's not that big of a deal. It's just me, after all, and I won't die. It was pretty gross, though.」
+							PRINTFORMDW Stammering out an apology to Mokou, you turn around and leave, trying to forget about the whole incident.
+							IF CFLAG:[[輝夜]]:口上セレクタ == 0 ;prevent possible issues with potential alternate kaguya dialogues that use these variables differently, so only trigger these for the main dialogue
+								CFLAG:[[輝夜]]:1092 = 1 ;consumed flesh this time
+								CFLAG:[[輝夜]]:1093 = 1 ;cannibal (permanent)
+							ENDIF
+						ENDIF
+					ELSE
+						GOTO NOT_EATING
+					ENDIF
+				ELSE
+					GOTO NOT_EATING
+				ENDIF
+			ELSE
+				$NOT_EATING
+				PRINTFORML 「Yeah, you really shouldn't. Immortality isn't as great as it seems.」
+				PRINTFORML 「I'm glad to see that you're at least sensible enough to understand.」
+				PRINTFORML 「Well, you won this fight. You should probably go back to Kaguya and tell her about your victory.」
+				PRINTFORML 「Don't worry about me, I'll be fine after a little rest.」
+				PRINTFORML 「I can't die, after all.」
+				PRINTFORMDW Leaving Mokou on the ground, you give her a wave and walk off.
+
+				CALL CHANGE_CFLAG(2, TARGET, 75)
+				CALL CHANGE_CFLAG(4, TARGET, 50)
+			ENDIF
+		ENDIF
+		RETURN 1
+	ENDIF
+	RETURN 1
+CASE "成功報告時"
+	RETURN 0
+CASE "失敗報告時"
+	RETURN 0
+;CASE "依頼報告不要"
+;＜この依頼にはありません＞
+;	RETURN 0
+ENDSELECT

@@ -1,0 +1,520 @@
+@EnduranceDB(ARGS)
+#FUNCTION
+VARSET EC_NAME
+VARSET EC_VAR
+SELECTCASE TOLOWER(ARGS)
+CASE "orgasmdeny", "0"
+    EC_NAME     '= "Sanity"
+    EC_VAR      '= "OrgasmDeny"
+    EC_ID        = 0
+    EC_EXP_VAR  '= "OrgasmDenyExp"
+    EC_MAX:0     = -5
+    EC_MAX:1     = 5
+    EC_EXP:0     = -10000
+    EC_EXP:1     = 10000
+	EC_TALENT 	 = 1310
+	EC_AUD		 = 19
+CASE "peehold", "1"
+    SIF !nPee
+        RETURNF 0
+    EC_NAME     '= "Pee Holding"
+    EC_VAR      '= "PeeHold"
+    EC_ID        = 1
+    EC_EXP_VAR  '= "PeeHoldExp"
+    EC_MAX:0     = -5
+    EC_MAX:1     = 5
+    EC_EXP:0     = -2000
+    EC_EXP:1     = 2000
+	EC_TALENT 	 = 1514
+	EC_AUD		 = 20
+CASE "poohold", "2"
+    SIF !nScat
+        RETURNF 0
+    EC_NAME     '= "Poo Holding"
+    EC_VAR      '= "PooHold"
+    EC_ID        = 2
+    EC_EXP_VAR  '= "PooHoldExp"
+    EC_MAX:0     = -5
+    EC_MAX:1     = 5
+    EC_EXP:0     = -2000
+    EC_EXP:1     = 2000
+	EC_TALENT 	 = 1500
+	EC_AUD		 = 21
+CASE "alcoholaddict", "3"
+    EC_NAME     '= "Alcohol Addiction"
+    EC_VAR      '= "AlcoholAddict"
+    EC_ID        = 3
+    EC_EXP_VAR  '= "DrinkingExp"
+    EC_MAX:0     = -5
+    EC_MAX:1     = 5
+    EC_EXP:0     = -2000
+    EC_EXP:1     = 2000
+	EC_AUD		 = 22
+	EC_TALENT 	 = 121
+CASE "drugaddict", "4"
+    EC_NAME     '= "Drug Addiction"
+    EC_VAR      '= "DrugAddict"
+    EC_ID        = 4
+    EC_EXP_VAR  '= "DrugExp"
+    EC_MAX:0     = -5
+    EC_MAX:1     = 5
+    EC_EXP:0     = -2000
+    EC_EXP:1     = 2000
+	EC_AUD		 = 23
+	EC_TALENT 	 = 56
+CASE "charatrauma", "5"
+    EC_NAME     '= "Trauma"
+    EC_VAR      '= "CharaTrauma"
+    EC_ID        = 5
+    EC_EXP_VAR  '= "CharaTraumaExp"
+    EC_MAX:0     = 0
+    EC_MAX:1     = 5
+    EC_EXP:0     = 0
+    EC_EXP:1     = 5000
+	EC_TALENT 	 = 1217
+	EC_AUD		 = 24
+	EC_COLORS:1  = C_RED
+CASEELSE
+	RETURNF 0
+ENDSELECT
+RETURNF 1
+
+@ChangeEndurance(ARG,ARGS,nChange)
+#FUNCTION
+#DIM nChange
+;global toggle
+SIF !nEnduranceScaleStats
+	RETURNF 0
+;doesn't exist
+SIF !EnduranceDB(ARGS)
+	RETURNF -1
+;individual toggled
+SIF CharaDisableEndurance:EC_ID
+	RETURNF -1
+
+;talents
+IF GROUPMATCH(EC_EXP_VAR,"PeeHold","PooHold")
+	SIF TALENT:MASTER:358
+		nChange *= 3
+ENDIF
+
+SETVAR @"%EC_EXP_VAR%:{ARG}:1", GETVAR(@"%EC_EXP_VAR%:{ARG}:0")
+SETVAR @"%EC_EXP_VAR%:{ARG}:0", LIMIT(GETVAR(@"%EC_EXP_VAR%:{ARG}:0") + nChange,EC_EXP:0,EC_EXP:1)
+RETURNF nChange
+
+;custom code for non-CSV exp
+;Mr Pops Alot
+@ShowEnduranceChange(ARG)
+#DIM DYNAMIC nVal, 2
+#DIM DYNAMIC nShow
+#DIM DYNAMIC DIFFERENCE
+
+FOR LOCAL:1,0,6
+	VARSET nVal
+	VARSET DIFFERENCE
+    CALLF EnduranceDB(TOSTR(LOCAL:1))
+
+    nVal = GETVAR(@"%EC_EXP_VAR%:{ARG}:0")
+    nVal:1 = GETVAR(@"%EC_EXP_VAR%:{ARG}:1")
+    LOCALS:1 = %EC_NAME% Exp
+
+	IF nVal != nVal:1
+		DIFFERENCE = nVal - nVal:1
+		nShow ++
+		PRINTFORM %LOCALS:1% \@ DIFFERENCE >= 0 ? + # \@{DIFFERENCE}(%CALLNAME:ARG%)
+		IF LOCAL:1 == 5
+		;NAS TRAUMA
+			SIF CharaTrauma:ARG:0+1 > (EXISTVAR("NAS_VERSION") ? 5 # 3)
+				CONTINUE
+			IF TFLAG:TraumaMark
+				LOCAL = 1
+				LOCAL:2 = 1
+				PRINTFORM  Trauma Mark Lv{CharaTrauma:ARG:0} Gain: 
+			ELSE
+				LOCAL = EXP_DEMAND_24(0,0,0,0,(MIN(CharaTrauma:ARG:0+1,5)))
+				LOCAL:2 = nVal
+				PRINTFORM  Trauma Mark Lv{MIN(CharaTrauma:ARG:0+1,5)} Gain: 
+			ENDIF
+			CALL PRINTTHRESHOLDBAR(LOCAL:2, LOCAL:0, 54)
+		ENDIF
+		PRINTL
+	ENDIF
+NEXT
+RETURN nShow
+
+;ARG:1 is to FORCE set
+@ResetTempEndurance(ARG, ARG:1 = 0)
+#FUNCTION
+#DIM isDisabled
+{
+	#DIMS AvaliableValues =
+	"orgasmdeny", "peehold", "poohold",
+	"alcoholaddict", "drugaddict", "charatrauma"
+}
+
+;global toggle
+SIF !nEnduranceScaleStats
+	RETURNF 0
+FOR LOCAL,0,VARSIZE("AvaliableValues")
+	isDisabled = 0
+
+	;individual toggle
+	SIF CharaDisableEndurance:ARG:(LOCAL) && !ARG:1
+		isDisabled = 1
+
+    CALLF EnduranceDB(AvaliableValues:LOCAL)
+    IF isDisabled
+        SETVAR @"%EC_EXP_VAR%:{ARG}:0", GETVAR(@"%EC_EXP_VAR%:{ARG}:1")
+    ELSE
+        SETVAR @"%EC_EXP_VAR%:{ARG}:1", GETVAR(@"%EC_EXP_VAR%:{ARG}:0")
+    ENDIF
+NEXT
+
+@CUSTOM_OPTION_40
+PRINTFORML [ 40] - Character Endurance Blacklist
+
+@CUSTOM_OPTION_RESULT_40
+IF !nEnduranceScaleStats
+	PRINTFORMW Endurance gain and loss is currently disabled in a global scale.
+	PRINTFORMW Please go to the【Fetish Options】to toggle it on before making character-scale endurance changes.
+	RETURN
+ELSE
+CALL ENDURANCE_DISABLE_MENU
+ENDIF
+
+@ENDURANCE_DISABLE_MENU
+#DIM nBannedCount
+#DIM nSelection
+#DIM C_ID
+
+LINESTART = LINECOUNT
+nSelection = 100
+DO
+nBannedCount = 0
+REDRAW 0
+CLEARLINE LINECOUNT - LINESTART
+PRINTFORML Choose which characters's \@ STRLENS(ENDURANCE_NAMES(nSelection)) ? %ENDURANCE_NAMES(nSelection)% # endurance \@ stat gain and loss should be disabled.
+DRAWLINE
+SIF FLAG:並び替え
+	CALL CHARASORT_EX
+FOR LOCAL:1, 0, EX_CHARANUM
+	IF FLAG:並び替え
+		LOCAL = RESULT:(LOCAL:1)
+		SIF LOCAL < 0
+			CONTINUE
+	ELSE
+		LOCAL = LOCAL:1
+		SIF LOCAL >= CHARANUM
+			BREAK
+	ENDIF
+	IF INRANGE(nSelection,0,VARSIZE("CharaDisableEndurance"))
+		IF CharaDisableEndurance:LOCAL:nSelection
+			SETCOLOR C_L_GRAY
+			nBannedCount++
+		ENDIF
+	ENDIF
+	PRINTFORMLC [{LOCAL, 3}] %CALLNAME:LOCAL%\@ LOCAL == MASTER ? %" (You)"% # \@
+	RESETCOLOR
+NEXT
+PRINTL 　
+DRAWLINE
+PRINTFORML [800] Character Menu
+FOR LOCAL,0,VARSIZE("CharaDisableEndurance")
+	IF STRLENS(ENDURANCE_NAMES(LOCAL))
+	SIF nSelection == LOCAL
+	SETCOLOR C_AQUA
+	PRINTFORM [{LOCAL+900,3}] %ENDURANCE_NAMES(LOCAL)%　
+	RESETCOLOR
+	ENDIF
+NEXT
+PRINTL
+PRINTFORM [999] Finish (Disabled: %PRINT_PLUR("Character", nBannedCount)%)
+SIF INRANGE(nSelection,0,VARSIZE("CharaDisableEndurance"))
+PRINTFORM 　[998] Enable All　[997] Disable All
+PRINTL
+
+$LOOP
+INPUT
+C_ID = RESULT
+IF C_ID >= 0 && C_ID <= CHARANUM
+	IF !INRANGE(nSelection,0,VARSIZE("CharaDisableEndurance"))
+		DO
+			PRINTFORML Select what endurance stats should be disabled for %CALLNAME:C_ID%
+			FOR LOCAL,0,VARSIZE("CharaDisableEndurance")
+				SIF STRLENS(ENDURANCE_NAMES(LOCAL))
+				PRINTFORML [{LOCAL,3}] %ENDURANCE_NAMES(LOCAL),20,LEFT%: \@ CharaDisableEndurance:C_ID:LOCAL ? Disabled # Enabled \@
+			NEXT
+			PRINTL
+			PRINTFORML [997] - Enable All
+			PRINTFORML [998] - Disable All
+			PRINTFORML [999] - Cancel
+			INPUT
+			SELECTCASE RESULT
+			CASE 997
+				FOR LOCAL,0,VARSIZE("CharaDisableEndurance")
+					CharaDisableEndurance:C_ID:LOCAL = 0
+				NEXT
+			CASE 998
+				FOR LOCAL,0,VARSIZE("CharaDisableEndurance")
+					CharaDisableEndurance:C_ID:LOCAL = 1
+				NEXT
+			CASE 999
+				BREAK
+			CASE 0 TO VARSIZE("CharaDisableEndurance")
+				CharaDisableEndurance:C_ID:RESULT = !CharaDisableEndurance:C_ID:RESULT
+			ENDSELECT
+		LOOP 1
+	ELSE
+		CharaDisableEndurance:C_ID:nSelection = !CharaDisableEndurance:C_ID:nSelection
+	ENDIF
+ELSEIF RESULT == 800
+	nSelection = 100
+ELSEIF INRANGE(RESULT-900,0,VARSIZE("CharaDisableEndurance"))
+	nSelection = RESULT-900
+ELSEIF RESULT == 999
+	PRINTW Settings applied.
+	RETURN
+ELSEIF RESULT == 998 && INRANGE(nSelection,0,VARSIZE("CharaDisableEndurance"))
+	FOR LOCAL,0,CHARANUM
+		CharaDisableEndurance:LOCAL:nSelection = 0
+	NEXT
+ELSEIF RESULT == 997 && INRANGE(nSelection,0,VARSIZE("CharaDisableEndurance"))
+	FOR LOCAL,0,CHARANUM
+		CharaDisableEndurance:LOCAL:nSelection = 1
+	NEXT
+ELSE
+ENDIF
+LOOP 1
+
+@ENDURANCE_NAMES(ARG)
+#FUNCTIONS
+CALLF EnduranceDB(TOSTR(ARG))
+RETURNF EC_NAME
+
+
+@SOURCE_TRAUMA(ARG, ARG:1)
+#DIM DYNAMIC SENDT
+SENDT = SOURCE:5
+
+
+;inherit fear for terror
+SOURCE:ARG:Terror += SOURCE:ARG:恐怖
+;maso
+SOURCE:ARG:Terror += (SOURCE:ARG:苦痛*(100-(ABL:ARG:15*25))/100)
+SENDT = SOURCE:ARG:Terror
+SENDT /= 1000
+;相手主導
+SIF ARG != MASTER && CFLAG:ARG:うふふ == 2
+	TIMES SENDT, 0.50
+
+;================================
+;ABILITIES
+;================================
+;SENDT = ABL補正(SENDT,ABL:ARG:従順,1); commented, this makes NO sense
+
+IF TCVAR:ARG:無理矢理
+	;rape
+	;set a flat 8x multipler and ignore obedience.
+	;also adds 150 terror PALAMs
+	TIMES SENDT , 8.00
+	SENDT += 150
+	GOTO SKIP_OBED
+ENDIF
+
+SELECTCASE ABL:ARG:従順
+CASE IS >= 20
+	TIMES SENDT , 0.10
+CASE IS >= 10
+	TIMES SENDT , 0.30
+CASE 9
+	TIMES SENDT , 0.50
+CASE 8
+	TIMES SENDT , 1.00
+CASE 7
+	TIMES SENDT , 1.50
+CASE 6
+	TIMES SENDT , 2.00
+CASE 5
+	TIMES SENDT , 2.50
+CASE 4
+	TIMES SENDT , 3.00
+CASE 3
+	TIMES SENDT , 3.50
+CASE 2
+	TIMES SENDT , 4.00
+CASE 1
+	TIMES SENDT , 5.00
+CASEELSE
+	TIMES SENDT , 6.00
+ENDSELECT
+;================================
+;TALENTS
+$SKIP_OBED
+;================================
+;GAIN
+;==================
+;Timid
+SIF TALENT:ARG:度胸 < 0
+	TIMES SENDT , 2.00
+;Sexually Ignorant (and in Sex)
+SIF (TALENT:ARG:SexKnow == -1 || TALENT:ARG:27) && CFLAG:ARG:うふふ
+	TIMES SENDT , 1.40
+;Shy
+SIF TALENT:ARG: 33 > 0
+	TIMES SENDT , 1.60
+;Weakness
+SIF TALENT:ARG:34 > 0
+	TIMES SENDT , 2.50
+;Wimp
+SIF TALENT:ARG:40 > 0
+	TIMES SENDT , 2.00
+;Submits Easily
+SIF TALENT:ARG:72 > 0
+	TIMES SENDT , 3.00
+;Child Like
+SIF TALENT:ARG:151 > 0
+	TIMES SENDT , 4.00
+;==================
+;LOSE
+;==================
+;Brave
+SIF TALENT:ARG:度胸 > 0
+	TIMES SENDT , 0.70
+;Defiant
+;Self Control
+SIF TALENT:ARG:20 > 0
+	TIMES SENDT , 0.8
+;Aphat/Psycho
+SIF TALENT:ARG:21 > 0
+	TIMES SENDT , 0.5
+;Emotionless
+SIF TALENT:ARG:34 > 0
+	TIMES SENDT , 0.5
+;Tough
+SIF TALENT:ARG:22
+	TIMES SENDT , 0.5
+;Insane
+SIF TALENT:ARG:141 > 0
+	TIMES SENDT , 0.3
+;================================
+
+;rape expansion FORCE MARK
+SELECTCASE MARK:ARG:MARK_FORCE
+	CASE 0
+		TIMES LOCAL , 1.00
+	CASE 1
+		TIMES LOCAL , 0.90
+	CASE 2
+		TIMES LOCAL , 0.75
+	CASE 3
+		TIMES LOCAL , 0.50
+	CASE 4
+		TIMES LOCAL , 0.30
+	CASEELSE
+		TIMES LOCAL , 0.10
+ENDSELECT
+
+;randomization
+SENDT = SENDT * RAND(80,110)/100
+
+SIF DrugStats:ARG:FluvoxamineTime
+	TIMES SENDT, 0.25
+
+IF ARG:1
+	OrgasmDenyExp:ARG:0 -= SENDT
+ELSE
+	IF SENDT > 0
+	TIMES SENDT, 0.7
+	SELECTCASE OrgasmDeny:ARG:0
+	CASE -5
+		TIMES SENDT, 2.0
+	CASE -4
+		TIMES SENDT, 1.75
+	CASE -3
+		TIMES SENDT, 1.5
+	CASE -2
+		TIMES SENDT, 1.3
+	CASE -1
+		TIMES SENDT, 1.1
+	CASE 0
+		TIMES SENDT, 1.0
+	CASE 1
+		TIMES SENDT, 0.9
+	CASE 2
+		TIMES SENDT, 0.8
+	CASE 3
+		TIMES SENDT, 0.7
+	CASE 4
+		TIMES SENDT, 0.5
+	CASE 5
+		TIMES SENDT, 0.3
+	ENDSELECT
+	ENDIF
+	CharaTraumaExp:ARG:0 += SENDT
+ENDIF
+
+;==========================================================
+;MARK_MESSAGE_TRAUMA
+;----------------------------------------------------------
+;Description
+;----------------------------------------------------------
+;Message for gaining TRAUMA
+;----------------------------------------------------------
+;Parameters
+;----------------------------------------------------------
+;None
+;==========================================================
+; SELECTCASE ARG:0
+; 	CASE 0
+; 		RETURNF "Stable"
+; 	CASE 1
+; 		RETURNF "Abnormal"
+; 	CASE 2
+; 		RETURNF "Traumatized"
+; 	CASE 3
+; 		RETURNF "Mind Broken"
+; 	CASE 4
+; 		RETURNF "Spirit Broken"
+; 	CASE 5
+; 		RETURNF "Catatonic"
+; ENDSELECT
+@MARK_MESSAGE_TRAUMA(ARG)
+IF TFLAG:TraumaMark == 0
+	IF CharaTrauma:ARG:1 > TFLAG:TraumaMark && CharaTrauma:ARG:0 == 0
+		PRINTFORML %CALLNAME:ARG% has fully recovered from %HIS_HER(ARG)% mental trauma.
+		PRINTFORMW %CALLNAME:ARG% is now【Stable】.
+	ENDIF
+ELSEIF TFLAG:TraumaMark == 1
+	IF CharaTrauma:ARG:1 > TFLAG:TraumaMark
+		PRINTFORML While %CALLNAME:ARG% still has some abnormalities, %HE_SHE(ARG)% is now mostly stable...
+	ELSE
+		PRINTFORML %CALLNAME:ARG% is starting to feel a bit strange...
+	ENDIF
+	PRINTFORMW %CALLNAME:ARG% is now【Abnormal】.
+ELSEIF TFLAG:TraumaMark == 2
+	IF CharaTrauma:ARG:1 > TFLAG:TraumaMark
+	PRINTFORML A resemblance of stability has returned to %CALLNAME:ARG%...
+	ELSE
+	PRINTFORML Trauma has started to affect %CALLNAME:ARG% very negatively...
+	ENDIF
+	PRINTFORMW %CALLNAME:ARG% is now【Traumatized】.
+ELSEIF TFLAG:TraumaMark == 3
+	PRINTFORML %CALLNAME:ARG%'s mind snaps...
+	PRINTFORMW %CALLNAME:ARG% is now【Mind Broken】.
+ELSEIF TFLAG:TraumaMark == 4
+	PRINTFORML %CALLNAME:ARG%'s body and sanity has fully collapsed...
+	PRINTFORMW %CALLNAME:ARG% is now【Spirit Broken】.
+	PRINTFORMW %CALLNAME:ARG% now has【Submission】.
+	MARK:ARG:3 = 0
+	CALL QoL_Info_Write(ARG, Qol_Dates_MindBreak)
+	TALENT:ARG:5 = 1
+ELSEIF TFLAG:TraumaMark == 5
+	PRINTFORML %CALLNAME:ARG% is unable to handle any more trauma and has collapsed into a vegetable...
+	PRINTFORMW %CALLNAME:ARG% is now【Catatonic】and is now in a vegatative state...
+	CALL QoL_Info_Write(ARG, Qol_Dates_MindBreak)
+	TALENT:ARG:5 = 1
+	CFLAG:ARG:睡眠 = 1
+ENDIF
+
+;anguish 
+@SOURCE_ANGUISH(ARG, ARG:1)

@@ -1,0 +1,184 @@
+
+;fish/forage on the way when taking detour
+@Add_ForageFish
+#DIM DYNAMIC nInitiative ;who suggests to do the act
+#DIM DYNAMIC nType ;type of potential gathering
+#DIM DYNAMIC nAct ;selected type, 1 - fishing, 2 - foraging
+#DIM nPos ;remember initial position, then change current position for the purpose of correct fishing/foraging yields
+#DIM nFlag, 3 ;remember flags
+#DIM nTime ;remember time spent
+
+;NAS: Non 0 Master
+SIF TARGET == MASTER
+	RETURN 0
+	
+DEBUGPRINTFORML ------------------------
+DEBUGPRINTFORML Rand check:
+IF CFLAG:MASTER:今日の運勢 > 0 && RAND:(CFLAG:MASTER:今日の運勢) >= 400
+	DEBUGPRINTFORML Master wins
+	nInitiative = 1
+ELSEIF CFLAG:TARGET:今日の運勢 > 0 && RAND:(CFLAG:TARGET:今日の運勢) >= 400
+	DEBUGPRINTFORML Target wins
+	nInitiative = 2
+ELSEIF nForageFishDebug
+	DEBUGPRINTFORML Debug trigger, set to \@ nForageFishDebug == 1 ? Master # Target\@
+	nInitiative = nForageFishDebug == 1 ? 1 # 2
+ELSE
+	DEBUGPRINTFORML Fail, Master's luck: {CFLAG:MASTER:今日の運勢}, Target's luck: {CFLAG:TARGET:今日の運勢}
+	DEBUGPRINTFORML ------------------------
+	RETURN 0
+ENDIF
+
+
+DEBUGPRINTFORML Gathering materials on the way, nInitiative - {nInitiative}
+
+SIF ABL:TARGET:親密 >= 5 - TALENT:TARGET:釣りLv && ITEM:釣り竿 ;fishing
+	SETBIT nType, 0
+
+SIF ABL:TARGET:親密 >= 5 - TALENT:TARGET:採集Lv && (BASE:MASTER:気力 >= 650 && BASE:MASTER:体力 >= 680) ;foraging
+	SETBIT nType, 1
+
+DEBUGPRINTFORML nType - {nType}, bit0 - {GETBIT(nType, 0)}, bit1 - {GETBIT(nType, 1)}
+
+SIF nType == 0
+	RETURN 0
+	
+IF GETBIT(nType, 0) && GETBIT(nType, 1) ;if both type apply, use either random or the one with greatest skill
+	IF nInitiative == 2
+		IF !RAND:4 || TALENT:TARGET:釣りLv == TALENT:TARGET:採集Lv
+			nAct = RAND:2 + 1
+		ELSE
+			nAct = TALENT:TARGET:釣りLv > TALENT:TARGET:採集Lv ? 1 # 2
+		ENDIF
+	ELSE
+		IF !RAND:4 || TALENT:TARGET:釣りLv == TALENT:TARGET:採集Lv
+			nAct = RAND:2 + 1
+		ELSE
+			nAct = TALENT:MASTER:釣りLv > TALENT:MASTER:採集Lv ? 1 # 2
+		ENDIF
+	ENDIF
+ELSEIF GETBIT(nType, 0)
+	nAct = 1
+ELSEIF GETBIT(nType, 1)
+	nAct = 2
+ENDIF
+SIF nAct == 1 && TARGET == [[わかさぎ姫]] && !(TALENT:[[わかさぎ姫]]:恋慕 || TALENT:[[わかさぎ姫]]:恋人) ;switch to foraging if waggy is not in love
+	nAct = 2
+SIF nForageFishActDebug
+	nAct = nForageFishActDebug
+
+DEBUGPRINTFORML nAct - {nAct} \@ nAct == 1 ? Fishing # Foraging\@
+
+SELECTCASE nInitiative
+	CASE 1	
+		PRINTFORML \@ nAct == 1 ? You spot a nice river nearby... Could be nice to fish there for a bit. # This looks like a good place to gather materials from...\@
+	CASE 2
+		PRINTFORML %CALLNAME:TARGET% suggests you two go \@ nAct == 1 ? fishing # foraging \@ while you're at it...
+ENDSELECT
+PRINTFORML What do you think?
+PRINTFORML (Might take extra 5-20 minutes)
+CALL ASK_YN
+SIF RESULT
+	RETURN 0
+	
+PRINTFORML You try to \@ nAct == 1 ? fish # forage\@ with %CALLNAME:TARGET% on the way while you're at it.
+nPos = CFLAG:MASTER:現在位置 ;remember the position
+nFlag:0 = TFLAG:192
+nFlag:1 = TFLAG:193
+nFlag:2 = TFLAG:194
+nTime = TIME
+
+DEBUGPRINTFORML Init flags:
+DEBUGPRINTFORML CFLAG:MASTER:現在位置 - {CFLAG:MASTER:現在位置}
+DEBUGPRINTFORML TFLAG:192 - {TFLAG:192}
+DEBUGPRINTFORML TFLAG:193 - {TFLAG:193}
+DEBUGPRINTFORML TFLAG:194 - {TFLAG:194}
+DEBUGPRINTFORML nTime - {nTime}
+DEBUGPRINTFORML Set flags:
+
+SELECTCASE nAct
+	CASE 1
+		;set positions
+		SELECTCASE CFLAG:MASTER:現在位置
+			CASE 0 TO 599 ;misty lake
+				CFLAG:MASTER:現在位置 = 霧の湖
+			CASE 600 TO 699
+				CFLAG:MASTER:現在位置 = 三途の川
+			CASE 700 TO 799
+				CFLAG:MASTER:現在位置 = RAND:3 ? 玄武の沢 # 大蝦蟇の池
+			CASE 800 TO 899
+				CFLAG:MASTER:現在位置 = RAND:3 ? 山の湖 # 九天の滝
+			CASE 900 TO 999
+				CFLAG:MASTER:現在位置 = 地獄の深道
+		CASEELSE ;exception: set to genbu river
+			CFLAG:MASTER:現在位置 = 玄武の沢
+		ENDSELECT
+		DEBUGPRINTFORML CFLAG:MASTER:現在位置 - {CFLAG:MASTER:現在位置}
+		;call com and description
+		SKIPDISP 1
+		CALL COM621
+		SKIPDISP 0
+		CALL MESSAGE_COM621
+		CALL COM_KOJO_CALL(TARGET, 621)
+	CASE 2
+		;set positions
+		SELECTCASE CFLAG:MASTER:現在位置
+			CASE 0 TO 99
+				CFLAG:MASTER:現在位置 = 50
+			CASE 100 TO 199
+				CFLAG:MASTER:現在位置 = 墓地
+			CASE 200 TO 399
+				CFLAG:MASTER:現在位置 = 霧の湖
+			CASE 400 TO 499
+				CFLAG:MASTER:現在位置 = RAND:3 ? 斜角の竹林 # 無名の丘
+			CASE 500 TO 599
+				CFLAG:MASTER:現在位置 = RAND:3 ? 古木の大樹 # 無縁塚
+			CASE 600 TO 699
+				CFLAG:MASTER:現在位置 = RAND:3 ? 彼岸 # 630
+			CASE 700 TO 799
+				CFLAG:MASTER:現在位置 = RAND:3 ? 玄武の沢 # 大蝦蟇の池
+			CASE 800 TO 899
+				CFLAG:MASTER:現在位置 = RAND:3 ? 山の湖 # 絶景の丘
+			CASE 900 TO 999
+				CFLAG:MASTER:現在位置 = RAND:3 ? 地獄の深道 # 幻想風穴
+			CASE 1000 TO 1099
+				CFLAG:MASTER:現在位置 = RAND:3 ? 静かの海 # 桃林～砂浜
+		CASEELSE ;exception: set to fairy tree
+			CFLAG:MASTER:現在位置 = 50
+		ENDSELECT
+		DEBUGPRINTFORML CFLAG:MASTER:現在位置 - {CFLAG:MASTER:現在位置}
+		;call com and description
+		SKIPDISP 1
+		CALL COM445
+		SKIPDISP 0
+		CALL MESSAGE_COM445
+		CALL COM_KOJO_CALL(TARGET, 445)
+ENDSELECT
+DEBUGPRINTFORML TFLAG:192 - {TFLAG:192}
+DEBUGPRINTFORML TFLAG:193 - {TFLAG:193}
+DEBUGPRINTFORML TFLAG:194 - {TFLAG:194}
+DEBUGPRINTFORML TIME - {TIME}
+
+;set spent time to 1/10
+IF nTime != TIME
+	LOCAL = TIME - nTime ;get spent time
+	DEBUGPRINTFORML Spent time before adjustment: {LOCAL}
+	LOCAL = MAX(MULTIPLY(LOCAL, 10), 5)
+	DEBUGPRINTFORML After: {LOCAL}, set time to {nTime}, add {LOCAL}
+	TIME = nTime
+	TIME += LOCAL
+ENDIF
+
+;reset values
+CFLAG:MASTER:現在位置 = nPos
+TFLAG:192 = nFlag:0
+TFLAG:193 = nFlag:1
+TFLAG:194 = nFlag:2
+DEBUGPRINTFORML Reset flags:
+DEBUGPRINTFORML CFLAG:MASTER:現在位置 - {CFLAG:MASTER:現在位置}
+DEBUGPRINTFORML TFLAG:192 - {TFLAG:192}
+DEBUGPRINTFORML TFLAG:193 - {TFLAG:193}
+DEBUGPRINTFORML TFLAG:194 - {TFLAG:194}
+DEBUGPRINTFORML ------------------------
+WAIT
+RETURN 1

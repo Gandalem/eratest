@@ -1,0 +1,162 @@
+@固有依頼28(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+SELECTCASE ARG % 1000
+;ID101：カリスマ切れ
+CASE 101
+	SELECTCASE O_DATA
+	CASE "依頼名"
+		CALLF MAKE_STR(V_NAME, "The Wonderful Bush's Baked Beans I")
+	CASE "依頼内容表示"
+		CALLF MAKE_STR(V_NAME, @"Find the first ingredient")
+	CASE "依頼報酬表示"
+		CALLF MAKE_STR(V_NAME, @"Favorability + Reliability")
+	CASE "依頼実行コマンド名"
+		CALLF MAKE_STR(V_NAME, "Search")
+		
+	CASE "依頼内容"
+		CALLF MAKE_INT(V_NAME, MAKE_IRAI_DATA(RAND_PLACE(ARG/1000, "LOST_ITEM"), "捜索（場所）"))
+	CASE "依頼サブ"
+	CASE "依頼期限"
+	CALLF MAKE_INT(V_NAME, YearLength)	
+	CASE "依頼発生率"
+	;これは他の固有依頼との相対確率なんで10％ではありません
+		CALLF MAKE_INT(V_NAME, 10)
+	CASE "依頼発生条件"
+		CALLF MAKE_INT(V_NAME, 1)
+	CASE "依頼受託可能条件"
+	;受託可能は@COM_ABLE366も確認のこと
+	;ここを参照するのは依頼人をTARGETにしてる時なので素通しでよし
+		CALLF MAKE_INT(V_NAME, 1)
+	CASE "依頼実行可能条件"
+	;実行可能は@COM_ABLE367も確認のこと
+	[IF_NDEBUG]
+		IF CharaQuestline:28:0:0 != 0
+			CALLF MAKE_INT(V_NAME, 0)
+		ELSE
+			CALLF MAKE_INT(V_NAME, 1)
+		ENDIF
+	[ELSE]
+		CALLF MAKE_INT(V_NAME, 1)
+	[ENDIF]
+	;成功/失敗処理はCARRYOUTで直接書く
+	;SOURCEやITEM入手など、内容が複雑なので
+	CASE "依頼消滅条件"
+	;30％で消失
+	SIF Add_Request_Should_Discard(ARG)
+			CALLF MAKE_INT(V_NAME, 1)
+	ENDSELECT
+ENDSELECT
+
+
+
+;固有依頼の設定用
+;この関数は実行/成功/失敗時の
+;報酬とペナルティと地の文のみを扱います
+;各キャラのメッセージは別所にて
+@IRAI_固有28(CHARA, IRAI_ID, SCENE)
+#DIM  CHARA
+#DIM  IRAI_ID
+#DIMS SCENE
+#DIM  CLIENT_ID
+CLIENT_ID = IRAI_ID_TO_CLIENT(IRAI_ID)
+SELECTCASE STR_DATA_IRAI(IRAI_ID, "依頼名", CLIENT_ID)
+;個々の依頼名で分岐
+CASE "The Wonderful Bush's Baked Beans I"
+	SELECTCASE SCENE
+	CASE "依頼条件表示"
+	;何か専用の表示情報を設けたい時用
+	;受託済みの依頼表示で使用されます
+	;
+	;PRINT系だけでSOURCEとかは入れちゃダメ、WAITも無しで
+	;ここ以外の表示項目は
+	;PRINTFORML 　　　　　：
+	;となっているのでスペースを揃えたほうが見栄えが良いです
+
+	CASE "依頼実行時"
+	;このCASEに限り、RESULTが意味を持ちます
+	;依頼実行時のRESULTにはIRAI_CONST_RESULT()を使用してください
+	;可能な引数は"キャンセル", "実行して成功", "実行して失敗", "実行して未解決"です
+	;独自処理を仕込みたい時は"実行して未解決"で先延ばしするなりしてください
+
+		SOURCE:歓楽 = 3000
+		RETURN IRAI_CONST_RESULT("実行して成功")
+	CASE "依頼成功時"
+	;成功報告時の報酬など
+		CharaQuestline:TARGET:0:0 ++
+		;システムメッセージつき好感度変化
+		;最後の引数だけ好感度が変化
+		CALL CHANGE_CFLAG(2, TARGET, 100)
+		;システムメッセージつき信頼度変化
+		;最後の引数だけ信頼度が変化
+		CALL CHANGE_CFLAG(4, TARGET, 20)
+	CASE "依頼失敗時"
+	;失敗報告時の処理
+		CALL CHANGE_CFLAG(2, TARGET, -10)
+		CALL CHANGE_CFLAG(4, TARGET, -10)
+	ENDSELECT						
+ENDSELECT
+
+;give seija moneies
+@M_KOJO_IRAI_UNIQUE_101_K28(ROLE, SCENE, CLIENT_ID)
+#DIMS ROLE     ;キャラの立場、依頼者かそうでないか
+#DIMS SCENE    ;セリフの表示されるタイミング
+#DIM  CLIENT_ID;依頼者IDだけ抜き出したもの
+;--------------------------------------------------
+;RETURN 0 の部分は共通の口上が表示されます
+;依頼ごとの口上を表示する部分は RETURN 0 を RETURN 1 にしてください
+;--------------------------------------------------
+SELECTCASE SCENE
+CASE "依頼提示時"
+	PRINTFORML 「Ever tried a meal or some food from another place that was so good, that you wanted to just bring it home?」
+	PRINTFORMDW You can't really think of a meal that good...
+	PRINTL
+	PRINTFORML 「Well, that happeed to me:」
+	PRINTFORMW 「With Bush's Baked Beans.」
+	PRINTFORML 「It's a creamy, very savory taste, with hints of bacon and is slightly sweet.」
+	PRINTFORMW 「I prepared it once with a meal just containing the beans. It was perhaps the best meal I ever tried.」
+	PRINTL
+	PRINTFORML 「The only problem was that it came in this thingy called a "Can", and I don't think I can get any more.」
+	PRINTFORMW 「The ingredients say that they're『Navy beans slow-cooked with specially cured bacon, fine brown sugar and our signature blend of spices.』」
+	PRINTFORMW 「How am I supposed to know what these spices are, and I don't think I have whatever they call a "slow cooker"」
+	PRINTFORML
+	PRINTFORML 「Go get me some Navy Beans. I don't where they can be found, but you should be able to find them somewhere.」
+	RETURN 1
+CASE "依頼非受託時"
+	PRINTDATAL
+		DATAFORM 「Placeholder」
+	ENDDATA
+	RETURN 1
+CASE "依頼受託時"
+	PRINTFORMW 「Thank you」
+	RETURN 1
+CASE "依頼確認時"
+	PRINTFORML 「Placeholder」
+	RETURN 1
+CASE "依頼破棄時"
+	PRINTFORML 「Placeholder」
+	RETURN 1
+CASE "依頼実行直前"
+	
+	RETURN 0
+CASE "依頼実行直後"
+	
+	RETURN 0
+CASE "成功報告時"
+;報酬：
+	PRINTFORMDW You bring the ingrediets to %CALLNAME:TARGET%
+	RETURN 1
+CASE "失敗報告時"
+	PRINTDATAL
+		DATAFORM 「Don't tell me that I have to live with this for the rest of my life...」
+	ENDDATA
+	RETURN 1
+	;IF !RESULT
+	;	PRINTFORML
+CASE "依頼報告不要"
+	
+	RETURN 0
+ENDSELECT

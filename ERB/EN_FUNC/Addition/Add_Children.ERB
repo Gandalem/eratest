@@ -1,0 +1,411 @@
+;Functions for handling children and additional child-related features.
+
+@CUSTOM_RESET_VAR_2(CharacterIndex)
+	;Resets custom child-related variables on character reset.
+#DIM CharacterIndex
+VARSET CHILD_TRAIT:CharacterIndex:0, ""
+VARSET CHILD_COLOR:CharacterIndex:0, 0
+
+@NG_CUSTOM_RESET_VAR_6
+	;Resets custom child-related variables on Bites the Dust.
+VARSET CHILD_TRAIT
+VARSET CHILD_COLOR
+
+@CHILD_TRAIT(CharacterIndex,ChildIndex,ChildTrait,RequireAll)
+	;Returns true if the given child of the given character has any of the given traits, or all of them if RequireAll is true.
+	;Multiple traits can be passed, separated by commas. They can also be tagged with Not: to exclude them, e.g. "Not:Cheerful,Not:Devoted".
+	;Traits are just strings associated with individual children and do nothing on their own, but dialogues can make use of them.
+#FUNCTION
+#DIM CharacterIndex
+#DIM ChildIndex
+#DIMS ChildTrait
+#DIM RequireAll
+#DIM DYNAMIC ChildTraitFound
+IF ChildTrait != ""
+	SPLIT ChildTrait, ",", LOCALS
+	FOR LOCAL, 0, RESULT
+		SELECTCASE CHILD_CHECK_TRAIT(LOCALS:LOCAL,CharacterIndex,ChildIndex)
+			CASE -1
+				RETURNF 0
+			CASE 0
+				SIF RequireAll
+					RETURNF 0
+			CASE 1
+				ChildTraitFound = 1
+		ENDSELECT
+	NEXT
+	RETURNF ChildTraitFound
+ENDIF
+RETURNF 1
+
+@CHILD_CHECK_TRAIT(ChildTrait,CharacterIndex,ChildIndex)
+	;Returns 1 if a requested trait is found, 0 if it isn't, or -1 if a trait with a Not: tag is found.
+#FUNCTION
+#DIMS ChildTrait
+#DIM CharacterIndex
+#DIM ChildIndex
+#DIM TraitFound
+#DIM IsNot
+
+IsNot = STRCOUNT(ChildTrait, "^Not:")
+SIF IsNot
+	ChildTrait '= SUBSTRING(ChildTrait, 4)
+
+TraitFound = STRCOUNT(CHILD_TRAIT:CharacterIndex:ChildIndex, @"(^|/)%ChildTrait%/")
+IF !TraitFound
+	RETURNF 0
+ELSEIF IsNot
+	RETURNF -1
+ELSE
+	RETURNF 1
+ENDIF
+
+@ADD_CHILD_TRAIT(CharacterIndex,ChildIndex,ChildTrait)
+	;Adds the given trait to the given child of the given character and returns the list position if they don't already have it, or returns -1 if they do.
+#DIM CharacterIndex
+#DIM ChildIndex
+#DIMS ChildTrait
+SIF !STRCOUNT(CHILD_TRAIT:CharacterIndex:ChildIndex, @"(^|/)%ChildTrait%/")
+	CHILD_TRAIT:CharacterIndex:ChildIndex += @"%ChildTrait%/"
+
+@REMOVE_CHILD_TRAIT(CharacterIndex,ChildIndex,ChildTrait)
+	;Removes the given trait from the given child of the given character and returns true if they have it.
+#DIM CharacterIndex
+#DIM ChildIndex
+#DIMS ChildTrait
+SIF STRCOUNT(CHILD_TRAIT:CharacterIndex:ChildIndex, @"(^|/)%ChildTrait%/")
+	CHILD_TRAIT:CharacterIndex:ChildIndex '= REPLACE(REPLACE(CHILD_TRAIT:CharacterIndex:ChildIndex, @"(^|/)%ChildTrait%/", "/"), "^/+", "")
+
+@REMOVE_CHILD_TRAITS(CharacterIndex,ChildIndex)
+	;Removes all traits from a given child of the given character.
+#DIM CharacterIndex
+#DIM ChildIndex
+CHILD_TRAIT:CharacterIndex:ChildIndex =
+
+@REMOVE_CHILDREN_TRAITS(CharacterIndex)
+	;Removes all traits from all children of the given character.
+#DIM CharacterIndex
+VARSET CHILD_TRAIT:CharacterIndex:0, ""
+
+@FIND_CHILD(FindChildCharacter,FindChildGrowthStage,FindChildTrait,FindChildSex,FindChildLocation,FindChildLitter,FindChildQuery,FindChildExclude)
+	;Returns the ID of a random child with all of the given properties as well as the mother and an array of all valid children by mother.
+	;Returns 0 if no valid children are found.
+
+	;All arguments are strings, including those that require numbers.
+	;For example, FIND_CHILD("51,53","Learning manners-Independent","All:Devoted,Singing","Female","Here","1","","5,7,8")
+		;This will return a child of either Nitori or Tewi between the learning manners and independent stages (inclusive), who is a female devoted singer in the same location as the player and is part of the same litter as the first child, and isn't the fifth, seventh, or eighth child.
+
+	;Some arguments have specific accepted values, or tags which can be applied to them:
+		;FindChildCharacter -
+			;Input the IDs of any number of characters separated by commas, e.g. 51,53 for Nitori and Tewi.
+			;If omitted, searches the children of all mothers.
+		;FindChildGrowthStage -
+			;Weaning
+			;Playing with toys
+			;Learning to walk
+			;Learning to talk
+			;Developing speech
+			;Learning manners
+			;Attending school
+			;Learning to be independent
+			;Independent
+				;Up to two stages can be provided as a range, separated by a hyphen.
+		;FindChildTrait -
+			;Input any trait by name and it will find a matching child. Multiple traits can be provided at once, separated by commas, to require any of them.
+			;Add All: to the beginning to require all of them.
+			;Not:Cheerful finds a child that doesn't have the Cheerful trait.
+			;This only works for characters who have added custom trait strings.
+		;FindChildLocation -
+			;Here finds a child in the player's location.
+			;Not here finds a child that is not in the player's location.
+			;Class finds a child currently attending school.
+			;Any other CHILD_ACT can be input (in Japanese).
+		;FindChildLitter -
+			;An ID without a tag finds a child of the same litter (or other multiple birth) as the given child.
+			;Different:5 finds a child that is from a different litter from the fifth child.
+			;Older:3 finds a child that is older than the third child.
+			;Younger:4 finds a child that is younger than the fourth child.
+		;FindChildQuery -
+			;Count returns the number of children found.
+			;Otherwise, the ID of a random found child is returned, or 0 if there are none.
+		;FindChildExclude -
+			;Omits an arbitrary number of other children from the return by their ID, separated by commas.
+
+	;Any and all arguments can be omitted. Omitting all of them will simply return a random child.
+#FUNCTION
+#DIMS FindChildCharacter
+#DIMS FindChildGrowthStage
+#DIMS FindChildTrait
+#DIMS FindChildSex
+#DIMS FindChildLocation
+#DIMS FindChildLitter
+#DIMS FindChildQuery
+#DIMS FindChildExclude
+#DIMS DYNAMIC FindChildExclude1
+#DIM DYNAMIC FindChildNumFound
+#DIMS DYNAMIC FindChildGrowthStage1
+#DIM DYNAMIC FindChildAge
+#DIM DYNAMIC RequireAll
+#DIM DYNAMIC FindChildLocationFound
+#DIMS DYNAMIC FindChildLitter1
+#DIM DYNAMIC FindChildExclusionFound
+#DIM DYNAMIC CharacterIndex
+#DIM DYNAMIC ChildIndex
+#DIM DYNAMIC DialogueTag
+#DIMS DYNAMIC FoundChildren, 500 ;{parent id}|{child index}
+VARSET LOCAL
+IF STRCOUNT(FindChildGrowthStage,"-")
+		;Define the age range to search if two stages are given by splitting the string in two and dropping the hyphen.
+	FindChildGrowthStage1 '= SUBSTRING(FindChildGrowthStage,STRFIND(FindChildGrowthStage,"-")+1)
+	FindChildGrowthStage '= SUBSTRING(FindChildGrowthStage,0,STRFIND(FindChildGrowthStage,"-"))
+ELSE
+		;If only one stage is given, it will be both the lower and upper stages of the range.
+	FindChildGrowthStage1 '= FindChildGrowthStage
+ENDIF
+IF STRCOUNT(FindChildTrait,"All:") ;Check if an All: tag was passed and strip it from the trait argument if so.
+	FindChildTrait '= SUBSTRING(FindChildTrait,STRFIND(FindChildTrait,":")+1)
+	RequireAll = 1
+ENDIF
+FOR CharacterIndex,1,CHARANUM
+	SIF !CFLAG:CharacterIndex:子供人数
+		CONTINUE
+	SIF FindChildCharacter != "" && !STRCOUNT(FindChildCharacter, @"(^|,){CharacterIndex}($|,)") ;If one or more mothers were given and the one being checked isn't one of them, her children are invalid.
+		CONTINUE
+	FOR ChildIndex,1,MIN(CFLAG:CharacterIndex:子供人数+1,MAXCHILD+1)
+			;If the child is excluded, they are invalid.
+		IF FindChildExclude != ""
+			FindChildExclude1 '= FindChildExclude
+			FOR LOCAL,0,STRCOUNT(FindChildExclude1,",")+1
+				SIF TOINT(SUBSTRING(FindChildExclude1,0,STRFIND(FindChildExclude1,","))) == ChildIndex
+					FindChildExclusionFound = 1
+				SIF STRFIND(FindChildExclude1,",")
+					FindChildExclude1 '= SUBSTRING(FindChildExclude1,STRFIND(FindChildExclude1,",")+1)
+			NEXT
+			IF FindChildExclusionFound
+				FindChildExclusionFound = 0
+				CONTINUE
+			ENDIF
+		ENDIF
+		FindChildAge = DAY - CHILD_BIRTHDAY:CharacterIndex:ChildIndex
+		SELECTCASE FindChildGrowthStage
+				;If the child's age is lower than the lower stage in the range, they are invalid.
+			CASE "Weaning"
+				SIF FindChildAge < CHILD_離乳
+					CONTINUE
+			CASE "Playing with toys"
+				SIF FindChildAge < CHILD_玩具
+					CONTINUE
+			CASE "Learning to walk"
+				SIF FindChildAge < CHILD_つかまり立ち
+					CONTINUE
+			CASE "Learning to talk"
+				SIF FindChildAge < CHILD_よちよち
+					CONTINUE
+			CASE "Developing speech"
+				SIF FindChildAge < CHILD_喋る
+					CONTINUE
+			CASE "Learning manners"
+				SIF FindChildAge < CHILD_しつけ
+					CONTINUE
+			CASE "Attending school"
+				SIF FindChildAge < CHILD_就学
+					CONTINUE
+			CASE "Learning to be independent"
+				SIF FindChildAge < CHILD_自立前
+					CONTINUE
+			CASE "Independent"
+				SIF FindChildAge < CHILD_自立
+					CONTINUE
+		ENDSELECT
+		SELECTCASE FindChildGrowthStage1
+				;If the child's age is higher than the upper stage in the range, they are invalid.
+			CASE "Breastfeeding"
+				SIF FindChildAge >= CHILD_離乳
+					CONTINUE
+			CASE "Weaning"
+				SIF FindChildAge >= CHILD_玩具
+					CONTINUE
+			CASE "Playing with toys"
+				SIF FindChildAge >= CHILD_つかまり立ち
+					CONTINUE
+			CASE "Learning to walk"
+				SIF FindChildAge >= CHILD_よちよち
+					CONTINUE
+			CASE "Learning to talk"
+				SIF FindChildAge >= CHILD_喋る
+					CONTINUE
+			CASE "Developing speech"
+				SIF FindChildAge >= CHILD_しつけ
+					CONTINUE
+			CASE "Learning manners"
+				SIF FindChildAge >= CHILD_就学
+					CONTINUE
+			CASE "Attending school"
+				SIF FindChildAge >= CHILD_自立前
+					CONTINUE
+			CASE "Learning to be independent"
+				SIF FindChildAge >= CHILD_自立
+					CONTINUE
+		ENDSELECT
+		SIF !CHILD_TRAIT(CharacterIndex,ChildIndex,FindChildTrait,RequireAll) ;If a trait was given and the conditions are not met, the child is invalid.
+			CONTINUE
+		SIF (FindChildSex == "Male" && CHILD_SEX:CharacterIndex:ChildIndex != 2) || (FindChildSex == "Female" && CHILD_SEX:CharacterIndex:ChildIndex != 1)
+				;If a sex was given and the child doesn't match, they are invalid.
+			CONTINUE
+		IF GROUPMATCH(FindChildLocation,"Here","Not here")
+				;Check for children in the current area.
+			FOR LOCAL, 0, nChildrenPresentCount
+				IF nChildrenPresent:(LOCAL) / 1000 == ChildIndex
+					FindChildLocationFound = 1
+				ENDIF
+			NEXT
+			SIF FindChildLocation == "Not here"
+					;If looking for children who aren't here, we want the opposite result.
+				FindChildLocationFound = !FindChildLocationFound
+		ELSEIF FindChildLocation == "Class" && CHILD_ACT:CharacterIndex:ChildIndex == "授業"
+				;Check for children attending school.
+			FindChildLocationFound = 1
+		ELSEIF FindChildLocation == CHILD_ACT:CharacterIndex:ChildIndex
+				;Check by action.
+			FindChildLocationFound = 1
+		ELSE
+			FindChildLocationFound = 1
+		ENDIF
+			;Children that don't match the given location are invalid.
+		SIF !FindChildLocationFound
+			CONTINUE
+		IF STRCOUNT(FindChildLitter,"Different:")
+			FindChildLitter1 '= SUBSTRING(FindChildLitter,STRFIND(FindChildLitter,":")+1)
+			SIF INRANGE(ChildIndex,CHILD_MULTIPLE_FIRST(CharacterIndex,TOINT(FindChildLitter1)),CHILD_MULTIPLE_LAST(CharacterIndex,TOINT(FindChildLitter1)))
+					;If the child is part of the same litter as the given child with a tag of Different:, they are invalid.
+				CONTINUE
+		ELSEIF STRCOUNT(FindChildLitter,"Older:")
+			FindChildLitter1 '= SUBSTRING(FindChildLitter,STRFIND(FindChildLitter,":")+1)
+			SIF CHILD_BIRTHDAY:CharacterIndex:TOINT(FindChildLitter1) <= CHILD_BIRTHDAY:CharacterIndex:ChildIndex
+					;If the child is younger than or the same age as the given child with a tag of Older:, they are invalid.
+				CONTINUE
+		ELSEIF STRCOUNT(FindChildLitter,"Younger:")
+			FindChildLitter1 '= SUBSTRING(FindChildLitter,STRFIND(FindChildLitter,":")+1)
+			SIF CHILD_BIRTHDAY:CharacterIndex:TOINT(FindChildLitter1) >= CHILD_BIRTHDAY:CharacterIndex:ChildIndex
+					;If the child is older than or the same age as the given child with a tag of Younger:, they are invalid.
+				CONTINUE
+		ELSEIF FindChildLitter != "" && !INRANGE(ChildIndex,CHILD_MULTIPLE_FIRST(CharacterIndex,TOINT(FindChildLitter)),CHILD_MULTIPLE_LAST(CharacterIndex,TOINT(FindChildLitter)))
+				;If the child is not part of the same litter as the given child with no tag, they are invalid.
+			CONTINUE
+		ENDIF
+			;If the child is still valid, add them to the list and increment the number of found children.
+		FoundChildren:(FindChildNumFound++) = {CharacterIndex}|{ChildIndex}
+	NEXT
+NEXT
+VARSET RESULT
+SIF FindChildQuery == "Count"
+		;If the purpose is to count children, return the number found.
+	RETURNF FindChildNumFound
+SIF !FindChildNumFound ;Return 0 if none were found.
+	RETURNF 0
+		;Otherwise, return a random child and their mother from the list.
+LOCAL = RAND:FindChildNumFound
+SPLIT FoundChildren:LOCAL, "|", LOCALS
+RESULT = TOINT(LOCALS:1)
+RESULT:1 = TOINT(LOCALS:0)
+RETURNF RESULT
+
+@CHILD_AGE(CharacterIndex,ChildIndex)
+	;Returns the current age group of the given child.
+#FUNCTION
+#DIM CharacterIndex
+#DIM ChildIndex
+SELECTCASE DAY - CHILD_BIRTHDAY:CharacterIndex:ChildIndex
+	CASE IS < CHILD_離乳
+		RETURNF 0 ;Breastfeeding.
+	CASE IS < CHILD_玩具
+		RETURNF 1 ;Weaning.
+	CASE IS < CHILD_つかまり立ち
+		RETURNF 2 ;Playing with toys.
+	CASE IS < CHILD_よちよち
+		RETURNF 3 ;Learning to walk.
+	CASE IS < CHILD_喋る
+		RETURNF 4 ;Walking.
+	CASE IS < CHILD_語彙
+		RETURNF 5 ;Learning to talk.
+	CASE IS < CHILD_しつけ
+		RETURNF 6 ;Developing speech.
+	CASE IS < CHILD_就学
+		RETURNF 7 ;Learning manners.
+	CASE IS < CHILD_自立前
+		RETURNF 8 ;Attending school.
+	CASE IS < CHILD_自立
+		RETURNF 9 ;Learning to be independent.
+	CASEELSE
+		RETURNF 10 ;Independent.
+ENDSELECT
+
+@CHILD_SET_COLOR(CharacterIndex,ChildIndex)
+	;Assigns and then randomizes the given child's font color.
+	;If the given character's dialogue has its own function for setting child color, defers to that instead.
+#DIM CharacterIndex
+#DIM ChildIndex
+#DIMS DYNAMIC DialogueTag
+#DIM DYNAMIC CurrentColor
+#DIM DYNAMIC CharacterColor
+#DIMS DYNAMIC CharacterColorString
+#DIM DYNAMIC NewColor,3
+RESULTS =
+CALL KOJO_ACTIVE_INFO(CharacterIndex)
+DialogueTag '= RESULTS
+RESULT = 0
+TRYCALLFORM K{CharacterIndex}%DialogueTag%_CHILD_SET_COLOR
+SIF RESULT
+	RETURN
+CurrentColor = GETCOLOR()
+CALL SET_KOJO_COLOR(CharacterIndex)
+CharacterColor = GETCOLOR()
+SETCOLOR CurrentColor
+SIF CharacterColor == GETDEFCOLOR() ;Abort if the character has no color.
+	RETURN
+CharacterColorString '= TOSTR(CharacterColor,"X6")
+NewColor:0 = TOINT("0x"+SUBSTRING(CharacterColorString,0,2))
+NewColor:1 = TOINT("0x"+SUBSTRING(CharacterColorString,2,2))
+NewColor:2 = TOINT("0x"+SUBSTRING(CharacterColorString,4,2))
+NewColor:0 = MAX(MIN((NewColor:0)+(RAND:2 ? RAND(10,30) # RAND(-30,-10)),255),0)
+NewColor:1 = MAX(MIN((NewColor:1)+(RAND:2 ? RAND(10,30) # RAND(-30,-10)),255),0)
+NewColor:2 = MAX(MIN((NewColor:2)+(RAND:2 ? RAND(10,30) # RAND(-30,-10)),255),0)
+CHILD_COLOR:CharacterIndex:ChildIndex = COLOR_FROMRGB(NewColor:0,NewColor:1,NewColor:2)
+
+@CHILD_COLOR(CharacterIndex,ChildIndex)
+	;Returns the text color of the given child of the given character.
+#FUNCTION
+#DIM CharacterIndex
+#DIM ChildIndex
+RETURNF CHILD_COLOR:CharacterIndex:ChildIndex
+
+@CHILD_TEXT(Text,CharacterIndex,ChildIndex,Mode)
+	;Prints dialogue in the text color of the given child of the given character.
+	;If the child does not exist, it will print nothing.
+#DIMS Text
+#DIM CharacterIndex
+#DIM ChildIndex
+#DIMS Mode
+#DIM DYNAMIC CurrentColor
+SIF CFLAG:CharacterIndex:子供人数 < ChildIndex
+	RETURN
+CurrentColor = GETCOLOR()
+RESETCOLOR
+SIF !CHILD_COLOR:CharacterIndex:ChildIndex ;If the child has no color, assign one.
+	CALL CHILD_SET_COLOR(CharacterIndex,ChildIndex)
+SETCOLOR CHILD_COLOR:CharacterIndex:ChildIndex
+SELECTCASE Mode
+    CASE "l", "L"
+        PRINTFORML %Text%
+    CASE "w", "W"
+        PRINTFORMW %Text%
+	CASE "str", "STR"
+		CALL PRINT_STR(Text)
+	CASE "strl", "STRL"
+		CALL PRINT_STRL(Text)
+	CASE "strw", "STRW"
+		CALL PRINT_STRW(Text)
+    CASEELSE
+        PRINTFORM %Text%
+ENDSELECT
+SETCOLOR CurrentColor

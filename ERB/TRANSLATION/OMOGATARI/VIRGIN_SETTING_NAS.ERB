@@ -1,0 +1,910 @@
+;New virgin set menu that separates options into categories
+
+@VIRGIN_SET_NAS
+#DIM nLineCnt_Head
+
+VARSET LOCAL
+DEBUG_Target = TARGET
+DRAWLINE
+PRINTL Here some various settings for characters can be set before the game starts.
+PRINTL 
+
+nLineCnt_Head = LINECOUNT
+REDRAW 0
+DO
+	SIF LINECOUNT - nLineCnt_Head > 0
+		CLEARLINE LINECOUNT - nLineCnt_Head
+		
+	CALL VIRGIN_SET_NAS_STATE
+	SELECTCASE RESULT
+		CASE 0
+			PRINTW Configuration set.
+			RETURN
+	CASEELSE
+	ENDSELECT
+LOOP 1
+
+
+@VIRGIN_SET_NAS_STATE
+#DIM     PAGE       ;表示中のページ
+#DIMS CONST DISP_NAME = "Virginity", "Body", "Mind", "Other"
+#DIM CREDRAW
+#DIM FIRST_LINE
+FIRST_LINE = LINECOUNT
+$REPRINT
+CLEARLINE LINECOUNT - FIRST_LINE
+CREDRAW = CURRENTREDRAW()
+REDRAW 0
+;call command to get a name
+FOR LOCAL, 0, 100
+	VARSET RESULTS
+	RESULT:3 = 0
+	TRYCALLFORM VIRGIN_SET_NAS_EFFECT_{PAGE}_{LOCAL}(MASTER,2)
+	;we get a name of the command
+	IF STRLENS(RESULTS)
+		RESULTS:1 '= RESULTS
+		SIF RESULT:3
+			RESULTS:1 += " (Selection Independent)"
+		PRINTFORML [{LOCAL,2}] - %RESULTS:1%
+	ENDIF
+NEXT
+DRAWLINE
+FOR LOCAL, 0, VARSIZE("DISP_NAME")
+	SIF !STRLENS(DISP_NAME:LOCAL)
+		CONTINUE
+	SIF PAGE == LOCAL
+		SETCOLOR 0x00FFFF
+	;exception for player character
+	PRINTBUTTON DISP_NAME:LOCAL, LOCAL + 8002
+	RESETCOLOR
+	PRINTFORM 　　
+NEXT
+PRINTFORML 
+PRINTBUTTON "[0] Finished", 0
+PRINTBUTTON @" [-1] Set characters ({NAS_VIRGIN_SET_COUNT} selected)", -1
+PRINTBUTTON " [-2] Choose Settings Individually", -2
+DO
+	INPUT
+	SELECTCASE RESULT
+	CASE 0
+		RETURN 0
+	CASE -1
+		CALL VIRGIN_SET_NAS_CHARACTERS
+	CASE -2
+		CALL SET_VIRGINITY_MOD
+	CASE 8002 TO VARSIZE("DISP_NAME")+8002
+		PAGE = RESULT-8002
+	CASEELSE
+		$RETRY
+		A = RESULT
+		RESULT:3 = 0
+		TRYCALLFORM VIRGIN_SET_NAS_EFFECT_{PAGE}_{A}(MASTER,2)
+
+		IF !NAS_VIRGIN_SET_COUNT && !RESULT:3
+			PRINTFORML No settings on what characters to affect have been selected.
+			PRINTFORMW Please select some characters before trying again.
+			GOTO REPRINT
+		ENDIF
+
+		TRYCALLFORM VIRGIN_SET_NAS_RESULT(PAGE,A)
+	ENDSELECT
+	BREAK
+LOOP 1
+GOTO REPRINT
+
+
+@VIRGIN_SET_NAS_RESULT(nTab,nInput)
+#DIM nTab
+#DIM nInput
+#DIM makeMessage
+VARSET makeMessage
+
+RESULT:3 = 0
+CALLFORM VIRGIN_SET_NAS_EFFECT_{nTab}_{nInput}(LOCAL,2)
+;bypass selection
+IF RESULT:3
+CALLFORM VIRGIN_SET_NAS_EFFECT_{nTab}_{nInput}(MASTER,0)
+CALLFORM VIRGIN_SET_NAS_EFFECT_{nTab}_{nInput}(MASTER,1)
+RETURN
+ENDIF
+
+FOR LOCAL,0,CHARANUM
+	IF !CFLAG:LOCAL:NAS_VIRGIN_SET_SELECTED
+		CONTINUE
+	ENDIF
+	SIF LOCAL >= CHARANUM
+		CONTINUE
+
+	CALLFORM VIRGIN_SET_NAS_EFFECT_{nTab}_{nInput}(LOCAL,0)
+NEXT
+CALLFORM VIRGIN_SET_NAS_EFFECT_{nTab}_{nInput}(MASTER,1)
+
+
+;=================================================
+;Template
+;X is the page the effect is in
+;Y is the entry the command is
+;C_ID is the character ID
+;ARG determines what effects will be returned
+;0: Character edits
+;1: Message when the command is executed
+;2: Name of the command
+;=================================================
+@VIRGIN_SET_NAS_EFFECT_X_Y(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+CASE 0
+	;How will this option affect characters
+CASE 1
+	;Message when this command is executed
+	PRINTFORMW
+CASE 2
+	;Name of the option
+	RESULTS '= @"Name of the option"
+ENDSELECT
+
+;=================================================
+;Sets everyone as a virgin
+;=================================================
+@VIRGIN_SET_NAS_EFFECT_0_1(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+CASE 0
+	CALL SET_VIRGIN(C_ID)
+CASE 1
+	PRINTW What a virgin-fag!
+	PRINTFORMW %NAS_VIRGIN_CHARA_STR()% is now a virgin with zero experience.
+CASE 2
+	RESULTS '= @"%NAS_VIRGIN_CHARA_STR()% Is A Virgin"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_0_2(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+CASE 0
+	TALENT:C_ID:処女 = 0
+	SIF TALENT:C_ID:性別嗜好 >= 1
+		TALENT:C_ID:性別嗜好 = 0
+	EXP:C_ID:Ｖ経験 = MAX(EXP:C_ID:Ｖ経験, 50)
+	ABL:C_ID:Ｖ感覚 = MAX(ABL:C_ID:Ｖ感覚, 2)
+	ABL:C_ID:腰 = MAX(ABL:C_ID:腰, 2)
+	EXP:C_ID:Ｖ性交経験 = MAX(EXP:C_ID:Ｖ経験, 50)
+	EXP:C_ID:Ｖ拡張経験 = MAX(EXP:C_ID:Ｖ拡張経験, 3)
+	EXP:C_ID:精液経験 = MAX(EXP:C_ID:精液経験, 10)
+	CharaAge:C_ID:1 += (RAND(100,500))
+	CharaAge:C_ID:2 = ((StartingYear-1)*YearLength) - (CharaAge:C_ID:1*YearLength)
+CASE 1
+	PRINTFORMW %NAS_VIRGIN_CHARA_STR()% is not a virgin, and they all have experience.
+CASE 2
+	RESULTS '= @"Due To Their Long Lives, The %PRINT_MALE("Boys:Girls",1)% Should All Have Some Experience"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_0_3(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+CASE 0
+	CALL SET_YARIMAN(C_ID)
+CASE 1
+	PRINTFORMW %NAS_VIRGIN_CHARA_STR()% is a slut with lots of experience.
+CASE 2
+	RESULTS '= @"%NAS_VIRGIN_CHARA_STR()% Is A Slut"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_0_4(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+CASE 0
+	TALENT:C_ID:処女 = 1
+	SIF TALENT:C_ID:性別嗜好 == 1
+		TALENT:C_ID:性別嗜好 = 0
+	EXP:C_ID:Ｖ経験 = 0
+	ABL:C_ID:Ｖ感覚 = 0
+	ABL:C_ID:欲望 = MAX(3,ABL:C_ID:欲望)
+	EXP:C_ID:Ｖ性交経験 = 0
+	EXP:C_ID:Ｖ拡張経験 = 0
+	EXP:C_ID:精液経験 = 0
+	TALENT:C_ID:ヤリマン = 1
+	TALENT:C_ID:貞操 = -1
+CASE 1
+	PRINTW Don't go causing trouble.
+	PRINTFORMW %NAS_VIRGIN_CHARA_STR()% is now a slut virgin.
+CASE 2
+	RESULTS '= @"%NAS_VIRGIN_CHARA_STR()% Is A Slut Virgin"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_0_5(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+CASE 0
+	;How will this option affect characters
+	TALENT:C_ID:処女 = 1
+	SIF TALENT:C_ID:性別嗜好 == 1
+		TALENT:C_ID:性別嗜好 = 0
+	EXP:C_ID:Ｖ経験 = MAX(EXP:C_ID:Ｖ経験, 50)
+	ABL:C_ID:Ｖ感覚 = MAX(ABL:C_ID:Ｖ感覚, 250)
+	EXP:C_ID:Ｃ経験 = MAX(EXP:C_ID:Ｃ経験, 50)
+	ABL:C_ID:Ｃ感覚 = MAX(ABL:C_ID:Ｃ感覚, 250)			
+	EXP:C_ID:Ｂ経験 = MAX(EXP:C_ID:Ｂ経験, 50)
+	ABL:C_ID:Ｂ感覚 = MAX(ABL:C_ID:Ｂ感覚, 250)
+	EXP:C_ID:Ａ経験 = MAX(EXP:C_ID:Ａ経験, 50)
+	ABL:C_ID:Ａ感覚 = MAX(ABL:C_ID:Ａ感覚, 250)			
+	EXP:C_ID:Ｍ経験 = MAX(EXP:C_ID:Ｍ経験, 50)
+	ABL:C_ID:Ｍ感覚 = MAX(ABL:C_ID:Ｍ感覚, 250)
+	EXP:C_ID:UExp = MAX(EXP:C_ID:UExp, 50)
+	ABL:C_ID:USens = MAX(ABL:C_ID:USens, 250)						
+	ABL:C_ID:腰 = MAX(ABL:C_ID:腰, 50)
+	ABL:C_ID:指 = MAX(ABL:C_ID:指, 50)
+	ABL:C_ID:舌 = MAX(ABL:C_ID:舌, 50)
+	ABL:C_ID:胸 = MAX(ABL:C_ID:胸, 50)		
+	ABL:C_ID:膣 = MAX(ABL:C_ID:膣, 50)
+	ABL:C_ID:アナル = MAX(ABL:C_ID:アナル, 50)
+	ABL:C_ID:Urethra = MAX(ABL:C_ID:Urethra, 50)			
+	EXP:C_ID:Ｖ性交経験 = MAX(EXP:C_ID:Ｖ経験, 50)
+	EXP:C_ID:Ｖ拡張経験 = MAX(EXP:C_ID:Ｖ拡張経験, 3)
+	EXP:C_ID:精液経験 = MAX(EXP:C_ID:精液経験, 10)			
+	ABL:C_ID:サドっ気 = MAX(ABL:C_ID:サドっ気, 250)						
+	ABL:C_ID:ゲイ中毒 = MAX(ABL:C_ID:ゲイ中毒, 250)				
+	ABL:C_ID:ホモっ気 = MAX(ABL:C_ID:ホモっ気, 250)				
+	ABL:C_ID:レズ中毒 = MAX(ABL:C_ID:レズ中毒, 250)				
+	ABL:C_ID:レズっ気 = MAX(ABL:C_ID:レズっ気, 250)				
+	ABL:C_ID:露出癖 = MAX(ABL:C_ID:露出癖, 250)				
+	;set lewd and pleasure marks to max
+	MARK:C_ID:不埒刻印 = MAX(MARK:C_ID:不埒刻印, 3)					
+	MARK:C_ID:快楽刻印 = MAX(MARK:C_ID:快楽刻印, 3)					
+	ABL:C_ID:欲望 = 250		
+	TALENT:C_ID:ヤリマン = 1
+	TALENT:C_ID:サド = 1
+	TALENT:C_ID:貞操 = -1
+	;TALENT:C_ID:2 = 3
+	;TALENT:C_ID:形状 = 3
+	TALENT:C_ID:濡れやすさ = 1
+	TALENT:C_ID:羞恥心 = -1
+	TALENT:C_ID:性的興味 = 1
+	TALENT:C_ID:倒錯的 = 1
+	TALENT:C_ID:小悪魔 = 1
+	;set sexual orentation to bisexual
+	TALENT:C_ID:性別嗜好 = -1
+	TALENT:C_ID:動物耳 = 1
+	TALENT:C_ID:SexKnow  = 5
+	TALENT:C_ID:応答  = 1
+	TALENT:C_ID:自己愛  = 1
+	TALENT:C_ID:絶倫  = 1
+	;TALENT:C_ID:双槍  = 1
+	;almighty impregnation makes it so YOU are impregnated easier		
+	;TALENT:C_ID:万能孕ませ  = 1
+	;TALENT:C_ID:濃厚精液  = 1			
+	;MAXBASE:C_ID:5 = 1500
+	;MAXBASE:C_ID:精力 = 1000	
+	;SIF TALENT:MASTER:2 == 1
+	;ESTRUS_CYCLE(MASTER) = 150
+	FLAG:甲斐性無 = 1
+	FLAG:LUSTMODE = 1
+	nRapeAnywhere = 1
+CASE 1
+	;Message when this command is executed
+	PRINTFORMW Good luck staying a virgin
+	PRINTFORMW This also turns on Lust Mode and sex anywhere so there's that.	
+	PRINTW Everyone now wants to fuck you
+CASE 2
+	;Name of the option
+		RESULTS '= @"%NAS_VIRGIN_CHARA_STR()% Wants to Rape You"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_0_6(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+CASE 0
+	;How will this option affect characters
+	FOR LOCAL,1,CHARANUM
+		;Seiga, the Watatsuki sisters, and Junko all had husbands, and Sanae is Suwako's descendant
+		SIF !GROUPMATCH(CHARANUM, 33, 90, 98, 99, 112)
+			CALL SET_VIRGIN(LOCAL)
+	NEXT
+CASE 1
+	;Message when this command is executed
+	PRINTFORMW Everyone except %CALLNAME:33%, %CALLNAME:90%, the %nameArray:90:na_LastName%, and %CALLNAME:112% are now virgins.
+CASE 2
+	;Name of the option
+	RESULTS '= @"Characters Should Be Virgins Unless They've Had Kids/Husbands"
+	RESULT:3 = 1
+ENDSELECT
+
+
+@VIRGIN_SET_NAS_EFFECT_1_1(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+CASE 0
+	CALL SET_LOLI(C_ID)
+CASE 1
+	IF TALENT:MASTER:形状 < 6
+		PRINTFORML Lolicon is fine too!
+	ELSE
+		PRINTFORML You devil!
+	ENDIF
+	PRINTFORML
+	PRINTFORMW %NAS_VIRGIN_CHARA_STR()% is now a loli.
+CASE 2
+	RESULTS '= @"%NAS_VIRGIN_CHARA_STR()% Is A Loli"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_1_2(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+CASE 0
+	;How will this option affect characters
+	TALENT:C_ID:体型 = -5
+	TALENT:C_ID:143 = 1
+CASE 1
+	;Message when this command is executed
+	IF TALENT:MASTER:形状 < 3
+		PRINTFORMW %NAS_VIRGIN_CHARA_STR()% is now an inchling with animal ears.
+	ELSE
+		PRINTFORML You bastard!
+		PRINTFORML 
+		PRINTFORMW %NAS_VIRGIN_CHARA_STR()% is now an inchling with animal ears.
+	ENDIF
+CASE 2
+	;Name of the option
+	RESULTS '= "Everyone Is An Inchling With Animal Ears"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_1_3(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+CASE 0
+	;How will this option affect characters
+	TALENT:C_ID:2 = 3
+	TALENT:C_ID:形状 = 3
+	MAXBASE:C_ID:射精 = 10000
+	MAXBASE:C_ID:5 = 1500
+	MAXBASE:C_ID:精力 = 1000
+	FOR LOCAL:3,0,100
+		CALLF ClearHediff(C_ID,63,LOCAL:3)
+		CALLF ClearHediff(C_ID,68,LOCAL:3)
+	NEXT
+	;NAS: Reset vig if LESS than 1000
+	SIF BASE:C_ID:精力 < 1000
+		BASE:C_ID:精力 = 1000
+	CALL newGenderSystemConvert(C_ID)
+CASE 1
+	;Message when this command is executed
+	PRINTFORMW %NAS_VIRGIN_CHARA_STR()% is now a futanari.
+CASE 2
+	;Name of the option
+	RESULTS '= @"%NAS_VIRGIN_CHARA_STR()% Is A Futanari"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_1_4(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+CASE 0
+	;How will this option affect characters
+	PeeHold:C_ID:0 = -5
+	PooHold:C_ID:0 = -5
+	PeeHoldExp:C_ID:0 = EXP_DEMAND_20(0,91,C_ID)
+	PooHoldExp:C_ID:0 = EXP_DEMAND_21(0,92,C_ID)
+	CALLF SILENT_ENDURANCECHANGE(C_ID)
+	CALLF ResetBladders(C_ID)
+CASE 1
+	;Message when this command is executed
+	PRINTFORMW Incontinence isn't fun!
+CASE 2
+	;Name of the option
+	SIF nPee || nScat
+	RESULTS '= @"%NAS_VIRGIN_CHARA_STR()% Isn't Potty Trained"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_1_5(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+CASE 0
+	;How will this option affect characters
+	PeeHold:C_ID:0 = 5
+	PooHold:C_ID:0 = 5
+	PeeHoldExp:C_ID:0 = EXP_DEMAND_20(0,91,C_ID)
+	PooHoldExp:C_ID:0 = EXP_DEMAND_21(0,92,C_ID)
+	CALLF SILENT_ENDURANCECHANGE(C_ID)
+	CALLF ResetBladders(C_ID)
+CASE 1
+	;Message when this command is executed
+	PRINTFORMW No pee isn't fun either!	
+CASE 2
+	;Name of the option
+	SIF nPee || nScat
+	RESULTS '= @"%NAS_VIRGIN_CHARA_STR()% can Hold Themselves for Days"
+ENDSELECT
+
+
+@VIRGIN_SET_NAS_EFFECT_1_6(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+CASE 0
+	;How will this option affect characters
+TALENT:C_ID:処女 = 0
+TALENT:C_ID:2 = 2
+TALENT:C_ID:形状 = 3
+MAXBASE:C_ID:5 = 1500
+MAXBASE:C_ID:精力 = 1000
+FOR LOCAL:3,0,100
+	CALLF ClearHediff(C_ID,63,LOCAL:3)
+	CALLF ClearHediff(C_ID,68,LOCAL:3)
+NEXT
+CALL NewGenderSystemConvert(C_ID)
+IF GETBIT(nUnfair,1)
+	BloodlineName:C_ID:0 =
+	;Family Names
+	CALL RandomName(C_ID, 5)
+	IF BloodlineName:C_ID:0 == ""
+		BloodlineName:C_ID:0 = %nameArray:C_ID:na_LastName%
+		;CALLNAME:(C_ID) = %nameArray:(C_ID):na_FirstName%
+	ELSE
+		nameArray:C_ID:na_LastName = %BloodlineName:C_ID:0%
+		CALLNAME:(C_ID) = %nameArray:(C_ID):na_FirstName%
+	ENDIF
+	NAME:(C_ID) = %NameChecker(C_ID)%
+	FOR LOCAL:1, 0, CHARANUM
+		IF !CharaFamily:C_ID:(LOCAL:1)
+			CONTINUE
+		ELSE
+			SIF BloodlineName:(LOCAL:1):0 == ""
+				BloodlineName:(LOCAL:1):0 = %BloodlineName:C_ID:0%
+
+			nameArray:(LOCAL:1):na_LastName = %BloodlineName:(LOCAL:1):0%
+			CALLNAME:(LOCAL:1) = %nameArray:(LOCAL:1):na_FirstName%
+			NAME:(LOCAL:1) = %NameChecker(LOCAL:1)%
+		ENDIF
+	NEXT
+ENDIF
+CASE 1
+	;Message when this command is executed
+	PRINTW Fuck You
+	PRINTW Un-girls your girl
+	PRINTFORMW %NAS_VIRGIN_CHARA_STR()% is now a femboy.
+CASE 2
+	;Name of the option
+	RESULTS '= @"%NAS_VIRGIN_CHARA_STR()% Is A Guy"
+ENDSELECT
+
+
+@VIRGIN_SET_NAS_EFFECT_1_7(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+CASE 0
+	;How will this option affect characters
+	;Don't modify guys
+	SIF !IS_MALE(C_ID)
+		TALENT:C_ID:母乳体質 = 2
+CASE 1
+	;Message when this command is executed
+	PRINTFORMW Everyone lactates now.
+CASE 2
+	;Name of the option
+	RESULTS '= @"%NAS_VIRGIN_CHARA_STR()% Lactates"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_1_8(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+CASE 0
+	;How will this option affect characters
+	;Don't modify guys
+	SIF !IS_MALE(C_ID)
+		TALENT:C_ID:バストサイズ = 2
+CASE 1
+	;Message when this command is executed
+	PRINTFORMW Everyone has huge breasts now.
+CASE 2
+	;Name of the option
+	RESULTS '= @"%NAS_VIRGIN_CHARA_STR()% Has Huge Breasts"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_1_9(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+CASE 0
+	;How will this option affect characters
+	FOR LOCAL:3,0,100
+		CALLF ClearHediff(C_ID,74,LOCAL:3)
+		CALLF ClearHediff(C_ID,67,LOCAL:3)
+	NEXT
+	CALLF AddBionic(C_ID,74,103,0)
+	CALLF AddBionic(C_ID,67,112,0)
+	CALLF ResetBladders(C_ID)
+CASE 1
+	;Message when this command is executed
+	PRINTFORMW Everyone has tiny bladders now.
+CASE 2
+	;Name of the option
+	SIF nPee || nScat
+		RESULTS '= @"%NAS_VIRGIN_CHARA_STR()% Has Microscopic Bladders"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_1_10(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+CASE 0
+	;How will this option affect characters
+	CALL SET_VIRGIN(C_ID)
+	CALL SET_LOLI(C_ID)
+	TALENT:C_ID:処女 = 1
+	ABL:C_ID:欲望 = 99
+	TALENT:C_ID:SexKnow = -1
+	TALENT:C_ID:中毒しやすい = 1
+	CALLF GAMANME(C_ID,-5)
+CASE 1
+	;Message when this command is executed
+	PRINTFORMW %NAS_VIRGIN_CHARA_STR()% is now a loli that wets the bed and needs their %PRINT_MALE("daddy_:mommy",MASTER)%.
+CASE 2
+	;Name of the option
+	SIF nPee || nScat
+		RESULTS '= @"%NAS_VIRGIN_CHARA_STR()% is a Loli who's Clingy and Incontinent"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_1_11(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+CASE 0
+	;How will this option affect characters
+	CALL SET_VIRGIN(C_ID)
+	CharaAge:C_ID:0 = 0
+	TALENT:C_ID:SexKnow = -1
+CASE 1
+	;Message when this command is executed
+	PRINTW You have a baby fetish, don't you?
+	PRINTFORMW Everyone is now a baby that and needs their %PRINT_MALE("daddy_:mommy",MASTER)%.
+CASE 2
+	;Name of the option
+	RESULTS '= @"%NAS_VIRGIN_CHARA_STR()% Is A Baby"
+ENDSELECT
+
+
+@VIRGIN_SET_NAS_EFFECT_1_12(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+CASE 0
+	TALENT:C_ID:体型 = MAX(TALENT:C_ID:100,0)
+	;sjws mad
+	IF CharaAge:C_ID:0 < 21
+		CharaAge:C_ID:0 = MAX(21,CharaAge:C_ID:0)
+		CharaAge:C_ID:1 = MAX(21,CharaAge:C_ID:1)
+	ENDIF
+CASE 1
+	PRINTFORML Are small characters too much for you?
+	PRINTFORML
+	PRINTFORMW %NAS_VIRGIN_CHARA_STR()% is now an adult.
+CASE 2
+	RESULTS '= @"%NAS_VIRGIN_CHARA_STR()% Is An Adult"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_1_13(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+CASE 0
+	;How will this option affect characters
+TALENT:C_ID:処女 = 1
+TALENT:C_ID:2 = 1
+TALENT:C_ID:形状 = 3
+MAXBASE:C_ID:5 = 0
+MAXBASE:C_ID:精力 = 0
+FOR LOCAL:3,0,100
+	CALLF ClearHediff(C_ID,63,LOCAL:3)
+	CALLF ClearHediff(C_ID,68,LOCAL:3)
+NEXT
+CALL NewGenderSystemConvert(C_ID)
+IF GETBIT(nUnfair,1)
+	BloodlineName:C_ID:0 =
+	;Family Names
+	CALL RandomName(C_ID, 5)
+	IF BloodlineName:C_ID:0 == ""
+		BloodlineName:C_ID:0 = %nameArray:C_ID:na_LastName%
+		;CALLNAME:(C_ID) = %nameArray:(C_ID):na_FirstName%
+	ELSE
+		nameArray:C_ID:na_LastName = %BloodlineName:C_ID:0%
+		CALLNAME:(C_ID) = %nameArray:(C_ID):na_FirstName%
+	ENDIF
+	NAME:(C_ID) = %NameChecker(C_ID)%
+	FOR LOCAL:1, 0, CHARANUM
+		IF !CharaFamily:C_ID:(LOCAL:1)
+			CONTINUE
+		ELSE
+			SIF BloodlineName:(LOCAL:1):0 == ""
+				BloodlineName:(LOCAL:1):0 = %BloodlineName:C_ID:0%
+
+			nameArray:(LOCAL:1):na_LastName = %BloodlineName:(LOCAL:1):0%
+			CALLNAME:(LOCAL:1) = %nameArray:(LOCAL:1):na_FirstName%
+			NAME:(LOCAL:1) = %NameChecker(LOCAL:1)%
+		ENDIF
+	NEXT
+ENDIF
+CASE 1
+	;Message when this command is executed
+	PRINTW And now everyone is a girl.
+	PRINTW Just like how /egg/ intended it.
+	PRINTFORMW %NAS_VIRGIN_CHARA_STR()% is now a girl.
+CASE 2
+	;Name of the option
+	RESULTS '= @"%NAS_VIRGIN_CHARA_STR()% Is A Girl"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_2_1(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+CASE 0
+	;How will this option affect characters
+	CALL SET_VIRGIN(C_ID)
+	TALENT:C_ID:SexKnow = -1
+CASE 1
+	;Message when this command is executed
+	PRINTFORMW What a %CALLNAME:145%.
+	PRINTFORMW %NAS_VIRGIN_CHARA_STR()% is an ignorant virgin.
+CASE 2
+	;Name of the option
+	RESULTS '= @"%NAS_VIRGIN_CHARA_STR()% Is Clueless"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_2_2(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+CASE 0
+	;How will this option affect characters
+	FOR LOCAL, 0, VARSIZE("EXP")
+		EXP:C_ID:LOCAL = 0
+	NEXT
+	FOR LOCAL, 0, VARSIZE("ABL")
+		ABL:C_ID:LOCAL = 0
+	NEXT
+	IF TALENT:C_ID:処女 == 0
+	TALENT:C_ID:処女 = -1	
+	ELSE
+	TALENT:C_ID:処女 = 1	
+	ENDIF	
+	TALENT:C_ID:SexKnow = -1
+	TALENT:C_ID:キス未経験 = 1
+CASE 1
+	;Message when this command is executed
+		PRINTW Oops...
+		;PRINTW They even forgot how to potty train
+	PRINTW Everyone forgot everything
+CASE 2
+	;Name of the option
+	RESULTS '= @"%NAS_VIRGIN_CHARA_STR()% Has Amnesia"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_2_3(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+CASE 0
+	;How will this option affect characters
+	CALL GET_ANGRY(C_ID, MARK:C_ID:反発刻印 + 3)
+CASE 1
+	;Message when this command is executed
+	SETCOLOR 247,171,166
+	PRINTFORM %NAS_VIRGIN_CHARA_STR()%'s face distorts in rage
+	PRINTFORML  as they mutter a curse...
+	PRINTFORMW %NAS_VIRGIN_CHARA_STR()% got Hate Mark Lv3
+	RESETCOLOR
+CASE 2
+	;Name of the option
+	RESULTS '= @"%NAS_VIRGIN_CHARA_STR()% Hates you"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_2_4(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+CASE 0
+	;How will this option affect characters
+	MAXBASE:C_ID:TSP = 64000
+	BASE:C_ID:TSP = MAXBASE:C_ID:TSP
+CASE 1
+	;Message when this command is executed
+	PRINTFORML THE WORLD
+	PRINTFORMW Now has more timestoppers.
+CASE 2
+	;Name of the option
+	RESULTS '= @"%NAS_VIRGIN_CHARA_STR()% has TSP"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_2_5(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+CASE 0
+	;How will this option affect characters
+	FOR LOCAL,1,CHARANUM
+		;MC has TSP since it's a game ability, and Sakuya has it confirmed in game.
+		SIF GROUPMATCH(C_ID,15,0,MASTER)
+			CONTINUE
+		MAXBASE:C_ID:TSP = 0
+		BASE:C_ID:TSP = MAXBASE:C_ID:TSP
+	NEXT
+CASE 1
+	;Message when this command is executed
+	PRINTFORMW Time stop is now only given to %CALLNAME:0% and %CALLNAME:15%
+CASE 2
+	;Name of the option
+	RESULTS '= @"Only %CALLNAME:0% and %CALLNAME:15% have TSP"
+	RESULT:3 = 1
+ENDSELECT
+
+;=======================================================
+;Other Settings
+;=======================================================
+
+@VIRGIN_SET_NAS_EFFECT_3_96(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+CASE 0
+	;How will this option affect characters
+CASE 1
+	;Message when this command is executed
+	CALL PREGNANCY_TYPE_OPTIONS
+CASE 2
+	;Name of the option
+	RESULTS '= @"Pregnancy type options"
+ENDSELECT
+
+
+@VIRGIN_SET_NAS_EFFECT_3_97(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+CASE 0
+	;How will this option affect characters
+CASE 1
+	;Message when this command is executed
+	CALL CCREATE_RANDOMIZE()
+CASE 2
+	;Name of the option
+	RESULTS '= @"Go to random options menu mk.1"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_3_98(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+CASE 0
+	;How will this option affect characters
+CASE 1
+	;Message when this command is executed
+	CALL CCREATE_RANDOMIZE2()
+CASE 2
+	;Name of the option
+	RESULTS '= @"Go to random options menu mk.2"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_3_99(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+CASE 0
+	;How will this option affect characters
+	CALL RESET_CHARA(C_ID)
+CASE 1
+	;Message when this command is executed
+	PRINTFORMW %NAS_VIRGIN_CHARA_STR()% was return to default settings.
+CASE 2
+	;Name of the option
+	RESULTS '= @"%NAS_VIRGIN_CHARA_STR()% Is Reset To Default"
+ENDSELECT
+
+@VIRGIN_SET_NAS_CHARACTERS
+#DIM CREDRAW
+#DIM FIRST_LINE
+FIRST_LINE = LINECOUNT
+$REPRINT
+CLEARLINE LINECOUNT - FIRST_LINE
+CREDRAW = CURRENTREDRAW()
+REDRAW 0
+NAS_VIRGIN_SET_COUNT = 0
+PRINT Characters in 
+SETCOLOR C_P_GREEN
+PRINT green 
+RESETCOLOR
+PRINTFORML will be included when setting up.
+DRAWLINE
+FOR LOCAL, 0, CHARANUM-1
+	IF CFLAG:LOCAL:NAS_VIRGIN_SET_SELECTED
+		SETCOLOR C_P_GREEN
+		NAS_VIRGIN_SET_COUNT++
+	ENDIF
+	PRINTFORMLC [{LOCAL,3}] %CALLNAME:LOCAL%
+	RESETCOLOR
+NEXT
+
+PRINTL
+DRAWLINE
+PRINTL [900] - Save Settings　　   [901] - Load Settings	
+PRINTL [910] - Select All　　[911] - Player Only　　[912] - NPC Only　　
+PRINTL [997] - Invert Selection　　[998] - Reset
+PRINTFORML [999] - Finish (Included: %PRINT_PLUR("character",NAS_VIRGIN_SET_COUNT)%)
+INPUT
+IF INRANGE(RESULT, 0, CHARANUM-1)
+	CFLAG:RESULT:NAS_VIRGIN_SET_SELECTED = !CFLAG:RESULT:NAS_VIRGIN_SET_SELECTED
+	GOTO REPRINT
+ELSEIF RESULT == 910
+	FOR LOCAL, 0, CHARANUM-1
+		CFLAG:LOCAL:NAS_VIRGIN_SET_SELECTED = 1
+	NEXT
+	GOTO REPRINT
+ELSEIF RESULT == 911
+	FOR LOCAL, 0, CHARANUM-1
+		CFLAG:LOCAL:NAS_VIRGIN_SET_SELECTED = 0
+	NEXT
+	CFLAG:MASTER:NAS_VIRGIN_SET_SELECTED = 1
+	GOTO REPRINT
+ELSEIF RESULT == 912
+	FOR LOCAL, 0, CHARANUM-1
+		CFLAG:LOCAL:NAS_VIRGIN_SET_SELECTED = 1
+	NEXT
+	CFLAG:MASTER:NAS_VIRGIN_SET_SELECTED = 0
+	GOTO REPRINT
+ELSEIF RESULT == 900
+	LOADGLOBAL
+	FOR LOCAL,0,CHARANUM
+		NAS_VIRGIN_SET_GLOBAL_CHARA:LOCAL = CFLAG:RESULT:NAS_VIRGIN_SET_SELECTED
+	NEXT
+	PRINTFORMW Saved selections globally.
+	GOTO REPRINT
+ELSEIF RESULT == 901
+	LOADGLOBAL
+	FOR LOCAL,0,CHARANUM
+		CFLAG:RESULT:NAS_VIRGIN_SET_SELECTED = NAS_VIRGIN_SET_GLOBAL_CHARA:LOCAL
+	NEXT
+	PRINTFORMW Loaded selections globally.
+	GOTO REPRINT
+ELSEIF RESULT == 997
+	FOR LOCAL, 0, CHARANUM-1
+		CFLAG:LOCAL:NAS_VIRGIN_SET_SELECTED = !CFLAG:LOCAL:NAS_VIRGIN_SET_SELECTED
+	NEXT
+	GOTO REPRINT
+ELSEIF RESULT == 998
+	FOR LOCAL, 0, CHARANUM-1
+		CFLAG:LOCAL:NAS_VIRGIN_SET_SELECTED = 0
+	NEXT
+	GOTO REPRINT
+ELSEIF RESULT == 999
+	PRINTW Inclusions set up.
+ENDIF
+
+;character count string
+@NAS_VIRGIN_CHARA_STR()
+#FUNCTIONS
+#DIM C_COUNT
+#DIM IN_COUNT
+#DIMS IN_STR, 2
+#DIMS OUT_STR
+VARSET IN_COUNT
+VARSET IN_STR
+VARSET OUT_STR
+
+FOR C_COUNT,0,CHARANUM
+	SIF IS_MOB(C_COUNT)
+		CONTINUE
+	IF CFLAG:C_COUNT:NAS_VIRGIN_SET_SELECTED
+		IN_COUNT ++
+		IN_STR += @"{C_COUNT+1}/"
+	ELSE
+		IN_STR:1 += @"{C_COUNT+1}/"
+	ENDIF
+NEXT
+
+SELECTCASE IN_COUNT
+CASE IS >= CHARANUM-1
+RETURNF "Everyone"
+CASE IS >= CHARANUM-6
+	FOR LOCAL:1,0,5
+		LOCAL = TOINT(SPLIT_SINGLE(IN_STR:1, LOCAL:1, "/"))
+		SIF !LOCAL
+			BREAK
+		OUT_STR += @"%CALLNAME:(LOCAL-1)%、"
+	NEXT
+	RETURNF @"Everyone except %LIST_IN_STRING(OUT_STR)%"
+CASE IS >= 5
+	RETURNF @"%CALLNAME:(TOINT(SPLIT_SINGLE(IN_STR, 0, "/"))-1)% and the others"
+CASE 1 TO 4
+	FOR LOCAL:1,0,5
+		LOCAL = TOINT(SPLIT_SINGLE(IN_STR, LOCAL:1, "/"))
+		SIF !LOCAL
+			BREAK
+		OUT_STR += @"%CALLNAME:(LOCAL-1)%、"
+	NEXT
+	RETURNF @"%LIST_IN_STRING(OUT_STR)%"
+CASE 0
+	RETURNF "No one"
+ENDSELECT

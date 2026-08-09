@@ -1,0 +1,527 @@
+;日記口上
+
+;一日の終了時の流れ
+;@DIARY_TEXT_K102（日記本文）→@DIARY_AFTER_CHECK_K102（フラグの処理）
+
+
+;◆日記の仕様◆
+;※１@DIARY_BEFORE_CHECK_K102で日記のフラグが立つ。
+;→未読フラグ(2)が立っていると一日の終わりにデイリーイベントとして日記が読まれる（既読になる）。
+;→※２未読フラグ(3)が立っていると[日記を読む]で読む事ができる。読むと既読(1)になる。
+;※１各所イベント口上やコマンド口上でフラグを立たせても良いです。
+;※２基本的には未読(2)推奨です。既読(1)、未読(3)はワンステップ必要。
+
+;[日記を読む]には、持ち主が[恋慕]なら自由に読むことができ、
+;そうでない場合は恋慕でない人物がその場に居ない時、もしくは時間停止することで盗み読みできる。
+;拠点住民でないキャラは恋慕であれば自宅（お招き部屋）で読むことができる。
+
+;MAX_DIARY_PAGE:102:0　キャラ番号102の日記の最大ページ数　限度は101（1～100）
+;DIARY:102:YY　　　　　キャラ番号102の日記番号YYの情報
+;　　 3=未読　　　　　デイリーイベントで読まれない。[日記を読む]で読むと既読になる。
+;　　 2=未読　　　　　デイリーイベントで読まれる。読まれるまでは[日記を読む]では読めない。読まれると既読になる。
+;　　 1=既読　　　　　デイリーイベントで読まれない。[日記を読む]で読める。
+;　　 0=読めない　　　未解禁。
+;PAGESET:102:YY　　　　キャラ番号102の実際に書かれたYYページ目の日記番号。
+;=============================
+@DIARY_K102_EXIST
+;存在判定
+;0だと日記は書かれません。
+;=============================
+RETURN 1
+
+;=============================
+@DIARY_AFTER_CHECK_K102
+;デイリーイベントで日記が読まれた際の後処理。
+;フラグの管理等自由に扱って良い。
+
+;条件フラグのリセットや判定追加もここに 
+;たとえば：今日構ったフラグ
+;今日構った日記が表示した後、構ったフラグをリセット。
+; CFLAG:102:今日構ったフラグ = 0
+;あるいは何かの状態が続くことがフラグの場合
+;例：好感度がほぼ変わらない日が続くと
+;「あなた」の態度が冷たいな～みたいな日記を書く
+; SIF CFLAG:102:好感度 <= LAST_LP+3
+;   NOTOUCH_DAY ++
+;=============================
+
+
+;=============================
+@DIARY_BEFORE_CHECK_K102
+;常時チェックされる日記の状態情報。
+;ここでDIARY:102:YYの更新を行う。
+;※DIARY:102:0番は使えません。
+
+;ここで汎用発生条件を記入する
+;コマンド別の発生条件はM_KOJOの各ファイル中で追加してください。
+
+;基本的に発生条件には"DIARY:102:YY == 0"を入れること。
+;そうしないと同じ日記が書かれたりしてしまう。
+
+;DIARY:102:YY　　　　キャラ番号102の日記番号YYの情報
+;　　 3=未読　　　　デイリーイベントで読まれない。[日記を読む]で読むと既読になる。
+;　　 2=未読　　　　デイリーイベントで読まれる。読まれるまでは[日記を読む]では読めない。読まれると既読になる。
+;　　 1=既読　　　　デイリーイベントで読まれない。[日記を読む]で読める。
+;　　 0=読めない　　未解禁。
+
+;○未読(2)にする場合（基本）
+;未読(2)にするとデイリーイベントとして発生し、一日の終わりに１つだけ読まれる。
+;複数のページが未読(2)になっている場合は番号が小さいものが読まれ、それ以外はリセット(0)される。
+;その為、複数同時に発生すると、発生したのに読まれずリセットされる場合もある。
+;未読(2)にするには単純にフラグに2を入れるだけで良い。
+
+;例１)初対面
+;SIF DIARY:102:YY == 0 && CFLAG:102:面識
+;	DIARY:102:YY = 2
+
+;○未読(3)にする場合（応用）
+;未読(3)にするとデイリーイベントとして読まれず、書かれた時点で[日記を読む]によって読めるようになる。
+;プレイヤーが自主的に読まない限り読まれず、一日に複数ページ加筆される場合もある。
+;未読(3)にするにはフラグに3を入れた上で、CALL CHARA_DIARY_PAGESETTING(102, YY)をする必要がある。
+
+;例２）好感度100以上
+;IF DIARY:102:YY == 0 && CFLAG:102:好感度 >= 100
+;	DIARY:102:YY = 3
+;	CALL CHARA_DIARY_PAGESETTING(102, YY)
+;ENDIF
+
+;例３）例２の日記が読まれた上で好感度1000以上
+;これをするとYYを読んだ直後にZZが書き込まれることも起こる。
+;IF DIARY:102:ZZ == 0 && DIARY:102:YY == 1 && CFLAG:102:好感度 >= 1000
+;	DIARY:102:ZZ = 3
+;	CALL CHARA_DIARY_PAGESETTING(102, ZZ)
+;ENDIF
+
+;▽おせっかいな注釈
+;ファーストキスは基本的に全員[キス未経験]を所持しているので、"!TALENT:102:キス未経験"で判定できます。
+;デート帰りのキスで分岐したいならデート帰りのキス口上でフラグを立てます。
+;その場合、通常のファーストキス喪失と重複しないように気をつけましょう。
+;処女喪失は初期設定で処女喪失している場合もあるので、処女喪失口上の方でフラグを立てた方が良いです。
+;その他告白・陥落等のイベントは各種イベント口上でフラグを立てます。初対面はそっちでも大丈夫です。
+;日付を正確に測るには別途フラグが必要です。例えば初めて会った日とか。
+;=============================
+SIF CHARANUM <= 103
+	RETURN
+
+;MAXPAGEはここで記入する
+MAX_DIARY_PAGE:102:0 = 99
+
+;Before she meets the player
+CALL M_KOJO_DIARYSETTING_K102(1)
+
+;Doll
+SIF Item:MiniShinki
+	CALL M_KOJO_DIARYSETTING_K102(2)
+
+;Messy Legend
+SIF GETBIT(TALENT:102:OmoGuardian,1)
+	CALL M_KOJO_DIARYSETTING_K102(11)
+;Leaky legend
+SIF GETBIT(TALENT:102:OmoGuardian,0)
+	CALL M_KOJO_DIARYSETTING_K102(13)
+
+;Betrayal
+
+;Laxative Cookies
+
+;First Wetting
+; SIF !FIRSTTIME("ShinkiPeesHerself", 1) && !K102_Mutsuist()
+; 	CALL M_KOJO_DIARYSETTING_K102(11,1)
+;First Messing
+; SIF !FIRSTTIME("ShinkiShitsHerself", 1) && Qol_Info_Dates_Array:102:Qol_Dates_Messing && !K102_Mutsuist()
+; 	CALL M_KOJO_DIARYSETTING_K102(12,1)
+;Player's First Wetting
+; SIF !FIRSTTIME("PlayerPeesThemselfInFrontOfShinki", 1) && !K102_Mutsuist()
+; 	CALL M_KOJO_DIARYSETTING_K102(11,1)
+;Player's Messing
+; SIF !FIRSTTIME("PlayerShitsThemselfInFrontOfShinki", 1) && !K102_Mutsuist()
+; 	CALL M_KOJO_DIARYSETTING_K102(12,1)
+
+
+
+
+;=============================
+@DIARY_TEXT_K102, PAGENUM, MODE, PAGECOUNT
+;日記の内容
+;PAGENUM   = 日記番号（日記のパターン）
+;MODE      = "デイリー":一日終了時のデイリーイベントでの読み上げ
+;          = "コマンド":[日記を読む]コマンドでの読み上げ
+;PAGECOUNT = 何ページ目に書かれているか
+;=============================
+#DIM PAGENUM
+#DIMS MODE
+#DIM PAGECOUNT
+
+DEBUGPRINTFORML PAGENUM is {PAGENUM}
+DEBUGPRINTFORML MODE is %MODE%
+DEBUGPRINTFORML PAGECOUNT is {PAGECOUNT}
+
+;口上色指定あるならコメントアウトを外す
+CALL M_KOJO_COLOR_K102
+
+;グループマッチに日記のIDを入れて、表示させたい顔絵を表示する
+;表情・服装・特殊画像をオプション指定で表示（省略可）
+;書式は\resources\顔.CSVと下の例を参照
+
+;以下はサンプル
+IF MODE == "デイリー"
+	IF GROUPMATCH(PAGENUM, 10,11,13)
+		CALL PRINT_FACE, 102, "発情", "裸"
+	ELSEIF GROUPMATCH(PAGENUM, 2)
+		CALL PRINT_FACE, 102, "笑顔", "服"
+	ELSEIF GROUPMATCH(PAGENUM, 3)
+		CALL PRINT_FACE, 102, "怒り"
+	ELSE
+		CALL PRINT_FACE, 102
+	ENDIF
+ELSE
+ENDIF
+
+
+PRINTFORMDL - Federation of Makai Battle Journal　PAGE.{PAGECOUNT} --------------------------------------------------------------------------------------
+PRINTFORMDL - %FACTION_RANK_ABRIV_9(FactionRank:102:9)%-102 %NAME:102%
+PRINTFORMDL - %PRINT_DATE_F(DAY,2)%
+PRINTL
+
+;※PAGENUM:0は使えません
+SELECTCASE PAGENUM
+	CASE 1
+		;New diary
+		PRINTFORML Well, I finally did it. I finally decided to commit to writing a diary.
+		PRINTFORML Well technically it's my battle journal, it's meant to just have logs of battles. What would I even write in a normal diary?
+		PRINTFORML Makai's so peaceful nowadays that there's pretty much no battles that happen.
+		PRINTFORML Aside from the little gunfights and Youkai skirmishes, but that's par of the course in the Genso-Luna-Makai zone.
+		PRINTL
+		PRINTFORML 「Nothing much happened in Makai today.」
+		IF nPee || nScat
+		PRINTFORML 「Had to change %CALLNAME:17%'s sheets again when I woke up.」
+		PRINTFORML 「Gensokyo is a shitstorm again. The moonie luddites are still moonie luddites, and I spent all day playing with Medi.」
+		PRINTFORML 「%CALLNAME:139% asked to change %HIM_HER(139)% again.」
+		ELSE
+		;non ABDL/ATW.
+		PRINTFORML 「Gensokyo is a shitstorm again. The moonie luddites are still moonie luddites, and I spent all day playing with Medi.」
+		PRINTFORML 「%CALLNAME:139% wanted another drink from me, so I gave her some juice.」
+		ENDIF
+		PRINTFORML 「Went home and got interrupted by %CALLNAME:103% wanting another part again. Huh.」
+		PRINTFORML 「I miss %CALLNAME:17%.」
+		PRINTL
+		PRINTFORML It would just be the same things over and over. No, I'm going to use this to blow off steam.
+		PRINTFORML My %COND_STR("fetish, my ",nOmutsu)%children, my longing, my insanity... I'm going to write about it here. Maybe it'll make me feel better.
+		PRINTFORML At least I won't be burdening anyone else with my insufferable whining.
+	CASE 2
+		;mc picks up the doll
+		IF !FIRSTTIME("ShinkiDropsOffDoll", 1) 
+			PRINTFORML It seems that %CALLNAME:MASTER% picked up the gift I left on the door.
+			PRINTFORML %HES_SHES(102,1)% no longer at the door of %HIS_HER(MASTER)% room and I can see that %HES_SHES(102)% been put on a shelf.
+		ELSE
+			PRINTFORML It seems that %CALLNAME:MASTER% accepted the gift that I offered.
+			PRINTFORML I can see that %HES_SHES(102)% been put on a shelf.
+		ENDIF
+		PRINTFORML Seems to be in %HIS_HER(MASTER)% room, looking broadly at %HIM_HER(MASTER)%. 
+		PRINTL
+		PRINTFORML Oooh, what a nice body to look at.
+		PRINTFORML Might go and give them a nice visit when I get the chance to.
+		PRINTFORML Wait... what is this sensation. My body feels so... hot.
+		PRINTFORML And what did I just write?
+		PRINTL
+		PRINTFORML Fucking hell, I'm horny.
+		PRINTFORML Horny for some %PRINT_MALE("dude:chick",MASTER)% I just met yesterday.
+	CASE 3
+		;OyaTsumi
+		SETCOLOR C_RED
+		PRINTFORML I hate %CALLNAME:MASTER%.
+		PRINTFORML %HE_SHE(MASTER,1)% used me for %HIS_HER(MASTER)% own gain.
+		PRINTFORML %HE_SHE(MASTER,1)% is a pussy. A coward who can't make a decision.
+		PRINTL
+		PRINTFORML %HE_SHE(MASTER,1)% needs to pay for this.
+		PRINTFORML %HE_SHE(MASTER,1)% needs to understand that %HIS_HER(MASTER)% betrayal is going to backfire.
+		PRINTFORML And most of all, I hate %HIM_HER(MASTER,0)% knowing that %HIS_HER(MASTER)% misery is my own damn fault.
+		CALL SET_KOJO_COLOR(102)
+		PRINTFORML I tried to restrain myself. I tried to.
+		PRINTFORML But no matter how I write it, I always seemed to go insane. 
+	CASE 10
+		;get padded legend
+		PRINTFORML Every passing day, an uncomfortable sensation rummages through my groin.
+		PRINTFORML A sense of worry and nakedness. It feels like I'm missing something...
+		PRINTFORML Like my underwear isn't thick enough, or how I'm having more thoughts of wanting to being diapered lately.
+		PRINTFORML I've been able to hold the urge beforehand, but...
+		PRINTL
+		PRINTFORML Today, the urges were too much. I couldn't hold back the temptation.
+		PRINTFORML My mind had me summon a diaper and put it on all while on autopilot.
+		PRINTFORML As soon as my skin touched the thick padding as I put a tapes on, a whole world of memories and feelings came back to me.
+		PRINTFORML They was comforting. Childish, but dreamy.
+		PRINTFORML It was like I missed out on something until now, diapering others but not myself.
+		IF nPee
+		PRINTL
+		PRINTFORML Not long after, I felt a slick, warm wetness all over my groin, and a subtle scent of baby power in the air.
+		PRINTFORML This meant only one thing:
+		PRINTL
+		PRINTFORML I've peed my padding.
+		PRINTFORML And loved it.
+		ENDIF
+		PRINTL
+		PRINTFORML I think I'll just go to sleep happily padded, maybe I'll need it for the night as well.
+	CASE 11
+		;get messy legend
+		LOCALS '= @"\@nOmutsu ? diaper # underwear\@"
+		PRINTFORML Every time I put on a clean pair of panties%COND_STR(" or a diaper",nOmutsu)%, I always seem to have an urge to mess in it.
+		PRINTFORML To feel the poop squish around my butt, or to have the smell of poop follow around me.
+		PRINTFORML Or maybe I get the feeling to follow the footsteps of those I've summoned... the ones who are accident prone and childish.
+		PRINTFORML I've had a lot of messy accidents happening to me lately, so it was hard to resist messing my %LOCALS%.
+		PRINTFORML I've been able to hold it to toilet or at least fight until I couldn't no more, but this time...
+		PRINTL
+		PRINTFORML I felt an intense urge to poop run through my colon. It hit my like it was a wave, an extremely strong one.
+		PRINTFORML Normally I would be able to hold through and keep it in, but instead I decided to squat down and spread my legs as I began to push.
+		PRINTFORML Not long after, I felt a slick, warm, mushy mess form at my seat of my %LOCALS%, only that it never seemed to end.
+		PRINTFORML The log kept coming and coming as it kept stretching and stretching my %LOCALS%. 
+		PRINTFORML The relief from my body was way too much as I felt my body shake and convulse in orgasm doing my accident%COND_STR(", making me pee as well",nPee)%.
+		PRINTFORML By the time I had stopped pooping, my %LOCALS% were packed to the brim with my %PeeAndPoo(nPee,1,"pee","poop")%, feeling like it was going to fall out.
+		PRINTFORML The scent of my mega accident filled in the air as I left a long breath out.
+		PRINTFORML It was obvious of what I did:
+		PRINTL
+		PRINTFORML I've intentionally pooped my %LOCALS%.
+		PRINTFORML And loved every single second of it.
+		PRINTL
+		PRINTFORML I think I was definitely set up to have this giant, sudden accident, but that was the best poop that I've had for sure, especially since it went in my %LOCALS%.
+	CASE 12
+		;first messing
+		PRINTFORML I can't stop thinking about when I messed myself today...
+		PRINTFORML For years I was able to keep myself clean and relatively mess-free.
+		PRINTFORML Perhaps it's just me falling out of my beliefs, but I had decided to see the other side of continence.
+		PRINTFORML I was free from diaper dependency, able to hold myself when I needed to go. 
+		PRINTL
+		PRINTFORML This time however, I couldn't hold back, I couldn't find a toilet in time...
+		PRINTFORML It was the most desperate that I had ever been for so long. 
+		PRINTL
+		PRINTFORML As I cried and cried for release, my colon became more and more relentless. It just kept getting harder and harder to hold.
+		PRINTFORML Before long, my bowel functions had won over me as my body forced me to accept my fate.
+		PRINTFORML In one long motion, my legs locked as I unconsciously squatted and started to release a long, thick, log into my panties.
+		PRINTL
+		PRINTFORML As I filled my underwear with my thick, warm, mess, I felt this airy feeling flow through me.
+		PRINTFORML It felt so slimy, stinky, gross, and babyish...
+		PRINTFORML But at the same time, it felt so.... divine.
+		PRINTFORML I'll need something that'll be able to hold a mess like that. Maybe it's time for me to go back into pamps.
+	CASE 13
+		;get leaky legend
+		LOCALS '= @"\@nOmutsu ? diaper # underwear\@"
+		LOCALS:1 '= @"\@nOmutsu ? pamps # pants\@"
+		LOCALS:2 '= @"\@nOmutsu ? diapers # panties\@"
+
+		PRINTFORML Every time I put on a clean pair of panties%COND_STR(" or a diaper",nOmutsu)%, I always seem to have an urge to flood.
+		PRINTFORML To feel the flow of pee every time I let go, or to have the smell of pee follow around me.
+		PRINTFORML Or maybe I get the feeling to follow the footsteps of those I've summoned... the ones who are accident prone and childish.
+		PRINTFORML I've had a lot of accidents happening to me lately, so it was hard to resist peeing my %LOCALS%.
+		PRINTFORML I've been able to hold it to toilet or at least fight until I couldn't no more, but this time...
+		PRINTL
+		PRINTFORML I was walking with %CALLNAME:17%, trying to get to somewhere. I don't know where we went, all I know was this:
+		PRINTFORML I felt an intense pressure run through my bladder. It hit my like it was a wave, an extremely strong one.
+		PRINTFORML My weak, accident prone muscles had started to spurt and leak out pee, and immediately knew that I was not going to make it.
+		PRINTFORML I decided to squat down and spread my legs as I began to push out my hot pee from my overfilled bladder.
+		PRINTFORML %CALLNAME:17% had also gotten the same fate, and said this before we started flooding.
+		PRINTL
+		CALL SET_KOJO_COLOR(17)
+		PRINTFORML 「I guess we're peeing our %LOCALS:1% together.」
+		CALL SET_KOJO_COLOR(102)
+		PRINTL
+		PRINTFORML %CALLNAME:17% and I held each-other's hands as we stood face to face, sqatting with our legs spread, as we both lose control at the same time.
+		IF nOmutsu
+			PRINTFORML I felt slick, warm, pee shoot out of my %LOCALS% like a high pressure hose, a loud hissing starting to emmit that never seemed to end.
+		ELSE
+			PRINTFORML I felt slick, warm, pee shoot out of my %LOCALS% like a high pressure hose, forming a puddle that never seemed to end.
+		ENDIF
+		PRINTFORML The smaller bladder that %CALLNAME:17% had meant that %HE_SHE(17)% had stopped peeing earlier, but I had no such luxury.
+		IF nOmutsu
+			PRINTFORML I just kept peeing and peeing, as my diaper got soggier and soggier.
+		ELSE
+			PRINTFORML I just kept peeing and peeing, as the puddle got bigger and bigger
+		ENDIF
+		PRINTFORML The relief from my body was too much as I felt my body shake and convulse in orgasm doing my accident%COND_STR(", making me mess as well",nScat)%.
+		IF nOmutsu
+			PRINTFORML By the time I had stopped peeing, my %LOCALS% was flooded to the brim with my %PeeAndPoo(1,nScat,"pee","poop")%, feeling like it was going to leak.
+		ELSE
+			PRINTFORML By the time I had stopped peeing, my %LOCALS% was absolutely flooded as a huge pool of golden pee surrounded us both.
+			SIF nScat
+				PRINTFORML Furthermore, my messing had filled up the back of my %LOCALS% as well, emitting a stink stronger than the pool of pee..
+		ENDIF
+		PRINTFORML The scent of our mega accidents filled in the air as I left a long breath out.
+		PRINTL
+		PRINTFORML I've intentionally peed my %LOCALS%.
+		PRINTFORML And loved every single second of it.
+		PRINTL
+		PRINTFORML I think I was definitely set up to have this giant, sudden accident, but that was the best piss that I've had for sure, especially since it went in my %LOCALS%.
+	CASE 14
+	;Shinki's first wetting
+		PRINTFORML My body's getting so wet when I keep thinking about the time I peed myself today...
+		PRINTFORML It keeps popping up in my head and I just couldn't find a way to truly handle it until now.
+		PRINTFORML I've been able to hold myself to the toilet and hold my pee pretty well by human standards.
+		PRINTFORML Maybe it was just me falling out with my previous beliefs and conforming to what the other realms had set.
+		PRINTL
+		PRINTFORML This time however, I couldn't hold back, I couldn't find a toilet in time...
+		PRINTFORML I never needed to pee this badly in so long. 
+		PRINTL
+		PRINTFORML As I cried and cried for release, my bladder got fuller and fuller and got harder and harder to hold.
+		PRINTFORML Before long, my bladder functions had won over me as my body forced me to accept my fate.
+		PRINTFORML No matter how I tried to hold it in, my bladder started to let go and I couldn't stop the flow into my panties.
+		PRINTL
+		PRINTFORML As I soaked my underwear with my slick, warm, pee, I felt this airy feeling flow through me.
+		PRINTFORML It felt so cold, wet, clingy, and babyish...
+		PRINTFORML But at the same time, it felt so.... divine.
+		PRINTFORML I'll need something that'll be able to hold my pee. Maybe it's time for me to go back into pamps.
+	CASE 20
+	;Player's First Accident
+		PRINTFORML %CALLNAME:MASTER% made an uh oh, and unfortunately... I was there to see all of it♡
+		PRINTFORML %HIS_HER(MASTER,1)% desperation turning into relief♡
+		PRINTFORML The way %HE_SHE(MASTER)% tries to hide the fact that %HES_SHES(MASTER)% wetting %HIMSELF_HERSELF(MASTER)%♡
+		PRINTFORML Oh... and that sweet, sweet golden puddle, pooling at %HIS_HER(MASTER)% feet as it grows, making %HIM_HER(MASTER)% feel so little♡
+		PRINTFORML It was like %PRINT_MALE("god:goddess", MASTER)% came and blessed me with %HIS_HER(MASTER)% blood♡
+		PRINTL
+		PRINTFORML Little %CALLNAME:MASTER% has big potty pants potential.
+		PRINTFORML And I want to make it more than just a fluke.
+		PRINTL
+		PRINTFORML Being unable to hold it♡
+		PRINTFORML Leaving telltale puddles of %HIS_HER(MASTER)% accidents everywhere♡
+		PRINTFORML Peeing on the spot once %HE_SHE(MASTER)% feels the need to go potty♡
+		SIF nOmutsu
+		PRINTFORML Maybe even wearing a thick, crinkly diaper♡♡
+		PRINTL
+		PRINTFORML Soon enough, %HE_SHE(MASTER)%'ll be in diapers forever if %HE_SHE(MASTER)% keeps up with this.
+		PRINTFORML I wonder how long it'll take for %HIM_HER(MASTER)% to cherish the feeling of a pee accident.
+	CASE 21
+	;Player's First Messy Accident
+		PRINTFORML I got to see %CALLNAME:MASTER% poop %HIS_HER(MASTER)% pants for the first time.♡
+		PRINTFORML I wonder how little did %HE_SHE(MASTER)% feel when %HE_SHE(MASTER)% squatted down♡
+		PRINTFORML ...And made a poopy into %HIS_HER(MASTER)% panties♡
+		PRINTFORML The smell of %HIS_HER(MASTER)% accident filling the air♡
+		PRINTFORML The bulge at the seat of %HIS_HER(MASTER)% underwear♡
+		PRINTFORML It looked so... otherworldly♡ Like a %PRINT_MALE("god:goddess", MASTER)% came and blessed me with %HIS_HER(MASTER)% gifts♡
+		PRINTL
+		PRINTFORML I can't imagine how much stuff I can do a little poopy pants like %CALLNAME:MASTER%.
+		PRINTFORML Fill %HIM_HER(MASTER)% up, making sure %HE_SHE(MASTER)% can't make it♡ (Maybe even use that poop self spell)
+		PRINTFORML The little body of %HIS_HER(MASTER)% squatting down and just packing %HIS_HER(MASTER)% underwear to the brim♡
+		PRINTFORML Have %HIS_HER(MASTER)% waste spread all over %HIS_HER(MASTER)% clothes, showing %HIS_HER(MASTER)% mortifying state♡
+		PRINTL
+		PRINTFORML My mind's in such a daze♡
+		PRINTL
+		; PRINTFORML I even managed to \@ nOmutsu ? put %HIM_HER(MASTER)% into a diaper # changed %HIM_HER(MASTER)% into new panties\@, and %HE_SHE(MASTER)% wasn't very resistant unlike the other girls that I changed.
+		; PRINTFORML %HE_SHE(MASTER,1)% just went got down on the ground and blushed as I pampered %HIM_HER(MASTER)%.
+		; PRINTL
+		PRINTFORML Soon enough, %HE_SHE(MASTER)%'ll be in diapers forever if %HE_SHE(MASTER)% keeps up with this.
+		PRINTFORML I wonder how long it'll take for %HIM_HER(MASTER)% to learn that pooping %HIS_HER(MASTER)% pants feels divine.
+		PRINTFORML It'll be such a shame if %HE_SHE(MASTER)% doesn't leave gifts for me... next time♡
+	CASE 22
+	;Player's Laxative Side-Effects
+		IF 0
+			PRINTFORML So uh.
+		ELSE
+		ENDIF
+	CASE 23
+	;Player's unworthy of normal underwear.
+		PRINTFORML I do not understand why %CALLNAME:MASTER% keeps trying to wear regular underwear.
+		PRINTFORML I've seen %HIM_HER(MASTER)% fill %HIS_HER(MASTER)% pants more times than I've seen %HIM_HER(MASTER)% make it to the toilet.
+		PRINTFORML %HIS_HER(MASTER,1)% continence must be in the gutter based on how many times I had to change %HIM_HER(MASTER)%.
+		PRINTFORML %HE_SHE(MASTER,1)% might be wearing pads but that's not enough for the amount of accidents that %HE_SHE(MASTER)% just keeps having.
+		PRINTL
+		PRINTFORML I need to do something so that %HE_SHE(MASTER)% learns that %HE_SHE(MASTER)% can't be trusted with regular underwear.
+		PRINTFORML Maybe I should try doing a switcheroo... No, %HE_SHE(MASTER)%'ll find it too easily.
+		PRINTFORML A teleport trick? %HE_SHE(MASTER,1)%'ll just buy new panties.
+		PRINTFORML I know. I'll go to %HIS_HER(MASTER)% room and confuse %HIM_HER(MASTER)% using magic.
+		PRINTFORML Then take a hot knife or shears through all of %HIS_HER(MASTER)% pairs of underwear, destroying them.
+		PRINTFORML And to top it all up, fill up %HIS_HER(MASTER)% underwear drawer with diapers.
+		PRINTFORML %HE_SHE(MASTER,1)%'ll have no choice than to accept that %HES_SHES(MASTER)% a little potty pants that needs to be in %HIS_HER(MASTER)% diapers.
+		PRINTL
+		PRINTFORML If %HE_SHE(MASTER)% loves to go potty in %HIS_HER(MASTER)% pants, %HE_SHE(MASTER)% can do it.
+		PRINTFORML But at least do it in a diaper. I love it way more when they happen in them.
+		PRINTFORML It also doesn't make a big mess that I have to clean up.
+	CASE 24
+	;First orgasm
+		PRINTFORML My body's feeling really hot ever since I had whatever they called that sexual high? An orgasm?
+		PRINTFORML I haven't had one in such a long time to the point I'm starting to forget the terms.
+		PRINTFORML But that felt so good. I wanna do it again.
+		PRINTL
+		PRINTFORML Ah, it's all coming back to me now.
+		PRINTFORML I used to be a lot more liberated when it came to sex. 
+		PRINTFORML But something happened that made me a lot more hesitant about it.
+		PRINTFORML Trying to manage your own world doesn't give you a lot of time to rub one out.
+		PRINTL
+		PRINTFORML I should really stop shaming myself for exploring my body. It's no use.
+		PRINTFORML It's not like my life before now was good either.
+		PRINTFORML The more knowledge I gain the better I'll be at making a better Makai, after all.
+		IF TALENT:102:20
+			CALL COLORMESSAGE(@"%CALLNAME:102% has lost 【%GET_TALENTNAME_TR(20,1,102)%】",C_AQUA,2,1)
+			TALENT:102:20 = 0
+		ENDIF
+	CASE 25
+	;Sex
+	CASE 30
+	;shinki's breakdown after lover confession???
+	PRINTFORML %CALLNAME:MASTER% told me that %HE_SHE(102)% loved me today.
+	PRINTFORML I absolutely broke down, cried a river of tears.
+	PRINTL
+	PRINTFORML And then %HE_SHE(MASTER)% told me that %HE_SHE(MASTER)% could fix me.
+	PRINTFORML Get me a psychiatrist.
+	PRINTL
+	PRINTFORML I'll start signing up appointments for Matara-san.
+	PRINTFORML She's a god. I'm a god too.
+	PRINTFORML I hope she's a good enough god to take care of me.
+
+	CASE 81
+	;Alice dies, no respawns or permadeath on
+	;Shinki's reaction on her diary.
+	PRINTFORML My daughter is dead. I can't believe it.
+	PRINTFORML %CALLNAME:17%... My flesh and blood... The one I took care of since she was born. 
+	PRINTFORML To have her pass away in such an untimely manner... All that time has gone to naught.
+	PRINTFORML I can't take this suffering anymore. This is all so... overwhelming.
+	PRINTFORML I just want my daughter back...
+ENDSELECT
+
+RESETCOLOR
+
+;=============================
+@M_KOJO_MESSAGE_COM_K102_406
+;=============================
+CALL TRAIN_MESSAGE
+CALL M_KOJO_MESSAGE_COM_K102_406_1
+RETURN RESULT
+
+;=============================
+@M_KOJO_MESSAGE_COM_K102_406_1
+;コマンド口上
+;TFLAG:194（誰の日記を読んでいるか）
+;TFLAG:194が102でない場合は他人の日記なので注意。
+;PAGEは書かれてあるページ数。
+;SHIRAHU(102)はキャラ102の状態が正常かどうか。
+;=============================
+#DIM PAGE
+
+;以下はサンプル
+PAGE = 0
+FOR LOCAL, 0, MAX_DIARY_PAGE:(TFLAG:194):0
+	IF GROUPMATCH(DIARY:(TFLAG:194):LOCAL, 1, 3)
+		PAGE ++
+	ENDIF
+NEXT
+
+IF SHIRAHU(102) && TFLAG:194 == 102
+;日記を読み終わった後の反応
+	IF PAGE > 2
+		CALL SPTALK, 102,"通常",0,@"「日記を見せるって…なんだか恥ずかしいな…」//%CALLNAME:102%はまじまじとこちらを見つめている"
+		;画像つきトークは最大６行まで。
+	ELSE
+		PRINTFORML 
+	ENDIF
+ENDIF
+
+
+;=============================
+@M_KOJO_DIARYSETTING_K102(ARG, ARG:1 = 1)
+;日記発生処理の一括管理関数
+;=============================
+SIF DIARY:102:ARG != 0
+	RETURN
+;IF ARG:1 == 0 && CFLAG:102:K60EN_PARSEE_DIARY_WARNING == 2 && ABL:MASTER:教養 > 2
+IF ARG:1 == 1
+	DIARY:102:ARG = 2
+ELSE
+	DIARY:102:ARG = 3
+	CALL CHARA_DIARY_PAGESETTING(102, ARG)
+ENDIF

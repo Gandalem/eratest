@@ -1,0 +1,3310 @@
+@CHAR_EDITOR_NAS(ARG, CHEAT=0)
+#DIM CHEAT
+#DIM nLineCnt_Head
+;FOR LOCAL, 0, 100
+;PRINTL
+;NEXT
+DRAWLINE
+nLineCnt_Head = LINECOUNT
+REDRAW 0
+DO
+	SIF LINECOUNT - nLineCnt_Head > 0
+		CLEARLINE LINECOUNT - nLineCnt_Head
+
+	CALL CHAR_EDITOR_NAS_STATE(ARG, CHEAT)
+	SELECTCASE RESULT
+		CASE 9999
+			RETURN
+	CASEELSE
+	ENDSELECT
+LOOP 1
+
+@CHAR_EDITOR_NAS_STATE(C_ID,CHEAT = 0)
+#DIM CHEAT
+#DIM     C_ID       ;登録番号
+#DIM     PAGE       ;表示中のページ
+#DIMS CONST DISP_NAME = "Name", "Base", "Body", "Talents", "Abilities", "Experience", "Conquest", "Portraits", "Skills", "Equipment", "World", "Body Parts", "Info"
+#DIM CREDRAW
+#DIM FIRST_LINE
+FIRST_LINE = LINECOUNT
+$REPRINT
+CLEARLINE LINECOUNT - FIRST_LINE
+CREDRAW = CURRENTREDRAW()
+REDRAW 0
+PRINTFORM Editing 
+CALLF NameChecker(C_ID,,1)
+PRINTL
+DRAWLINE
+CALLF ResetBladders(C_ID)
+CALL CrippleEffects(C_ID)
+SELECTCASE PAGE
+CASE 3
+	$PAGE_3_Loop
+	CALL CHAR_EDITOR_NAS_PAGE_3(C_ID,globalLineSave,CHEAT)
+	IF RESULT == -1
+		GOTO REPRINT
+	ENDIF
+CASEELSE
+VARSET globalLineSave
+TRYCALLFORM CHAR_EDITOR_NAS_PAGE_{PAGE}(C_ID,CHEAT)
+ENDSELECT
+DRAWLINE
+FOR LOCAL, 0, VARSIZE("DISP_NAME")
+	SIF GROUPMATCH(LOCAL, 6, 9) && !CHEAT
+		CONTINUE
+	SIF PAGE == LOCAL
+		SETCOLOR 0x00FFFF
+	PRINTBUTTON DISP_NAME:LOCAL, LOCAL + 8002
+	RESETCOLOR
+	PRINTFORM 　　
+NEXT
+PRINTFORML 
+CALL TALENT_POINTS_DISPLAY(C_ID,CHEAT)
+IF (TalentPointOffset-CalcTalentPointsUsed(C_ID) >= 0 || nTalentPoints == -999) || CHEAT || !ゲーム開始処理中
+PRINTBUTTON "[9999] End Customization", 9999
+ELSE
+SETCOLOR C_GRAY
+PRINTPLAINFORM [9999] End Customization (Not Enough Points)
+ENDIF
+PRINTL
+DO
+	INPUT
+	SELECTCASE RESULT
+	CASE 8002 TO VARSIZE("DISP_NAME")+8002
+		PAGE = RESULT-8002
+	CASE 9997 ;custom code
+	CASE 9998 ;custom code
+		BREAK
+	CASE 9999 ;custom code
+		IF !CHEAT
+			IF (TalentPointOffset-CalcTalentPointsUsed(C_ID) >= 0 || nTalentPoints == -999) || CHEAT || !ゲーム開始処理中
+			ELSE
+				CONTINUE
+			ENDIF
+			PRINTFORML Do you want to leave the character creator?
+			CALL ASK_YN()
+			SELECTCASE RESULT
+			CASE 0
+			CASE 1
+				GOTO REPRINT
+			ENDSELECT
+		ENDIF
+		RETURN 9999
+	CASEELSE
+		$RETRY
+		TRYCALLFORM CHAR_EDITOR_NAS_RESULT_{PAGE}(C_ID, CHEAT, RESULT)
+		;REUSELASTLINE Invalid Input
+		;CONTINUE
+	ENDSELECT
+	BREAK
+LOOP 1
+GOTO REPRINT
+
+@CHAR_EDITOR_NAS_PAGE_0(ARG, CHEAT = 0)
+#DIM CHEAT
+#DIMS CONST colortext = "<font color='#70C070'>[Change]</font>"
+#DIMS CONST nicknameColor =  "#70C070"
+#DIMS html
+#DIMS PROPOSED_NAME, 10
+IF TOLOWER(CALLNAME:ARG) == TOLOWER(nameArray:ARG:na_FirstName)
+	LOCALS '= @"Same as First Name"
+ELSEIF TOLOWER(CALLNAME:ARG) == TOLOWER(nameArray:ARG:na_LastName)
+	LOCALS '= @"Same as Last Name"
+ELSE
+	LOCALS '= @"%CALLNAME:ARG%"
+ENDIF
+IF TOLOWER(BloodLineName:ARG:0) == TOLOWER(nameArray:ARG:na_FirstName)
+	LOCALS:1 '= @"Same as First Name"
+ELSEIF TOLOWER(BloodLineName:ARG:0) == TOLOWER(nameArray:ARG:na_LastName)
+	LOCALS:1 '= @"Same as Last Name"
+ELSE
+	LOCALS:1 '= @"%BloodLineName:ARG:0%"
+ENDIF
+NAME:ARG = %NameChecker(ARG)%
+
+PRINTL
+html '=  @"<button value='{0}'>" + HTML_SPACE(2) + @"%"First Name: ",15,LEFT%" +@"\@TOLOWER(CALLNAME:ARG) == TOLOWER(nameArray:ARG:na_FirstName) ? <font color='%nicknameColor%'> #\@"+@"%nameArray:ARG:na_FirstName, 20, LEFT%"+@"\@TOLOWER(CALLNAME:ARG) == TOLOWER(nameArray:ARG:na_FirstName) ? </font> #\@"+ HTML_SPACE(2) + colortext +"</button><br>"
+html +=  @"<button value='{1}'>" + HTML_SPACE(2) + @"%"Last Name: ",15,LEFT%" + @"\@TOLOWER(CALLNAME:ARG) == TOLOWER(nameArray:ARG:na_LastName) ? <font color='%nicknameColor%'> #\@"+@"%nameArray:ARG:na_LastName, 20, LEFT%" +@"\@TOLOWER(CALLNAME:ARG) == TOLOWER(nameArray:ARG:na_LastName) ? </font> #\@"+ HTML_SPACE(2) + colortext +"</button><br>"			
+html +=  @"<button value='{2}'>" + HTML_SPACE(2) + @"%"Middle Name: ",15,LEFT%" + @"%nameArray:ARG:na_MiddleName,20,LEFT%" + HTML_SPACE(2) + colortext +"</button><br>"
+html += "<br>"
+html +=  @"<button value='{3}'>" + HTML_SPACE(2) + @"%"Call Name: ",15,LEFT%" + @"%LOCALS,20,LEFT%" + HTML_SPACE(2) + colortext +"</button><br>"
+html +=  @"<button value='{4}'>" + HTML_SPACE(2) + @"%"Bloodline: ",15,LEFT%" + @"%LOCALS:1,20,LEFT%" + HTML_SPACE(2) + colortext +"</button><br>"
+html +=  @"<button value='{6}'>" + HTML_SPACE(2) + @"%"Prefix: ",15,LEFT%" + @"%nameArray:ARG:na_Prefix,20,LEFT%" + HTML_SPACE(2) + colortext +"</button><br>"
+html +=  @"<button value='{7}'>" + HTML_SPACE(2) + @"%"Suffix: ",15,LEFT%" + @"%nameArray:ARG:na_Suffix,20,LEFT%" + HTML_SPACE(2) + colortext +"</button><br>"
+html +=  @"<button value='{5}'>" + HTML_SPACE(2) + @"%"Name Format: ",15,LEFT%" + @"%nameArray:ARG:na_NameType,20,LEFT%" + HTML_SPACE(2) + colortext +"</button>"
+HTML_PRINT html + "<br><br>"
+
+PRINTFORML The current name is %NAME:ARG%
+
+@CHAR_EDITOR_NAS_RESULT_0(ARG, CHEAT = 0, nInput)
+#DIM CHEAT
+#DIM nInput
+#DIMS CONST colortext = "<font color='#70C070'>[Change]</font>"
+#DIMS CONST nicknameColor =  "#70C070"
+#DIMS html
+#DIMS PROPOSED_NAME, 10
+
+SELECTCASE nInput
+CASE 0
+	PRINTFORML The current first name is %nameArray:ARG:na_FirstName%
+	PRINTFORML To change it, enter a new name. (Leave blank to cancel, enter RESETME to reset.)
+	PRINTL
+	PRINTBUTTON "[Reset] ", "RESETME"
+	PRINTBUTTON "[Random Western] ", "RANDWEST"
+	PRINTBUTTON "[Random Jap] ", "RANDJAP"
+	PRINTBUTTON "[Cancel]", ""
+	INPUTS
+	IF RESULTS == "RESETME"
+	nameArray:ARG:na_FirstName =
+	ELSEIF RESULTS == "RANDWEST"
+		$RandFirstWestern
+		FOR LOCAL,1,10
+			IF IS_MALE(ARG)
+			CALL GENERATE_FIRST_NAME_KM()
+			ELSE
+			CALL GENERATE_FIRST_NAME_KF()
+			ENDIF
+			PROPOSED_NAME:LOCAL = %RESULTS%
+			;Custom code, disabled as it's untranslated
+			;IF CHILD_SEX:YOME:CHILDNUM == 1
+			;	PROPOSED_NAME:LOCAL = %ランダムキャラ_命名(YOME)%
+			;ELSE
+			;	PROPOSED_NAME:LOCAL = %男の子_命名(YOME, CHILDNUM)%
+			;ENDIF
+			PRINTFORML [{LOCAL}] - %PROPOSED_NAME:LOCAL%
+		NEXT
+		DRAWLINE
+		PRINTFORML [99] - New list
+		PRINTFORML [100] - Return
+		$RandFirstWesternInput
+		INPUT
+		SELECTCASE RESULT
+			CASE 1 TO 9
+				LOCAL = RESULT
+				PRINTFORML Is %PROPOSED_NAME:LOCAL% fine?
+				CALL ASK_YN
+				IF RESULT
+					CONTINUE
+				ELSE
+					nameArray:ARG:na_FirstName = %PROPOSED_NAME:LOCAL%
+				ENDIF
+			CASE 99
+				GOTO RandFirstWestern
+			CASE 100
+				CONTINUE
+			CASEELSE
+				GOTO RandFirstWesternInput
+		ENDSELECT
+	ELSEIF RESULTS == "RANDJAP"
+		$RandFirstJap
+		FOR LOCAL,1,10
+			IF IS_MALE(ARG)
+			CALL GENERATE_FIRST_NAME_JM()
+			ELSE
+			CALL GENERATE_FIRST_NAME_JF()
+			ENDIF
+			PROPOSED_NAME:LOCAL = %RESULTS%
+			;Custom code, disabled as it's untranslated
+			;IF CHILD_SEX:YOME:CHILDNUM == 1
+			;	PROPOSED_NAME:LOCAL = %ランダムキャラ_命名(YOME)%
+			;ELSE
+			;	PROPOSED_NAME:LOCAL = %男の子_命名(YOME, CHILDNUM)%
+			;ENDIF
+			PRINTFORML [{LOCAL}] - %PROPOSED_NAME:LOCAL%
+		NEXT
+		DRAWLINE
+		PRINTFORML [99] - New list
+		PRINTFORML [100] - Return
+		$RandFirstJapInput
+		INPUT
+		SELECTCASE RESULT
+			CASE 1 TO 9
+				LOCAL = RESULT
+				PRINTFORML Is %PROPOSED_NAME:LOCAL% fine?
+				CALL ASK_YN
+				IF RESULT
+					CONTINUE
+				ELSE
+					nameArray:ARG:na_FirstName = %PROPOSED_NAME:LOCAL%
+				ENDIF
+			CASE 99
+				GOTO RandFirstJap
+			CASE 100
+				CONTINUE
+			CASEELSE
+				GOTO RandFirstJapInput
+		ENDSELECT
+	ELSEIF RESULTS != ""
+		nameArray:ARG:na_FirstName '= RESULTS
+		PRINTFORMW Accepted. First Name now set to %nameArray:ARG:na_FirstName%.
+	ENDIF
+CASE 1
+	PRINTFORML The current last name is %nameArray:ARG:na_LastName%
+	PRINTFORML To change it, enter a new name. (Leave blank to cancel, enter RESETME to reset.)
+	PRINTL
+	PRINTBUTTON "[Reset] ", "RESETME"
+	PRINTBUTTON "[Random Western] ", "RANDWEST"
+	PRINTBUTTON "[Random Jap] ", "RANDJAP"
+	PRINTBUTTON "[Cancel]", ""
+	INPUTS
+	IF RESULTS == "RESETME"
+	nameArray:ARG:na_LastName =
+	ELSEIF RESULTS == "RANDWEST"
+		$RandLastWestern
+		FOR LOCAL,1,10
+			CALL GENERATE_FAMILY_NAME_K()
+			PROPOSED_NAME:LOCAL = %RESULTS%
+			;Custom code, disabled as it's untranslated
+			;IF CHILD_SEX:YOME:CHILDNUM == 1
+			;	PROPOSED_NAME:LOCAL = %ランダムキャラ_命名(YOME)%
+			;ELSE
+			;	PROPOSED_NAME:LOCAL = %男の子_命名(YOME, CHILDNUM)%
+			;ENDIF
+			PRINTFORML [{LOCAL}] - %PROPOSED_NAME:LOCAL%
+		NEXT
+		DRAWLINE
+		PRINTFORML [99] - New list
+		PRINTFORML [100] - Return
+		$RandLastWesternInput
+		INPUT
+		SELECTCASE RESULT
+			CASE 1 TO 9
+				LOCAL = RESULT
+				PRINTFORML Is %PROPOSED_NAME:LOCAL% fine?
+				CALL ASK_YN
+				IF RESULT
+					CONTINUE
+				ELSE
+					nameArray:ARG:na_LastName = %PROPOSED_NAME:LOCAL%
+				ENDIF
+			CASE 99
+				GOTO RandLastWestern
+			CASE 100
+				CONTINUE
+			CASEELSE
+				GOTO RandLastWesternInput
+		ENDSELECT
+	ELSEIF RESULTS == "RANDJAP"
+		$RandLastJap
+		FOR LOCAL,1,10
+			CALL GENERATE_FAMILY_NAME_J()
+			PROPOSED_NAME:LOCAL = %RESULTS%
+			;Custom code, disabled as it's untranslated
+			;IF CHILD_SEX:YOME:CHILDNUM == 1
+			;	PROPOSED_NAME:LOCAL = %ランダムキャラ_命名(YOME)%
+			;ELSE
+			;	PROPOSED_NAME:LOCAL = %男の子_命名(YOME, CHILDNUM)%
+			;ENDIF
+			PRINTFORML [{LOCAL}] - %PROPOSED_NAME:LOCAL%
+		NEXT
+		DRAWLINE
+		PRINTFORML [99] - New list
+		PRINTFORML [100] - Return
+		$RandLastJapInput
+		INPUT
+		SELECTCASE RESULT
+			CASE 1 TO 9
+				LOCAL = RESULT
+				PRINTFORML Is %PROPOSED_NAME:LOCAL% fine?
+				CALL ASK_YN
+				IF RESULT
+					CONTINUE
+				ELSE
+					nameArray:ARG:na_LastName = %PROPOSED_NAME:LOCAL%
+				ENDIF
+			CASE 99
+				GOTO RandLastJap
+			CASE 100
+				CONTINUE
+			CASEELSE
+				GOTO RandLastJapInput
+		ENDSELECT				
+	ELSEIF RESULTS != ""
+		nameArray:ARG:na_LastName '= RESULTS
+		PRINTFORMW Accepted. Last Name now set to %nameArray:ARG:na_LastName%.
+	ENDIF			
+CASE 2
+	PRINTFORML The current middle name is %nameArray:ARG:na_MiddleName%
+	PRINTFORML To change it, enter a new name. (Leave blank to cancel, enter RESETME to reset.)
+	PRINTL
+	PRINTBUTTON "[Reset] ", "RESETME"
+	PRINTBUTTON "[Cancel]", ""				
+	INPUTS
+	IF RESULTS == "RESETME"
+	nameArray:ARG:na_MiddleName =				
+	ELSEIF RESULTS != ""
+		nameArray:ARG:na_MiddleName '= RESULTS
+		PRINTFORMW Accepted. Middle Name now set to %nameArray:ARG:na_MiddleName%.
+	ENDIF			
+CASE 3
+	PRINTFORML The current call name is %CALLNAME:ARG%
+	PRINTFORML To change it, enter a new name. (Leave blank to cancel, enter RESETME to reset.)
+	PRINTL
+	SIF nameArray:ARG:na_FirstName != ""
+	PRINTBUTTON @"[%nameArray:ARG:na_FirstName%] ", @"%nameArray:ARG:na_FirstName%"
+	SIF nameArray:ARG:na_LastName != ""
+	PRINTBUTTON @"[%nameArray:ARG:na_LastName%] ", @"%nameArray:ARG:na_LastName%"
+	PRINTBUTTON "[Reset] ", "RESETME"
+	PRINTBUTTON "[Cancel]", ""
+	INPUTS
+	IF RESULTS == "RESETME"
+	CALLNAME:ARG =
+	ELSEIF RESULTS != ""
+		LOCALS '= RESULTS
+		IF ConflictingName(ARG,,LOCALS) != -1
+			PRINTFORML WARNING:
+			PRINTFORML Name conflicts with Character #{ConflictingName(ARG,,LOCALS)} (%NAME:(ConflictingName(ARG,,LOCALS))%)
+			PRINTFORML Do you want to abandon this callname?
+			CALL ASK_YN()
+			SIF !RESULT
+				RETURN
+		ENDIF
+		CALLNAME:ARG '= RESULTS
+		PRINTFORMW Accepted. Call Name now set to %CALLNAME:ARG%.
+	ENDIF
+CASE 4
+	PRINTFORML The current bloodline name is %BloodlineName:ARG:0%
+	PRINTFORML To change it, enter a new name. (Leave blank to cancel, enter RESETME to reset.)
+	PRINTL
+	SIF nameArray:ARG:na_LastName != ""
+	PRINTBUTTON @"[%nameArray:ARG:na_LastName%] ", @"%nameArray:ARG:na_LastName%"
+	PRINTBUTTON "[Reset] ", "RESETME"
+	PRINTBUTTON "[Cancel]", ""
+	INPUTS
+	IF RESULTS == "RESETME"
+	BloodlineName:ARG:0 =
+	ELSEIF RESULTS != ""
+		BloodlineName:ARG:0 '= RESULTS
+		PRINTFORMW Accepted. Bloodline Name now set to %BloodlineName:ARG:0%.
+	ENDIF
+CASE 5
+	PRINTFORML The current name type is %nameArray:ARG:na_NameType%
+	PRINTFORML To change it, click on one of the buttons. (Leave blank to cancel.)
+	PRINTL
+	PRINTBUTTON @"[Western (%NameChecker(ARG,1)%)] ", "Western"
+	PRINTBUTTON @"[Jap (%NameChecker(ARG,2)%)] ", "Japanese"
+	PRINTBUTTON "[Cancel]", ""
+	INPUTS
+	IF GROUPMATCH(RESULTS,"Western","Japanese")
+		nameArray:ARG:na_NameType '= RESULTS
+		PRINTFORMW Accepted. Name type now set to %nameArray:ARG:na_NameType%.
+		NAME:ARG = %NameChecker(ARG)%
+	ENDIF
+CASE 6
+	PRINTFORML The current prefix is %nameArray:ARG:na_Prefix%
+	PRINTFORML To change it, enter a new name. (Leave blank to cancel, enter RESETME to reset.)
+	PRINTL
+	PRINTBUTTON "[Reset] ", "RESETME"
+	PRINTBUTTON "[Cancel]", ""
+	INPUTS
+	IF RESULTS == "RESETME"
+	nameArray:ARG:na_Prefix =
+	ELSEIF RESULTS != ""
+		nameArray:ARG:na_Prefix '= RESULTS
+		PRINTFORMW Accepted. Prefix now set to %nameArray:ARG:na_Prefix%.
+	ENDIF
+CASE 7
+	PRINTFORML The current suffix is %nameArray:ARG:na_Suffix%
+	PRINTFORML To change it, enter a new name. (Leave blank to cancel, enter RESETME to reset.)
+	PRINTL
+	PRINTBUTTON "[Reset] ", "RESETME"
+	PRINTBUTTON "[Cancel]", ""
+	INPUTS
+	IF RESULTS == "RESETME"
+	nameArray:ARG:na_Suffix =
+	ELSEIF RESULTS != ""
+		nameArray:ARG:na_Suffix '= RESULTS
+		PRINTFORMW Accepted. Suffix now set to %nameArray:ARG:na_Suffix%.
+	ENDIF
+CASE 999
+RETURN 1
+ENDSELECT
+
+@CHAR_EDITOR_NAS_PAGE_1(ARG, CHEAT = 0)
+#DIM CHEAT
+#DIM nInput
+CHEAT = 1
+CALL Add_STAMINA_BAR(ARG, 28, 1)
+IF BASE:ARG:0 != 500 && (CHEAT || MAXBASE:ARG:0 > 1000)
+	PRINTBUTTON "[−]", 0
+ELSE
+	SETCOLOR 0x969696
+	PRINT [−]
+	RESETCOLOR
+ENDIF
+IF BASE:ARG:0 != 2500 || CHEAT
+	PRINTBUTTON "[＋]", 1
+ELSE
+	SETCOLOR 0x969696
+	PRINT [＋]
+	RESETCOLOR
+ENDIF
+PRINTL
+CALL BASE_BAR(ARG, "気力", 28, "青")
+IF BASE:ARG:1 != 0
+	PRINTBUTTON "[−]", 2
+ELSE
+	SETCOLOR 0x969696
+	PRINT [−]
+	RESETCOLOR
+ENDIF
+IF BASE:ARG:1 != 2500 || CHEAT
+	PRINTBUTTON "[＋]", 3
+ELSE
+	SETCOLOR 0x969696
+	PRINT [＋]
+	RESETCOLOR
+ENDIF
+PRINTL
+CALL BASE_BAR(ARG, "精力", 28,)
+IF BASE:ARG:6 != 0
+	PRINTBUTTON "[−]", 4
+ELSE
+	SETCOLOR 0x969696
+	PRINT [−]
+	RESETCOLOR
+ENDIF
+IF BASE:ARG:6 != 2500 || CHEAT
+	PRINTBUTTON "[＋]", 5
+ELSE
+	SETCOLOR 0x969696
+	PRINT [＋]
+	RESETCOLOR
+ENDIF
+PRINTL
+IF CHEAT
+CALL BASE_BAR(ARG, "法力", 28, "オレンジ")
+IF BASE:ARG:7 != 0
+	PRINTBUTTON "[−]", 6
+ELSE
+	SETCOLOR 0x969696
+	PRINT [−]
+	RESETCOLOR
+ENDIF
+IF BASE:ARG:7 != 100 || CHEAT
+	PRINTBUTTON "[＋]", 7
+ELSE
+	SETCOLOR 0x969696
+	PRINT [＋]
+	RESETCOLOR
+ENDIF
+PRINTL
+ENDIF
+CALL BASE_BAR(ARG, "TSP", 28, "水色")
+IF BASE:ARG:8 != 0
+	PRINTBUTTON "[−]", 8
+ELSE
+	SETCOLOR 0x969696
+	PRINT [−]
+	RESETCOLOR
+ENDIF
+IF BASE:ARG:8 != 100 || (CHEAT && MAXBASE:ARG:8 < 64000)
+	PRINTBUTTON "[＋]", 9
+ELSE
+	SETCOLOR 0x969696
+	PRINT [＋]
+	RESETCOLOR
+ENDIF
+PRINTL
+
+@CHAR_EDITOR_NAS_RESULT_1(ARG, CHEAT = 0, nInput)
+#DIM CHEAT
+#DIM nInput
+IF nInput == 0 && MAXBASE:ARG:0 > 500
+	MAXBASE:ARG:0 -= 100
+ELSEIF nInput == 1
+	MAXBASE:ARG:0 += 100
+ELSEIF nInput == 2 && MAXBASE:ARG:1 > 0
+	MAXBASE:ARG:1 -= 100
+ELSEIF nInput == 3
+	MAXBASE:ARG:1 += 100
+ELSEIF nInput == 4 && MAXBASE:ARG:6 > 0
+	MAXBASE:ARG:6 -= 100
+ELSEIF nInput == 5
+	MAXBASE:ARG:6 += 100
+ELSEIF nInput == 6 && MAXBASE:ARG:7 > 0
+	SELECTCASE MAXBASE:ARG:7
+	CASE IS <= 100
+		MAXBASE:ARG:7 = 0
+	CASE IS <= 200
+		MAXBASE:ARG:7 = 100
+	CASE IS <= 500
+		MAXBASE:ARG:7 = 200
+	CASE IS <= 800
+		MAXBASE:ARG:7 = 500
+	CASE IS <= 1500
+		MAXBASE:ARG:7 = 800
+	CASE IS <= 2500
+		MAXBASE:ARG:7 = 1500
+	CASE IS <= 4000
+		MAXBASE:ARG:7 = 2500
+	CASE IS <= 8000
+		MAXBASE:ARG:7 = 4000
+	CASE IS <= 16000
+		MAXBASE:ARG:7 = 8000
+	CASE IS <= 32000
+		MAXBASE:ARG:7 = 16000
+	CASEELSE
+		MAXBASE:ARG:7 = 32000
+	ENDSELECT
+ELSEIF nInput == 7
+	SIF !TALENT:ARG:ESP
+		SETBIT TALENT:ARG:ESP, 0
+	SELECTCASE MAXBASE:ARG:7
+	CASE IS <= 0
+		MAXBASE:ARG:7 = 100
+	CASE IS <= 100
+		MAXBASE:ARG:7 = 200
+	CASE IS <= 200
+		MAXBASE:ARG:7 = 500
+	CASE IS <= 500
+		MAXBASE:ARG:7 = 800
+	CASE IS <= 800
+		MAXBASE:ARG:7 = 1500
+	CASE IS <= 1500
+		MAXBASE:ARG:7 = 2500
+	CASE IS <= 2500
+		MAXBASE:ARG:7 = 4000
+	CASE IS <= 4000
+		MAXBASE:ARG:7 = 8000
+	CASE IS <= 8000
+		MAXBASE:ARG:7 = 16000
+	CASE IS <= 16000
+		MAXBASE:ARG:7 = 32000
+	CASE IS <= 32000
+		MAXBASE:ARG:7 = 64000
+	ENDSELECT
+ELSEIF nInput == 8 && MAXBASE:ARG:8 > 0
+	SELECTCASE MAXBASE:ARG:8
+	CASE IS <= 100
+		MAXBASE:ARG:8 = 0
+	CASE IS <= 200
+		MAXBASE:ARG:8 = 100
+	CASE IS <= 500
+		MAXBASE:ARG:8 = 200
+	CASE IS <= 800
+		MAXBASE:ARG:8 = 500
+	CASE IS <= 1500
+		MAXBASE:ARG:8 = 800
+	CASE IS <= 2500
+		MAXBASE:ARG:8 = 1500
+	CASE IS <= 4000
+		MAXBASE:ARG:8 = 2500
+	CASE IS <= 8000
+		MAXBASE:ARG:8 = 4000
+	CASE IS <= 16000
+		MAXBASE:ARG:8 = 8000
+	CASE IS <= 32000
+		MAXBASE:ARG:8 = 16000
+	CASEELSE
+		MAXBASE:ARG:8 = 32000
+	ENDSELECT
+ELSEIF nInput == 9
+	SELECTCASE MAXBASE:ARG:8
+	CASE IS <= 0
+		MAXBASE:ARG:8 = 100
+	CASE IS <= 100
+		MAXBASE:ARG:8 = 200
+	CASE IS <= 200
+		MAXBASE:ARG:8 = 500
+	CASE IS <= 500
+		MAXBASE:ARG:8 = 800
+	CASE IS <= 800
+		MAXBASE:ARG:8 = 1500
+	CASE IS <= 1500
+		MAXBASE:ARG:8 = 2500
+	CASE IS <= 2500
+		MAXBASE:ARG:8 = 4000
+	CASE IS <= 4000
+		MAXBASE:ARG:8 = 8000
+	CASE IS <= 8000
+		MAXBASE:ARG:8 = 16000
+	CASE IS <= 16000
+		MAXBASE:ARG:8 = 32000
+	CASE IS <= 32000
+		MAXBASE:ARG:8 = 64000
+	ENDSELECT
+ENDIF
+BASE:ARG:0 = MAXBASE:ARG:0
+BASE:ARG:1 = MAXBASE:ARG:1
+BASE:ARG:6 = MAXBASE:ARG:6
+BASE:ARG:7 = MAXBASE:ARG:7
+BASE:ARG:8 = MAXBASE:ARG:8
+
+@CHAR_EDITOR_NAS_PAGE_2(C_ID, CHEAT = 0)
+#DIM CHEAT
+#DIM  C_ID
+#DIM SpeciesSort, 4
+#DIM nFertileTurn
+
+PRINTBUTTON "[Sex        ]", 100
+PRINTFORML : %GET_TALENTNAME_TR(2,TALENT:C_ID:2,C_ID)%
+PRINTBUTTON "[Pubic hair ]", 105
+PRINTFORML : %GET_INMOU_NAME(PubesHair:C_ID:0)%
+PRINTBUTTON "[Armpit hair]", 106
+PRINTFORML : %GET_ARMPIT_NAME(PitsHair:C_ID:0)%
+CALL PRINTLINE, @"Species tags:%" "%"
+FOR SpeciesSort, 190, 198
+	PRINTFORM %TALENT_TR(SpeciesSort)+": ", 15%
+	FOR SpeciesSort:1, 1, 100
+		IF TALENT:C_ID:SpeciesSort == SpeciesSort:1
+			SETCOLOR C_AQUA
+		ELSE
+			SETCOLOR C_GRAY
+		ENDIF
+		IF STRLENS(GET_TALENTNAME_TR(SpeciesSort,SpeciesSort:1,C_ID))
+			PRINTBUTTON @"%"<"+GET_TALENTNAME_TR(SpeciesSort,SpeciesSort:1,C_ID)+">", 18, LEFT%", SpeciesSort*100+SpeciesSort:1
+			SpeciesSort:3 ++
+			IF SpeciesSort:3 % 8 == 0
+				PRINTL
+				PRINTFORM %" ",15%
+				;SpeciesSort:3 = 0
+			ENDIF
+		ENDIF
+		RESETCOLOR
+	NEXT
+	;kitsune
+	IF SpeciesSort == 197
+		FOR SpeciesSort:2, 90, 167
+			SIF !GROUPMATCH(SpeciesSort:2,90,91,166)
+				CONTINUE
+			IF TALENT:C_ID:(SpeciesSort:2)
+				SETCOLOR C_AQUA
+			ELSE
+				SETCOLOR C_GRAY
+			ENDIF
+			IF STRLENS(GET_TALENTNAME_TR(SpeciesSort:2,1,C_ID))
+				PRINTBUTTON @"%"<"+GET_TALENTNAME_TR(SpeciesSort:2,1,C_ID)+">", 18, LEFT%", SpeciesSort:2*100+1
+				SpeciesSort:3 ++
+				IF SpeciesSort:3 % 8 == 0
+					PRINTL
+					PRINTFORM %" ",15%
+					;SpeciesSort:3 = 0
+				ENDIF
+			ENDIF
+			RESETCOLOR
+		NEXT
+	ENDIF
+	PRINTL
+	SpeciesSort:3 = 0
+NEXT
+IF !CFLAG:C_ID:身体測定
+CALL MAKE_SIZE(C_ID)
+CFLAG:C_ID:身体測定 = 1
+ENDIF
+CALL SHOW_SIZE(C_ID)
+PRINTBUTTON @"[Edit Body]", 107
+PRINTL
+
+@NAS_BODY(C_ID)
+#DIM C_ID
+#DIM nFertileTurn
+LOCALS =
+LOCALS += @"%MO_TALENT(@"%"Age: " + @"{charaAge:C_ID:0}\@ charaAge:C_ID:0 != charaAge:C_ID:1 ?  ({charaAge:C_ID:1})#\@", 35, LEFT%",@"%TALENT_INFO(17, charaAge:C_ID:0,C_ID)%")%"
+LOCALS += @"%MO_TALENT(@"%"Size: " + GET_TALENTNAME_TR(100,TALENT:(C_ID):100,C_ID), 35, LEFT%",@"%TALENT_INFO(100, TALENT:C_ID:100,C_ID)%")%"
+IF HAS_VAGINA(C_ID)
+	;lactating breasts
+	IF TALENT:(C_ID):母乳体質
+		;displays temporary lactation
+		SIF TALENT:(C_ID):母乳体質 == 1
+			LOCALS = t
+		LOCALS += @"%MO_TALENT(@"%@"Breasts (L%LOCALS%): " + TOSTR_BUSTSIZE(TALENT:C_ID:105), 35, LEFT%",@"%TALENT_INFO(105, TALENT:C_ID:105,C_ID)%")%"
+	ELSE
+		LOCALS += @"%MO_TALENT(@"%"Breasts: " + TOSTR_BUSTSIZE(TALENT:C_ID:105), 35, LEFT%",@"%TALENT_INFO(105, TALENT:C_ID:105,C_ID)%")%"
+	ENDIF
+ENDIF
+LOCALS += @"%MO_TALENT(@"%"Ass: " + TOSTR_BUSTSIZE(TALENT:C_ID:108), 35, LEFT%",@"%TALENT_INFO(108, TALENT:C_ID:108,C_ID)%")%"
+HTML_PRINT LOCALS
+LOCALS =
+
+SIF HAS_VAGINA(C_ID)
+	LOCALS += @"%MO_TALENT(@"%"Vagina: " + GET_STRETCH_NAME(HoleStretch:C_ID:0), 35, LEFT%",@"Fit: %NAS_TIGHTNESS(Add_HoleSizeCheck(C_ID, MASTER, 0, -1))%")%"
+SIF HAS_PENIS(C_ID)
+	LOCALS += @"%MO_TALENT(@"%"Penis: " + GET_TALENTNAME_TR(250,TALENT:C_ID:250,C_ID), 35, LEFT%",@"Fit: %TALENT_INFO(250, TALENT:C_ID:250,C_ID)%")%"
+	LOCALS += @"%MO_TALENT(@"%"Anus: " + GET_STRETCH_NAME(HoleStretch:C_ID:1), 35, LEFT%",@"%NAS_TIGHTNESS(Add_HoleSizeCheck(C_ID, MASTER, 1, -1))%")%"
+SIF nPee
+	LOCALS += @"%MO_TALENT(@"%"Urethra: " + GET_STRETCH_NAME(HoleStretch:C_ID:2), 35, LEFT%",@"Fit: %NAS_TIGHTNESS(Add_HoleSizeCheck(C_ID, MASTER, 2, -1))%")%"
+IF HAS_VAGINA(C_ID)
+	LOCALS += @"Fertile Turns: 7"
+	;from RanceK
+	nFertileTurn = CFLAG:C_ID:900
+
+	IF nFertileTurn == 7
+		SETCOLOR C_PINK
+		LOCALS += @"%MO_TALENT(@"(Now)",@"")%"
+		RESETCOLOR
+	ELSE
+		LOCAL:0 = 7 - nFertileTurn
+		SIF LOCAL:0 < 0
+			LOCAL:0 += 10
+		SIF LOCAL:0 >= 5
+			LOCAL:0 -= 5
+		LOCALS += @"%MO_TALENT(@"(In %PRINT_PLUR("turn", LOCAL:0)%)",@"")%"
+	ENDIF
+ENDIF
+HTML_PRINT LOCALS
+LOCALS =
+
+;PRINTFORM %"Hair: " + TOSTR_HAIR_LENGTH(PubesHair:(C_ID):0), 35, LEFT%
+LOCALS += @"%MO_TALENT(@"%"Pubic: " + GET_INMOU_NAME(PubesHair:(C_ID):0), 35, LEFT%",@"")%"
+LOCALS += @"%MO_TALENT(@"%"Armpits: " + GET_ARMPIT_NAME(PitsHair:(C_ID):0), 35, LEFT%",@"")%"
+HTML_PRINT LOCALS
+LOCALS =
+
+IF nPee
+LOCALS += @"%MO_TALENT(@"%"Pee Hold: " + TOSTR_CONTINENCE(PeeHold:C_ID:2) +"(Lv"+TOSTR(PeeHold:C_ID:2)+")", 35, LEFT%",@"%TALENT_INFO(57, PeeHold:C_ID:2,C_ID)%")%"
+LOCALS += @"%MO_TALENT(@"%"Bladder: " + @"\@HAS_BLADDER(C_ID)? %TOSTR_BLADDERSIZE(TALENT:C_ID:96)% # Gone\@", 35, LEFT%",@"%TALENT_INFO(96,TALENT:C_ID:96,C_ID)%")%"
+ENDIF
+IF nScat
+LOCALS += @"%MO_TALENT(@"%"Poo Hold: " + TOSTR_CONTINENCE(PooHold:C_ID:2) +"(Lv"+TOSTR(PooHold:C_ID:2)+")", 35, LEFT%",@"%TALENT_INFO(58, PooHold:C_ID:2,C_ID)%")%"
+LOCALS += @"%MO_TALENT(@"%"Bowels: " + @"\@HAS_ANUS(C_ID)? %TOSTR_BLADDERSIZE(TALENT:C_ID:97)% # Gone\@", 35, LEFT%",@"%TALENT_INFO(97,TALENT:C_ID:97,C_ID)%")%"
+ENDIF
+LOCALS += @"%MO_TALENT(@"%"Effective: " + @"\@HAS_ANUS(C_ID)? %TOSTR_BLADDERSIZE(TALENT:C_ID:97)% # Gone\@", 35, LEFT%",@"%TALENT_INFO(97,TALENT:C_ID:97,C_ID)%")%"
+SIF LOCALS != ""
+HTML_PRINT LOCALS
+LOCALS =
+
+LOCALS += @"%MO_TALENT(@"%"Sanity: " + TOSTR_SANITY(OrgasmDeny:C_ID:0) +"(Lv"+TOSTR(OrgasmDeny:C_ID:0)+")", 35, LEFT%",@"%TALENT_INFO(1310, OrgasmDeny:C_ID:0,C_ID)%")%"
+LOCALS += @"%MO_TALENT(@"%"Trauma: " + TOSTR_TRAUMA(CharaTrauma:C_ID:0) +"(Lv"+TOSTR(CharaTrauma:C_ID:0)+")", 35, LEFT%",@"%TALENT_INFO(1217, CharaTrauma:C_ID:0,C_ID)%")%"
+
+LOCALS += @"%MO_TALENT(@"%"Drug: " + TOSTR_DRUGADDICT(DrugAddict:C_ID:0) +"(Lv"+TOSTR(DrugAddict:C_ID:0)+")", 35, LEFT%",@"%TALENT_INFO(56, DrugAddict:C_ID:0,C_ID)%")%"
+LOCALS += @"%MO_TALENT(@"%"Alcohol: " + TOSTR_DRINKADDICT(AlcoholAddict:C_ID:0) +"(Lv"+TOSTR(AlcoholAddict:C_ID:0)+")", 35, LEFT%",@"%TALENT_INFO(121, AlcoholAddict:C_ID:0,C_ID)%")%"
+HTML_PRINT LOCALS
+PRINTL
+
+@CHAR_EDITOR_NAS_RESULT_2(ARG, CHEAT = 0, nInput)
+#DIM CHEAT
+#DIM nInput
+#DIM ResSort, 4
+#DIM NewDate, 5
+#DIM RESULT_2_FIRST_LINE
+#DIM RESULT_3_FIRST_LINE
+RESULT_2_FIRST_LINE = LINECOUNT
+
+SELECTCASE nInput
+CASE 100
+	PRINTFORM Changing 
+	CALLF NameChecker(ARG,,1)
+	PRINTL 's sex
+	PRINTL
+	FOR ResSort, 0,  20
+		SIF TOSTR_GENDER(GET_GENDER(ARG)) == TOSTR_GENDER(ResSort)
+			SETCOLOR C_AQUA
+		LOCALS =
+		SIF TOSTR_GENDER(ResSort) != ""
+			PRINTFORML [{ResSort}] %TOSTR_GENDER(ResSort)%
+		RESETCOLOR
+	NEXT
+	INPUT
+	TALENT:ARG:2 = RESULT
+	FOR LOCAL:3,0,100
+		CALLF ClearHediff(ARG,63,LOCAL:3)
+		CALLF ClearHediff(ARG,68,LOCAL:3)
+	NEXT
+	CALL newGenderSystemConvert(ARG)
+CASE 105
+		CALL ASK_M("Depilated",1, "Smooth",1, "Trimmed",1, "Short",1, "Fluffy",1, "Average",1, "Extra",1, "Bushy",1, "Unkempt",1, "Forest",1, "Jungle", 1, "Reaches ass",1, "♥",1)
+		PubesHair:ARG:0 = RESULT - 1
+CASE 106
+		CALL ASK_M("Depilated",1, "Smooth",1, "Trimmed",1, "Short",1, "Fluffy",1, "Average",1, "Extra",1, "Bushy",1, "Unkempt",1, "Forest", 1, "Jungle",1)
+		PitsHair:ARG:0 = RESULT - 1
+CASE 107
+	DO
+		CLEARLINE LINECOUNT - RESULT_2_FIRST_LINE
+		PRINTFORM What will you do to 
+		CALLF NameChecker(ARG,,1)
+		PRINTL 's body?
+		CALL SHOW_SIZE(ARG)
+		DRAWLINE
+		IF HAS_PENIS(ARG:0)
+			PRINTFORM %"Penis:",20,LEFT%%" "%
+			DT_SELECT "Hediff",  @"chara = {ARG} and part = 68"
+			LOCAL:63 = RESULT:1
+			FOR ResSort, 0,  VAR_TEMP_MAX
+				IF LOCAL:63
+					SIF DT_CELL_GET("Hediff", LOCAL:63, "type", 1) == ResSort
+						SETCOLOR C_AQUA
+				ENDIF
+				IF GET_STR(MASTER, "Hediff", (ResSort), "名前") != "" && GET_INT(MASTER, "Hediff", (ResSort), "Part") == 68
+					SIF GET_INT(MASTER, "Hediff", (ResSort), "Natural") || CHEAT
+						PRINTBUTTON @"[%GET_STR(MASTER, "Hediff", (ResSort), "名前")%] ", 250000+ResSort
+				ENDIF
+				RESETCOLOR
+			NEXT
+			PRINTL
+		ENDIF	
+		IF IS_FEMALE(ARG:0)
+			PRINTFORM %"Chest:",20,LEFT%%" "%
+			FOR ResSort, -5,  10
+				SIF TALENT:ARG:105 == ResSort
+					SETCOLOR C_AQUA
+				SIF TOSTR_BUSTSIZE(ResSort) != ""
+					PRINTBUTTON @"[%TOSTR_BUSTSIZE(ResSort)%] ", 105000+5+ResSort
+				RESETCOLOR
+			NEXT
+			PRINTL
+		ENDIF
+		PRINTFORM %"Ass:",20,LEFT%%" "%
+		FOR ResSort, -5,  10
+			SIF TALENT:ARG:108 == ResSort
+				SETCOLOR C_AQUA	
+			SIF GET_TALENTNAME_TR(108,ResSort) != ""
+				PRINTBUTTON @"[%TOSTR_BUSTSIZE(ResSort)%] ", 108000+5+ResSort
+			RESETCOLOR
+		NEXT
+		PRINTL
+		IF HAS_VAGINA(ARG)
+			PRINTFORM %"Vagina:",20,LEFT%%" "%
+			FOR ResSort, 1000, -100, -100
+				SIF HoleStretch:ARG:0/100 == ResSort/100
+					SETCOLOR C_AQUA	
+				SIF GET_STRETCH_NAME(ResSort) != ""
+					PRINTBUTTON @"[%GET_STRETCH_NAME(ResSort)%] ", 109000+(ResSort/100)
+				RESETCOLOR
+			NEXT
+			PRINTL
+		ENDIF
+		PRINTFORM %"Anus:",20,LEFT%%" "%
+		FOR ResSort, 1000, -100, -100
+			SIF HoleStretch:ARG:1/100 == ResSort/100
+				SETCOLOR C_AQUA	
+			SIF GET_STRETCH_NAME(ResSort) != ""
+				PRINTBUTTON @"[%GET_STRETCH_NAME(ResSort)%] ", 110000+(ResSort/100)
+			RESETCOLOR
+		NEXT
+		PRINTL
+		IF nPee
+			PRINTFORM %"Urethra:",20,LEFT%%" "%
+			FOR ResSort, 1000, -100, -100
+				SIF HoleStretch:ARG:2/100 == ResSort/100
+					SETCOLOR C_AQUA	
+				SIF GET_STRETCH_NAME(ResSort) != ""
+					PRINTBUTTON @"[%GET_STRETCH_NAME(ResSort)%] ", 111000+(ResSort/100)
+				RESETCOLOR
+			NEXT
+			PRINTL
+		ENDIF
+		PRINTL
+
+		PRINTBUTTON  @"[Age: {charaAge:ARG:0}\@ charaAge:ARG:0 != charaAge:ARG:1 ?  ({charaAge:ARG:1})#\@ years]", 100
+		PRINTL
+		PRINTFORM %"Size:",20,LEFT%%" "%
+		FOR ResSort, -5,  10
+			SIF TALENT:ARG:100 == ResSort
+				SETCOLOR C_AQUA	
+			SIF GET_TALENTNAME_TR(100,ResSort) != ""
+				PRINTBUTTON @"[%GET_TALENTNAME_TR(100,ResSort)%] ", 100000+5+ResSort
+			RESETCOLOR
+		NEXT
+		PRINTL
+		PRINTL
+		PRINTFORM %"Sanity:",20,LEFT%%" "%
+		FOR ResSort, -5,  7
+			SIF OrgasmDeny:ARG:0 == ResSort
+				SETCOLOR C_AQUA	
+				PRINTBUTTON @"[%TOSTR_SANITY(ResSort)%] ", 95000+5+ResSort
+			RESETCOLOR
+		NEXT
+		PRINTL
+		PRINTFORM %"Trauma:",20,LEFT%%" "%
+		FOR ResSort, 0,  5
+			SIF CharaTrauma:ARG:0 == ResSort
+				SETCOLOR C_AQUA	
+				PRINTBUTTON @"[%TOSTR_TRAUMA(ResSort)%] ", 503000+5+ResSort
+			RESETCOLOR
+		NEXT
+		PRINTL
+		IF nPee
+		PRINTFORM %"Urinary Continence:",20,LEFT%%" "%
+		FOR ResSort, -5,  7
+			SIF PeeHold:ARG:0 == ResSort
+				SETCOLOR C_AQUA	
+				PRINTBUTTON @"[%TOSTR_CONTINENCE(ResSort)%] ", 57000+5+ResSort
+			RESETCOLOR
+		NEXT
+		PRINTL
+		ENDIF
+		IF nScat
+		PRINTFORM %"Bowel Continence:",20,LEFT%%" "%
+		FOR ResSort, -5,  7
+			SIF PooHold:ARG:0 == ResSort
+				SETCOLOR C_AQUA	
+				PRINTBUTTON @"[%TOSTR_CONTINENCE(ResSort)%] ", 58000+5+ResSort
+			RESETCOLOR
+		NEXT
+		PRINTL
+		ENDIF
+		PRINTFORM %"Alcohol Addiction:",20,LEFT%%" "%
+		FOR ResSort, -5,  7
+			SIF AlcoholAddict:ARG:0 == ResSort
+				SETCOLOR C_AQUA	
+				PRINTBUTTON @"[%TOSTR_DRINKADDICT(ResSort)%] ", 121000+5+ResSort
+			RESETCOLOR
+		NEXT
+		PRINTL
+		PRINTFORM %"Drug Addiction:",20,LEFT%%" "%
+		FOR ResSort, -5,  7
+			SIF DrugAddict:ARG:0 == ResSort
+				SETCOLOR C_AQUA	
+				PRINTBUTTON @"[%TOSTR_DRUGADDICT(ResSort)%] ", 59000+5+ResSort
+			RESETCOLOR
+		NEXT
+		PRINTL
+		PRINTL
+		IF nPee
+		PRINTFORM %"Bladder Size:",20,LEFT%%" "%
+		FOR ResSort, 5, -5, -1
+			SIF TALENT:ARG:BladderSize == ResSort
+				SETCOLOR C_AQUA	
+			SIF TOSTR_BLADDERSIZE(ResSort) != ""
+				PRINTBUTTON @"[%TOSTR_BLADDERSIZE(ResSort)%] ", 96000+5+ResSort
+			RESETCOLOR
+		NEXT
+		PRINTL
+		ENDIF
+		IF nScat
+		PRINTFORM %"Bowel Size:",20,LEFT%%" "%
+		FOR ResSort, 5,  -5, -1
+			SIF TALENT:ARG:BowelSize == ResSort
+				SETCOLOR C_AQUA	
+			SIF TOSTR_BLADDERSIZE(ResSort) != ""
+				PRINTBUTTON @"[%TOSTR_BLADDERSIZE(ResSort)%] ", 97000+5+ResSort
+			RESETCOLOR
+		NEXT
+		PRINTL
+		PRINTL
+		ENDIF
+
+		PRINTBUTTON @"[Remeasure %CALLNAME:ARG%]", 108
+		PRINTL
+		PRINTL
+		CALL TALENT_POINTS_DISPLAY(ARG,CHEAT)
+		PRINTFORML [99] Finished
+		INPUT
+		SELECTCASE RESULT
+			CASE IS >= 10000
+				ResSort = RESULT/1000
+				ResSort:1 = RESULT % ResSort
+				SELECTCASE ResSort
+					CASE 250
+						CALLF HESOYAM(ARG)
+						FOR LOCAL:3,0,100
+							CALLF ClearHediff(ARG,68,LOCAL:3)
+						NEXT
+						CALLF AddBionic(ARG,68,ResSort:1-100,0)
+						TALENT:ARG:250 = GET_INT(ARG, "Hediff", (ResSort:1), "Penis ID")
+					CASE 96
+						CALLF HESOYAM(ARG)
+						FOR LOCAL:3,0,100
+							CALLF ClearHediff(ARG,74,LOCAL:3)
+						NEXT
+						CALLF AddBionic(ARG,74,111-(ResSort:1),0)
+						CALLF ResetBladders(ARG)
+						TALENT:ARG:96 = (ResSort:1-5)
+					CASE 97
+						CALLF HESOYAM(ARG)
+						FOR LOCAL:3,0,100
+							CALLF ClearHediff(ARG,67,LOCAL:3)
+						NEXT
+						CALLF AddBionic(ARG,67,120-(ResSort:1),0)
+						CALLF ResetBladders(ARG)
+						TALENT:ARG:97 = (ResSort:1-5)
+					CASE 100, 105, 108
+						ResSort:1 -= 5
+						TALENT:ARG:ResSort = ResSort:1
+					CASE 57
+						ResSort:1 -= 5
+						CALLF GAMANME_SEP(ARG,ResSort:1)
+
+					CASE 58
+						ResSort:1 -= 5
+						CALLF GAMANME_SEP(ARG,,ResSort:1)
+					CASE 59
+						ResSort:1 -= 5
+						DrugAddict:ARG:0 = ResSort:1
+						DrugExp:ARG:0 = EXP_DEMAND_23(0,94,ARG)
+					CASE 95
+						ResSort:1 -= 5
+						OrgasmDeny:ARG:0 = ResSort:1
+						OrgasmDenyExp:ARG:0 = EXP_DEMAND_19(0,90,ARG)
+					CASE 121
+						ResSort:1 -= 5
+						AlcoholAddict:ARG:0 = ResSort:1
+						DrinkingExp:ARG:0 = EXP_DEMAND_22(0,93,ARG)
+					CASE 109
+						HoleStretch:ARG:0 = ResSort:1*100
+					CASE 110
+						HoleStretch:ARG:1 = ResSort:1*100
+					CASE 111
+						HoleStretch:ARG:2 = ResSort:1*100
+					CASE 503
+						ResSort:1 -= 5
+						CharaTrauma:ARG:0 = ResSort:1
+						CharaTraumaExp:ARG:0 = EXP_DEMAND_24(0,90,ARG)
+				ENDSELECT
+			CASE 100
+				PRINTFORML Biological age affects growth, health, physical ability, hit chance, etc.
+				PRINTFORML Chronological age does not do anything.
+				PRINTL
+				PRINTFORM Biological Age: {CharaAge:ARG:0} (%TOSTR_LifeStage(CharaAge:ARG:0)%)
+				PRINTBUTTON " [Change]", 1
+				PRINTL
+				PRINTFORM Chronological Age: {CharaAge:ARG:1} (born in %PRINT_DATE_F(CharaAge:ARG:2,2,1)%)
+				PRINTBUTTON " [Change]", 2
+				PRINTL
+				PRINTL [999] Leave
+				INPUT
+				SELECTCASE RESULT
+				CASE 1
+					PRINTFORML %NAME:ARG% is currently {charaAge:ARG:0}
+					PRINTFORML To change it, enter an age from 0 to 1000. (Leave blank to cancel.)
+					PRINTL
+					PRINTBUTTON "[Cancel] ", charaAge:ARG:0
+					PRINTBUTTON "[3] ", 3
+					PRINTBUTTON "[7] ", 7
+					PRINTBUTTON "[10] ", 10
+					PRINTBUTTON "[13] ", 13
+					PRINTBUTTON "[16] ", 16
+					PRINTBUTTON "[20] ", 20
+					PRINTBUTTON "[25] ", 25
+					PRINTBUTTON "[40] ", 40
+					PRINTBUTTON "[60] ", 60
+					PRINTBUTTON "[80] ", 80
+					PRINTL
+					INPUT
+					IF INRANGE(RESULT,0,1000)
+						charaAge:ARG:0 = RESULT
+						PRINTFORMW Accepted. %NAME:ARG% is now {charaAge:ARG:0}.
+					ENDIF
+				CASE 2
+					NewDate = CharaAge:(ARG):2
+					NewDate:4 = (NewDate/YearLength)
+					;Removes years by dividing it by the year length and multiplying it back again.
+					LOCAL:4 = ((NewDate/YearLength)*YearLength)
+					IF NewDate < 0
+						NewDate:4 --
+						LOCAL:4 --
+					ENDIF
+					;Get the remainder of dividing by year length (124) then divide by month count (4), then adding 1 month
+					IF NewDate % YearLength == 0
+						NewDate:2 = 4
+					ELSEIF NewDate % YearLength % 31 == 0
+						NewDate:2 = ABS(NewDate) % YearLength / 31
+					ELSE
+						NewDate:2 = ABS(NewDate) % YearLength / 31 + 1
+					ENDIF
+					;Get the remainder of dividing by year length (124) and divide by month count (4), then subtracting 1 day
+					IF NewDate % YearLength % 31 == 0
+						NewDate:3 = 31
+					ELSE
+						NewDate:3 = ABS(NewDate % YearLength % 31)
+					ENDIF
+					;NAS: Negative date handling
+					IF NewDate < 0
+						NewDate:3 = 31 - (NewDate:3)
+						NewDate:2 = 5 - (NewDate:2)
+					ENDIF
+					;end of month is weird
+					IF NewDate:3 == 0
+						NewDate:2 --
+						SIF NewDate:2 == 0
+							NewDate:2 = 4
+						NewDate:3 = 31
+					ENDIF
+					RESULT_3_FIRST_LINE = LINECOUNT
+					DO
+						CLEARLINE LINECOUNT - RESULT_3_FIRST_LINE
+						;(NewDate:3 != 31 ? NewDate:3 # NewDate:3-1)
+						NewDate = (NewDate:4*YearLength)+((NewDate:2-1)*(YearLength/MonthCount))+NewDate:3
+						SIF NewDate:2 == 4 && NewDate:3 == 31
+							NewDate -= YearLength
+
+						PRINTFORML The current chronological age is {charaAge:ARG:1} (born in %PRINT_DATE_F(CharaAge:ARG:2,2,1)%).
+						PRINTFORML New Date: %PRINT_DATE_F(NewDate,2,1)%
+						PRINTFORML [0] - Change Year: {NewDate:4}
+						PRINTFORML [1] - Change Month: {NewDate:2}
+						PRINTFORML [2] - Change Day: {NewDate:3}
+						PRINTL
+						PRINTFORML [997] - Set year as birth year
+						PRINTFORML [998] - Apply
+						PRINTFORML [999] - Cancel
+						INPUT
+						SELECTCASE RESULT
+						CASE 0
+							PRINTFORMDL Enter the year (up to {GET_YEAR()})
+							INPUT
+							SELECTCASE RESULT
+								CASE IS <= GET_YEAR()
+									NewDate:4 = RESULT
+								CASEELSE
+									PRINTFORMDL Invalid Input
+							ENDSELECT
+						CASE 1
+							PRINTFORMDL Enter the month (1-4)
+							INPUT
+							SELECTCASE RESULT
+								CASE 1 TO 4
+									NewDate:2 = RESULT
+								CASEELSE
+									PRINTFORMDL Invalid Input
+							ENDSELECT
+						CASE 2
+							$ENTER_THE_DAY
+							PRINTFORMDL Enter the day (1-31)
+							INPUT
+							SELECTCASE RESULT
+								CASE 1 TO 31
+									NewDate:3 = RESULT
+								CASEELSE
+									PRINTFORMDL Invalid Input
+							ENDSELECT
+						CASE 997
+							NewDate:4 = (TimeStamp()-((CharaAge:ARG:0)*YearLength))/YearLength
+						CASE 998
+						CALLF SetBirthDate(ARG, 0, (NewDate:2 == 4 && NewDate:3 == 31 ? NewDate:4-1 # NewDate:4), NewDate:2, NewDate:3, 0)
+						RETURN
+						CASE 999
+						RETURN
+						ENDSELECT
+					LOOP 1
+				ENDSELECT
+			CASE 99
+				RETURN
+			CASE 108
+				CALL SOMATOMETRY(ARG)
+		ENDSELECT
+	LOOP 1
+CASEELSE
+	ResSort = nInput/100
+	ResSort:1 = nInput % ResSort
+	IF INRANGE(ResSort,190,198) || GROUPMATCH(ResSort, 90, 91, 166)
+		IF TALENT:ARG:ResSort == ResSort:1
+		TALENT:ARG:ResSort = 0
+		ELSE
+		TALENT:ARG:ResSort = ResSort:1
+		ENDIF
+	ENDIF
+ENDSELECT
+
+@HediffMenu(ARG,nPart,nWound)
+#DIM nPart
+#DIM nWound
+#DIM DMG_TYPE = 1
+#DIM DMG = 500
+#DIM EnabledValues, 100
+#DIM PERM = 0
+#DIM nOwner
+DO
+
+IF DT_CELL_GET(@"Hediff", HediffGet(ARG,nPart,nWound), "owner", 1) >= CHARANUM
+    LOCALS '= @"Unknown"
+ELSE
+    LOCALS '= @"%NAME:(DT_CELL_GET(@"Hediff", HediffGet(ARG,nPart,nWound), "owner", 1))%"
+ENDIF
+IF TOINT(DT_CELL_GETS(@"Hediff", HediffGet(ARG,nPart,nWound), "cause", 1))
+    LOCALS:1 '= @"%GET_STR(MASTER, "Weapon", TOINT(DT_CELL_GETS(@"Hediff", HediffGet(ARG,nPart,nWound), "cause", 1)), "名前")%"
+ELSE
+    LOCALS:1 '= @"%DT_CELL_GETS(@"Hediff", HediffGet(ARG,nPart,nWound), "cause", 1)%"
+ENDIF
+
+IF DT_CELL_GET(@"Hediff", HediffGet(ARG,nPart,nWound), "type", 1) >= VARSIZE("DamageTypes")
+    LOCALS:2 '= @"%GET_STR(MASTER, "Hediff", DT_CELL_GET(@"Hediff", HediffGet(ARG,nPart,nWound), "type", 1)-100, "名前")%"
+ELSE
+    LOCALS:2 '= @"%DamageTypes:(DT_CELL_GET(@"Hediff", HediffGet(ARG,nPart,nWound), "type", 1))%"
+ENDIF
+
+HTML_PRINT @"Hediff: %HediffName(ARG,nPart,nWound,1,1)%"
+PRINTFORML [-1] - Damage: {DT_CELL_GET(@"Hediff", HediffGet(ARG,nPart,nWound), "severity", 1)}
+PRINTFORML [-2] - Damage Type: %LOCALS:2%
+PRINTFORML [-3] - Permanent: \@ DT_CELL_GET(@"Hediff", HediffGet(ARG,nPart,nWound), "permanent", 1) ? Yes # No \@ 
+PRINTFORML [-4] - Dealer: %LOCALS% ({DT_CELL_GET(@"Hediff", HediffGet(ARG,nPart,nWound), "owner", 1)})
+PRINTFORML [-5] - Cause: %LOCALS:1% ({TOINT(DT_CELL_GETS(@"Hediff", HediffGet(ARG,nPart,nWound), "cause", 1))})
+PRINTFORML [-6] - Bleeding: {DT_CELL_GET(@"Hediff", HediffGet(ARG,nPart,nWound), "bleeding", 1)}x
+PRINTFORML [-7] - Tended: {DT_CELL_GET(@"Hediff", HediffGet(ARG,nPart,nWound), "tended", 1)}\%
+PRINTL
+PRINTFORML [-8] - Remove Hediff
+PRINTL
+PRINTFORML [-9] - Get me out of here!
+INPUT
+SELECTCASE RESULT
+CASE -1
+	PRINTFORML Type the amount of damage the 2hu gets:
+	PRINTBUTTON @"%DIGIT_GROUP(0)%",0
+	PRINTL
+	PRINTBUTTON @"%DIGIT_GROUP(1000)%",1000
+	PRINTL
+	PRINTBUTTON @"%DIGIT_GROUP(2000)%",2000
+	PRINTL
+	PRINTBUTTON @"%DIGIT_GROUP(3000)%",3000
+	PRINTL
+	PRINTBUTTON @"%DIGIT_GROUP(5000)%",5000
+	PRINTL
+	PRINTBUTTON @"%DIGIT_GROUP(10000)%",10000
+	PRINTL
+	PRINTBUTTON @"%DIGIT_GROUP(10000)%",10000
+	INPUT
+	DT_CELL_SET @"Hediff", HediffGet(ARG,nPart,nWound), "severity", RESULT, 1
+CASE -2
+	PRINTFORML Select the damage type:
+	FOR LOCAL, 0, VARSIZE("DamageTypes")
+		SIF DamageTypes:(LOCAL) == ""
+			CONTINUE
+
+		PRINTFORM %@"[{LOCAL}] - %DamageTypes:(LOCAL)%",10,LEFT%
+		PRINTL
+		RESETCOLOR
+	NEXT
+	PRINTFORML [-1] - Get me out of here!
+	INPUT
+	SELECTCASE RESULT
+	CASE IS <= (-1)
+	CONTINUE
+	CASE IS <= VARSIZE("DamageTypes")
+		DT_CELL_SET @"Hediff", HediffGet(ARG,nPart,nWound), "type", RESULT, 1
+	ENDSELECT
+CASE -3
+	DT_CELL_SET @"Hediff", HediffGet(ARG,nPart,nWound), "permanent", !DT_CELL_GET(@"Hediff", HediffGet(ARG,nPart,nWound), "permanent", 1), 1
+CASE -4
+	CALL SHOW_CHARA_LIST_TR()
+	SELECTCASE RESULT
+		CASE 999
+		RETURN
+		CASEELSE
+		DT_CELL_SET @"Hediff", HediffGet(ARG,nPart,nWound), "owner", RESULT, 1
+	ENDSELECT
+CASE -5
+	LOCAL:3 = 0
+	CALL COM_ClothesGet(ARG, 24, 2)
+	SIF RESULT
+		DT_CELL_SET @"Hediff", HediffGet(ARG,nPart,nWound), "cause", TOSTR(RESULT), 1
+CASE -6
+	PRINTFORML Type the amount of bleeding the 2hu has:
+	PRINTBUTTON @"%DIGIT_GROUP(0)%",0
+	PRINTL
+	PRINTBUTTON @"%DIGIT_GROUP(1)%",1
+	PRINTL
+	PRINTBUTTON @"%DIGIT_GROUP(2)%",2
+	PRINTL
+	PRINTBUTTON @"%DIGIT_GROUP(3)%",3
+	PRINTL
+	PRINTBUTTON @"%DIGIT_GROUP(5)%",5
+	PRINTL
+	PRINTBUTTON @"%DIGIT_GROUP(10)%",10
+	PRINTL
+	PRINTBUTTON @"%DIGIT_GROUP(20)%",20
+	INPUT
+	DT_CELL_SET @"Hediff", HediffGet(ARG,nPart,nWound), "bleeding", RESULT, 1
+CASE -7
+	PRINTFORML Type the tend quality of the wound:
+	FOR LOCAL, 0, 301
+		;only show 10, 30, 50, 70, 80, 100, 130, 150, 170, 200, 300
+		SELECTCASE LOCAL
+		CASE 0, 10, 30, 50, 70, 80, 100, 120, 150, 170, 200 ,300
+		CASEELSE
+			RESETCOLOR
+			CONTINUE
+		ENDSELECT
+
+		;color
+		SELECTCASE LOCAL
+		CASE IS < 30
+			SETCOLOR C_D_RED
+		CASE IS < 60
+			SETCOLOR C_RED
+		CASE IS < 100
+			SETCOLOR 0xE9967A
+		CASE 100
+			SETCOLOR C_YELLOW
+		CASE IS < 130
+			SETCOLOR C_P_GREEN
+		CASE IS < 200
+			SETCOLOR C_GREEN
+		CASE IS < 300
+			SETCOLOR C_AQUA
+		CASEELSE
+			SETCOLOR C_PINK
+		ENDSELECT
+		PRINTBUTTON @"[{LOCAL}] ", LOCAL
+	NEXT
+	RESETCOLOR
+	INPUT
+	DT_CELL_SET @"Hediff", HediffGet(ARG,nPart,nWound), "tended", RESULT, 1
+CASE -8
+	CALLF ClearHediff(ARG,nPart,nWound)
+CASE IS <= -4
+	RETURN
+ENDSELECT
+
+LOOP 1
+
+
+@EVENTLOAD
+#LATER
+CALL INIT_SCREEN_MESSAGE(@"Enforcing SCM") ;nas loading
+IF !nStartingBackstory && RELATION:2:0 < 130
+	PRINTFORML Incorrect backstory settings detected!
+	PRINTFORML Resetting backstory to the vagrant outsider start.
+	nStartingBackstory = 999
+ENDIF
+CALL SCMEnforce()
+
+@CHAR_EDITOR_NAS_PAGE_3(ARG, ARG:1, CHEAT = 0)
+#DIM CHEAT
+#DIM nInput
+#DIM P_COUNT
+#DIM TALENT_LIST, VARSIZE("TALENT")
+#DIM TALENT_COUNT = 0
+
+;make talents
+IF !TALENT_COUNT
+	TALENT_COUNT = 0
+	VARSET TALENT_LIST, -1
+	FOR LOCAL,0,VARSIZE("TALENT")
+		;Either because these are redundant talents or would break the game if they were selectable
+		SELECTCASE LOCAL
+		;redundant
+		CASE 112, 105, 108, 109, 110, 111, 112, GETNUM(TALENT,"BladderSize"), GETNUM(TALENT,"BowelSize"), 100, 250, GETNUM(TALENT,"ESP"), 3, 4, 5, 7, 221, 222, 8, 2, 190 TO 197, 165, 90, 91, 166, 132, 297, 295
+			CONTINUE
+		;endurance
+		CASE GETNUM(TALENT,"PeeHoldTalent"), GETNUM(TALENT,"PooHoldTalent"), GETNUM(TALENT,"OrgasmEndurnace"), 56, 121
+			CONTINUE
+		;removed cause having these would be bugs
+		CASE 17, 27, 144
+			CONTINUE
+		;should not be able to remove custom character tag.
+		CASE GETNUM(TALENT,"CustomChara"), GETNUM(TALENT,"CustomCharaVersion"), GETNUM(TALENT,"BornChild")
+			CONTINUE
+		ENDSELECT
+		SIF GET_TALENTNAME_TR(LOCAL,1) == ""
+			CONTINUE
+		TALENT_LIST:TALENT_COUNT = LOCAL
+		TALENT_COUNT++
+	NEXT
+ENDIF
+
+VARSET LOCAL
+VARSET P_COUNT
+CALL PRINT_STATE_TALENT_MOD2(ARG)
+PRINTL 
+FOR LOCAL,ARG:1 * 60,60 + ARG:1 * 60
+	SIF !INRANGE(LOCAL,0,VARSIZE("TALENT_LIST"))
+		CONTINUE
+	IF LOCAL % 15 == 0
+		PRINTL
+		SIF LOCAL:1 % 3
+			PRINTL
+		LOCAL:1 = 0
+	ENDIF
+	;陥落素質ほか
+	IF !CHEAT
+		SIF TP_CANT_TALENT(TALENT_LIST:LOCAL, NO:ARG)
+			CONTINUE
+	ENDIF
+	SIF TALENT_LIST:LOCAL == -1
+		CONTINUE
+	
+	SELECTCASE TALENTNAME:(TALENT_LIST:LOCAL)
+	;TALENT.CSVに登録されていない
+	CASE ""
+		IF GET_TALENTNAME_TR(TALENT_LIST:LOCAL,1) != ""
+		GOTO SELECT
+		ELSE
+		CONTINUE
+		ENDIF
+	;オンオフ型の素質(TALENTNAMEと素質表示が一致)
+	CASE "非童貞"
+		SETCOLOR C_AQUA
+		SIF GETBIT(TALENT:ARG:(TALENT_LIST:LOCAL), 0) || !HAS_PENIS(ARG)
+			SETCOLOR 150,150,150
+		LOCALS = [{TALENT_LIST:LOCAL,4}] - %TALENT_TR(TALENT_LIST:LOCAL)%
+	CASE "キス未経験"
+		IF !TALENT:ARG:LOCAL
+			SETCOLOR 150,150,150
+		ELSE
+			SETCOLOR C_AQUA
+		ENDIF
+		LOCALS = [{TALENT_LIST:LOCAL,4}] - %TALENT_TR(TALENT_LIST:LOCAL)%
+	CASE "TechKnow"
+		IF !TALENT:ARG:(TALENT_LIST:LOCAL)
+			SETCOLOR 150,150,150
+		ELSE
+			SETCOLOR C_AQUA
+		ENDIF
+		LOCALS = [{TALENT_LIST:LOCAL,4}] - %TALENT_TR(TALENT_LIST:LOCAL)%…【%AllTechLevels(TALENT:ARG:(TALENT_LIST:LOCAL))%】
+	CASE "SexKnow"
+		IF TALENT:ARG:LOCAL == -1
+			SETCOLOR 150,150,150
+		ELSE
+			SETCOLOR C_AQUA
+		ENDIF
+		LOCALS = [{TALENT_LIST:LOCAL,4}] - %TALENT_TR(TALENT_LIST:LOCAL)%…【%AllSexLevels(TALENT:ARG:(TALENT_LIST:LOCAL))%】
+	;量的素質
+	CASEELSE
+		$SELECT
+		IF !TALENT:ARG:(TALENT_LIST:LOCAL)
+			SETCOLOR 150,150,150
+		ELSE
+			SETCOLOR C_AQUA
+		ENDIF
+		LOCALS =  [{TALENT_LIST:LOCAL,4}] - %TALENT_TR(TALENT_LIST:LOCAL)%
+		IF TALENTNAME:(TALENT_LIST:LOCAL) == GET_TALENTNAME(TALENT_LIST:LOCAL,1) && !GROUPMATCH(TALENT_LIST:LOCAL, 198, 162, 164, 185, 143)
+			LOCALS:1 =
+		ELSEIF STRLENS(GET_TALENTNAME(TALENT_LIST:LOCAL, TALENT:ARG:(TALENT_LIST:LOCAL)))
+			LOCALS:1 =  …【%GET_TALENTNAME_TR(TALENT_LIST:LOCAL,TALENT:ARG:(TALENT_LIST:LOCAL), ARG)%】
+		ELSE
+			LOCALS:1 = …
+			SETCOLOR 150,150,150
+		ENDIF
+		LOCALS += LOCALS:1
+	ENDSELECT
+	IF STRLENS(LOCALS)
+		P_COUNT ++
+	ENDIF
+	PRINTFORM %LOCALS,50,LEFT%
+	LOCAL:1 ++
+	SIF LOCAL:1 % 3 == 0
+		PRINTL
+	RESETCOLOR
+NEXT
+PRINTL
+
+IF !P_COUNT
+	IF INRANGE(ARG:1, 0, 6)
+	globalLineSave ++
+	ELSE
+	globalLineSave = 0
+	ENDIF
+	RETURN -1
+ENDIF
+
+IF ARG:1 != 0
+	PRINTBUTTON "[998] - Previous Page                 ",998
+ELSE
+	SETCOLOR 0x969696
+	PRINTFORM %"[---] - Previous Page",35,LEFT%
+	RESETCOLOR
+ENDIF
+IF INRANGE(ARG:1, 0, 6)
+	PRINTBUTTON "[999] - Next Page",999
+ELSE
+	SETCOLOR 0x969696
+	PRINTFORM %"[---] - Next Page",35,LEFT%
+	RESETCOLOR
+ENDIF
+PRINTL
+
+@CHAR_EDITOR_NAS_RESULT_3(ARG, CHEAT = 0, nInput)
+#DIM CHEAT
+#DIM nInput
+	;ページ送り
+	SIF nInput == 998 && globalLineSave
+		globalLineSave --
+	SIF nInput == 999
+		globalLineSave ++
+	SIF nInput < 0 || nInput > VARSIZE("TALENT") || TALENTNAME:nInput == ""
+		RETURN
+	;陥落素質ほか
+	IF !CHEAT
+		SIF TP_CANT_TALENT(LOCAL, NO:ARG)
+			RETURN
+	ENDIF
+	;Code for virginity
+	IF nInput == 0
+		IF TALENT:ARG:nInput == 1
+			TALENT:ARG:nInput = 0
+		ELSE
+			TALENT:ARG:nInput++
+		ENDIF
+	;性別
+	ELSEIF nInput == 2
+		IF TALENT:ARG:nInput == 3
+			TALENT:ARG:nInput = 1
+			TALENT:ARG:形状 = 0
+			MAXBASE:ARG:精力 = 0
+			MAXBASE:ARG:5 = 0
+		ELSE
+			TALENT:ARG:nInput ++
+			IF TALENT:ARG:形状 == 0 || MAXBASE:ARG:精力 == 0 || MAXBASE:ARG:5 == 0
+				TALENT:ARG:形状 = 3
+				MAXBASE:ARG:5 = 1500
+				MAXBASE:ARG:精力 = 1000
+			ENDIF
+		ENDIF
+	;Age
+	ELSEIF nInput == 17
+		TALENT:ARG:nInput ++
+		SIF TALENT:ARG:nInput == 3
+			TALENT:ARG:nInput = -1
+	;Knowledge Seed
+	ELSEIF nInput == 50
+		SELECTCASE TALENT:ARG:nInput
+		CASE IS < 5
+			TALENT:ARG:nInput ++
+		CASE 5 TO 45
+			TALENT:ARG:nInput += 5
+		CASE 50
+			TALENT:ARG:nInput = -1
+		ENDSELECT
+	;Esper
+	ELSEIF nInput == 59
+		TALENT:ARG:nInput = !TALENT:ARG:nInput
+		SIF TALENT:ARG:nInput
+			MAXBASE:ARG:7 = MAX(100, MAXBASE:ARG:7)
+	;性別嗜好
+	ELSEIF nInput == 81
+		IF TALENT:ARG:nInput == 3
+			TALENT:ARG:nInput = -1
+		ELSE
+			TALENT:ARG:nInput ++
+		ENDIF
+	;オンオフ型の素質
+	ELSEIF (TALENTNAME:nInput == GET_TALENTNAME(nInput,1) || GROUPMATCH(nInput,1,6)) && !GROUPMATCH(nInput, 143, 162, 164, 185, 190, 191, 193, 194, 196, 197, 198, 220, 274) ;exceptions, added 220
+		TALENT:ARG:nInput = !TALENT:ARG:nInput
+		;オンオフ型で別途追加が必要な素質
+		;母乳体質
+		IF nInput == 149
+			IF TALENT:ARG:nInput
+				MAXBASE:ARG:母乳 = 2000
+			ELSE
+				MAXBASE:ARG:母乳 = 0
+			ENDIF
+		ENDIF
+	;体型
+	ELSEIF nInput == 100
+		;体型が「小人(-5)」と「巨人(3)」の場合を独立処理
+		IF TALENT:ARG:nInput == -5
+			TALENT:ARG:nInput = -2
+		ELSEIF TALENT:ARG:nInput == 2
+			TALENT:ARG:nInput = 5
+		ELSEIF TALENT:ARG:nInput == 5
+			TALENT:ARG:nInput = -5
+		ELSE
+			TALENT:ARG:nInput ++
+		ENDIF
+	;M sensitivity
+	ELSEIF nInput == 106
+		TALENT:ARG:nInput++
+		SIF TALENT:ARG:nInput == 3
+			TALENT:ARG:nInput = -1
+	;drunkard
+	ELSEIF nInput == 121
+		TALENT:ARG:nInput++
+		SIF TALENT:ARG:nInput == 4
+			TALENT:ARG:nInput = -2
+	;Animal Ears
+	ELSEIF nInput == 143
+		TALENT:ARG:nInput++
+		TALENT:ARG:nInput %= 5
+	;Music/singing/dancing knowledge
+	ELSEIF nInput == 161
+		TALENT:ARG:nInput++
+		TALENT:ARG:nInput %= 4
+	;skillers
+	ELSEIF INRANGE(nInput, 42, 49)
+		TALENT:ARG:nInput = RANK_TO_LEVEL(LEVEL_TO_RANK(TALENT:ARG:nInput)+1)
+		TALENT:ARG:nInput %= MaxNonHLevel
+	;tone deaf/sense of sound/perfect pitch
+	ELSEIF nInput == 162
+		TALENT:ARG:nInput++
+		SIF TALENT:ARG:nInput == 3
+			TALENT:ARG:nInput = -1
+	;ice spirit
+	ELSEIF nInput == 164
+		TALENT:ARG:nInput++
+		TALENT:ARG:nInput %= 3
+	;fuck buddy
+	ELSEIF nInput == 185
+		TALENT:ARG:nInput++
+		TALENT:ARG:nInput %= 3
+	;human
+	ELSEIF nInput == 190
+		TALENT:ARG:nInput++
+		TALENT:ARG:nInput %= 7
+	;youkai
+	ELSEIF nInput == 191
+		TALENT:ARG:nInput++
+		TALENT:ARG:nInput %= 13
+	;Divine spirit
+	ELSEIF nInput == 193
+		TALENT:ARG:nInput++
+		TALENT:ARG:nInput %= 4
+	;non-living
+	ELSEIF nInput == 194
+		TALENT:ARG:nInput++
+		TALENT:ARG:nInput %= 5
+	;doll
+	ELSEIF nInput == 196
+		TALENT:ARG:nInput++
+		IF TALENT:ARG:nInput == 6
+			TALENT:ARG:nInput = 99
+		ELSEIF TALENT:ARG:nInput == 100
+			TALENT:ARG:nInput = 0
+		ENDIF
+	;extra
+	ELSEIF nInput == 197
+		TALENT:ARG:nInput++
+		TALENT:ARG:nInput %= 5
+	;milf
+	ELSEIF nInput == 198
+		TALENT:ARG:nInput++
+		TALENT:ARG:nInput %= 3
+	;custom: fairy friend
+	ELSEIF nInput == 220
+		TALENT:ARG:nInput++
+		SIF TALENT:ARG:nInput == 11
+			TALENT:ARG:nInput = -5
+	;dick
+	ELSEIF nInput == 250
+		TALENT:ARG:nInput++
+		SELECTCASE TALENT:ARG:nInput
+			CASE 7
+				TALENT:ARG:nInput = 10
+			CASE 11
+				TALENT:ARG:nInput = 1
+		ENDSELECT
+	;stone stacking
+	ELSEIF nInput == 274
+		TALENT:ARG:nInput++
+		TALENT:ARG:nInput %= 6
+	;NAS: Tech Knowledge
+	ELSEIF nInput == 1204
+		IF TALENT:ARG:nInput == 8
+			TALENT:ARG:nInput = 0
+		ELSE
+			TALENT:ARG:nInput ++
+		ENDIF
+	;NAS: Sex Knowledge
+	ELSEIF nInput == 1300
+		IF TALENT:ARG:nInput == 5
+			TALENT:ARG:nInput = -1
+			SIF ARG == MASTER
+			CALL SexKnowIgnorantWarning(1)
+		ELSE
+			TALENT:ARG:nInput ++
+		ENDIF
+	;量的素質
+	ELSE
+		;性別
+		IF LOCAL == 2
+			IF TALENT:ARG:nInput == 3
+				TALENT:ARG:nInput = 1
+			ELSE
+				TALENT:ARG:nInput ++
+			ENDIF
+		;端まで行くと-1を掛ける
+		ELSEIF STRLENS(GET_TALENTNAME(nInput,TALENT:ARG:nInput + 1)) || TALENT:ARG:nInput == -1
+			TALENT:ARG:nInput ++
+		ELSE
+			TALENT:ARG:nInput = -1 * TALENT:ARG:nInput
+		ENDIF
+	ENDIF
+
+
+@CHAR_EDITOR_NAS_PAGE_4(ARG, CHEAT = 0)
+#DIM CHEAT
+#DIM  C_ID
+CALL PRINT_ABL_MOD(ARG)
+CALL PRINT_ADDICT_MOD(ARG)
+LOCAL:1 = 0
+FOR LOCAL,0,VARSIZE("ABL")
+	SIF !STRLENS(ABLNAME:LOCAL)
+		CONTINUE
+	;同性愛関係
+	IF !(IS_FEMALE(ARG)) && (LOCAL == 17 || LOCAL == 32)
+		CONTINUE
+	ELSEIF IS_FEMALE(ARG) && (LOCAL == 18 || LOCAL == 33)
+		CONTINUE
+	ELSEIF !TALENT:ARG:ESP && (LOCAL == 42)
+		;Danmaku but no ESP
+		CONTINUE
+	ELSEIF !nPee && GROUPMATCH(LOCAL, 5, 38, 56)
+		;Urethral sex stuff without pee
+		CONTINUE
+	ELSEIF !nPee && GROUPMATCH(LOCAL, 36, 61)
+		;Pee stuff without pee
+		CONTINUE
+	ELSEIF !nScat && GROUPMATCH(LOCAL, 37, 62)
+		;Poo stuff without poop
+		CONTINUE
+	ELSEIF !nOmutsu && LOCAL == 63
+		;diaper attraction
+		CONTINUE
+	ELSEIF !GETBIT(nWeapons,2) && GROUPMATCH(LOCAL, 66)
+		;Firearms
+		CONTINUE
+	ELSEIF !GETBIT(nWeapons,1) && GROUPMATCH(LOCAL,67)
+		;Melee
+		CONTINUE
+	ENDIF
+	;中毒も無し
+	;SIF LOCAL >= 30 && !CHEAT
+	;	CONTINUE
+	PRINTFORM %ABL_TR(LOCAL),18%:{ABL:ARG:LOCAL,5,LEFT} 
+	IF ABL:ARG:LOCAL != 0
+		PRINTBUTTON "[−]", LOCAL * 2
+	ELSE
+		SETCOLOR 0x969696
+		PRINT [−]
+		RESETCOLOR
+	ENDIF
+	IF 1
+		PRINTBUTTON "[＋]", LOCAL * 2 + 1
+	ELSE
+		SETCOLOR 0x969696
+		PRINT [＋]
+		RESETCOLOR
+	ENDIF
+	LOCAL:1 ++
+	SIF LOCAL:1 % 5 == 0
+		PRINTL 
+NEXT
+PRINTL
+
+@CHAR_EDITOR_NAS_RESULT_4(ARG, CHEAT = 0, nInput)
+#DIM C_ID
+#DIM CHEAT
+#DIM nInput
+LOCAL = nInput / 2
+SIF !STRLENS(ABLNAME:LOCAL)
+	RETURN
+;同性愛関係
+IF !(TALENT:ARG:2 & 1) && (LOCAL == 17 || LOCAL == 32)
+	RETURN
+ELSEIF TALENT:ARG:2 & 1 && (LOCAL == 18 || LOCAL == 33)
+	RETURN
+ENDIF
+;中毒関係
+;SIF LOCAL >= 30 && !CHEAT
+;	RETURN
+;奇数(+)
+IF nInput % 2
+	ABL:ARG:LOCAL ++
+;偶数(-)
+ELSE
+	IF ABL:ARG:LOCAL <= 0
+		RETURN
+	ELSE
+		ABL:ARG:LOCAL --
+	ENDIF
+ENDIF
+
+@CHAR_EDITOR_NAS_PAGE_5(ARG, CHEAT = 0)
+#DIM CHEAT
+#DIM  C_ID
+CALL EXP_CUSTOM(ARG)
+
+@CHAR_EDITOR_NAS_RESULT_5(ARG, CHEAT = 0, nInput)
+#DIM CHEAT
+#DIM nInput
+#DIM  C_ID
+	SIF !STRLENS(EXPNAME:nInput)
+		RETURN
+	;同性愛関係
+	IF !(TALENT:ARG:2 & 1) && nInput == 41
+		RETURN
+	ELSEIF TALENT:ARG:2 & 1 && nInput == 42
+		RETURN
+	ENDIF
+	PRINTFORM Please enter a value for %EXP_TR(nInput)%.      
+	PRINTBUTTON "[Cancel]",-1
+	INPUT
+	SIF RESULT < 0
+		RETURN
+	EXP:ARG:nInput = MIN(RESULT,30)
+	SIF CHEAT
+		EXP:ARG:nInput = RESULT
+
+
+@K_CONQUEST_LIST(C_ID,nTrait)
+#DIM  C_ID
+#DIM nTrait
+FOR LOCAL,-5,20
+	SIF TALENT:C_ID:nTrait == LOCAL
+		SETCOLOR C_AQUA	
+	SIF GET_TALENTNAME_TR(nTrait,LOCAL,C_ID) != "" && (LOCAL == 1 || GET_TALENTNAME_TR(nTrait,LOCAL,C_ID) != GET_TALENTNAME_TR(nTrait,1,C_ID))
+	PRINTBUTTON @"[%GET_TALENTNAME_TR(nTrait,LOCAL,C_ID)%] ", (nTrait*100)+5+LOCAL
+	RESETCOLOR
+NEXT
+
+@CHAR_EDITOR_NAS_PAGE_6(C_ID, CHEAT = 0)
+#DIM CHEAT
+#DIM  C_ID
+#DIM nTrait
+
+PRINTBUTTON @"[%"Favor",5,LEFT%]: %DIGIT_GROUP(CFLAG:C_ID:2),10, RIGHT%", 100
+PRINTL
+PRINTBUTTON @"[%"Trust",5,LEFT%]: %DIGIT_GROUP(CFLAG:C_ID:4),10, RIGHT%", 101
+PRINTL
+CALL PRINTLINE, "Fall States"
+SIF TALENT:C_ID:221
+	SETCOLOR C_AQUA	
+PRINTBUTTON @"[%GET_TALENTNAME_TR(221,1,C_ID)%] ", 22100
+RESETCOLOR
+SIF TALENT:C_ID:222
+	SETCOLOR C_AQUA	
+PRINTBUTTON @"[%GET_TALENTNAME_TR(222,1,C_ID)%] ", 22200
+RESETCOLOR
+PRINTL
+SIF TALENT:C_ID:7
+	SETCOLOR C_AQUA	
+PRINTBUTTON @"[%GET_TALENTNAME_TR(7,1,C_ID)%] ", 700
+RESETCOLOR
+PRINTL
+CALL K_CONQUEST_LIST(C_ID,3)
+PRINTL
+CALL K_CONQUEST_LIST(C_ID,8)
+PRINTL
+CALL K_CONQUEST_LIST(C_ID,4)
+PRINTL
+CALL K_CONQUEST_LIST(C_ID,142)
+PRINTL
+CALL K_CONQUEST_LIST(C_ID,184)
+PRINTL
+CALL K_CONQUEST_LIST(C_ID,185)
+PRINTL
+CALL K_CONQUEST_LIST(C_ID,5)
+CALL K_CONQUEST_LIST(C_ID,1202)
+PRINTL
+CALL K_CONQUEST_LIST(C_ID,1215)
+PRINTL
+CALL PRINTLINE, "Lewd Traits"
+VARSET LOCAL
+FOR LOCAL, 0, VARSIZE("TALENT")
+	IF !GROUPMATCH(LOCAL,73,74,75,76,77,78,1302,122,150,152,156,1504,1505,57,1306,1307,1308)
+		CONTINUE
+	ELSEIF LOCAL == 57
+		IF nPee
+		SIF GETBIT(TALENT:C_ID:LOCAL,0)
+			SETCOLOR C_AQUA	
+		PRINTBUTTON @"[%GET_TALENTNAME_TR(LOCAL,1,C_ID)%] ", 5700
+		RESETCOLOR
+		ENDIF
+		IF nScat
+		SIF GETBIT(TALENT:C_ID:LOCAL,1)
+			SETCOLOR C_AQUA
+		PRINTBUTTON @"[%GET_TALENTNAME_TR(LOCAL,2,C_ID)%] ", 5701
+		RESETCOLOR
+		ENDIF
+		IF nOmutsu
+		SIF GETBIT(TALENT:C_ID:LOCAL,2)
+			SETCOLOR C_AQUA	
+		PRINTBUTTON @"[%GET_TALENTNAME_TR(LOCAL,4,C_ID)%] ", 5702
+		RESETCOLOR
+		ENDIF
+		CONTINUE
+	ENDIF
+	SIF TALENT:C_ID:LOCAL
+		SETCOLOR C_AQUA
+	PRINTBUTTON @"[%GET_TALENTNAME_TR(LOCAL,1,C_ID)%] ", LOCAL*100
+	RESETCOLOR
+	LOCAL:1 ++
+	SIF LOCAL:1 % 10 == 0
+		PRINTL
+NEXT
+PRINTL
+
+@CHAR_EDITOR_NAS_RESULT_6(C_ID, CHEAT = 0, nInput)
+#DIM C_ID
+#DIM CHEAT
+#DIM nInput
+#DIM ResSort, 4
+
+ResSort = nInput/100
+ResSort:1 = nInput - (ResSort*100)
+;PRINTFORML {ResSort}
+;PRINTFORMW {ResSort:1}
+SELECTCASE nInput
+CASE 100
+	FOR LOCAL, 0, 1000100, 100
+		SELECTCASE LOCAL
+		CASE 0, 100, 500, 1000, 1500, 3000, 5000, 1000, 30000, 50000, 100000, 300000, 500000, 1000000
+			CALL PRINT_RANK(LOCAL,"MAX_1M")
+			PRINTBUTTON @" %DIGIT_GROUP(LOCAL)%", LOCAL
+			PRINTFORML
+		ENDSELECT
+	NEXT
+	PRINTL
+	PRINTFORML [-1] Leave
+	INPUT
+	SELECTCASE RESULT
+	CASE IS >= 0
+		CFLAG:C_ID:2 = RESULT
+	ENDSELECT
+CASE 101
+	FOR LOCAL, 0, 1000100, 100
+		SELECTCASE LOCAL
+		CASE 0, 10, 50, 100, 150, 500, 1000, 3000, 10000, 20000, 50000, 100000, 300000, 500000
+			CALL PRINT_RANK(LOCAL,"MAX_20000")
+			PRINTBUTTON @" %DIGIT_GROUP(LOCAL)%", LOCAL
+			PRINTFORML
+		ENDSELECT
+	NEXT
+	PRINTL
+	PRINTFORML [-1] Leave
+	INPUT
+	SELECTCASE RESULT
+	CASE IS >= 0
+		CFLAG:C_ID:4 = RESULT
+	ENDSELECT
+CASEELSE
+	SELECTCASE ResSort
+	CASE 177
+		INVERTBIT TALENT:C_ID:177, ResSort:1
+	CASE 3, 4, 8, 142, 184, 185, 1215
+		ResSort:1 -= 5
+		IF ResSort:1 == TALENT:C_ID:ResSort
+		TALENT:C_ID:ResSort = 0
+		ELSE
+		TALENT:C_ID:ResSort = ResSort:1
+		ENDIF
+	CASEELSE
+		TALENT:C_ID:ResSort = !TALENT:C_ID:ResSort
+	ENDSELECT
+ENDSELECT
+
+
+;-------------------------------------------------
+;JVN: UI for custom portraits
+;@CHARACTER_EDIT calls this function for displaying the UI
+;-------------------------------------------------
+@CHAR_EDITOR_NAS_PAGE_7(C_ID, CHEAT = 0)
+#DIM CHEAT
+#DIM  C_ID
+#DIM  SET_ID
+#DIMS TYPE
+#DIMS CATEGORY
+#DIM iLoop
+#DIM iLoopToo
+#DIMS sHtml
+#DIM image_separation = 2
+
+IF NO:C_ID == CSV_CHARANUM() && !GCREATED(CFLAG:C_ID:モブ子素材CFLAG開始位置)
+	CALL MOB_IMAGE_GEN(C_ID,0)
+	CALL MOB_IMAGE_GEN(C_ID,1)
+ENDIF
+
+PRINTL Custom Portraits
+DRAWLINE
+;CALL COLOR_LINE
+PRINTL Check resources/custom/custom.csv.txt for instructions on adding portraits to custom characters.
+PRINTFORML In short, you will: read instructions, add images to resources/custom/ directory, copy custom.csv.txt to custom.csv,\nmodify custom.csv, restart the game so it can load the images and select the image from here.
+PRINTL
+
+FOR iLoop, 0, CUSTOM_PORTRAITS_TOTAL
+	PRINTFORM %CUSTOM_PORTRAITS_NAME:iLoop + " Portrait", 16, LEFT%
+	SIF iLoop < CUSTOM_PORTRAITS_TOTAL-1
+		PRINTFORM %" "*(image_separation)%
+NEXT
+PRINTL
+
+CALL COLOR_PRINT((CUSTOM_PORTRAITS:C_ID:CP_Male != 0) ? @"%"Custom",16,LEFT%" # @"%"Default",16,LEFT%", (CUSTOM_PORTRAITS:C_ID:CP_Male != 0) ? 0xF0F0F0 # C_L_GRAY)
+PRINTFORM %" "*(image_separation)%
+FOR iLoop, 1, CUSTOM_PORTRAITS_TOTAL
+	CALL COLOR_PRINT((CUSTOM_PORTRAITS:C_ID:iLoop != 0) ? @"%"Custom",16,LEFT%" # @"%"Default",16,LEFT%", (CUSTOM_PORTRAITS:C_ID:iLoop != 0) ? 0xF0F0F0 # C_L_GRAY)
+	SIF iLoop < CUSTOM_PORTRAITS_TOTAL-1
+		PRINTFORM %" "*(image_separation)%
+NEXT
+PRINTL
+CALL SET_MOB_IMAGE_STR(C_ID, "町娘")
+sHtml = <p align='left'>
+FOR iLoop, 0, CUSTOM_PORTRAITS_TOTAL
+	sHtml += @"%GENERATE_PORTRAIT(C_ID, iLoop)%"
+NEXT
+HTML_PRINT sHtml
+IF FLAG:画像枠表示
+	sHtml = <p align='left'>
+	sHtml = %GENERATE_PORTRAIT_BORDERS(CUSTOM_PORTRAITS_TOTAL)%
+	HTML_PRINT sHtml
+ELSE
+	PRINTL
+ENDIF
+PRINTL
+PRINTL
+PRINTL
+PRINTL
+PRINTL
+PRINTL
+
+FOR iLoop, 0, CUSTOM_PORTRAITS_TOTAL
+	PRINTFORM %GENERATE_PORTRAIT_INFO(C_ID, iLoop), 16, LEFT%
+	SIF iLoop < CUSTOM_PORTRAITS_TOTAL-1
+		PRINTFORM %" "*(image_separation)%
+NEXT
+PRINTL
+FOR iLoop, 0, CUSTOM_PORTRAITS_TOTAL
+	PRINTBUTTON @"[%"Custom input", 14, LEFT%]", 900 + iLoop
+	SIF iLoop < CUSTOM_PORTRAITS_TOTAL-1
+		PRINTFORM %" "*(image_separation)%
+NEXT
+PRINTL
+
+;JVN: Input/Erase button loop
+FOR iLoop, 0, CUSTOM_PORTRAITS_TOTAL
+	IF CUSTOM_PORTRAITS:C_ID:iLoop > 0
+		PRINTBUTTON "[<<<]", 100 + iLoop
+	ELSE
+		CALL COLOR_PRINT("[<<<]",C_GRAY)
+	ENDIF
+	PRINTFORM %" "%
+	PRINTBUTTON "[>>>]", 200 + iLoop
+	PRINTFORM %" "%
+	IF CUSTOM_PORTRAITS:C_ID:iLoop != 0
+		PRINTBUTTON "[Ｘ]", 300 + iLoop
+	ELSE
+		CALL COLOR_PRINT("[Ｘ]",C_GRAY)
+	ENDIF
+	SIF iLoop < CUSTOM_PORTRAITS_TOTAL-1
+		PRINTFORM %" "*(image_separation)%
+NEXT
+PRINTL
+
+;JVN: Copy buttons loop
+FOR iLoopToo, 0, CUSTOM_PORTRAITS_TOTAL
+	FOR iLoop, 0, CUSTOM_PORTRAITS_TOTAL
+		IF iLoop != iLoopToo
+			IF CUSTOM_PORTRAITS:C_ID:iLoop != 0
+				PRINTBUTTON @"[%"Copy to " + CUSTOM_PORTRAITS_NAME:iLoopToo, 14, LEFT%]", (iLoop*100) + 400 + iLoopToo
+			ELSE
+				CALL COLOR_PRINT(@"[%"Copy to " + CUSTOM_PORTRAITS_NAME:iLoopToo, 14, LEFT%]", C_GRAY)
+			ENDIF
+		ELSE
+			CALL COLOR_PRINT(@"[%"-"*14%]", C_GRAY)
+		ENDIF
+		SIF iLoop < CUSTOM_PORTRAITS_TOTAL-1
+			PRINTFORM %" "*(image_separation)%
+	NEXT
+	PRINTL
+NEXT
+
+PRINTL
+PRINTL
+IF NO:C_ID != CSV_CHARANUM()
+	CALL COLOR_PRINT(@"[%"Reroll", 14, LEFT%]",C_GRAY)
+ELSE
+	PRINTBUTTON @"[%"Reroll", 14, LEFT%]", 26666
+ENDIF
+PRINTL
+
+@CHAR_EDITOR_NAS_RESULT_7(chara, CHEAT = 0, choice)
+#DIM chara
+#DIM CHEAT
+#DIM choice
+#DIM command
+#DIM credraw
+#DIM portrait
+
+credraw = CURRENTREDRAW()
+
+IF choice > 1000
+	command = choice
+ELSE
+	portrait = choice % 100
+	command = (choice - portrait) / 100
+ENDIF
+;PRINTFORMW Debug: {portrait} {command}
+SELECTCASE command
+	CASE 1
+		CUSTOM_PORTRAITS:chara:portrait -= 1
+	CASE 2
+		CUSTOM_PORTRAITS:chara:portrait += 1
+	CASE 3
+		CUSTOM_PORTRAITS:chara:portrait = 0
+		;edit all the 4's here to match the case if it's changed
+	CASE 4 TO (4 + (CUSTOM_PORTRAITS_TOTAL - 1))
+		CUSTOM_PORTRAITS:chara:portrait = CUSTOM_PORTRAITS:chara:(Command-4)
+	CASE 9 TO (9 + (CUSTOM_PORTRAITS_TOTAL - 1))
+		$custom_image_input
+		REDRAW 1
+		PRINTFORML Current: %GENERATE_PORTRAIT_INFO(chara)%
+		PRINTL Input a resource number (skip the starting "c", check you custom.csv ResourceNames, leave blank to leave unchanged):
+		INPUTS
+		IF ISNUMERIC(RESULTS)
+			CUSTOM_PORTRAITS:chara:portrait = TOINT(RESULTS)
+		ELSEIF RESULTS != ""
+			GOTO custom_image_input
+		ENDIF
+	CASE 26666
+		IF NO:chara == CSV_CHARANUM()
+			CALL モブ子画像リセット(chara)
+			CSTR:chara:モブ子画像文字列_服_通常 =
+			CALL SET_MOB_IMAGE_STR(chara, "ランダム")
+		ENDIF
+ENDSELECT
+
+REDRAW credraw
+
+@MOB_IMAGE_SELECTION(ARG)
+PRINTFORML Please select from the list below.
+PRINTBUTTON "[Village Girl] ", "町娘"
+PRINTBUTTON "[Married Woman] ", "人妻"
+PRINTBUTTON "[Fairy] ", "妖精"
+PRINTBUTTON "[Fairy Maid] ", "メイド妖精"
+PRINTBUTTON "[Zombie Fairy] ", "ゾンビフェアリー"
+PRINTBUTTON "[Kappa] ", "河童"
+PRINTBUTTON "[White Wolf Tengu] ", "白狼天狗"
+PRINTBUTTON "[Rabbit] ", "イナバ"
+PRINTBUTTON "[Moon Rabbit] ", "玉兎"
+PRINTBUTTON "[Oni] ", "鬼"
+PRINTBUTTON "[Tanuki] ", "化け狸"
+PRINTBUTTON "[Kitsune] ", "化け狐"
+PRINTBUTTON "[Bakeneko] ", "化け猫"
+PRINTBUTTON "[Random] ", "ランダム"
+INPUTS
+CALL SET_MOB_IMAGE_STR(ARG, RESULTS)
+
+@CHAR_EDITOR_NAS_PAGE_8(C_ID, CHEAT = 0)
+#DIM CHEAT
+#DIM  C_ID
+#DIM  SET_ID
+#DIMS TYPE
+#DIMS CATEGORY
+#DIM nLines
+
+CALL PRINTLINE, "Youjutsu Abilities"
+VARSET nLines
+VARSET LOCALS
+FOR LOCAL, 0, 64
+	SIF GETBIT(TALENT:C_ID:ESP, LOCAL)
+		SETCOLOR C_AQUA
+	SIF EsperAbilitySTR(LOCAL) == ""
+		CONTINUE
+	IF !CHEAT
+	SELECTCASE LOCAL
+	CASE  0, 1, 2, 5
+	CASEELSE
+	CONTINUE
+	ENDSELECT
+	ENDIF
+
+	LOCALS:1 '= @"<button value='{59000 + LOCAL}'>%HTML_ESCAPE("<")+EsperAbilitySTR(LOCAL)+" "+PRINT_RANK_HTML(YoujutsuLevel:C_ID:LOCAL, "MAX_6")+@"{YoujutsuLevel:C_ID:LOCAL,3}"+HTML_ESCAPE(">")%</button>"	
+	LOCALS += LOCALS:1+@"%" "*MAX(0,25-HTML_STRINGLEN(LOCALS:1))%"
+	RESETCOLOR
+	nLines ++
+	IF nLines % 6 == 0
+		HTML_PRINT LOCALS
+		VARSET LOCALS
+		VARSET nLines
+	ENDIF
+NEXT
+PRINTL
+PRINTBUTTON "<Change Combat Spells>", 99000
+PRINTL
+
+SIF !CHEAT
+RETURN
+CALL PRINTLINE, "Danmaku Abilities"
+VARSET nLines
+FOR LOCAL, 0, 300
+	SIF DanmakuSkillName(LOCAL) == ""
+		CONTINUE
+	SELECTCASE LOCAL
+	CASE 0 TO 63
+
+		SIF GETBIT(CFLAG:C_ID:弾幕特能, LOCAL)
+			SETCOLOR C_AQUA
+	CASE 270 TO 273
+		SIF TALENT:C_ID:LOCAL
+			SETCOLOR C_AQUA
+	CASEELSE
+		CONTINUE
+	ENDSELECT
+
+	PRINTBUTTON @"%"<"+DanmakuSkillName(LOCAL)+">", 45, LEFT%", 931000 + LOCAL
+	RESETCOLOR
+	nLines ++
+	SIF nLines % 4 == 0
+		PRINTL
+NEXT
+PRINTL
+
+@CHAR_EDITOR_NAS_RESULT_8(C_ID, CHEAT = 0, nInput)
+#DIM C_ID
+#DIM CHEAT
+#DIM nInput
+#DIM ResSort, 4
+
+ResSort = nInput/1000
+ResSort:1 = nInput - (ResSort*1000)
+SELECTCASE ResSort
+CASE 59
+	IF ResSort:1 < 64
+		PRINTFORML Changing level of %EsperAbilitySTR(ResSort:1)% Youjutsu.
+		PRINTFORML [-1] - Original Values
+		FOR LOCAL,0,(MaxNonHLevel+1)
+			SELECTCASE LOCAL
+			CASE 0 TO UniversalRank("Extra"), UniversalRank("Phantasm"), UniversalRank("OverDrive"), UniversalRank("TriUltra"), UniversalRank("QuadUltra")
+				CALL PRINT_RANK(LOCAL,"MAX_6")
+				PRINTBUTTON @" {LOCAL}", LOCAL
+				PRINTFORML
+			ENDSELECT
+		NEXT
+		INPUT
+		SELECTCASE RESULT
+		CASE 0
+			CLEARBIT TALENT:C_ID:ESP, ResSort:1
+		CASE 0 TO MaxNonHLevel
+			SETBIT TALENT:C_ID:ESP, ResSort:1
+			YoujutsuLevel:C_ID:(ResSort:1) = RESULT
+		ENDSELECT
+	ENDIF
+CASE 99
+	CALL CombatMagicChangeMenu(C_ID, CHEAT)
+CASE 931
+	SELECTCASE ResSort:1
+	CASE IS < 64
+		INVERTBIT CFLAG:C_ID:弾幕特能, ResSort:1
+	CASE 270 TO 280
+		TALENT:C_ID:(ResSort:1) = !TALENT:C_ID:(ResSort:1)
+	ENDSELECT
+CASE 26666
+	IF !INRANGE(NO:C_ID, 1, RANDOM_CHARANUM-1)
+		;CALL REGENERATEPORTRAIT(chara)
+		CALL MOB_IMAGE_GEN(C_ID,0)
+		CALL MOB_IMAGE_GEN(C_ID,1)
+	ENDIF
+CASE 59000 TO 59063
+ENDSELECT
+
+@CHAR_EDITOR_NAS_PAGE_9(C_ID, CHEAT = 0)
+#DIM CHEAT
+#DIM  C_ID
+#DIM  SET_ID
+#DIMS TYPE
+#DIMS CATEGORY
+
+FOR LOCAL, 1, 23
+	TempClothes:C_ID:LOCAL = EQUIP:C_ID:LOCAL
+NEXT
+
+CALL SHOW_CLOTHES(C_ID, "ModularClothes")
+PRINTFORML Changing %CALLNAME:C_ID%'s clothing
+PRINTFORML Select clothes.
+
+FOR LOCAL, 1, 25
+	CATEGORY = FINDELEMENT(EQUIPNAME, 表示部位:LOCAL)
+	SIF GROUPMATCH(LOCAL,10)
+		CONTINUE
+
+	PRINTFORML [{LOCAL,3}] - %表示ラベル:LOCAL%
+NEXT
+FOR LOCAL, 1, 25
+	EQUIP:C_ID:LOCAL = TempClothes:C_ID:LOCAL
+	CFLAG:C_ID:(200+LOCAL) = TempClothes:C_ID:LOCAL
+NEXT
+
+PRINTFORML
+
+@CHAR_EDITOR_NAS_RESULT_9(C_ID, CHEAT = 0, nInput)
+#DIM C_ID
+#DIM CHEAT
+#DIM nInput
+SELECTCASE nInput
+CASE 17
+	DEBUG_Target = C_ID
+	TRYCALL Com_Debug_PantsGet
+CASE 0 TO 24
+	CALL COM_ClothesGet(C_ID,FINDELEMENT(EQUIPNAME, 表示部位:nInput), CHEAT)
+	FOR LOCAL, 1, 25
+	EQUIP:C_ID:LOCAL = TempClothes:C_ID:LOCAL
+	NEXT
+ENDSELECT
+
+@CHAR_EDITOR_NAS_PAGE_10(ARG, CHEAT = 0)
+#DIM CHEAT
+#DIM  C_ID
+IF CHEAT
+	CALL PRINTLINE, @"Hours"
+	PRINTBUTTON "[Awake      ]: ", 100
+	CALL 起床時間表示(ARG)
+	PRINTBUTTON "[Visiting   ]: ", 100
+	CALL 滞在時間表示(ARG)
+	PRINTBUTTON "[Living     ]: ", 101
+	IF CFLAG:ARG:自宅位置 && (STR:(CFLAG:ARG:自宅位置/ 10 + 6000) != "") && !CFLAG:ARG:神社在住
+		LOCAL = CFLAG:ARG:自宅位置 / 10 + 6000
+		;Custom code translation(added _TR) QoL(added the 'at' part)
+		PRINTFORML %STR_TR(LOCAL)% at %GET_MAPNAME(GET_MAPID(CFLAG:ARG:自宅位置))%
+	ELSEIF CFLAG:ARG:神社在住
+		;custom code QoL(added the part before the %GET_MAPNAME)
+		PRINTFORML %STR_TR(((MAIN_MAP != 0) ? 8000 # 0) + CFLAG:ARG:神社在住)% at %GET_MAPNAME(MAIN_MAP)%
+	ELSE
+		PRINTL ■■■■■ 【 ■■■■■ 】
+	ENDIF
+	PRINTBUTTON "[Frequent   ]: ", 102
+	PRINTFORML %GET_MAPNAME(CFLAG:ARG:よく行く地域)%
+ENDIF
+CALL PRINTLINE, "Relationships"
+FOR LOCAL, 0, CHARANUM
+	SIF (!RELATION:ARG:(LOCAL) || RELATION:ARG:(LOCAL) == 100) && !(CharaFamily:ARG:LOCAL)
+		CONTINUE
+	PRINTBUTTON @"%NAME:LOCAL,30,LEFT%", 830000+LOCAL
+	PRINT × 
+	;色の選択
+	SELECTCASE RELATION:ARG:(LOCAL)
+	CASE IS < 30
+		SETCOLOR C_D_RED
+	CASE IS < 60
+		SETCOLOR C_RED
+	CASE IS < 100
+		SETCOLOR 0xE9967A
+	CASE 100
+		SETCOLOR C_YELLOW
+	CASE IS < 130
+		SETCOLOR C_P_GREEN
+	CASE IS < 200
+		SETCOLOR C_GREEN
+	CASE IS < 300
+		SETCOLOR C_AQUA
+	CASEELSE
+		SETCOLOR C_PINK
+	ENDSELECT
+	PRINTFORM {RELATION:ARG:(LOCAL), 4 ,RIGHT}\%
+	PRINTFORM %" "*10%
+	RESETCOLOR
+	SELECTCASE CharaFamily:ARG:(LOCAL)
+	CASE 0
+		RESETCOLOR
+	CASE 6
+		SETCOLOR C_YELLOW
+	CASE 8, 7, 3
+		SETCOLOR C_P_GREEN
+	CASE 2
+		SETCOLOR C_AQUA
+	CASEELSE
+		SETCOLOR C_PINK
+	ENDSELECT
+	SELECTCASE CharaFamily:ARG:(LOCAL)
+	CASE 0
+		PRINTFORM %"Unrelated", 12 ,RIGHT%
+	CASEELSE
+		PRINTFORM %GET_TALENTNAME_TR(1215,CharaFamily:ARG:(LOCAL),LOCAL), 12 ,RIGHT%
+	ENDSELECT
+	
+	RESETCOLOR
+	PRINTL
+NEXT
+PRINTL
+PRINTBUTTON @"[Add Characters]", 110
+PRINTL
+CALL PRINTLINE, "Factions"
+FOR N,0,MaxFactions
+	SIF !FactionFame:ARG:N && !FactionInfamy:ARG:N && !FactionRank:ARG:N && !FactionExperience:ARG:N
+		CONTINUE
+	PRINTBUTTON @"%FactionName(N),30,LEFT%", 30000+N 
+	PRINTFORM %@"\@ FactionRank:ARG:N ? %FACTION_RANK_STRING(ARG,N)% # Non-Member \@ ({FactionExperience:ARG:N} EXP)",26,RIGHT% 
+	RESETCOLOR
+	PRINTFORM F: 
+	SETCOLOR Color_Gradient_PER(GETCONFIG("TEXT COLOR"),C_GREEN,MIN(FactionFame:(ARG):(N)/1000,100))
+	PRINTFORM {FactionFame:(ARG):(N),7} 
+	RESETCOLOR
+	PRINTFORM I: 
+	SETCOLOR Color_Gradient_PER(GETCONFIG("TEXT COLOR"),C_D_RED,MIN(FactionInfamy:(ARG):(N)/1000,100))
+	PRINTFORM {FactionInfamy:(ARG):(N),7} 
+	RESETCOLOR
+	PRINTFORM R: 
+	SELECTCASE FactionRelationCompElse(ARG,N)
+	CASE IS > 0
+	SETCOLOR Color_Gradient_PER(GETCONFIG("TEXT COLOR"),C_GREEN,MIN(FactionFameCompElse(ARG,N)/1000,100))
+	CASE IS < 0
+	SETCOLOR Color_Gradient_PER(GETCONFIG("TEXT COLOR"),C_D_RED,MIN(FactionInfamyCompElse(ARG,N)/1000,100))
+	ENDSELECT
+	PRINTFORM {FactionRelationCompElse(ARG,N),7} 
+	SELECTCASE FactionRelationCompElse(ARG,N)
+	CASE IS > 0
+	SETCOLOR Color_Gradient_PER(GETCONFIG("TEXT COLOR"),C_GREEN,MIN(FactionFameCompElse(ARG,N)/1000,100))
+	CASE IS < 0
+	SETCOLOR Color_Gradient_PER(GETCONFIG("TEXT COLOR"),C_D_RED,MIN(FactionInfamyCompElse(ARG,N)/1000,100))
+	ENDSELECT
+	PRINTFORM %FACTION_RELATION_STRING(ARG,N)%
+	RESETCOLOR
+	PRINTL
+NEXT
+	
+PRINTL
+PRINTBUTTON @"[Add Factions]", 243
+PRINTL
+CALL PRINTLINE, "Religion"
+VARSET LOCALS
+FOR N, 0, 20
+	IF TOSTR_Religion(N) != LOCALS && (TOSTR_Religion(N) != TOSTR_Religion(0) || !N) && (TALENT:ARG:Religion == N || charReligionCertainty:ARG:N || charReligionStatus:ARG:N)
+		PRINTBUTTON @"%TOSTR_Religion(N),30,LEFT%", 2420000+N
+		SELECTCASE charReligionCertainty:ARG:N/10
+		CASE IS > 90
+			CALL PRINT_COLORBAR, charReligionCertainty:ARG:N, 1000, 18, UNICODE(0x2585), UNICODE(0x2585), BARCOLORSET("青")
+		CASE IS > 75
+			CALL PRINT_COLORBAR, charReligionCertainty:ARG:N, 1000, 18, UNICODE(0x2585), UNICODE(0x2585), BARCOLORSET("緑")
+		CASE IS > 50
+			CALL PRINT_COLORBAR, charReligionCertainty:ARG:N, 1000, 18, UNICODE(0x2585), UNICODE(0x2585), BARCOLORSET("黄色")  
+		CASE IS > 25
+			CALL PRINT_COLORBAR, charReligionCertainty:ARG:N,1000,18, UNICODE(0x2585), UNICODE(0x2585), BARCOLORSET("オレンジ")
+		CASEELSE
+			CALL PRINT_COLORBAR, charReligionCertainty:ARG:N,1000,18, UNICODE(0x2585), UNICODE(0x2585), BARCOLORSET("赤")
+		ENDSELECT
+		PRINTFORM  ({charReligionCertainty:ARG:N/10,3}\%) 
+		IF charReligionStatus:ARG:N
+			PRINTFORM %ReligionRoles(charReligionStatus:ARG:N), 12, RIGHT%
+		ENDIF
+		IF N == TALENT:ARG:Religion
+			SETCOLOR C_PINK
+			PRINTFORM %"Current", 12 ,RIGHT%
+			RESETCOLOR
+		ENDIF
+		PRINTL
+	ENDIF
+	LOCALS '= TOSTR_Religion(N)
+NEXT
+PRINTL
+PRINTBUTTON @"[Add Religions]", 242
+PRINTL
+CALL PRINTLINE, "Underwear"
+PRINTFORML Automatic Panty Preferences are \@ CFLAG:ARG:AutoPantyPreferencesOff ? OFF # ON \@
+PRINTL Preferred underwear: 
+CALL SHOW_TASTE(charaPreferredUnderwear:ARG:0, "UNDERWEAR/POSITIVE", 1)
+PRINTL Despised underwear: 
+CALL SHOW_TASTE(charaDespisedUnderwear:ARG:0, "UNDERWEAR/NEGATIVE", 1)
+PRINTL
+PRINTBUTTON @"[Edit Preferences]", 250
+PRINTL
+
+@CHAR_EDITOR_NAS_RESULT_10(C_ID, CHEAT = 0, nInput)
+#DIM C_ID
+#DIM CHEAT
+#DIM nInput, 3
+#DIM RESULT_10_LINE_COUNT
+SELECTCASE nInput
+CASE 100
+	PRINTFORML What time do you want to change?
+	CALL ASK_M("Waking", 1, "Sleeping", 1, "Start Visiting", 1 , "Stop Visiting", 1, "Cancel", 1)
+	nInput:1 = RESULT
+	SELECTCASE nInput:1
+	CASE 0
+	nInput:1 = 355
+	CASE 1
+	nInput:1 = 354
+	CASE 2
+	nInput:1 = 352
+	CASE 3
+	nInput:1 = 353
+	CASEELSE
+	RETURN
+	ENDSELECT
+	CALL ChangeAlarmTime(C_ID,nInput:1)
+CASE 101
+	;PRINTFORMW Does nothing for now. Sorry!
+	;Living Area
+	CALL NAS_PickLivingPlace(C_ID)
+CASE 102
+	;custom code
+	LOCAL:1 = 0
+	FOR LOCAL, 0, MAXHOME
+		SIF MAIN_MAP == LOCAL
+			SETCOLOR C_AQUA
+		IF GET_EXISTMAP(LOCAL)
+			PRINTFORM [{LOCAL + 2000}] %GET_MAPNAME(LOCAL), 28, LEFT%
+			SIF (++LOCAL:1) % 3 == 0 ;custom code
+				PRINTFORML
+		ENDIF
+		;SIF GROUPMATCH(LOCAL, 4, 9, 10) ;custom code - replaced with above method
+		;	PRINTL 
+		RESETCOLOR
+	NEXT
+	SIF LOCAL:1 % 3 > 0
+		PRINTFORML
+	;-----------
+	PRINT [1998] Cancel
+	PRINTL
+	INPUT
+	SELECTCASE RESULT
+	CASE 1998
+		RETURN
+	CASE 2000 TO 2000+MAXHOME
+		CFLAG:C_ID:よく行く地域 = RESULT-2000
+	ENDSELECT
+CASE 110
+	CALL SHOW_CHARA_LIST_TR()
+	nInput:1 = RESULT
+	SELECTCASE nInput:1
+		CASE 999
+		RETURN
+		CASEELSE
+		GOTO ChangeAffinity
+	ENDSELECT
+CASE IS >= 2420000
+	nInput:1 = nInput-2420000
+	$ChangeReligion
+	DO
+	PRINTFORML Changing %CALLNAME:C_ID%'s beliefs in %TOSTR_Religion(nInput:1)%:
+	PRINTFORML [0] - Certainty: {charReligionCertainty:C_ID:(nInput:1)/10,3}\%
+	PRINTFORML [1] - Role: %ReligionRoles(charReligionStatus:C_ID:(nInput:1))%
+	PRINTL
+	PRINTFORML [996] - Switch
+	PRINTFORML [997] - Clear
+	PRINTFORML [999] - Leave
+	INPUT
+	SELECTCASE RESULT
+		CASE 0
+			PRINTFORML Setting %CALLNAME:(C_ID)%'s certainty (currently {RELATION:C_ID:(nInput:1)}\%):
+			FOR LOCAL, 0, 1010, 10
+				;only show 10, 30, 50, 70, 80, 100, 130, 150, 170, 200, 300
+				SELECTCASE LOCAL
+				CASE 0, 50, 100, 300, 500, 700, 800, 1000, RELATION:C_ID:(nInput:1)
+				CASEELSE
+					RESETCOLOR
+					CONTINUE
+				ENDSELECT
+				SELECTCASE LOCAL
+				CASE IS < 150
+					SETCOLOR C_D_RED
+				CASE IS < 300
+					SETCOLOR C_RED
+				CASE IS < 500
+					SETCOLOR 0xE9967A
+				CASE 500
+					SETCOLOR C_YELLOW
+				CASE IS < 600
+					SETCOLOR C_P_GREEN
+				CASE IS < 800
+					SETCOLOR C_GREEN
+				CASE IS < 1000
+					SETCOLOR C_AQUA
+				CASEELSE
+					SETCOLOR C_PINK
+				ENDSELECT
+				PRINTBUTTON @"[{LOCAL}] ", LOCAL
+				SIF RELATION:C_ID:(nInput:1) == LOCAL
+					PRINTFORM (current)
+			NEXT
+			RESETCOLOR
+			INPUT
+			charReligionCertainty:C_ID:(nInput:1) = RESULT
+			PRINTFORMW Accepted. %CALLNAME:C_ID%'s certainty with %TOSTR_Religion(nInput:1)% is now at {charReligionCertainty:C_ID:(nInput:1)/10}\%
+	CASE 1
+			PRINTFORML Setting %CALLNAME:(nInput:1)%'s religious role:
+			PRINTFORML [0] Member
+			FOR LOCAL, 1, 100
+				;only show talents that aren't blank
+				SIF !STRLENS(ReligionRoles(LOCAL)) && LOCAL
+					CONTINUE
+				;color
+				PRINTFORM [{LOCAL}] 
+				SELECTCASE LOCAL
+				CASE 0
+					PRINTFORM %"Unrelated"%
+				CASEELSE
+					PRINTFORM %ReligionRoles(LOCAL)%
+				ENDSELECT
+				SIF charReligionStatus:C_ID:(nInput:1) == LOCAL
+					PRINTFORM  (current)
+				PRINTL
+				RESETCOLOR
+			NEXT
+			PRINTL
+			PRINTFORML [999] - Leave
+			INPUT
+			nInput:2 = RESULT
+			SELECTCASE nInput:2
+			CASE 999
+				RETURN
+			CASEELSE
+				charReligionStatus:C_ID:(nInput:1) = nInput:2
+			ENDSELECT
+	CASE 996
+		TALENT:C_ID:Religion = nInput:1
+	CASE 997
+		charReligionCertainty:C_ID:(nInput:1) = 0
+		charReligionStatus:C_ID:(nInput:1) = 0
+	CASE 999
+		RETURN
+	ENDSELECT
+	LOOP 1
+CASE 242
+	VARSET LOCALS
+	FOR N, 0, 20
+		IF TOSTR_Religion(N) != LOCALS && (TOSTR_Religion(N) != TOSTR_Religion(0) || !N)
+			PRINTBUTTON @"%TOSTR_Religion(N),30,LEFT%", N
+			PRINTL
+		ENDIF
+		LOCALS '= TOSTR_Religion(N)
+	NEXT
+	INPUT
+	nInput:1 = RESULT
+	GOTO ChangeReligion
+CASE 243
+	FOR N, 0, MaxFactions
+		IF FactionExist(N)
+			PRINTBUTTON @"%FactionName(N),30,LEFT%", N
+			PRINTL
+		ENDIF
+	NEXT
+	INPUT
+	nInput:1 = RESULT
+	GOTO ChangeFaction
+CASE IS >= 830000
+	nInput:1 = nInput-830000
+	RESULT_10_LINE_COUNT = LINECOUNT
+	$ChangeAffinity
+	DO
+		CLEARLINE LINECOUNT - RESULT_10_LINE_COUNT
+		PRINTFORML Changing %CALLNAME:C_ID%'s status with %CALLNAME:(nInput:1)%:
+		PRINTFORML [0] - Affinity: {RELATION:C_ID:(nInput:1), 4 ,RIGHT}\%
+		PRINTFORM [1] - Family Relation: 
+		SELECTCASE CharaFamily:C_ID:(nInput:1)
+		CASE 0
+			PRINTFORML Unrelated
+		CASEELSE
+			PRINTFORML %GET_TALENTNAME_TR(1215,CharaFamily:C_ID:(nInput:1),nInput:1)%
+		ENDSELECT
+		PRINTL
+		PRINTL
+		PRINTFORML [980] - See %CALLNAME:(nInput:1)%'s relation ({RELATION:(nInput:1):C_ID}\%)
+		PRINTFORML [981] - Set as a mutual relationship.
+		PRINTFORML [996] - Reset to %CALLNAME:(NO:C_ID)%'s
+		PRINTFORML [997] - Clear
+		PRINTFORML [999] - Leave
+		INPUT
+		SELECTCASE RESULT
+		CASE 0
+			PRINTFORML Setting %CALLNAME:(nInput:1)%'s affinity (currently {RELATION:C_ID:(nInput:1)}\%):
+			FOR LOCAL, 1, 301
+				;only show 10, 30, 50, 70, 80, 100, 130, 150, 170, 200, 300
+				SELECTCASE LOCAL
+				CASE 10, 30, 50, 70, 80, 100, 120, 150, 170, 200 ,300, RELATION:C_ID:(nInput:1)
+				CASEELSE
+					RESETCOLOR
+					CONTINUE
+				ENDSELECT
+
+				;color
+				SELECTCASE LOCAL
+				CASE IS < 30
+					SETCOLOR C_D_RED
+				CASE IS < 60
+					SETCOLOR C_RED
+				CASE IS < 100
+					SETCOLOR 0xE9967A
+				CASE 100
+					SETCOLOR C_YELLOW
+				CASE IS < 130
+					SETCOLOR C_P_GREEN
+				CASE IS < 200
+					SETCOLOR C_GREEN
+				CASE IS < 300
+					SETCOLOR C_AQUA
+				CASEELSE
+					SETCOLOR C_PINK
+				ENDSELECT
+				PRINTBUTTON @"[{LOCAL}] ", LOCAL
+				SIF RELATION:C_ID:(nInput:1) == LOCAL
+					PRINTFORM (current)
+			NEXT
+			RESETCOLOR
+			INPUT
+			RELATION:C_ID:(nInput:1) = RESULT
+			PRINTFORMW Accepted. %CALLNAME:C_ID%'s affinity with %CALLNAME:(nInput:1)% is now at {RELATION:C_ID:(nInput:1)}\%
+		CASE 1
+			DO
+			PRINTFORML Setting %CALLNAME:(nInput:1)%'s family relationship:
+			FOR LOCAL, 0, 100
+				;only show talents that aren't blank
+				SIF !STRLENS(GET_TALENTNAME_TR(1215,LOCAL,nInput:1)) && LOCAL
+					CONTINUE
+				;color
+				SELECTCASE LOCAL
+				CASE 0
+					RESETCOLOR
+				CASE 6
+					SETCOLOR C_YELLOW
+				CASE 8, 7, 3
+					SETCOLOR C_P_GREEN
+				CASE 2
+					SETCOLOR C_AQUA
+				CASEELSE
+					SETCOLOR C_PINK
+				ENDSELECT
+
+				PRINTFORM [{LOCAL}] 
+				SELECTCASE LOCAL
+				CASE 0
+					PRINTFORM %"Unrelated"%
+				CASEELSE
+					PRINTFORM %GET_TALENTNAME_TR(1215,LOCAL,nInput:1)%
+				ENDSELECT
+				SIF CharaFamily:C_ID:(nInput:1) == LOCAL
+					PRINTFORM  (current)
+				PRINTL
+				RESETCOLOR
+			NEXT
+			PRINTL
+			PRINTFORML [999] - Leave
+			INPUT
+			nInput:2 = RESULT
+			SELECTCASE RESULT
+			CASE 999
+				RETURN
+			CASEELSE
+				SIF !STRLENS(GET_TALENTNAME_TR(1215,nInput:2,nInput:1)) && nInput:2
+					CONTINUE
+				CALLF LinkFamilyRelation(C_ID,nInput:1,nInput:2)
+				;fix relationship
+			ENDSELECT
+		LOOP 1
+		CASE 980
+			LOCAL:4 = C_ID
+			C_ID = nInput:1
+			nInput:1 = LOCAL:4
+		CASE 981
+			RELATION:(nInput:1):C_ID = RELATION:C_ID:(nInput:1)
+		CASE 996
+			CharaFamily:C_ID:(nInput:1) = CharaFamily:(NO:C_ID):(nInput:1)
+			RELATION:C_ID:(nInput:1) = RELATION:(NO:C_ID):(nInput:1)
+		CASE 997
+			CharaFamily:C_ID:(nInput:1) = 0
+			RELATION:C_ID:(nInput:1) = 100
+		CASE 999
+			RETURN
+		ENDSELECT
+	LOOP 1
+CASE IS >= 30000
+	nInput:1 = nInput-30000
+	$ChangeFaction
+	DO
+	PRINTFORML Changing %CALLNAME:C_ID%'s relation with %FactionName(nInput:1)%:
+	PRINTFORML [0] - %"Rank",12,LEFT%: %FACTION_RANK_STRING(C_ID, (nInput:1))%
+	PRINTFORML [1] - %"Division",12,LEFT%: {FactionDivision:C_ID:(nInput:1)}
+	PRINTFORML [2] - %"Experience",12,LEFT%: {FactionExperience:C_ID:(nInput:1)}
+	PRINTFORM [3] - %"Fame",12,LEFT%: 
+	SETCOLOR Color_Gradient_PER(GETCONFIG("TEXT COLOR"),C_GREEN,MIN(FactionFame:C_ID:(nInput:1)/1000,100))
+	PRINTFORML {FactionFame:C_ID:(nInput:1),6,LEFT}
+	RESETCOLOR
+	PRINTFORM [4] - %"Infamy",12,LEFT%: 
+	SETCOLOR Color_Gradient_PER(GETCONFIG("TEXT COLOR"),C_D_RED,MIN(FactionInfamy:C_ID:(nInput:1)/1000,100))
+	PRINTFORML {FactionInfamy:C_ID:(nInput:1),6,LEFT}
+	RESETCOLOR
+	PRINTFORML [5] - %"Perm Friend",12,LEFT%: %YesOrNo(FactionPermaFriendly:C_ID:(nInput:1))%
+	PRINTFORML [6] - %"Perm Hostile",12,LEFT%: %YesOrNo(FactionPermaHostile:C_ID:(nInput:1))%
+	PRINTL
+	PRINTFORML [997] - Clear
+	PRINTFORML [999] - Leave
+	INPUT
+	SELECTCASE RESULT
+	CASE 0
+			PRINTFORML Setting %CALLNAME:(nInput:1)%'s rank:
+			FOR LOCAL, 0, 7
+				;only show talents that aren't blank
+				SIF !STRLENS(FACTION_RANK_STRING_INDE(nInput:1,LOCAL,FactionDivision:LOCAL:(nInput:1))) && LOCAL
+					CONTINUE
+				;color
+				PRINTFORM [{LOCAL}] 
+				PRINTFORM %FACTION_RANK_STRING_INDE(nInput:1,LOCAL,FactionDivision:LOCAL:(nInput:1))%
+				SIF FactionRank:C_ID:(nInput:1) == LOCAL
+					PRINTFORM  (current)
+				PRINTL
+				RESETCOLOR
+			NEXT
+			PRINTL
+			PRINTFORML [999] - Leave
+			INPUT
+			nInput:2 = RESULT
+			SELECTCASE nInput:2
+			CASE 999
+				RETURN
+			CASEELSE
+				FactionRank:C_ID:(nInput:1) = nInput:2
+			ENDSELECT
+	CASE 1
+			PRINTFORML Setting %CALLNAME:(nInput:1)%'s division:
+			FOR LOCAL, 0, 7
+				PRINTFORM [{LOCAL}] 
+				PRINTL
+			NEXT
+			PRINTL
+			PRINTFORML [999] - Leave
+			INPUT
+			nInput:2 = RESULT
+			SELECTCASE nInput:2
+			CASE 999
+				RETURN
+			CASEELSE
+				FactionDivision:C_ID:(nInput:1) = nInput:2
+			ENDSELECT
+	CASE 2
+		PRINTFORML Changing experience (currently {FactionExperience:C_ID:(nInput:1)})
+		PRINTL
+		PRINTFORML [-1] - Cancel
+		INPUT
+		SELECTCASE RESULT
+		CASE -1
+			RETURN
+		CASEELSE
+		PRINTFORMW Faction experience is now {RESULT}
+		FactionExperience:C_ID:(nInput:1) = RESULT
+		ENDSELECT
+	CASE 3
+        PRINTFORML Setting %CALLNAME:C_ID%'s fame (currently %DecimalPlace(FactionFame:C_ID:(nInput:1),1),5,RIGHT%\%):
+        FOR LOCAL, 0, 101000, 1000
+            ;only show 10, 30, 50, 70, 80, 100, 130, 150, 170, 200, 300
+            SELECTCASE LOCAL
+            CASE 0, 5000, 10000, 30000, 50000, 70000, 80000, 100000, FactionFame:C_ID:(nInput:1)
+            CASEELSE
+                RESETCOLOR
+                CONTINUE
+            ENDSELECT
+            SELECTCASE LOCAL
+            CASE IS < 15000
+                SETCOLOR C_D_RED
+            CASE IS < 30000
+                SETCOLOR C_RED
+            CASE IS < 50000
+                SETCOLOR 0xE9967A
+            CASE 50000
+                SETCOLOR C_YELLOW
+            CASE IS < 60000
+                SETCOLOR C_P_GREEN
+            CASE IS < 80000
+                SETCOLOR C_GREEN
+            CASE IS < 100000
+                SETCOLOR C_AQUA
+            CASEELSE
+                SETCOLOR C_PINK
+            ENDSELECT
+            PRINTBUTTON @"[{LOCAL}] ", LOCAL
+            SIF FactionFame:C_ID:(nInput:1) == LOCAL
+                PRINTFORM (current)
+        NEXT
+        RESETCOLOR
+        INPUT
+       	FactionFame:C_ID:(nInput:1) = RESULT
+        PRINTFORMW Accepted. %CALLNAME:C_ID%'s fame is now at {RESULT}
+	CASE 4
+        PRINTFORML Setting %CALLNAME:C_ID%'s infamy (currently %DecimalPlace(FactionInfamy:C_ID:(nInput:1),1),5,RIGHT%\%):
+        FOR LOCAL, 0, 101000, 1000
+            ;only show 10, 30, 50, 70, 80, 100, 130, 150, 170, 200, 300
+            SELECTCASE LOCAL
+            CASE 0, 5000, 10000, 30000, 50000, 70000, 80000, 100000, FactionInfamy:C_ID:(nInput:1)
+            CASEELSE
+                RESETCOLOR
+                CONTINUE
+            ENDSELECT
+            SELECTCASE LOCAL
+            CASE IS < 15000
+                SETCOLOR C_D_RED
+            CASE IS < 30000
+                SETCOLOR C_RED
+            CASE IS < 50000
+                SETCOLOR 0xE9967A
+            CASE 50000
+                SETCOLOR C_YELLOW
+            CASE IS < 60000
+                SETCOLOR C_P_GREEN
+            CASE IS < 80000
+                SETCOLOR C_GREEN
+            CASE IS < 100000
+                SETCOLOR C_AQUA
+            CASEELSE
+                SETCOLOR C_PINK
+            ENDSELECT
+            PRINTBUTTON @"[{LOCAL}] ", LOCAL
+            SIF FactionInfamy:C_ID:(nInput:1) == LOCAL
+                PRINTFORM (current)
+        NEXT
+        RESETCOLOR
+        INPUT
+       	FactionInfamy:C_ID:(nInput:1) = RESULT
+        PRINTFORMW Accepted. %CALLNAME:C_ID%'s infamy is now at {RESULT}
+	CASE 5
+		FactionPermaFriendly:C_ID:(nInput:1) = !FactionPermaFriendly:C_ID:(nInput:1)
+	CASE 6
+		FactionPermaHostile:C_ID:(nInput:1) = !FactionPermaHostile:C_ID:(nInput:1)
+	CASE 997
+		FactionRank:C_ID:(nInput:1) = 0
+		FactionDivision:C_ID:(nInput:1) = 0
+		FactionExperience:C_ID:(nInput:1) = 0
+		FactionFame:C_ID:(nInput:1) = 0
+		FactionInfamy:C_ID:(nInput:1) = 0
+		FactionPermaHostile:C_ID:(nInput:1) = 0
+		FactionPermaFriendly:C_ID:(nInput:1) = 0
+	CASE 999
+		RETURN
+	ENDSELECT
+	LOOP 1
+CASE 250
+	CALL PREF_UNDERWEAR_SELECT(C_ID)
+ENDSELECT
+
+
+@NAS_PickLivingPlace(C_ID,nPlaceId = -1)
+#DIM CHK_TRAINING
+#DIM CHK_GARDENING
+#DIM ANIMATION_SEED
+#DIM PREV_REDRAW
+#DIM curMap
+#DIM nPlaceId
+#DIM C_ID
+
+	SIF inCharaCreator
+		RECOLOREDMAPS = 1
+	ANIMATION_SEED = 0
+	PREV_REDRAW = CURRENTREDRAW()
+	curMap = MAIN_MAP
+	SIF nPlaceId > -1
+	MAIN_MAP = nPlaceId
+
+	;Map Animation Code
+	$MAPANIMATION
+	LINESTART = LINECOUNT
+	DAY:3 = MAX(DAY:3,1)
+	DAY:2 = MAX(DAY:2,1)
+	SIF ANIMATERECOLOREDMAPS && !FLAG:70
+		ANIMATION_SEED ++
+	;
+	;
+	;メンバーの起床時間再設定
+	;
+	DRAWLINE
+	;Color map
+	IF RECOLOREDMAPS
+		CALL DRAW_COLOREDMAP(ANIMATION_SEED, "HIKKOSHI")
+	ELSE
+		CALL DRAW_MAP("HIKKOSHI")
+	ENDIF
+	DRAWLINE
+	PRINTFORML ■%GET_MAPNAME(MAIN_MAP)%
+	PRINTL
+	TRYCALLFORM MAP_{MAIN_MAP}_{TFLAG:マップ切り替え}
+	PRINTL
+	DRAWLINEFORM =
+	PRINT Please select a place to stay. 
+	PRINTBUTTON @"[Switch Preview Map({TFLAG:マップ切り替え})]", 1997
+	PRINTL
+	;custom code
+	IF nPlaceId == -1
+	LOCAL:1 = 0
+	FOR LOCAL, 0, 20
+		SIF MAIN_MAP == LOCAL
+			SETCOLOR C_AQUA
+		IF GET_EXISTMAP(LOCAL)
+			PRINTFORM [{LOCAL + 2000}] %GET_MAPNAME(LOCAL), 28, LEFT%
+			SIF (++LOCAL:1) % 3 == 0 ;custom code
+				PRINTFORML
+		ENDIF
+		;SIF GROUPMATCH(LOCAL, 4, 9, 10) ;custom code - replaced with above method
+		;	PRINTL 
+		RESETCOLOR
+	NEXT
+	SIF LOCAL:1 % 3 > 0
+		PRINTFORML
+	ENDIF
+	;-----------
+	PRINT [1998] Cancel
+	PRINTL
+	;Map Animation Code
+	IF ANIMATERECOLOREDMAPS && !FLAG:70
+		REDRAW PREV_REDRAW
+		TINPUT ANIMATERECOLOREDMAPS,99999,0,""
+	ELSE
+		INPUT
+	ENDIF
+	;拠点切り替え
+	IF RESULT == 99999
+		PREV_REDRAW = CURRENTREDRAW()
+		REDRAW 0
+		CLEARLINE LINECOUNT - LINESTART
+		GOTO MAPANIMATION
+	ELSEIF RESULT >= 2000 && GET_EXISTMAP(RESULT - 2000)
+		MAIN_MAP = RESULT - 2000
+		TFLAG:マップ切り替え = 1
+		RESTART
+	;プレビュー切り替え
+	ELSEIF RESULT == 1997
+		TFLAG:マップ切り替え += 1
+		SIF !EXISTFUNCTION(@"MAP_{MAIN_MAP}_{TFLAG:マップ切り替え}")
+			TFLAG:マップ切り替え = 1
+		RESTART
+	;キャンセル
+	ELSEIF RESULT == 1998 && !ゲーム開始処理中 && !ゲーム引き継ぎ処理中
+		MAIN_MAP = curMap
+		CALL ROOMSETTING ;bug fix custom code
+		RETURN
+	ELSEIF INRANGE(RESULT,1,97) || INRANGE(RESULT,MAIN_MAP*100,MAIN_MAP*100+99)
+		IF RESULT < 100
+		K = RESULT+(MAIN_MAP*100)
+		ELSE
+		K = RESULT
+		ENDIF
+		SELECTCASE PlayerLandSelection
+		CASE 1
+			IF AvailableHousingAreas(1, K)
+				PRINTFORMW Not a valid home area. Please select another.
+				RESTART
+			ELSEIF AvailableHousingAreas(2, K) > -1
+				L = AvailableHousingAreas(2, K)
+				N = PlayerLandGuests:L
+				IF C_ID == N
+					PRINTFORMW %CALLNAME:C_ID% is already living in this location.
+					RESTART
+				ENDIF
+
+				PRINTFORML %NAME_FROM_PLACE(K+8000)% is currently occupied by %CALLNAME:(N)%.
+				PRINTFORML Do you want to move %CALLNAME:(N)% to a new area?
+				CALL ASK_YN(@"Yes", "No")
+				SELECTCASE RESULT
+				CASE 0
+					M = PlayerLandGuestLiving:(FINDELEMENT(PlayerLandGuests,C_ID))
+					CFLAG:N:自宅位置 = GET_MAP_REPLACEMENT(M)
+					CFLAG:N:311 = M
+					CFLAG:N:神社在住 = CFLAG:C_ID:311
+					PlayerLandGuestLiving:L = M
+					PRINTFORMW Moved %CALLNAME:N% to %NAME_FROM_PLACE(M+8000)%
+				CASE 1
+					RETURN
+				ENDSELECT
+			ENDIF
+		ENDSELECT
+		
+		CFLAG:C_ID:自宅位置 = GET_MAP_REPLACEMENT(K)
+		CFLAG:C_ID:311 = K
+		CFLAG:C_ID:神社在住 = CFLAG:C_ID:311
+		
+		PRINTFORMW %NAME_FROM_PLACE(K+8000)% has been selected as home location.
+		RETURN
+	ELSE
+		DEBUGPRINTFORML Tried to get area {RESULT}
+		RESTART
+	ENDIF
+
+@LinkFamilyRelation(ARG, nTarget, nRelation)
+#FUNCTION
+#DIM nTarget
+#DIM nRelation
+#DIM nCollat
+SELECTCASE nRelation
+CASE 0
+	;Unrelated
+	CharaFamily:ARG:nTarget = 0
+	CharaFamily:nTarget:ARG = 0
+CASE 1
+	;Son
+	CharaFamily:ARG:nTarget = 1
+	CharaFamily:nTarget:ARG = 4
+CASE 2
+	;Brother
+	CharaFamily:ARG:nTarget = 2
+	CharaFamily:nTarget:ARG = 2
+	;strays
+	FOR nCollat, 0, CHARANUM
+		SIF GROUPMATCH(nCollat,ARG,nTarget)
+			CONTINUE
+		IF CharaFamily:nCollat:nTarget == 2 || CharaFamily:nTarget:nCollat == 2 || CharaFamily:nCollat:ARG == 2 || CharaFamily:ARG:nCollat == 2
+			CharaFamily:nCollat:nTarget = 2
+			CharaFamily:nTarget:ARG = 2
+		ENDIF
+	NEXT
+CASE 3
+	;Half-Brother
+	CharaFamily:ARG:nTarget = 3
+	CharaFamily:nTarget:ARG = 3
+CASE 4
+	;Father
+	CharaFamily:ARG:nTarget = 4
+	CharaFamily:nTarget:ARG = 1
+CASE 5
+	;Grandson
+	CharaFamily:ARG:nTarget = 5
+	CharaFamily:nTarget:ARG = 10
+CASE 6
+	;Kin
+	CharaFamily:ARG:nTarget = 6
+	CharaFamily:nTarget:ARG = 6
+CASE 7
+	;Half-Father
+	CharaFamily:ARG:nTarget = 7
+	CharaFamily:nTarget:ARG = 8
+CASE 8
+	;Grandson
+	CharaFamily:ARG:nTarget = 8
+	CharaFamily:nTarget:ARG = 7
+CASE 9
+	;Clone
+	CharaFamily:ARG:nTarget = 9
+	CharaFamily:nTarget:ARG = 9
+CASE 10
+	;Grandfather
+	CharaFamily:ARG:nTarget = 10
+	CharaFamily:nTarget:ARG = 5
+ENDSELECT
+
+@ChangeAlarmTime(ARG,nFlag)
+#DIM nFlag
+#DIM 同居人
+#DIM 前日就寝時間
+#DIM nStoreTime
+nStoreTime = CFLAG:ARG:nFlag ;qol custom code
+前日就寝時間 = CFLAG:MASTER:就寝時間 - DAY * 1440
+同居人 = 0
+FOR LOCAL,0,CHARANUM
+	IF NO:LOCAL == NO:ARG
+		同居人 = LOCAL
+		BREAK
+	ENDIF
+NEXT
+DO
+ 	;qol custom code, cleaner rendering of time slept (example: 10:0 becomes 10:00)
+	PRINTFORM When should %CALLNAME:ARG% 
+	SELECTCASE nFlag
+	CASE 352
+		PRINTFORM start visiting?
+	CASE 353
+		PRINTFORM stop visiting?
+	CASE 354
+		PRINTFORM go to bed?
+	CASE 355
+		PRINTFORM wake up?
+	CASEELSE
+		PRINTFORM the alarm go off?
+	ENDSELECT
+	PRINTFORML  (Currently: %時刻表示(CFLAG:ARG:nFlag)%)
+	PRINTBUTTON "┏━ △ ", 60
+	PRINTBUTTON "━△", 10
+	PRINTBUTTON "△━┓", 1
+	PRINTL 
+	PRINT ┃　
+	SIF CFLAG:ARG:nFlag < 600
+		PRINT ０
+	PRINTFORM %TOFULL(TOSTR(CFLAG:ARG:nFlag / 60))%：
+	SIF CFLAG:ARG:nFlag % 60 < 10
+		PRINT ０
+	PRINTFORM %TOFULL(TOSTR(CFLAG:ARG:nFlag % 60))%　
+	PRINTBUTTON "□", 5555
+	PRINTL 
+	PRINTBUTTON "┗━ ▽ ", -60
+	PRINTBUTTON "━▽", -10
+	PRINTBUTTON "▽━┛", -1
+	PRINTL 
+	SIF 同居人 < CHARANUM && 同居人
+		PRINTFORM [2222] - Same as %CALLNAME:同居人%
+	PRINT 　
+	PRINTL [4444] - Direct input
+	;qol custom code
+	PRINTL [9999] - Cancel
+	PRINTFORML [{0,4}] - Done
+	INPUT
+	IF RESULT == 0
+		PRINTFORM The alarm is now set at 
+		CALL COLORMESSAGE(@"%時刻表示(CFLAG:ARG:nFlag)%", C_YELLOW)
+		PRINTFORMW .
+		RETURN 1
+	ELSEIF RESULT == 9999 ;qol custom code
+		CFLAG:ARG:nFlag = nStoreTime
+		RETURN 0
+	ELSEIF RESULT == 2222 && 同居人 < CHARANUM && 同居人
+		CFLAG:ARG:nFlag = CFLAG:同居人:nFlag
+	ELSEIF RESULT == 4444
+		CALL 起床時間入力()
+	ELSEIF RESULT == 5555
+		CALL 最低睡眠時間設定()
+	ELSEIF INRANGE(RESULT, -1360, 1360)
+		CFLAG:ARG:nFlag += RESULT
+		IF CFLAG:ARG:nFlag >= 1440
+			CFLAG:ARG:nFlag -= 1440
+		ELSEIF CFLAG:ARG:nFlag < 0
+			CFLAG:ARG:nFlag += 1440
+		ENDIF
+		CLEARLINE 8
+	ENDIF
+LOOP 1
+
+@CHAR_EDITOR_NAS_PAGE_11(C_ID, CHEAT = 0)
+#DIM     C_ID       ;登録番号
+#DIM CHEAT
+CALL BODY_PART_HEALTH(C_ID,1)
+PRINTBUTTON @"[Full Heal] ", 108
+PRINTBUTTON @"[Damage Body Parts] ", 109
+SIF CHEAT
+PRINTBUTTON @"[Add Bionic Parts]", 110
+PRINTL
+
+@CHAR_EDITOR_NAS_RESULT_11(ARG, CHEAT = 0, nInput)
+#DIM CHEAT
+#DIM nInput
+#DIM ResSort, 4
+#DIM RESULT_11_FIRST_LINE
+RESULT_11_FIRST_LINE = LINECOUNT
+SELECTCASE nInput
+CASE 108
+	CALLF HESOYAM(ARG)
+CASE 109
+;damage
+DEBUG_Target = ARG
+CALL DEBUG_MENU_RESULT_4_100
+CASE 110
+;bionic
+DEBUG_Target = ARG
+CALL DEBUG_MENU_RESULT_4_101
+CASE IS >= 100000
+	ResSort = nInput/100000
+	ResSort:1 = nInput - (ResSort*100000)
+	CALL HediffMenu(ARG,ResSort,ResSort:1)
+ENDSELECT
+
+@CHAR_EDITOR_NAS_PAGE_12(ARG, CHEAT = 0)
+#DIM CHEAT
+CALL LIST_CHARA_STATE_TR(ARG)
+
+
+;ported from newgame make
+@NAS_REAL_NARIKIRI(nNo)
+#DIM nNo
+MASTER = nNo
+PLAYER = nNo
+
+PeeHold:MASTER:1 = 0
+PooHold:MASTER:1 = 0
+
+OrgasmDeny:MASTER:0 = OrgasmDeny:nNo:0
+PeeHold:MASTER:0 = PeeHold:nNo:0
+PooHold:MASTER:0 = PooHold:nNo:0
+AlcoholAddict:MASTER:0 = AlcoholAddict:nNo:0
+DrugAddict:MASTER:0 = DrugAddict:nNo:0
+CharaTrauma:MASTER:0 = CharaTrauma:nNo:0
+CharaTraumaExp:MASTER:0 = EXP_DEMAND_24(0,95,MASTER)
+PeeHoldExp:MASTER:0 = EXP_DEMAND_20(0,91,MASTER)
+PooHoldExp:MASTER:0 = EXP_DEMAND_21(0,92,MASTER)
+DrinkingExp:MASTER:0 = EXP_DEMAND_22(0,93,MASTER)
+DrugExp:MASTER:0 = EXP_DEMAND_23(0,94,MASTER)
+CALLF SILENT_ENDURANCECHANGE(MASTER)
+
+CALL BASE_BAR(MASTER, "体力", 28, "緑")
+PRINTFORM 　　
+CALL BASE_BAR(MASTER, "気力", 28, "青", "「改行」")
+
+IF GETBIT(nPee,1)
+CALL PeeBar(MASTER,21)
+PRINTFORM 　　	
+ENDIF
+IF GETBIT(nScat,2)	
+CALL PooBar(MASTER,21)
+ENDIF
+PRINTFORML 
+PRINTFORML
+IF nPee || nScat
+	PRINTFORM ★Potty Training: 
+	IF nPee
+	SETCOLOR EnduranceColors(PeeHold:MASTER:2)
+	PRINTFORM {PeeHold:MASTER:2} ({PeeHold:MASTER:0} + {PeeHold:MASTER:1})【%GET_TALENTNAME_TR(1514, PeeHold:MASTER:2)%】
+	ENDIF
+	IF nScat		
+	RESETCOLOR
+	SIF nPee
+	PRINTFORM /
+	SETCOLOR EnduranceColors(PooHold:MASTER:2)
+	PRINTFORML {PooHold:MASTER:2} ({PooHold:MASTER:0} + {PooHold:MASTER:1})【%GET_TALENTNAME_TR(1500, PooHold:MASTER:2)%】
+	ENDIF
+ENDIF
+RESETCOLOR	
+PRINTFORM ★Addiction: 
+SETCOLOR EnduranceColors(AlcoholAddict:MASTER:0)
+PRINTFORM {AlcoholAddict:MASTER:0}【%GET_TALENTNAME_TR(121, TALENT:MASTER:121)%】			
+RESETCOLOR
+PRINTFORM /
+SETCOLOR EnduranceColors(DrugAddict:MASTER:0)
+PRINTFORML {DrugAddict:MASTER:0}【%GET_TALENTNAME_TR(56, TALENT:MASTER:56)%】
+RESETCOLOR		

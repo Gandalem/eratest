@@ -1,0 +1,91 @@
+@EXIST_ADD_GAME_INFO9
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+@ADD_GAME_INFO9(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+
+SELECTCASE O_DATA
+	CASE "NAME"
+		CALLF MAKE_STR(V_NAME, "Tennis (singles)")
+	CASE "DESCRIPTION"
+		CALLF MAKE_STR(V_NAME, "a tennis match")
+	CASE "MINPLAYERS"
+		CALLF MAKE_INT(V_NAME, 2)
+	CASE "MAXPLAYERS"
+		CALLF MAKE_INT(V_NAME, 2)
+	CASE "CHECKREQUIREMENTS"
+        IF !ADD_BANQUET_ACTIVITY_ALLOWED("TENNIS",1)
+        ELSEIF CFLAG:MASTER:現在位置 != CFLAG:ARG:現在位置 ;don't take from surrounding areas
+        ELSEIF !((ADD_BANQUET_CHARA_STATE(ARG) && CFLAG:ARG:BANQUET_ROLE >= ADD_BANQUET_ROLE_GUEST) || ARG == FLAG:デート相手)
+        ELSE
+			CALLF MAKE_INT(V_NAME, 1)
+        ENDIF
+	CASE "VALIDBETS"
+		CALLF MAKE_STR(V_NAME, ADD_GAME_STANDARD_BETS())
+	CASE "DURATION"
+		CALLF MAKE_INT(V_NAME, 30)
+ENDSELECT
+
+@ADD_GAME9
+#DIM SKILL_VALUES, 2
+#DIM TOTAL_SKILL
+#DIM SKILL_DIFFERENCE
+#DIM SCORE_DIFFERENCE
+#DIM DARK_HORSE_VICTORY
+#DIMS WINNER_NAME ;"you" if MASTER
+#DIMS LOSER_NAME ;"you" if MASTER
+
+CALL ADD_BANQUET_SET_OUTFIT21(MASTER)
+CALL ADD_BANQUET_SET_OUTFIT21(TARGET)
+
+SKILL_VALUES:0 = ABL:MASTER:戦闘能力 * 200
+SKILL_VALUES:1 = ABL:TARGET:戦闘能力 * 200
+TOTAL_SKILL = SUMARRAY(SKILL_VALUES)
+SKILL_DIFFERENCE = SKILL_VALUES:0 - SKILL_VALUES:1
+
+PRINTFORML The %NUM_COUNT(ADD_GAME_PARTICIPANT_COUNT)% of you play a round of tennis.
+CALL ADD_GAME_DEFAULT_CALCULATION_WITH_VALUES(SKILL_VALUES)
+
+WINNER_NAME '= ADD_GAME_WINNERS:0 == MASTER ? "you" # CALLNAME:(ADD_GAME_WINNERS:0)
+LOSER_NAME '= ADD_GAME_LOSERS:0 == MASTER ? "you" # CALLNAME:(ADD_GAME_LOSERS:0)
+DARK_HORSE_VICTORY = (SKILL_VALUES:0 > SKILL_VALUES:1 && ADD_GAME_WINNERS:0 != MASTER) || (SKILL_VALUES:0 < SKILL_VALUES:1 && ADD_GAME_WINNERS:0 == MASTER)
+
+IF TOTAL_SKILL < 600
+    PRINTFORM After your amateurish match
+    IF ABS(SKILL_DIFFERENCE) <= 200
+        PRINTFORM , which could've gone either way
+    ELSE
+        PRINTFORM , where %WINNER_NAME% held the upper hand throughout most of the game
+    ENDIF
+    PRINTFORML , %WINNER_NAME% %COND_STR("surprisingly ", DARK_HORSE_VICTORY)%come%COND_STR("s", ADD_GAME_WINNERS:0 != MASTER)% out on top.
+ELSEIF ABS(SKILL_DIFFERENCE) >= 600
+    IF DARK_HORSE_VICTORY
+        PRINTFORML Despite the significant difference in skill, %WINNER_NAME% manage%COND_STR("s", ADD_GAME_WINNERS:0 != MASTER)% to defeat %LOSER_NAME% in a splendid turnaround.
+        SIF CFLAG:(ADD_GAME_LOSERS:0):今日の運勢 < 400
+            PRINTFORML Perhaps this just isn't \@ ADD_GAME_LOSERS:0 == MASTER ? your # %HIS_HER(ADD_GAME_LOSERS:0)% \@ day.
+    ELSE
+        PRINTFORML Predictably, %WINNER_NAME% dominate%COND_STR("s", ADD_GAME_WINNERS:0 != MASTER)% during the entire match, handily defeating %LOSER_NAME%.
+    ENDIF
+ELSEIF TOTAL_SKILL <= 2000
+    PRINTFORML The match is intense, with both sides giving it their all.
+    IF ABS(SKILL_DIFFERENCE) <= 200
+        PRINTFORML The two of you are evenly matched, but ultimately %WINNER_NAME% manage%COND_STR("s", ADD_GAME_WINNERS:0 != MASTER)% to secure an advantage and come out victorious.
+    ELSEIF DARK_HORSE_VICTORY
+        PRINTFORML Despite %LOSER_NAME% holding the advantage, %WINNER_NAME% manage%COND_STR("s", ADD_GAME_WINNERS:0 != MASTER)% to defeat %LOSER_NAME%.
+    ELSE
+        PRINTFORML %CAPITALIZE(WINNER_NAME)% eventually manage%COND_STR("s", ADD_GAME_WINNERS:0 != MASTER)% to get the upper hand and secure a decisive advantage over %LOSER_NAME%.
+    ENDIF
+ELSE
+    PRINTFORML This incredible game between two masters draws the attention of everyone at the tennis court.
+    PRINTFORML After an intense back-and-forth, where you're pushed to your very limits, %WINNER_NAME% eventually secure%COND_STR("s", ADD_GAME_WINNERS:0 != MASTER)% a decisive advantage and claims victory.
+    PRINTFORML The club members break out in applause after seeing such an amazing match.
+ENDIF
+
+;chance to proc red thread, somewhat better odds than through standard actions
+SIF !RAND:3 && TARGET == FLAG:デート相手
+    CALL Add_RedThread

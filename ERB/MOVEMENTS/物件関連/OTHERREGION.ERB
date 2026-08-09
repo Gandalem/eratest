@@ -1,0 +1,369 @@
+;-----------------------------------------------------------
+;おでかけ関数
+;ARGS    呼び出し元の関数,"出掛ける"or"散策する"
+;-----------------------------------------------------------
+@OTHERREGIONS(ARGS)
+#DIM 現在地点
+#DIM 所要時間
+#DIM 現在地MAPID
+#DIM 目的地MAPID
+#DIM ANIMATION_SEED
+#DIM PREV_REDRAW
+#DIM 仮デート相手
+#DIM MultipleDates, 200
+#DIM NumberDates
+#DIM 時間停止ジャンプ
+#DIM DYNAMIC IS_DANGEROUS ;qol custom code
+#DIM DYNAMIC FastTravel
+#DIM DYNAMIC Farskipping
+;拠点のマップ表示をリセットしておく
+TFLAG:マップ切り替え = 0
+Farskipping = GETBIT(YoujutsuEffects:MASTER:6,1) || GETBIT(YoujutsuEffects:MASTER:6,4);NAS TP Youjutsu
+
+ANIMATION_SEED = 0
+;qol custom code, allow for consistent testing
+[IF_DEBUG]
+	IF ANIMATERECOLOREDMAPS
+		LOCAL = GETMILLISECOND()
+		ANIMATION_SEED = LOCAL / ANIMATERECOLOREDMAPS % 20
+	ENDIF
+[ENDIF]
+PREV_REDRAW = CURRENTREDRAW()
+
+;Map Animation Code
+$MAPANIMATION
+LINESTART = LINECOUNT
+SIF ANIMATERECOLOREDMAPS && !FLAG:70
+	ANIMATION_SEED ++
+
+IF RECOLOREDMAPS
+	CALL DRAW_COLOREDMAP(ANIMATION_SEED, "GLOBAL")
+ELSE
+	CALL FIELDMAP
+ENDIF
+;先にデート相手だけ決定しておく,三人以上には対応してません
+仮デート相手 = MASTER
+NumberDates = 0
+FOR LOCAL, 1, CHARANUM
+	SIF LOCAL == MASTER ;NAS: Non 0 MASTER
+		CONTINUE
+	IF CFLAG:LOCAL:同行 || TFLAG:運搬 == LOCAL
+		仮デート相手 = LOCAL
+		IF MOREDATE
+			MultipleDates:NumberDates = LOCAL
+			NumberDates += 1
+		ELSE
+			BREAK
+		ENDIF
+	ENDIF
+NEXT
+
+PRINTL Select a destination.
+現在地MAPID = GET_MAPID(CFLAG:MASTER:現在位置)
+FOR 目的地MAPID, 0, MAXHOME
+	SIF !GET_EXISTMAP(目的地MAPID)
+		CONTINUE
+	IF 目的地MAPID == 現在地MAPID
+		PRINTPLAINFORM [{目的地MAPID, 3}] - %GET_MAPNAME(目的地MAPID), 28, LEFT%
+		CALL COLORMESSAGE(@"You are here　 ", C_GREEN, 3)
+	ELSE
+		所要時間 = TIME_REQUIRED(現在地MAPID, 目的地MAPID)
+		SIF IsPartCrippled(MASTER,80) || IsPartCrippled(MASTER,90)
+			所要時間 *= 3
+		SIF MASTER == 26 || FLAG:デート相手 == 26 || GETBIT(YoujutsuEffects:MASTER:6,4) ;NAS TP Youjutsu
+			所要時間 = 0
+
+		IF Farskipping ;NAS TP Youjutsu
+			所要時間 *= 6
+			LOCALS = MP 　
+		ELSEIF FLAG:時間停止 || (GETBIT(FLAG:瞬間移動, AT_HOME(MASTER)) && FLAG:デート相手 == MASTER && 仮デート相手 == MASTER)
+			所要時間 *= 3
+			LOCALS = TSP　
+		ELSE
+			所要時間 = TIME_REQUIRED(現在地MAPID, 目的地MAPID)
+			LOCALS = min　
+		ENDIF
+		SIF UsingFarskip(MASTER) && 目的地MAPID == MAIN_MAP
+			所要時間 /= 4
+		SIF RESULT:1 && !UsingFarskip(MASTER) ;qol custom code, dangerous
+			SETCOLOR C_D_RED
+		PRINTFORM [{目的地MAPID, 3}] - %GET_MAPNAME(目的地MAPID), 28, LEFT%Time: {所要時間, 3} %LOCALS%
+		RESETCOLOR
+	ENDIF
+	SIF 目的地MAPID % 3 == 2
+		PRINTL
+NEXT
+;SIF 目的地MAPID % 3 > 0
+	PRINTL
+PRINT [100] - Return
+IF MAXBASE:MASTER:TSP
+	IF 同行人数() == 0
+		SIF FLAG:70 ;qol
+		SETCOLOR 0x5090FF
+		PRINTFORM %BL(37)%[ 99] - Time Stop
+		SIF GETBIT(FLAG:瞬間移動, AT_HOME(MASTER))
+			SETCOLOR 0x5090FF
+		PRINTFORM %BL(12)%[199] - TSP Movement
+		RESETCOLOR
+	ENDIF
+	RESETCOLOR ;qol
+ENDIF
+IF 同行人数() == 0 ;qol custom code
+	SIF FLAG:DANGEROUS_TRAVEL
+		SETCOLOR C_D_RED
+	PRINTFORM %BL(5)%[198] - Dangerous Paths
+	RESETCOLOR
+ENDIF
+;NAS TP Youjutsu
+CALL YoujutsuMagicCanDo(MASTER,6,1)
+IF RESULT
+	SIF Farskipping ;qol
+		SETCOLOR 0x5090FF
+	SIF 同行人数() == 0
+		PRINTFORM %BL(12)%[601] - Farskip
+	RESETCOLOR ;qol
+ENDIF
+;======================================
+;----------------------------------
+;Map Animation Code
+IF ANIMATERECOLOREDMAPS && !FLAG:70
+	REDRAW PREV_REDRAW
+	;qol custom code, keep synced with actual time
+	TINPUT ANIMATERECOLOREDMAPS - (GETMILLISECOND() % ANIMATERECOLOREDMAPS),1234,0,""
+ELSE
+	INPUT
+ENDIF
+
+;戻る
+IF RESULT == 100
+	RETURN RESULT
+;時間停止
+ELSEIF RESULT == 99 && 同行人数() == 0
+	IF FLAG:時間停止
+		FLAG:時間停止 = 0
+		;(天候パッチ)時刻・天候に応じて背景色を変更
+		IF FLAG:背景色推移 ;bugfix custom code
+		CALL SET_MAP_WEATHER_BGCOLOR
+		ELSE
+			RESETBGCOLOR
+		ENDIF
+	ELSE
+		FLAG:時間停止 = 1
+		SETBGCOLOR C_THE_WORLD
+	ENDIF
+ELSEIF RESULT == 199 && 同行人数() == 0 ;qol custom code
+	INVERTBIT FLAG:瞬間移動, AT_HOME(MASTER)
+ELSEIF RESULT == 198 && 同行人数() == 0 ;qol custom code
+	FLAG:DANGEROUS_TRAVEL = !FLAG:DANGEROUS_TRAVEL
+ELSEIF RESULT == 601 ;NAS TP Youjutsu
+	INVERTBIT YoujutsuEffects:MASTER:6, 1
+	Farskipping = !Farskipping
+;帰宅
+ELSEIF RESULT == MAIN_MAP
+	IF FLAG:時間停止 && FLAG:デート相手 != MASTER
+		PRINTFORMW Returning home from date during Time Stop is not possible, please resume time.
+	ELSE
+		CALL 外出先から帰宅
+		SIF RESULT == -1 ;qol custom code
+			RETURN 100
+		RETURN MAIN_MAP
+	ENDIF
+ELSEIF RESULT == 1234
+	PREV_REDRAW = CURRENTREDRAW()
+	REDRAW 0
+	CLEARLINE LINECOUNT - LINESTART
+	GOTO MAPANIMATION
+ELSEIF INRANGE(RESULT, 0, MAXHOME - 1) && RESULT != 現在地MAPID
+	目的地MAPID = RESULT
+	所要時間 = TIME_REQUIRED(現在地MAPID, 目的地MAPID)
+	IS_DANGEROUS = RESULT:1 ;qol custom code
+	時間停止ジャンプ = 0
+	SELECTCASE 目的地MAPID
+	CASE 10
+		IF GETBIT(YoujutsuEffects:MASTER:6,1) || GETBIT(YoujutsuEffects:MASTER:6,4) ;NAS TP Youjutsu
+			$Teleportation
+			IF nFastTravelAnimations
+				PRINTFORMW Teleporting...
+				CALL TRIPLEDOT("reverse:timed")			
+				CALL TRIPLEDOT("timed")	
+			ENDIF	
+		ELSEIF !GETBIT(TALENT:MASTER:ESP,1) && !ITEM:StarShip
+			PRINTFORMW You simply can't get to the moon.
+			RESTART
+		ELSEIF ITEM:StarShip ;NAS Starship
+			$ShipLaunch
+			IF nFastTravelAnimations
+				PRINTFORMW Initiating Ship Launch Sequence...
+				CALL TRIPLEDOT("reverse:timed")
+				IF 目的地MAPID == 11
+					PRINTFORMW Ship is ready to launch.
+					PRINTFORML Initiating FTL Drive.
+					REDRAW 10
+					CALL ANIMATION_BGCOLOR_TRANSITION( 0x000000, 0xFFFFFF, 20, 300, -30, 0x0000 )
+					SETCOLOR 0x000000
+					CALL TRIPLEDOT("reverse:timed")	
+					CALL KEYTYPING(@"FTL Sequence Active", "dc:l", 80, 1)
+					CALL ANIMATION_BGCOLOR_TRANSITION( 0xFFFFFF, 0x000000, 20, 300, -30, 0x0000 )
+					REDRAW 0
+					RESETBGCOLOR
+					RESETCOLOR
+					CALL TRIPLEDOT("timed")
+				ELSEIF 目的地MAPID == 10
+					PRINTFORML Initiating planetary transport mode.
+				ELSE
+					PRINTFORML Initiating orbit mode.
+				ENDIF
+			ENDIF	
+			FastTravel = 1	
+		ENDIF
+	CASE 11 ; Makai
+		IF GETBIT(YoujutsuEffects:MASTER:6,1) || GETBIT(YoujutsuEffects:MASTER:6,4) ;NAS TP Youjutsu
+			GOTO Teleportation
+		ELSEIF ITEM:StarShip
+			GOTO ShipLaunch
+		ELSEIF !MAKAI_PORTAL_ABLE()
+			PRINTFORMW You simply can't get to Makai.
+			RESTART
+		ENDIF
+	CASE 19
+		IF !PlayerLandBought
+			PRINTFORML This plot is on sale for ¥2,000,000.
+			PRINTFORML Do you want to buy it
+			CALL ASK_M("Buy it", MONEY >= 2000000, "Don't buy it", 1)
+			SELECTCASE RESULT
+			CASE 0
+				CALL PAY_MONEY_YEN(2000000, 2)
+				CALL AL_NOTIFY_ACHIEVEMENT_COMPLETION("buyPlot")
+				PlayerLandBought = 1
+				PlayerLandOwner = MASTER
+				VARSET PlayerLandGuests, -1
+				PRINTFORMW You have bought the plot of land and can now start building on it.
+				RESTART
+			CASE 1
+				RESTART
+			ENDSELECT
+		ENDIF
+		IF GETBIT(YoujutsuEffects:MASTER:6,1) || GETBIT(YoujutsuEffects:MASTER:6,4) ;NAS TP Youjutsu
+			GOTO Teleportation
+		ELSEIF ITEM:StarShip
+			GOTO ShipLaunch
+		ENDIF
+
+	CASEELSE 
+		IF GETBIT(YoujutsuEffects:MASTER:6,1) || GETBIT(YoujutsuEffects:MASTER:6,4) ;NAS TP Youjutsu
+			GOTO Teleportation
+		ELSEIF ITEM:StarShip
+			GOTO ShipLaunch
+		ENDIF
+	ENDSELECT
+
+	IF ARGS == "出掛ける"
+		;一人でお出掛け
+		IF 同行人数() == 0
+			IF (FLAG:時間停止 || GETBIT(FLAG:瞬間移動, AT_HOME(MASTER))) && BASE:MASTER:TSP >= 所要時間 * 3 ;bug fix for auto-tsp movement
+				時間停止ジャンプ = 1
+			ELSEIF FastTravel || SaveIsEZB
+				所要時間 = 0
+			ELSEIF FLAG:70 ;bug fix
+				PRINTW Not enough TSP!
+				RESTART
+			ELSE
+				PRINTL If TSP is used, it's possible to move there without spending time.
+				PRINTL Use TSP?
+				CALL ASK_M("No", 1, @"Yes (TSP {所要時間 * 3}/{BASE:MASTER:TSP})", BASE:MASTER:TSP >= 所要時間 * 3, "Cancel", 1) ;qol cancel
+				SIF RESULT == 1
+					時間停止ジャンプ = 1
+				SIF RESULT == 2
+					RESTART
+			ENDIF
+			SIF !時間停止ジャンプ ;fix
+				CALL Add_UmbrellaUse ;addition custom code
+			CALL SET_DATE(目的地MAPID, TFLAG:運搬, 所要時間, 時間停止ジャンプ)
+			SIF IS_DANGEROUS && !UsingFarskip(MASTER) ;qol custom code
+				CALL QOL_CHECK_DANGEROUS_TRAVEL(時間停止ジャンプ)
+			RETURN 目的地MAPID
+		;二人でデート
+		ELSEIF 同行人数() == 1
+			PRINTFORML Leaving for a date to %GET_MAPNAME(目的地MAPID)%.
+			CALL SET_DATE(目的地MAPID, 仮デート相手, 所要時間)
+			RETURN 目的地MAPID
+		;三人以上
+		ELSEIF MOREDATE
+			PRINTFORML Leaving for a group date to %GET_MAPNAME(目的地MAPID)%.
+			CALL SET_DATES(目的地MAPID, MultipleDates, NumberDates, 所要時間)
+			;PRINTFORML Taking %GET_DATEES_NAMES(MASTER)%.
+			RETURN 目的地MAPID
+		ENDIF
+	ELSEIF ARGS == "散策する"
+		IF FLAG:デート相手 != MASTER
+			PRINTFORML Heading to %GET_MAPNAME(目的地MAPID)%.
+		ELSEIF FLAG:時間停止
+			IF BASE:MASTER:TSP < 所要時間 * 3
+				PRINTW Not enough TSP!
+				RESTART
+			ELSE
+				時間停止ジャンプ = 1
+			ENDIF		
+		ELSEIF GETBIT(FLAG:瞬間移動, AT_HOME(MASTER)) && BASE:MASTER:TSP >= 所要時間 * 3 ;bug fix for auto-tsp movement
+			時間停止ジャンプ = 1
+		ELSEIF FastTravel
+				所要時間 = 0	
+		ENDIF
+		IF MOREDATE && NumberOfDates > 1 ;keep all dates if moving to another area directly
+			CALL SET_DATES(目的地MAPID, Datees, NumberOfDates, 所要時間)
+		ELSEIF TFLAG:運搬
+			CALL SET_DATE(目的地MAPID, TFLAG:運搬, 所要時間, 時間停止ジャンプ)		
+		ELSE
+			CALL SET_DATE(目的地MAPID, FLAG:デート相手, 所要時間, 時間停止ジャンプ)
+		ENDIF
+		SIF IS_DANGEROUS && !UsingFarskip(MASTER) ;qol custom code
+			CALL QOL_CHECK_DANGEROUS_TRAVEL(時間停止ジャンプ)
+		RETURN 目的地MAPID
+	ENDIF
+ENDIF
+RESTART
+
+@HappenToChild
+#DIM YOME
+#DIM CHILDNUM
+SIF RAND:2
+	RETURN
+SIF FLAG:70
+	RETURN
+CALL PickRandGrownChild
+YOME = RESULT
+CHILDNUM = RESULT:1
+VARSET RESULT
+SIF YOME <= 0
+	RETURN
+;自立後の子供描写が発生しないときに発生する
+SIF BETWEENTIME(CFLAG:YOME:起床時間, CFLAG:YOME:就寝時間)
+	RETURN
+SIF CHILD_AREA:YOME:CHILDNUM / 100 != CFLAG:MASTER:デート中
+	RETURN
+SIF FLAG:日替わりイベント >= 800 || FLAG:日替わりイベント % 10 == YOME % 10
+	RETURN
+LOCALS = %CHILDNAME:YOME:CHILDNUM%
+PRINTFORMW When going out, you pass by %LOCALS%.
+IF CHILD_LOVE:YOME:CHILDNUM < 0
+	PRINTFORMW %LOCALS% doesn't seem to notice you...
+ELSEIF CHILD_LOVE:YOME:CHILDNUM < 200
+	PRINTFORMW %LOCALS% gives you a light nod.
+ELSE
+	IF FLAG:デート相手 != YOME && FLAG:デート相手
+		PRINTDATA
+			DATAFORM %LOCALS% seems to dislike your going out with someone other than %CALLNAME:YOME%...
+			DATAFORM %LOCALS% stares daggers at %CALLNAME:(FLAG:デート相手)%...
+			DATAFORM %LOCALS% complains to you in disgust.
+			DATAFORM %LOCALS% gives you a disdainful look.
+		ENDDATA
+	ELSE
+		PRINTDATA
+			DATAFORM %LOCALS% waves at you in greeting.
+			DATAFORM %LOCALS% is so happy to see you %HE_SHE_CHILD(YOME,,CHILDNUM)% gives you a hug...
+			DATAFORM %LOCALS% sees you off with a dignified smile.
+			DATAFORM %LOCALS% calls out your name loudly...
+		ENDDATA
+	ENDIF
+	PRINTW
+ENDIF

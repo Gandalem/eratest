@@ -1,0 +1,215 @@
+;存否関数
+;F関数はTRYCALL系が使えないので通常関数で存否配列を作っちゃう
+@EXIST_一般依頼36
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+;オブジェクト本体
+;ここでARGで渡されるのはCLIENT_IDです
+@一般依頼36(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+
+SELECTCASE O_DATA
+CASE "依頼名"
+	CALLF MAKE_STR(V_NAME, @"I need to go potty!")
+CASE "依頼内容表示"
+		LOCALS '= @"Take %CALLNAME:ARG% to the toilet"
+
+	CALLF MAKE_STR(V_NAME, @"%LOCALS%")
+CASE "依頼報酬表示"
+	CALLF MAKE_STR(V_NAME, @"Favor")
+CASE "依頼実行コマンド名"
+	CALLF MAKE_STR(V_NAME, @"Relieve %CALLNAME:ARG%")
+CASE "依頼内容"
+    CALLF MAKE_INT(V_NAME, MAKE_IRAI_DATA(ARG, "person"))
+CASE "依頼サブ"
+CASE "依頼期限"
+;発生時ではなく受託時に確定します
+	CALLF MAKE_INT(V_NAME, 0)
+CASE "依頼発生率"
+;これは他の一般依頼との相対確率なんで10％ではありません
+;percentage change of being shown. (set to 100 to always show)
+	;CALLF MAKE_INT(V_NAME, 100)
+	CALLF MAKE_INT(V_NAME, 50)
+CASE "依頼発生条件"
+		CALLF MAKE_INT(V_NAME, 1)
+CASE "依頼受託可能条件"
+;あなたの戦闘能力が1以上
+	
+	;we're skirting along a fine line here.
+	IF TALENT:ARG:BornChild && CharaAge:ARG:0 < ICSexThreshold()
+	CALLF MAKE_INT(V_NAME, 0)
+	RETURNF
+	ENDIF
+
+	IF PeeBarStage(ARG) < 4 && PooBarStage(ARG) < 4
+		CALLF MAKE_INT(V_NAME, 0)		
+	;ELSEIF (INRANGE(CharaAge:ARG:0, 3, 7)) ;we're skirting along a fine line here.
+	;	CALLF MAKE_INT(V_NAME, 1)
+	ELSEIF (PeeHold:ARG:2 <= -2 && PeeBarStage(ARG) >= 4) || (PooHold:ARG:2 <= -2 && PooBarStage(ARG) >= 4)
+		CALLF MAKE_INT(V_NAME, 1)
+	ENDIF
+	RETURNF 1
+CASE "依頼実行可能条件"
+	; IF IsPadded(ARG,"diaper") && !SoiledDiaper(ARG)
+	; CALLF MAKE_INT(V_NAME, 0)
+	; ELSE
+	; ENDIF
+	;SIF IS_TOILET(CFLAG:ARG:現在位置, ARG)
+	CALLF MAKE_INT(V_NAME, 1)
+;成功/失敗処理はCARRYOUTで直接書く
+;SOURCEやITEM入手、消費が煩雑になるので
+CASE "依頼消滅条件"
+	;cancel
+	SIF Add_Request_Should_Discard(ARG)
+		CALLF MAKE_INT(V_NAME, 1)
+CASE "依頼人連れ出し可能"
+		CALLF MAKE_INT(V_NAME, 1)
+ENDSELECT
+
+@IRAI_一般36(CHARA, IRAI_ID, SCENE)
+#DIM  CHARA
+#DIM  IRAI_ID
+#DIMS SCENE
+#DIM  CLIENT_ID
+#DIM  CHK_SLOT
+#DIM  OPPONENT_REMAIN
+#DIM HasPiss
+#DIM HasScat
+VARSET HasPiss
+VARSET HasScat
+
+SIF PeeBarStage(CHARA) >= 4
+	HasPiss = 1
+SIF PooBarStage(CHARA) >= 4
+	HasScat = 1
+
+CLIENT_ID = IRAI_ID_TO_CLIENT(IRAI_ID)
+CHK_SLOT  = SEARCH_IRAI_SLOT(IRAI_ID)
+SELECTCASE SCENE
+CASE "依頼条件表示"
+;何か専用の表示情報を設けたい時用
+;受託済みの依頼表示で使用されます
+;
+;PRINT系だけでSOURCEとかは入れちゃダメ、WAITも無しで
+;ここ以外の表示項目は
+;PRINTFORML 　　　　　：
+;となっているのでスペースを揃えたほうが見栄えが良いです
+
+CASE "依頼実行時"
+;このCASEに限り、RESULTが意味を持ちます
+;依頼実行時のRESULTにはIRAI_CONST_RESULT()を使用してください
+;可能な引数は"キャンセル", "実行して成功", "実行して失敗", "実行して未解決"です
+;独自処理を仕込みたい時は"実行して未解決"で先延ばしするなりしてください
+;
+;
+	;実行できないパターン
+	;拠点では屋内だとダメ（原作だとめっちゃやってるけど）
+	;ほぼ弾幕勝負のコピペ
+	
+	;wetting or messing, no way to save this 2hu from an accident.
+	IF PeeBarStage(CHARA) >= 7 || PooBarStage(CHARA) >= 7
+		PRINTFORML But as you talk, %CALLNAME:CHARA% is currently having an accident!
+		PRINTFORML You can't help but watch %CALLNAME:CHARA% %PeeAndPoo(HasPiss,HasScat, "flood", "fill")% %HIS_HER(CHARA)% %PeeProtectType(CHARA,1)%.
+		RETURN IRAI_CONST_RESULT("実行して失敗")
+	ELSEIF PeeBarStage(CHARA) < 4 && PooBarStage(CHARA) < 4 ;bladder and bowels are empty
+		RETURN IRAI_CONST_RESULT("実行して成功")
+	ELSEIF SoiledSelf:CHARA:0 || SoiledSelf:CHARA:1 ; had an accident
+		RETURN IRAI_CONST_RESULT("実行して失敗")
+	ENDIF
+
+	{
+		CALL ASK_M(@"Tell %CALLNAME:CHARA% that %HE_SHE(CHARA)%'ll have to hold it (Cancel)", 1,
+		@"Put %CALLNAME:CHARA% on the potty", IS_TOILET(CFLAG:CHARA:現在位置, CHARA),
+		@"\@ nOmutsu ? Diaper %CALLNAME:CHARA% # ？？？？？ \@", 0,
+		@"Undress %CALLNAME:CHARA% and make %HIM_HER(CHARA)% go potty outside", OUTROOF(MASTER),
+		@"Tell %CALLNAME:CHARA% to use %HIS_HER(CHARA)% %PeeProtectType(CHARA,2)%", IsPadded(CHARA),
+		@"\@ (!TALENT:CHARA:BornChild || CharaAge:CHARA:0 > ICSexThreshold()) ? Let %CALLNAME:CHARA% use your %PeeProtectType(MASTER,2)% # ？？？？？ \@", IsPadded(MASTER) && !HasScat && (!TALENT:CHARA:BornChild || CharaAge:CHARA:0 > ICSexThreshold()),
+		)
+	}
+	SELECTCASE RESULT
+	CASE 0
+	CASE 1
+        CALL PottyPants(CHARA,HasPiss,HasScat)
+        P = RESULT
+		PRINTFORML You tell %CALLNAME:CHARA% to get on the potty.
+		CALL GoToilet(CHARA,HasPiss,HasScat)
+		IF RESULT == -1
+			RETURN IRAI_CONST_RESULT("実行して失敗")
+		ELSE
+			RETURN IRAI_CONST_RESULT("実行して成功")
+		ENDIF
+	CASE 4
+		PRINTFORMW %PARSE("You decide",5,,MASTER)% that it may just be best for %CALLNAME:CHARA% to... relieve %PARSE("yourself",,,CHARA)%.
+		PRINTFORMW %PARSE("You consider",5,,CHARA)% the implications of %PARSE("your",5,,MASTER)% decision for a moment before steeling %PARSE("yourself",5,,CHARA)% and continuing with %PARSE("your",5,,MASTER)% childish decision.
+		PRINTL
+		CALL INTENTIONAL_ACCIDENT(CHARA,HasPiss,HasScat, 1)
+		IF SoiledSelf:CHARA:0 || SoiledSelf:CHARA:1 ; had an accident
+			PRINTFORMW %CALLNAME:CHARA% looks mortified from listening to your advice.
+			PRINTFORMW Maybe it wasn't wise to tell %HIM_HER(CHARA)% to %PeeAndPoo(HasPiss,HasScat,"wet","mess")% on the spot.
+			RETURN IRAI_CONST_RESULT("実行して失敗")
+		ELSE
+			PRINTFORMW %CALLNAME:CHARA% seems relieved from trusting %HIS_HER(CHARA)% diaper again.
+			PRINTFORMW %HE_SHE(CHARA,1)% tries to forget that %HE_SHE(CHARA)% even wanted to go to the potty.
+			JUEL:CHARA:Regression += 5000
+			CALL COLORMESSAGE(@"%CALLNAME:CHARA% Regression Gems +{5000}",C_PINK,1)
+			RETURN IRAI_CONST_RESULT("実行して成功")
+		ENDIF
+	CASE 5
+		PRINTFORMDW You stick both thumbs into the waistband of your %PeeProtectType(MASTER)% as you begin to stretch the %PeeProtectType(MASTER,1)% forward, giving an opening.
+		PRINTFORMDW %CALLNAME:TARGET% questions why you're diapered, but decides to go through with it anyway.
+		PRINTFORMDW %CALLNAME:TARGET% inches forward, before holding on to your shoulders and leaning forward.
+		PRINTL
+		IF HAS_PENIS(CHARA)
+			PRINTFORMDW %HE_SHE(TARGET,1)% begins to take %HIS_HER(CHARA)% %TINKO_TR(CHARA)% out of %HIS_HER(CHARA)% %PeeProtectType(CHARA)% and sticks it in your %PeeProtectType(MASTER,1)%
+		ELSE
+			PRINTFORMDW %HE_SHE(TARGET,1)% begins to push %HIS_HER(CHARA)% %PeeProtectType(CHARA)% to the side, before holding you tight.
+		ENDIF
+		PRINTL
+		PRINTFORMDW A stream of %URINE(CHARA,1)% spurts out onto your %FSYN("crotch")%.
+		PRINTFORMDW The %URINE(CHARA)% is extremely warm as a sense of wetness begins to trill down your %FSYN("crotch")%.
+		PRINTFORMDW Having found relief in your %PeeProtectType(MASTER,2)%, the spurt turns into a flood as %CALLNAME:CHARA% sighs.
+		PRINTFORMDW The %URINE(CHARA)% starts to collect in the space between your legs, being held in by your leak guards.
+		PRINTFORMDW %CALLNAME:CHARA% continues to %FSYN("pee")% until %HIS_HER(CHARA)% bladder fully empties.
+		IF PeeBarStage(MASTER) >= 2
+			PRINTL
+			PRINTFORMDW Unable to help it, you begin to %FSYN("pee")% as well, having let someone else use your %PeeProtectType(MASTER,2)%.
+			PRINTFORMDW You can't help whether it's your pee, or %CALLNAME:CHARA%'s, but having it contact your skin and your padding makes you blush in relief.
+			HasPiss = 2
+		ENDIF
+		PRINTL
+		IF HasPiss == 2
+			PRINTFORMDW %CALLNAME:CHARA% questions why %HE_SHE(CHARA)% peed so much, but you answer that you peed as well.
+			PRINTFORMDW As you lavish in your thoroughly soaked %PeeProtectType(MASTER,1)%, you wonder if %HES_SHES(CHARA)% truly ready for potty training.
+			CALL OMORASHI_END(MASTER, 1, 0)
+		ELSE
+			PRINTFORMDW %CALLNAME:CHARA% thanks for your deed, and tells you that %HE_SHE(CHARA)% went potty.
+			PRINTFORMDW You wonder if letting %HIM_HER(CHARA)% use your diaper count as going to the toilet or not, but eventually conclude that it's not toileting, but not an accident.
+		ENDIF
+		CALLF MessUndies(MASTER, "liquid", 0, BASE:CHARA:4)
+		CALL OMORASHI_END(CHARA, 1, 0, 1, 1, 1)
+	ENDSELECT
+
+	;bladder and bowels are empty
+	SIF PeeBarStage(CHARA) < 4 && PooBarStage(CHARA) < 4
+	RETURN IRAI_CONST_RESULT("実行して成功")
+CASE "依頼成功時"
+;成功報告時の報酬など
+	SOURCE:歓楽 = 3000
+	CALL CHANGE_CFLAG(2, CHARA, 10 + RAND:5)
+	CALL CHANGE_CFLAG(4, CHARA, 15 + RAND:5)
+	RELATION:CHARA:MASTER = LIMIT(RELATION:CHARA:MASTER+5,10,300)
+    CALL AL_NOTIFY_ACHIEVEMENT_COMPLETION("urgencyPass")
+CASE "依頼失敗時"
+;失敗報告時の処理
+;過酷な依頼なので少しだけ
+	;PRINTFORML %CALLNAME:TARGET% seems upset that you didn't change %HIM_HER(TARGET)%
+	PRINTFORML %CALLNAME:CHARA% seems upset that you let %HIM_HER(CHARA)% have an accident
+	CALL CHANGE_CFLAG(2, CHARA, -3)
+	CALL CHANGE_CFLAG(4, CHARA, -2)
+	CALLF Add_SPECIAL_REQUEST_CREATION(CHARA, 31, 100, 1, 1)
+ENDSELECT

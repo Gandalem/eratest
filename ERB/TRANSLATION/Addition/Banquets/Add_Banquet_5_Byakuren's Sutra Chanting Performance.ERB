@@ -1,0 +1,232 @@
+@EXIST_ADD_BANQUET5
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+@ADD_BANQUET5(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+
+SELECTCASE O_DATA
+	CASE "NAME"
+        CALLF MAKE_STR(V_NAME, "An all-night sutra chanting performance")
+    CASE "ACTIVITIES"
+        CALLF MAKE_STR(V_NAME, "Listening to sutras")
+    CASE "TERM"
+        CALLF MAKE_STR(V_NAME, "sutra concert")
+    CASE "CATEGORY"
+        CALLF MAKE_STR(V_NAME, "performance")
+    CASE "PRIORITY"
+        CALLF MAKE_INT(V_NAME, 1)
+    CASE "NOTIFY_PLAYER"
+        CALLF MAKE_INT(V_NAME, 1)
+    CASE "HOST"
+        CALLF MAKE_INT(V_NAME, [[白蓮]])
+    CASE "HOST_LIST"
+        CALLF MAKE_STR(V_NAME, @"{[[白蓮]]}/{[[一輪]]}/{[[星]]}/{[[響子]]}")
+    CASE "GUEST_LIST"
+        CALLF MAKE_STR(V_NAME, @"")
+    CASE "BANNED_LIST"
+        CALLF MAKE_STR(V_NAME, @"")
+    CASE "CONDITIONS"
+        SIF DAY:3 >= 8 && DAY:3 <= 10
+            CALLF MAKE_INT(V_NAME, 1)
+    CASE "WEATHER_DEPENDENT"
+        CALLF MAKE_INT(V_NAME, 0)
+    CASE "KEEP_AWAKE"
+        CALLF MAKE_INT(V_NAME, 1)
+    CASE "LISTEN_TO_MUSIC"
+        CALLF MAKE_INT(V_NAME, 1)
+    CASE "PERFORMERS"
+        CALLF MAKE_STR(V_NAME, @"{[[白蓮]]}")
+ENDSELECT
+
+@ADD_BANQUET_PLANNING5
+#DIM LOCATION
+#DIM SCALE
+#DIM START_TIME
+
+LOCATION = P104講堂
+
+;especially popular in summer amongst youkai
+SCALE = 1000 + RAND:2000
+SIF DAY:2 == 2
+    SCALE += 1000
+START_TIME = CLOCK_TO_TIME(23, 0)
+
+CALL ADD_BANQUET_CREATE(5, LOCATION, START_TIME, DAY + (10 - DAY:3), 360, SCALE)
+LOCAL = RESULT ;banquet_index
+
+SIF LOCAL < 0 ;couldn't create
+    RETURN
+
+ADD_BANQUETS_INVITED:LOCAL = ADD_BANQUET_INVITE_INVITED
+PRINTL  
+PRINTFORMW Byakuren will hold another all-night sutra chanting performance soon.
+PRINTFORML 
+
+PRINTFORMW %ADD_BANQUET_TIME_AND_PLACE_DESCRIPTION(LOCAL)%
+
+@ADD_BANQUET_START5
+
+@ADD_BANQUET_FINISH5
+
+@ADD_BANQUET_VISIT5(PREVIOUS_STATE)
+#DIM PREVIOUS_STATE
+#DIM BANQUET_INDEX
+#DIM CURRENT_STATE
+#DIM PARTICIPANTS
+BANQUET_INDEX = ADD_BANQUET_INDEX(5)
+PARTICIPANTS = ADD_BANQUET_PARTICIPANT_COUNT(BANQUET_INDEX)
+CURRENT_STATE = ADD_BANQUETS_STATUS:BANQUET_INDEX
+
+IF CURRENT_STATE == ADD_BANQUET_STATE_IN_PROGRESS && PREVIOUS_STATE == ADD_BANQUET_STATE_PREPARING ;player was present during start
+    PRINTFORML 
+    IF PARTICIPANTS >= 10
+        PRINTW Byakuren begins her sutra performance, the large crowd listening eagerly to her song.
+    ELSE
+        PRINTW Byakuren begins her sutra performance, the handful of attendees listening eagerly to her song.
+    ENDIF
+    PRINTFORML 
+ELSEIF CURRENT_STATE == ADD_BANQUET_STATE_IN_PROGRESS ;joins later
+    PRINTL  
+    PRINTW Byakuren has already begun her performance...
+    PRINTL  
+ENDIF
+
+@ADD_BANQUET_PROGRESS5(BANQUET_INDEX)
+#DIM BANQUET_INDEX
+#DIM BANQUET_ID
+#DIM PRESENT
+#DIM LAPSE
+BANQUET_ID = ADD_BANQUETS_UPCOMING:BANQUET_INDEX
+;if master at location
+PRESENT = CFLAG:MASTER:現在位置 == GET_MAP_REPLACEMENT(ADD_BANQUETS_LOCATION:BANQUET_INDEX)
+LAPSE = TIME_PROGRESS(TIME:1)
+
+SELECTCASE ADD_BANQUETS_STATUS:BANQUET_INDEX
+    CASE ADD_BANQUET_STATE_PREPARING
+        IF PRESENT
+            FOR LOCAL, 1, CHARANUM
+                IF CFLAG:LOCAL:BANQUET == BANQUET_ID && CFLAG:LOCAL:BANQUET_ROLE > 1
+                    IF TALENT:LOCAL:恋慕
+                        PRINTFORML %CALLNAME:LOCAL% is thinking about you while setting up for the sutra chanting performance.
+                    ELSE
+                        PRINTFORML %CALLNAME:LOCAL% is busily setting up for the sutra chanting performance.
+                    ENDIF
+                ENDIF
+            NEXT
+        ENDIF
+    CASE ADD_BANQUET_STATE_IN_PROGRESS
+        SIF PRESENT
+            PRINTFORMDL Byakuren continues to keep a perfect rhythm as she chants her sutras. 
+        FOR LOCAL, 1, CHARANUM
+            IF CFLAG:LOCAL:BANQUET == BANQUET_ID
+                IF CFLAG:LOCAL:行動 == 5
+                    BASE:LOCAL:仕事量 = MAX(BASE:LOCAL:仕事量 - LAPSE * 10, 0)
+                    SIF CFLAG:LOCAL:BANQUET_ROLE < ADD_BANQUET_ROLE_HOST && (BASE:LOCAL:仕事量 == 0 || CFLAG:LOCAL:睡眠)
+                        CALL ADD_BANQUET_END_PARTICIPATION(LOCAL)
+                    IF PRESENT && CFLAG:LOCAL:職種 == 49
+                        SIF LOCAL == [[白蓮]]
+                            CONTINUE
+
+                        IF TALENT:LOCAL:妖怪
+                            IF TALENT:LOCAL:恋慕 && !RAND:5
+                                PRINTFORMDL %CALLNAME:LOCAL% clings to you while shivering from the performance.
+                            ELSE
+                                PRINTFORMDL %CALLNAME:LOCAL% trembles and shivers while listening to the performance.
+                            ENDIF
+                        ELSE
+                            IF CFLAG:LOCAL:職種 == 49 && TALENT:LOCAL:恋慕 && !RAND:5
+                                PRINTFORML %CALLNAME:LOCAL% leans on you while dozing off.
+                            ELSE
+                                PRINTFORML %CALLNAME:LOCAL% looks like %HE_SHE(LOCAL)%'s about to doze off.
+                            ENDIF
+                        ENDIF
+                    ENDIF
+                ENDIF
+            ENDIF
+        NEXT
+    CASE ADD_BANQUET_STATE_FINISHED
+ENDSELECT
+
+@ADD_BANQUET_PREPARATION_TEXT5(CHARA, LOCATION)
+#DIM CHARA
+#DIM LOCATION
+IF CFLAG:CHARA:現在位置 == CFLAG:MASTER:現在位置 && CFLAG:MASTER:現在位置 == LOCATION
+    PRINTFORML %CALLNAME:CHARA% starts preparing for the sutra chanting performance.
+ELSEIF CFLAG:MASTER:現在位置 == LOCATION
+    PRINTFORML %CALLNAME:CHARA% arrives at %NAME_FROM_PLACE_THE(LOCATION)% to start preparing for the sutra chanting performance.
+ELSEIF CFLAG:CHARA:現在位置 == CFLAG:MASTER:現在位置
+    PRINTFORML %CALLNAME:CHARA% moves over to %NAME_FROM_PLACE_THE(LOCATION)% to start preparing for the sutra chanting performance.
+ENDIF
+
+@ADD_BANQUET_JOIN_TEXT5(CHARA, LOCATION)
+#DIM CHARA
+#DIM LOCATION
+IF CFLAG:CHARA:現在位置 == CFLAG:MASTER:現在位置 && CFLAG:MASTER:現在位置 == LOCATION
+    PRINTFORML %CALLNAME:CHARA% sits down and starts listening to the sutra chanting performance.
+ELSEIF CFLAG:MASTER:現在位置 == LOCATION
+    PRINTFORML %CALLNAME:CHARA% arrives at %NAME_FROM_PLACE_THE(LOCATION)% to listen to Byakuren's sutra chanting performance.
+ELSEIF CFLAG:CHARA:現在位置 == CFLAG:MASTER:現在位置
+    PRINTFORML %CALLNAME:CHARA% moves over to %NAME_FROM_PLACE_THE(LOCATION)% to attend the sutra chanting performance.
+ENDIF
+
+@ADD_BANQUET_SET_PARTICIPANTS5
+#DIM BANQUET_INDEX
+#DIM BANQUET_SCALE
+BANQUET_INDEX = ADD_BANQUET_INDEX(5)
+BANQUET_SCALE = ADD_BANQUETS_SCALE:BANQUET_INDEX
+
+CALL ADD_BANQUET_FILL_PARTICIPANTS(BANQUET_INDEX, 0, 8)
+
+@ADD_BANQUET_WORKLOAD_PREPARATION5(ARG)
+#DIM SCALE
+#DIM BANQUET_INDEX
+#DIM WORKLOAD
+BANQUET_INDEX = ADD_BANQUET_INDEX(5)
+SCALE = ADD_BANQUETS_SCALE:BANQUET_INDEX
+WORKLOAD = ADD_BANQUET_TIME_UNTIL(BANQUET_INDEX) * 10
+
+IF CFLAG:ARG:職種 != JOB_宴会準備
+	MAXBASE:ARG:仕事量 = MIN(WORKLOAD, 2400)
+	BASE:ARG:仕事量 = MAXBASE:ARG:仕事量
+	CFLAG:ARG:職種 = JOB_宴会準備
+    TCVAR:ARG:手伝えない = 2
+	CFLAG:ARG:行動 = 5
+ENDIF
+
+@ADD_BANQUET_WORKLOAD_PARTICIPATION5(ARG, SCALE)
+#DIM SCALE
+
+IF CFLAG:ARG:職種 != JOB_宴会参加
+    IF CFLAG:ARG:BANQUET_ROLE > 1
+        MAXBASE:ARG:仕事量 = 3600 ;hosts remain the full duration
+    ELSE
+    	MAXBASE:ARG:仕事量 = LIMIT(RAND:4000, 600, 3600) ;stay as long as they can stand it
+    ENDIF
+
+	BASE:ARG:仕事量 = MAXBASE:ARG:仕事量
+	CFLAG:ARG:職種 = JOB_宴会参加
+	CFLAG:ARG:行動 = 5
+    TCVAR:ARG:手伝えない = 1
+ENDIF
+
+@ADD_BANQUET_MESSAGE_TALK5
+#DIM BANQUET_INDEX
+BANQUET_INDEX = ADD_BANQUET_INDEX(5)
+
+PRINTFORMDL Byakuren is singing a monotone song while keeping rhythm with a wooden fish.
+
+@ADD_BANQUET_LISTEN_TEXT5
+PRINTFORMDW You listen to Byakuren as she performs sutras in a monotone and rhythmic manner.
+
+@ADD_BANQUET_LISTEN_TOGETHER_TEXT5
+PRINTFORML You listen to Byakuren's performance alongside %CALLNAME:TARGET%.
+IF TALENT:妖怪
+    PRINTFORMDW You see drops of sweat run down %CALLNAME:TARGET%'s face as %HE_SHE(TARGET)% listens intently to the sutras being performed.
+ELSE
+    PRINTFORMDW %CALLNAME:TARGET% looks to be dozing off because of the performance.
+ENDIF

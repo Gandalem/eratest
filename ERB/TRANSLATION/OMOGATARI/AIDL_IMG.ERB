@@ -1,0 +1,1953 @@
+;image shits for NAS original sprites using AIDL
+;based off the EagloV image sets and ENified for readability
+
+;The EagloV code expect matching underwear, and NAS allows for asymmetrical underwear (nude/diaper, green bra and bloomers, nude/pull-up, etc).
+
+;////////////////////////////////////////
+;136 Takane
+;////////////////////////////////////////
+@SPECIAL_BASE_IMAGE_136
+SIF CFLAG:136:差し替え適用 == 1
+	RESULTS = AIDL
+
+@SPECIAL_EFFECT_IMAGE_136
+SIF CFLAG:136:差し替え適用 == 1
+	RESULTS = AIDL
+
+@AIDL__DetectClothesSpecial_136
+RESULTS = 
+IF IS_BUNNY(136)
+	RESULTS = BUNNY
+	RETURN 1
+ELSEIF EQUIP:136:16 == 3
+	RESULTS = PAJAMA
+	RETURN 1
+ENDIF
+; ELSEIF CFLAG:72:妊娠経過日数 >= 60
+; 	RESULTS = MATERNITY
+; 	RETURN 1
+; ELSEIF YOUBI_MATCH(DAY, "月火金")
+; 	; 工作日，常服
+; 	RESULTS = 
+; 	RETURN 0
+; ELSEIF DAY%2 && ABL:72:露出癖 >= 3
+; 	; 休息日。露出癖3，1/2概率衬衫；露出癖5，1/10概率裸衬衫
+; 	IF (EQUIP:72:上半身下着１ + EQUIP:72:上半身下着２ == 0) || (DAY%5 == 0 && ABL:72:露出癖 >= 5)
+; 		RESULTS = 裸衬衫
+; 	ELSE
+; 		RESULTS = 半透衫
+; 	ENDIF
+; 	RETURN 1
+; ENDIF
+RETURN 0
+
+
+; RETURN：0: None，1:胸罩胖次，2:连体下着
+@AIDL_DetectUndiesSpecial_136
+RETURN 0
+
+;////////////////////////////////////////
+;172 Vivit
+;////////////////////////////////////////
+@SPECIAL_BASE_IMAGE_172
+SIF CFLAG:[[Vivit]]:差し替え適用 == 0
+	RESULTS = AIDL
+
+@SPECIAL_EFFECT_IMAGE_172
+SIF CFLAG:[[Vivit]]:差し替え適用 == 0
+	RESULTS = AIDL
+
+@AIDL_DetectUndiesSpecial_172
+RETURN 0
+
+@AIDL__DetectClothesSpecial_172
+RESULTS = 
+RETURN 0
+
+;////////////////////////////////////////
+;Functions
+;////////////////////////////////////////
+
+;////////////////////////
+; GET_BASE_RESOURCE{
+;When the function is called, the expression may be "オナニー" "通常"，Clothing may be "服" "裸"
+;JP terms for TW compatibility. will be translated to AIDL friendly terms in the pipeline
+;////////////////////////
+@AIDL_GET_BASE_RESOURCE(CHARA, gbrClothes = "", gbrExpression:0 = "")
+#DIM CHARA
+#DIMS gbrPregnant
+#DIMS gbrBreasts
+#DIMS gbrPenis
+#DIMS gbrClothes
+#DIMS gbrClothSpecial
+#DIM gbrClothSpecialRet		; 0: Naked, 1: bra and panties, 2: one-piece bottoms
+#DIMS gbrExpression, 2
+#DIMS gbrImageDefName, 2
+#DIMS Version
+
+;AIDL_{gbrPregnant}_{gbrBreasts}_{gbrPenis}_{gbrClothes}_{gbrExpression}_{CHARA}
+
+;Initialization
+IF gbrClothes == ""
+	gbrClothes = %AIDL_GetClothesState(CHARA)%
+ELSE
+	gbrClothes = %AIDL_TranslateClothesState(gbrClothes)%
+ENDIF
+gbrPregnant = %AIDL_GetPregnancy(CHARA)%
+gbrBreasts = %AIDL_GetBreasts(CHARA)%
+gbrPenis = %AIDL_GetDick(CHARA, gbrClothes)%
+gbrClothSpecial = 
+
+Version = 
+RESULT = 0
+TRYCALLFORM AIDL_Version{NO:CHARA}
+SIF RESULT
+	Version = %RESULTS%
+
+IF gbrClothes == "cClothed"
+	TRYCCALLFORM AIDL__DetectClothesSpecial%Version%_{NO:CHARA}
+	IF RESULT
+		gbrClothSpecial = %RESULTS%
+	ENDIF
+	CATCH
+	ENDCATCH
+ELSEIF STRFIND(gbrClothes,"cBra") > -1 || STRFIND(gbrClothes,"cPanties") > -1
+	TRYCCALLFORM AIDL_DetectUndiesSpecial%Version%_{NO:CHARA}
+	IF RESULT
+		gbrClothSpecial = %RESULTS%
+		gbrClothSpecialRet = RESULT
+	ENDIF
+	CATCH
+	ENDCATCH
+ENDIF
+
+IF gbrExpression:0 == ""
+	CALL AIDL_GetExpression(CHARA)
+	gbrExpression:0 = %RESULTS:0%
+	gbrExpression:1 = %RESULTS:1%
+ELSE
+	gbrExpression:0 '= AIDL_TranslateExpressionState(gbrExpression:0)
+
+ENDIF
+
+gbrImageDefName:0 = %AIDL_GetDefName(Version, CHARA, gbrPregnant, gbrBreasts, gbrPenis, gbrClothes, gbrClothSpecial, gbrExpression:0)%
+SIF !SPRITECREATED(gbrImageDefName:0)
+	CALL AIDL_BUILD_BASE_IMAGE(Version, CHARA, gbrPregnant, gbrBreasts, gbrPenis, gbrClothes, gbrClothSpecial, gbrExpression:0, gbrClothSpecialRet)
+
+IF gbrExpression:1 == ""
+	gbrImageDefName:1 = 
+ELSE
+	gbrImageDefName:1 = %AIDL_GetDefName(Version, CHARA, gbrPregnant, gbrBreasts, gbrPenis, gbrClothes, gbrClothSpecial, gbrExpression:1)%
+	SIF !SPRITECREATED(gbrImageDefName:1)
+		CALL AIDL_BUILD_BASE_IMAGE(Version, CHARA, gbrPregnant, gbrBreasts, gbrPenis, gbrClothes, gbrClothSpecial, gbrExpression:1, gbrClothSpecialRet)
+ENDIF
+
+
+IF !FLAG:立ち絵種類
+	; Standing
+	RESULTS:0 = %gbrImageDefName:0%
+	RESULTS:1 = %gbrImageDefName:1%
+	; DEBUGPRINTFORML AIDL IMG: standing img returning with %gbrImageDefName:0% - %gbrImageDefName:1%
+ELSE
+	; Face
+	CALL AIDL_BUILD_Face(Version, CHARA, gbrImageDefName:0, gbrImageDefName:1)
+ENDIF
+
+RETURN
+
+@AIDL_BUILD_BASE_IMAGE(Version, CHARA, buildPregnant, buildBreasts, buildPenis, buildClothes, buildClothesSpecial, buildExpress, buildSpecial)
+#DIMS Version
+#DIM G_ID
+#DIM CHARA
+#DIMS buildPregnant
+#DIMS buildBreasts
+#DIMS buildPenis
+#DIMS buildClothes
+#DIMS buildClothesSpecial
+#DIMS buildExpress
+#DIM buildSpecial
+#DIMS bodyDef
+#DIMS expDef
+#DIMS defName
+
+bodyDef = %AIDL_BodyDef(Version, CHARA, buildPregnant, buildBreasts, buildPenis, buildClothes, buildClothesSpecial)%
+expDef = %AIDL_ExpressionDef(Version, CHARA, buildExpress)%
+defName = %AIDL_GetDefName(Version, CHARA, buildPregnant, buildBreasts, buildPenis, buildClothes, buildClothesSpecial, buildExpress)%
+
+IF !SPRITECREATED(bodyDef)
+	DEBUGPRINTFORML AIDL IMG: building body %bodyDef%
+	IF buildClothes == "cNude"
+		CALL AIDL_BUILD_BodyNude(Version, CHARA, buildPregnant, buildBreasts, buildPenis, buildClothes, buildClothesSpecial)
+	ELSEIF buildClothes == "cClothed"
+		CALL AIDL_BUILD_BodyClothed(Version, CHARA, buildPregnant, buildBreasts, buildPenis, buildClothes, buildClothesSpecial)
+	ELSEIF STRFIND(buildClothes,"cBra") > -1 || STRFIND(buildClothes,"cPanties") > -1
+		CALL AIDL_BUILD_BodyUnderwear(Version, CHARA, buildPregnant, buildBreasts, buildPenis, buildClothes, buildClothesSpecial)
+	ENDIF
+ENDIF
+
+IF !SPRITECREATED(expDef)
+	DEBUGPRINTFORML AIDL IMG: building expression %expDef%
+	CALL AIDL_BUILD_Emotion(Version, CHARA, buildExpress)
+ENDIF
+
+G_ID = 0
+;CALL COMPOSE_IMAGE(G_ID, "ダミー", 0, 0, 300, 300)
+CALL COMPOSE_IMAGE(G_ID, "ダミー", 0, 0, 1024,1024)
+CALL COMPOSE_IMAGE(G_ID, bodyDef)
+CALL COMPOSE_IMAGE(G_ID, expDef)
+
+SPRITECREATE defName, G_ID
+RETURN
+
+@AIDL_BUILD_Face(Version, CHARA, defName:0, defName:1)
+#DIMS Version
+#DIM CHARA
+#DIMS defName, 2
+#DIMS FaceDef, 2
+
+FaceDef:0 = %AIDL_FaceDef(defName:0)%
+SIF !SPRITECREATED(FaceDef:0)
+	CALL AIDL_SegmentIMG(Version, CHARA, defName:0)
+
+IF defName:1 == ""
+	FaceDef:1 = 
+ELSE
+	FaceDef:1 = %AIDL_FaceDef(defName:1)%
+	SIF !SPRITECREATED(FaceDef:1)
+		CALL AIDL_SegmentIMG(Version, CHARA, defName:1)
+ENDIF
+
+RESULTS:0 = %FaceDef:0%
+RESULTS:1 = %FaceDef:1%
+RETURN
+
+
+@AIDL_SegmentIMG(Version, CHARA, defName)
+#DIMS Version
+#DIM G_ID
+#DIM CHARA
+#DIMS defName
+#DIMS FaceDef
+#DIM faceRect,4
+
+IF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_颜像范围")
+	faceRect:0 = SPRITEPOSX(@"%Version%AIDL{NO:CHARA}_颜像范围")
+	faceRect:1 = SPRITEPOSY(@"%Version%AIDL{NO:CHARA}_颜像范围")
+	faceRect:2 = SPRITEWIDTH(@"%Version%AIDL{NO:CHARA}_颜像范围")
+	faceRect:3 = SPRITEHEIGHT(@"%Version%AIDL{NO:CHARA}_颜像范围")
+ELSE
+	faceRect:0 = -256
+	faceRect:1 = 0
+	faceRect:2 = 512
+	faceRect:3 = 512
+ENDIF
+
+FaceDef = %AIDL_FaceDef(defName)%
+
+G_ID = 0
+CALL COMPOSE_IMAGE(G_ID, "ダミー", 0, 0, faceRect:2, faceRect:3)
+;CALL COMPOSE_IMAGE(G_ID, defName, faceRect:0, faceRect:1, 300, 300)
+CALL COMPOSE_IMAGE(G_ID, defName, faceRect:0, faceRect:1, 1024,1024)
+
+SPRITECREATE FaceDef, G_ID
+
+RETURN
+
+
+;more detailed clothe DEFs
+;vests, diapers + soil stages, holding guns, etc
+@AIDL_GetClothesState(ARG)
+#FUNCTIONS
+#DIMS DYNAMIC undiesBuild, 3
+LOCAL = NudityCheck(ARG)
+SELECTCASE LOCAL
+CASE 0
+	RETURNF "cNude" 
+CASE 1, 2, 3
+	IF GROUPMATCH(LOCAL,1,2) || !CFLAG:ARG:衣装一時変更
+		IF EQUIP:ARG:6
+			undiesBuild:1 '= @"cPanties{EQUIP:ARG:6}"
+			IF SoiledDiaper(ARG,2,,33) && SoiledDiaper(ARG,1,,33)
+				undiesBuild:1 = %@"%undiesBuild:1%_DUAL"%
+			ELSEIF SoiledDiaper(ARG,2,,33)
+				undiesBuild:1 = %@"%undiesBuild:1%_MESS"%
+			ELSEIF SoiledDiaper(ARG,1,,33)
+				undiesBuild:1 = %@"%undiesBuild:1%_WET"%
+			ENDIF
+		ENDIF
+		SIF STRLENS(undiesBuild:1)
+			undiesBuild:0 += undiesBuild:1+"、"
+
+		SIF EQUIP:ARG:8
+			undiesBuild:2 '= @"cBra{EQUIP:ARG:8}"
+		SIF STRLENS(undiesBuild:2)
+			undiesBuild:0 += undiesBuild:2+"、"
+		RETURNF LIST_IN_STRING(undiesBuild:0, , "","_")
+		;RETURNF @"cPanties%EQUIP:ARG:6%"
+	ENDIF
+ENDSELECT
+RETURNF "cClothed"
+
+;translate clothing terms from TW to variables AIDL uses
+@AIDL_TranslateClothesState(ARGS)
+#FUNCTIONS
+SELECTCASE ARGS
+CASE "服"
+	RETURNF "cClothed"
+CASE "裸"
+	RETURNF "cNude"
+ENDSELECT
+RETURNF ARGS
+
+
+@AIDL_TranslateExpressionState(ARGS)
+#FUNCTIONS
+SELECTCASE ARGS
+CASE "通常"
+	RETURNF "Neutral"
+CASE "裸"
+	RETURNF "cNude"
+ENDSELECT
+RETURNF ARGS
+
+
+@AIDL_GetBreasts(ARG)
+#FUNCTIONS
+#DIMS CONST breastSize = "bFlat", "bTiny", "bSmall", "bMed", "bLarge", "bHuge", "bGigantic"
+RETURNF breastSize:(TALENT:ARG:バストサイズ+2)
+
+@AIDL_GetFat(ARGS)
+#FUNCTIONS
+SIF ARGS != ""
+	RETURNF "Fat"
+RETURNF ""
+
+@AIDL_GetPregnancy(ARG)
+#FUNCTIONS
+SIF CFLAG:ARG:妊娠経過日数 >= 40
+	RETURNF "Pregnant"
+SIF 充填率(ARG,3) >= 100
+	RETURNF "Fat"
+RETURNF ""
+
+@AIDL_GetDick(ARG, nCloth)
+#FUNCTIONS 
+#DIMS nCloth
+SIF HAS_PENIS(ARG) && (nCloth == "NUDE" || nCloth == "BRA")
+	RETURNF "gbrPenis"
+RETURNF ""
+
+@AIDL_GetExpression(ARG)
+#DIM unconOrgasmCount,300
+RESULTS:0 = 
+RESULTS:1 = 
+
+LOCAL = unconOrgasmCount:ARG
+unconOrgasmCount:ARG = EX:ARG:無自覚Ｃ絶頂 + EX:ARG:無自覚Ｖ絶頂 + EX:ARG:無自覚Ａ絶頂 + EX:ARG:無自覚Ｂ絶頂 + EX:ARG:無自覚Ｍ絶頂
+
+; IF !FLAG:時間停止 && unconOrgasmCount:ARG == 0 && LOCAL > 30
+; 	RESULTS:0 = 时停解除绝顶
+; 	RETURN
+; ENDIF
+
+; IF FLAG:時間停止
+; 	IF EX:ARG:無自覚Ｃ絶頂 + EX:ARG:無自覚Ｖ絶頂 + EX:ARG:無自覚Ａ絶頂 + EX:ARG:無自覚Ｂ絶頂 + EX:ARG:無自覚Ｍ絶頂 + EX:ARG:UnawareUOrgasm > 30
+; 		RESULTS:0 = 时停绝顶
+; 	ELSEIF CFLAG:ARG:睡眠
+; 		RESULTS:0 = 睡眠
+; 	ELSE
+; 		RESULTS:0 = 时停
+; 	ENDIF
+; 	RETURN
+; ENDIF
+
+IF CFLAG:ARG:睡眠
+	; IF NOWEX:ARG:TotalEX >= 5
+	; 	RESULTS:0 = 睡眠绝顶
+	; ELSEIF NOWEX:ARG:TotalEX
+	; 	RESULTS:0 = 睡眠快感
+	; 	RESULTS:1 = 睡眠快感1
+	; ELSEIF TCVAR:ARG:睡眠深度 <= 1500 - (TCVAR:ARG:睡眠薬強度 * 500)
+	; 	RESULTS:0 = 睡眠察觉
+	; 	RESULTS:1 = 睡眠察觉1
+	; ELSE
+		RESULTS:0 = Asleep
+	; ENDIF
+	RETURN
+ENDIF
+
+; IF CFLAG:ARG:ブチギレ
+; 	IF NOWEX:ARG:TotalEX
+; 		RESULTS:0 = 不悦绝顶
+; 	ELSE
+; 		RESULTS:0 = 愤怒
+; 		RESULTS:1 = 愤怒1
+; 	ENDIF
+; 	RETURN
+; ENDIF
+
+; IF TCVAR:ARG:泥酔
+; 	IF NOWEX:ARG:TotalEX >= 5
+; 		RESULTS:0 = 醉酒绝顶
+; 	ELSEIF NOWEX:ARG:TotalEX
+; 		RESULTS:0 = 醉酒快感
+; 		RESULTS:1 = 醉酒快感1
+; 	ELSE
+; 		RESULTS:0 = 醉酒
+; 		RESULTS:1 = 醉酒1
+; 	ENDIF
+; 	RETURN
+; ENDIF
+
+; IF MARK:ARG:反発刻印
+; 	IF NOWEX:ARG:TotalEX
+; 		RESULTS:0 = 不悦绝顶
+; 	ELSE
+; 		RESULTS:0 = 不悦
+; 		RESULTS:1 = 不悦1
+; 	ENDIF
+; 	RETURN
+; ENDIF
+
+; IF !CFLAG:ARG:うふふ && NOWEX:ARG:TotalEX
+; 	RESULTS:0 = 通常绝顶
+; 	SIF NOWEX:ARG:TotalEX < 2
+; 		RESULTS:1 = 通常绝顶1
+; 	RETURN
+; ENDIF
+
+;Angry
+IF GET_EMOTION(ARG) == 49
+	RESULTS:0 = Mortified
+	;RESULTS:1 = Mortified1
+	RETURN
+ELSEIF GET_EMOTION(ARG) == 41
+	RESULTS:0 = Embarrassed
+	;RESULTS:1 = Embarrassed1
+	RETURN
+ELSEIF GET_EMOTION(ARG) == 39
+	RESULTS:0 = Crazy
+	;RESULTS:1 = Embarrassed1
+	RETURN
+ELSEIF GET_EMOTION(ARG) == 31
+	RESULTS:0 = Fearful
+	;RESULTS:1 = Embarrassed1
+	RETURN
+ELSEIF GET_EMOTION(ARG) == 19
+	;BASE:ARG:怒り >= 900
+; 	IF NOWEX:ARG:TotalEX
+; 		RESULTS:0 = HatefulOrgasm
+; 	ELSE
+;	ENDIF
+	RESULTS:0 = Hateful
+	RESULTS:1 = Angry
+	RETURN
+ELSEIF GET_EMOTION(ARG) == 10 || TALENT:ARG:機嫌 < 0 || CFLAG:ARG:不機嫌 > 0
+	;BASE:ARG:怒り >= 900
+	RESULTS:0 = Angry
+	RESULTS:1 = Neutral
+	RETURN
+ENDIF
+
+; IF !CFLAG:ARG:うふふ && AIDL_GetHeat(ARG)
+; 	RESULTS:0 = 発情
+; 	SIF ARG == TARGET && ((CFLAG:ARG:既成事実 & 合意_うふふ) || TALENT:ARG:思慕 || TALENT:ARG:セフレ)
+; 		RESULTS:1 = 発情1
+; 	RETURN
+; ENDIF
+
+; IF CFLAG:ARG:うふふ
+; 	IF NOWEX:ARG:TotalEX >= 5
+; 		RESULTS:0 = 性爱绝顶
+; 	ELSEIF NOWEX:ARG:TotalEX
+; 		RESULTS:0 = 性爱快感
+; 		RESULTS:1 = 性爱快感1
+; 	ELSE
+; 		RESULTS:0 = 性爱
+; 		SIF GETPALAMLV(PALAM:ARG:欲情,5) > 4
+; 			RESULTS:1 = 性爱1
+; 	ENDIF
+; 	RETURN
+; ENDIF
+
+IF CFLAG:ARG:うふふ && NOWEX:ARG:TotalEX >= 15
+	RESULTS:0 = Ahegao
+	RETURN
+ENDIF
+
+
+; IF !NOWEX:ARG:TotalEX && EX:ARG:Ｃ絶頂 + EX:ARG:Ｖ絶頂 + EX:ARG:Ａ絶頂 + EX:ARG:Ｂ絶頂 + EX:ARG:Ｍ絶頂 + EX:ARG:UOrgasm > 30
+; 	RESULTS:0 = 疲惫
+; 	RESULTS:1 = 疲惫1
+; 	RETURN
+; ENDIF
+
+IF !NOWEX:ARG:TotalEX && TALENT:ARG:機嫌 > 0
+	RESULTS:0 = Happy
+	RESULTS:1 = Neutral
+	RETURN
+ENDIF
+
+; IF NOWEX:ARG:TotalEX
+; 	RESULTS:0 = 通常绝顶
+; 	SIF NOWEX:ARG:TotalEX < 2
+; 		RESULTS:1 = 通常绝顶1
+; ELSEIF TALENT:ARG:恋慕 || TALENT:ARG:愛欲
+; 	RESULTS:0 = 通常喜爱
+; 	SIF TALENT:ARG:恋人 || BASE:ARG:ムード >= 300
+; 		RESULTS:1 = 通常喜爱1
+; ELSEIF TALENT:ARG:思慕 || TALENT:ARG:セフレ
+; 	RESULTS:0 = 通常熟识
+; 	SIF BASE:ARG:ムード >= 600
+; 		RESULTS:1 = 通常熟识1
+; ELSE
+	RESULTS:0 = Neutral
+	SIF BASE:ARG:ムード >= 600
+		RESULTS:1 = Happy
+; ENDIF
+
+RETURN
+
+
+@AIDL_GetHeat(ARG)
+#FUNCTION
+SIF CFLAG:ARG:溜まってる度 > 900
+    RETURNF 1
+RETURNF CFLAG:ARG:溜まってる度 > 600 && (TCVAR:ARG:発情 || TCVAR:ARG:媚薬)
+
+@AIDL_FaceDef(ARGS)
+#FUNCTIONS
+RETURNF @"Face%ARGS%"
+
+@AIDL_GetDefName(Version, CHARA, gdnPregnant, gdnBreasts, gdnPenis, gdnClothes, gdnClothSpecial, gdnExpression:0)
+#FUNCTIONS
+#DIMS Version
+#DIM CHARA
+#DIMS gdnPregnant
+#DIMS gdnBreasts
+#DIMS gdnPenis
+#DIMS gdnClothes
+#DIMS gdnClothSpecial
+#DIMS gdnExpression
+RETURNF @"%Version%AIDL_%gdnPregnant%_%gdnBreasts%_%gdnPenis%_%gdnClothes%%gdnClothSpecial%_%gdnExpression%_{NO:CHARA}"
+
+@AIDL_BodyDef(Version, CHARA, gbdPregnant, gbdBreasts, gbdPenis, gbdClothes, gbdClothSpecial)
+#FUNCTIONS
+#DIMS Version
+#DIM CHARA
+#DIMS gbdPregnant
+#DIMS gbdBreasts
+#DIMS gbdPenis
+#DIMS gbdClothes
+#DIMS gbdClothSpecial
+RETURNF @"%Version%AIDL_BODY%gbdPregnant%_%gbdBreasts%_%gbdPenis%_%gbdClothes%%gbdClothSpecial%_{NO:CHARA}"
+
+@AIDL_ExpressionDef(Version, CHARA, expDef)
+#FUNCTIONS
+#DIMS Version
+#DIM CHARA
+#DIMS expDef
+RETURNF @"%Version%AIDL{NO:CHARA}_EXPRESS_%expDef%"
+;}
+
+
+; 体图差分{
+@AIDL_BUILD_BodyNude(Version, CHARA, buildPregnant, buildBreasts, buildPenis, buildClothes, buildClothSpecial)
+#DIMS Version
+#DIM G_ID
+#DIM CHARA
+#DIMS buildPregnant
+#DIMS buildBreasts
+#DIMS buildPenis
+#DIMS buildClothes
+#DIMS buildClothSpecial
+#DIMS bodyDef
+
+bodyDef = %AIDL_bodyDef(Version, CHARA, buildPregnant, buildBreasts, buildPenis, buildClothes, buildClothSpecial)%
+SIF SPRITECREATED(bodyDef)
+	RETURN
+
+G_ID = 0
+;CALL COMPOSE_IMAGE(G_ID, "ダミー", 0, 0, 300, 300)
+CALL COMPOSE_IMAGE(G_ID, "ダミー", 0, 0, 1024,1024)
+
+; Body
+CALL AIDL_GET_BodyNude(Version, CHARA, buildPregnant)
+SIF RESULT
+	CALL COMPOSE_IMAGE(G_ID, RESULTS)
+
+; Torso
+CALL AIDL_GET_TorsoNude(Version, CHARA, buildBreasts)
+SIF RESULT
+	CALL COMPOSE_IMAGE(G_ID, RESULTS)
+
+; Belly
+CALL AIDL_GET_BellyNude(Version, CHARA, buildPregnant, buildBreasts)
+SIF RESULT
+	CALL COMPOSE_IMAGE(G_ID, RESULTS)
+
+; Penis
+CALL AIDL_GET_Penis(Version, CHARA, buildPenis)
+SIF RESULT
+	CALL COMPOSE_IMAGE(G_ID, RESULTS)
+
+; 合成体图
+SPRITECREATE bodyDef, G_ID
+RETURN
+
+
+@AIDL_BUILD_BodyUnderwear(Version, CHARA, buildPregnant, buildBreasts, buildPenis, buildClothes, buildClothSpecial)
+#DIMS Version
+#DIM G_ID
+#DIM CHARA
+#DIMS buildPregnant
+#DIMS buildBreasts
+#DIMS buildPenis
+#DIMS buildClothes
+#DIMS buildClothSpecial
+#DIM buildSpecial
+#DIMS bodyDef
+#DIMS buildDef,2	; 0是胖次，1是胸罩
+
+bodyDef = %AIDL_bodyDef(Version, CHARA, buildPregnant, buildBreasts, buildPenis, buildClothes, buildClothSpecial)%
+SIF SPRITECREATED(bodyDef)
+	RETURN
+
+G_ID = 0
+;CALL COMPOSE_IMAGE(G_ID, "ダミー", 0, 0, 300, 300)
+CALL COMPOSE_IMAGE(G_ID, "ダミー", 0, 0, 1024,1024)
+
+; Underwear，由于有些特殊下着不支持膨腹状态，故优先判定
+CALL AIDL_GET_Underwear(Version, CHARA, buildPregnant, buildBreasts, buildPenis, buildClothes, buildClothSpecial, buildSpecial)
+buildDef:0 = %RESULTS:0%
+buildDef:1 = %RESULTS:1%
+DEBUGPRINTFORML AIDL IMG: underwear defs %buildDef:0% - %buildDef:1%
+
+; 躯干差分
+CALL AIDL_GET_BodyNude(Version, CHARA, buildPregnant)
+IF RESULT
+	DEBUGPRINTFORML AIDL IMG: nude defs  %RESULTS%
+	CALL COMPOSE_IMAGE(G_ID, RESULTS)
+ENDIF
+
+; 胸部差分
+CALL AIDL_GET_TorsoNude(Version, CHARA, buildBreasts)
+SIF RESULT
+	CALL COMPOSE_IMAGE(G_ID, RESULTS)
+
+; 腹部差分
+CALL AIDL_GET_BellyNude(Version, CHARA, buildPregnant, buildBreasts)
+SIF RESULT
+	CALL COMPOSE_IMAGE(G_ID, RESULTS)
+
+; Underwear
+SIF buildDef:0 != ""
+	CALL COMPOSE_IMAGE(G_ID, buildDef:0)
+SIF buildDef:1 != ""
+	CALL COMPOSE_IMAGE(G_ID, buildDef:1)
+
+; Penis
+CALL AIDL_GET_Penis(Version, CHARA, buildPenis)
+SIF RESULT
+	CALL COMPOSE_IMAGE(G_ID, RESULTS)
+
+; 合成体图
+SPRITECREATE bodyDef, G_ID
+RETURN
+
+
+@AIDL_BUILD_BodyClothed(Version, CHARA, buildPregnant, buildBreasts, buildPenis, buildClothes, buildClothSpecial)
+#DIMS Version
+#DIM G_ID
+#DIM CHARA
+#DIMS buildPregnant
+#DIMS buildBreasts
+#DIMS buildPenis
+#DIMS buildClothes
+#DIMS buildClothSpecial
+#DIMS bodyDef
+#DIMS buildDef,3
+
+bodyDef = %AIDL_bodyDef(Version, CHARA, buildPregnant, buildBreasts, buildPenis, buildClothes, buildClothSpecial)%
+SIF SPRITECREATED(bodyDef)
+	RETURN
+
+G_ID = 0
+CALL COMPOSE_IMAGE(G_ID, "ダミー", 0, 0, 1024,1024)
+;CALL COMPOSE_IMAGE(G_ID, "ダミー", 0, 0, 300, 300)
+
+; Clothes，由于有些特殊服装不支持膨腹状态，故优先判定
+CALL AIDL_GET_Clothes(Version, CHARA, buildPregnant, buildBreasts, buildClothes, buildClothSpecial)
+buildDef:0 = %RESULTS:0%
+buildDef:1 = %RESULTS:1%
+buildDef:2 = %RESULTS:2%
+DEBUGPRINTFORML AIDL IMG: clothing defs %buildDef:0% - %buildDef:1% - %buildDef:2%
+
+
+; 躯干差分
+CALL AIDL_GET_BodyNude(Version, CHARA, buildPregnant)
+SIF RESULT
+	CALL COMPOSE_IMAGE(G_ID, RESULTS)
+
+; Clothes
+SIF buildDef:0 != ""
+	CALL COMPOSE_IMAGE(G_ID, buildDef:0)
+SIF buildDef:1 != ""
+	CALL COMPOSE_IMAGE(G_ID, buildDef:1)
+SIF buildDef:2 != ""
+	CALL COMPOSE_IMAGE(G_ID, buildDef:2)
+
+; 合成体图
+SPRITECREATE bodyDef, G_ID
+RETURN
+;}
+
+; Emotion{
+;External expressions： "オナニー" "発情" "通常"
+@AIDL_BUILD_Emotion(Version, CHARA, 表情)
+#DIMS Version
+#DIM G_ID
+#DIM CHARA
+#DIMS 表情
+#DIMS 表情_眉
+#DIMS 表情_目
+#DIMS 表情_口
+#DIMS 表情_鼻
+#DIMS emoDef
+
+emoDef = %AIDL_ExpressionDef(Version, CHARA, 表情)%
+SIF SPRITECREATED(emoDef)
+	RETURN
+
+G_ID = 0
+;CALL COMPOSE_IMAGE(G_ID, "ダミー", 0, 0, 300, 300)
+CALL COMPOSE_IMAGE(G_ID, "ダミー", 0, 0, 1024,1024)
+
+
+; RESULTS:0 {眉}
+; RESULTS:1 {目}
+; RESULTS:2 {口}
+; RESULTS:3 {鼻}
+CALL AIDL_GET_Emotion(表情)
+表情_眉 = %RESULTS:0%
+表情_目 = %RESULTS:1%
+表情_口 = %RESULTS:2%
+表情_鼻 = %RESULTS:3%
+
+;AIDL{CHARA}_眉_{眉}
+SIF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_眉_%表情_眉%")
+	CALL COMPOSE_IMAGE(G_ID, @"%Version%AIDL{NO:CHARA}_眉_%表情_眉%")
+
+;AIDL{CHARA}_目_{目}
+SIF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_目_%表情_目%")
+	CALL COMPOSE_IMAGE(G_ID, @"%Version%AIDL{NO:CHARA}_目_%表情_目%")
+
+;AIDL{CHARA}_口_{口}
+SIF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_口_%表情_口%")
+	CALL COMPOSE_IMAGE(G_ID, @"%Version%AIDL{NO:CHARA}_口_%表情_口%")
+
+;AIDL{CHARA}_鼻_{鼻}
+SIF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_鼻_%表情_鼻%")
+	CALL COMPOSE_IMAGE(G_ID, @"%Version%AIDL{NO:CHARA}_鼻_%表情_鼻%")
+
+; 合成体图
+SPRITECREATE emoDef , G_ID
+RETURN
+
+@AIDL_GET_Emotion(表情)
+#DIMS 表情
+
+RESULTS:0 = 
+RESULTS:1 = 
+RESULTS:2 = 
+RESULTS:3 = 鼻
+
+
+; AIDL{CHARA}_NUDE{_PREGNANT}
+; NUDE_TORSO <- NUDE{_PREGNANT}
+@AIDL_GET_BodyNude(Version, CHARA, nPregnant)
+#DIMS Version
+#DIM CHARA
+#DIMS nPregnant
+SIF AIDL_GetClothesState(CHARA) == "cClothed"
+	RETURN 0
+
+
+IF nPregnant != "" && SPRITECREATED(@"%Version%AIDL{NO:CHARA}_NUDE_PREGNANT")
+	RESULTS = %@"%Version%AIDL{NO:CHARA}_NUDE_PREGNANT"%
+	RETURN 1
+ENDIF
+RESULTS = %@"%Version%AIDL{NO:CHARA}_NUDE"%
+
+RETURN 1
+
+; AIDL{CHARA}_TORSO_NUDE{_乳量}
+; 无 <- TORSO_NUDE{_乳量}
+@AIDL_GET_TorsoNude(Version, CHARA, 乳量)
+#DIMS Version
+#DIM CHARA
+#DIMS 乳量
+IF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_TORSO_NUDE_%乳量%")
+	RESULTS = %@"%Version%AIDL{NO:CHARA}_TORSO_NUDE_%乳量%"%
+	RETURN 1
+ENDIF
+IF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_TORSO_NUDE")
+	RESULTS = %@"%Version%AIDL{NO:CHARA}_TORSO_NUDE"%
+	RETURN 1
+ENDIF
+RETURN 0
+
+; AIDL{CHARA}_裸腹{_乳量}_妊肚
+; 无 <- 裸腹_妊肚 <- 裸腹{_乳量}_妊肚
+@AIDL_GET_BellyNude(Version, CHARA, 妊肚, 乳量)
+#DIMS Version
+#DIM CHARA
+#DIMS 妊肚
+#DIMS 乳量
+IF 妊肚 != ""
+	IF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_裸腹_%乳量%_妊肚")
+		RESULTS = %@"%Version%AIDL{NO:CHARA}_裸腹_%乳量%_妊肚"%
+		RETURN 1
+	ENDIF
+	IF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_裸腹_妊肚")
+		RESULTS = %@"%Version%AIDL{NO:CHARA}_裸腹_妊肚"%
+		RETURN 1
+	ENDIF
+ENDIF
+RETURN 0
+
+; AIDL{CHARA}_PENIS
+; None <- PENIS <- PENIS_PREGNANT
+@AIDL_GET_Penis(Version, CHARA, getPenis)
+#DIMS Version
+#DIM CHARA
+#DIMS getPenis
+
+SIF getPenis == ""
+	RETURN 0
+
+IF AIDL_GetPregnancy(CHARA) != "" && SPRITECREATED(@"%Version%AIDL{NO:CHARA}_PENIS_PREGNANT")
+	RESULTS = %@"%Version%AIDL{NO:CHARA}_PENIS_PREGNANT"%
+	RETURN 1
+ENDIF
+
+
+IF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_PENIS")
+	RESULTS = %@"%Version%AIDL{NO:CHARA}_PENIS"%
+	RETURN 1
+ENDIF
+RETURN 0
+;}
+
+; Get underwear {
+; AIDL{CHARA}_连体下着{_膨腹}{_乳量}
+; 无 <- 连体下着 <- 连体下着{_膨腹} <- 连体下着{_乳量} <- 连体下着{_膨腹}{_乳量}
+; AIDL{CHARA}_胸罩{_膨腹}{_乳量}
+; 无 <- 胸罩 <- 胸罩{_膨腹} <- 胸罩{_乳量} <- 胸罩{_膨腹}{_乳量}
+; AIDL{CHARA}_胖次{_膨腹}{_乳量}
+; 无 <- 胖次 <- 胖次{_膨腹} <- 胖次{_乳量} <- 胖次{_膨腹}{_乳量}
+@AIDL_GET_Underwear(Version, CHARA, 妊肚, 乳量, 丁日, 服装, 特服, 特服种类)
+#DIMS Version
+#DIM CHARA
+#DIMS REF 妊肚,0
+#DIMS 乳量
+#DIMS 丁日
+#DIMS 服装
+#DIMS 特服
+#DIM 特服种类
+#DIMS BraSTR,4
+#DIMS PantsuSTR,4
+
+DEBUGPRINTFORML AIDL IMG: undies %服装%
+
+;one piece undies
+IF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_连体下着")
+	RESULTS:1 = 
+	RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_连体下着"%
+	RETURN 1
+ENDIF
+
+;get underwear type and soiling
+IF STRFIND(服装,"cPanties") > -1
+	IF IsPadded(CHARA,"diaper")
+		PantsuSTR:0 '= "DIAPER"
+	ELSEIF IsPadded(CHARA,"pull-up")
+		PantsuSTR:0 '= "PULLUP"
+	ELSE
+		PantsuSTR:0 '= "PANTIES"
+	ENDIF
+	PantsuSTR:2 '= PantsuSTR:0+@"{EQUIP:CHARA:6}"
+	IF STRFIND(服装,"_DUAL") > -1
+		PantsuSTR:1 '= "DUAL"
+	ELSEIF STRFIND(服装,"_MESS") > -1
+		PantsuSTR:1 '= "MESS"
+	ELSEIF STRFIND(服装,"_WET") > -1
+		PantsuSTR:1 '= "WET"
+	ENDIF
+	;IE: PANTIES19, DIAPER103
+	PantsuSTR:3 '= PantsuSTR:0+@"{EQUIP:CHARA:6}"
+	SIF STRLENS(PantsuSTR:1)
+		PantsuSTR:3 += @"_%PantsuSTR:1%"
+ELSE
+	VARSET PantsuSTR
+ENDIF
+
+;bra
+IF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_BRA")
+	RESULTS:1 = %@"%Version%AIDL{NO:CHARA}_BRA"%
+ENDIF
+;pantsu
+IF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_%PantsuSTR:3%")
+	;panty and soiling combo
+	RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_%PantsuSTR:3%"%
+ELSEIF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_%PantsuSTR:2%")
+	;panty
+	RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_%PantsuSTR:2%"%
+ELSEIF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_%PantsuSTR:0%%COND_STR(@"_%PantsuSTR:1%",STRLENS(PantsuSTR:1))%")
+	;panty type and soiling
+	RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_%PantsuSTR:0%%COND_STR(@"_%PantsuSTR:1%",STRLENS(PantsuSTR:1))%"%
+ELSEIF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_%PantsuSTR:0%")
+	;panty type
+	RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_%PantsuSTR:0%"%
+ELSEIF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_PANTIES")
+	;generic panty
+	RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_PANTIES"%
+ENDIF
+
+IF STRFIND(服装,"cPanties") == -1
+	RESULTS:0 = 
+ELSEIF STRFIND(服装,"cBra") == -1
+	RESULTS:1 = 
+ENDIF
+
+RETURN
+
+; 底层Clothes{
+@AIDL_GET_Clothes(Version, CHARA, 妊肚, 乳量, 服装, 特服)
+#DIMS Version
+#DIM CHARA
+#DIMS REF 妊肚,0
+#DIMS 乳量
+#DIMS 服装
+#DIMS 特服
+
+RESULT = 0
+IF 特服 != "" && 妊肚 == "妊肚"
+	CALL AIDL_GET_ClothesSpecialMaternity(Version, CHARA, 乳量, 特服)
+ELSEIF 特服 != ""
+	CALL AIDL_GET_ClothesSpecial(Version, CHARA, 妊肚, 乳量, 特服)
+ENDIF
+SIF !RESULT
+	CALL AIDL_GET_ClothesNormal(Version, CHARA, 妊肚, 乳量)
+
+RETURN
+
+; AIDL{CHARA}_服躯{_特殊服装}{_妊肚}
+; 无 <- 服躯{_特殊服装} <- 服躯{_特殊服装}_妊肚
+; AIDL{CHARA}_服胸{_特殊服装}{_膨腹}{_乳量}
+; 无 <- 服胸{_特殊服装}{_乳量} <- 服胸{_特殊服装}{_膨腹}{_乳量}
+; AIDL{CHARA}_服腹{_特殊服装}{_乳量}{_妊肚}
+; 无 <- 服腹{_特殊服装}_妊肚 <- 服腹{_特殊服装}{_乳量}_妊肚
+@AIDL_GET_ClothesSpecialMaternity(Version, CHARA, 乳量, 特服)
+#DIMS Version
+#DIM CHARA
+#DIMS 乳量
+#DIMS 特服
+LOCAL = 0
+
+; 腹部
+RESULTS:2 = 
+IF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_服腹_%特服%_%乳量%_妊肚")
+	RESULTS:2 = %@"%Version%AIDL{NO:CHARA}_服腹_%特服%_%乳量%_妊肚"%
+	LOCAL = 1
+ELSEIF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_服腹_%特服%_妊肚")
+	RESULTS:2 = %@"%Version%AIDL{NO:CHARA}_服腹_%特服%_妊肚"%
+	LOCAL = 1
+ENDIF
+
+; 躯干
+IF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_服躯_%特服%_妊肚")
+	RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_服躯_%特服%_妊肚"%
+	LOCAL = 1
+ELSEIF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_服躯_%特服%")
+	RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_服躯_%特服%"%
+ELSE
+	RETURN 0
+ENDIF
+
+SIF !LOCAL
+	RETURN 0
+
+
+; 胸部
+RESULTS:1 = 
+IF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_服胸_%特服%_膨腹_%乳量%")
+	RESULTS:1 = %@"%Version%AIDL{NO:CHARA}_服胸_%特服%_膨腹_%乳量%"%
+ELSEIF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_服胸_%特服%_%乳量%")
+	RESULTS:1 = %@"%Version%AIDL{NO:CHARA}_服胸_%特服%_%乳量%"%
+ENDIF
+
+RETURN 1
+
+; AIDL{CHARA}_服躯{_特殊服装}{_妊肚}
+; 无 <- 服躯{_特殊服装} <- 服躯{_特殊服装}_妊肚 <- 服躯{_特殊服装}_膨腹
+; AIDL{CHARA}_服胸{_特殊服装}{_膨腹}{_乳量}
+; 无 <- 服胸{_特殊服装}{_乳量} <- 服胸{_特殊服装}{_膨腹}{_乳量}
+; AIDL{CHARA}_服腹{_特殊服装}{_乳量}{_妊肚}
+; 无 <- 服腹{_特殊服装}_妊肚 <- 服腹{_特殊服装}{_乳量}_妊肚 <- 服腹{_特殊服装}_膨腹 <- 服腹{_特殊服装}{_乳量}_膨腹
+@AIDL_GET_ClothesSpecial(Version, CHARA, 妊肚, 乳量, 特服)
+#DIMS Version
+#DIM CHARA
+#DIMS REF 妊肚,0
+#DIMS 乳量
+#DIMS 特服
+
+LOCALS = %妊肚%
+
+; 躯干
+IF LOCALS == "膨腹" && SPRITECREATED(@"%Version%AIDL{NO:CHARA}_CLOTHES_%特服%_FAT")
+	RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_CLOTHES_%特服%_FAT"%
+ELSEIF LOCALS != "" && SPRITECREATED(@"%Version%AIDL{NO:CHARA}_CLOTHES_%特服%_PREGNANT")
+	RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_CLOTHES_%特服%_PREGNANT"%
+ELSEIF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_CLOTHES_%特服%")
+	RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_CLOTHES_%特服%"%
+	妊肚 = 
+ELSE
+	RETURN 0
+ENDIF
+
+; 胸部
+RESULTS:1 = 
+IF LOCALS != "" && SPRITECREATED(@"%Version%AIDL{NO:CHARA}_服胸_%特服%_膨腹_%乳量%")
+	RESULTS:1 = %@"%Version%AIDL{NO:CHARA}_服胸_%特服%_膨腹_%乳量%"%
+ELSEIF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_服胸_%特服%_%乳量%")
+	RESULTS:1 = %@"%Version%AIDL{NO:CHARA}_服胸_%特服%_%乳量%"%
+ENDIF
+
+; 腹部
+RESULTS:2 = 
+IF LOCALS == "膨腹" && SPRITECREATED(@"%Version%AIDL{NO:CHARA}_服腹_%特服%_%乳量%_膨腹")
+	RESULTS:2 = %@"%Version%AIDL{NO:CHARA}_服腹_%特服%_%乳量%_膨腹"%
+	妊肚 = %LOCALS%
+ELSEIF LOCALS == "膨腹" && SPRITECREATED(@"%Version%AIDL{NO:CHARA}_服腹_%特服%_膨腹")
+	RESULTS:2 = %@"%Version%AIDL{NO:CHARA}_服腹_%特服%_膨腹"%
+	妊肚 = %LOCALS%
+ELSEIF LOCALS != "" && SPRITECREATED(@"%Version%AIDL{NO:CHARA}_服腹_%特服%_%乳量%_妊肚")
+	RESULTS:2 = %@"%Version%AIDL{NO:CHARA}_服腹_%特服%_%乳量%_妊肚"%
+	妊肚 = %LOCALS%
+ELSEIF LOCALS != "" && SPRITECREATED(@"%Version%AIDL{NO:CHARA}_服腹_%特服%_妊肚")
+	RESULTS:2 = %@"%Version%AIDL{NO:CHARA}_服腹_%特服%_妊肚"%
+	妊肚 = %LOCALS%
+ENDIF
+
+RETURN 1
+
+
+; AIDL{CHARA}_CLOTHES_NORM{_PREGNANT}
+; 服躯_常服 <- 服躯_常服_PREGNANT <- 服躯_常服_膨腹
+; AIDL{CHARA}_服胸_常服{_膨腹}{_乳量}
+; 无 <- 服胸_常服{_乳量} <- 服胸_常服{_膨腹}{_乳量}
+; AIDL{CHARA}_服腹_常服{_乳量}{_PREGNANT}
+; 无 <- 服腹_常服_PREGNANT <- 服腹_常服{_乳量}_PREGNANT <- 服腹_常服_膨腹 <- 服腹_常服{_乳量}_膨腹
+@AIDL_GET_ClothesNormal(Version, CHARA, getPregnant, 乳量)
+#DIMS Version
+#DIM CHARA
+#DIMS getPregnant
+#DIMS 乳量
+
+RESULTS:0 = 
+RESULTS:1 = 
+RESULTS:2 = 
+
+; Torso
+IF getPregnant == "膨腹" && SPRITECREATED(@"%Version%AIDL{NO:CHARA}_服躯_常服_膨腹")
+	RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_服躯_常服_膨腹"%
+ELSEIF getPregnant != "" && SPRITECREATED(@"%Version%AIDL{NO:CHARA}_服躯_常服_妊肚")
+	RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_服躯_常服_妊肚"%
+ELSEIF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_CLOTHES_NORM")
+	RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_CLOTHES_NORM"%
+ELSE
+	RETURN 0
+ENDIF
+
+; Breasts
+IF getPregnant != "" && SPRITECREATED(@"%Version%AIDL{NO:CHARA}_服胸_常服_膨腹_%乳量%")
+	RESULTS:1 = %@"%Version%AIDL{NO:CHARA}_服胸_常服_膨腹_%乳量%"%
+ELSEIF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_服胸_常服_%乳量%")
+	RESULTS:1 = %@"%Version%AIDL{NO:CHARA}_服胸_常服_%乳量%"%
+ENDIF
+
+; Belly
+IF getPregnant == "膨腹" && SPRITECREATED(@"%Version%AIDL{NO:CHARA}_服腹_常服_%乳量%_膨腹")
+	RESULTS:2 = %@"%Version%AIDL{NO:CHARA}_服腹_常服_%乳量%_膨腹"%
+ELSEIF getPregnant == "膨腹" && SPRITECREATED(@"%Version%AIDL{NO:CHARA}_服腹_常服_膨腹")
+	RESULTS:2 = %@"%Version%AIDL{NO:CHARA}_服腹_常服_膨腹"%
+ELSEIF getPregnant != "" && SPRITECREATED(@"%Version%AIDL{NO:CHARA}_服腹_常服_%乳量%_妊肚")
+	RESULTS:2 = %@"%Version%AIDL{NO:CHARA}_服腹_常服_%乳量%_妊肚"%
+ELSEIF getPregnant != "" && SPRITECREATED(@"%Version%AIDL{NO:CHARA}_服腹_常服_妊肚")
+	RESULTS:2 = %@"%Version%AIDL{NO:CHARA}_服腹_常服_妊肚"%
+ENDIF
+
+RETURN 1
+
+; GET_EFFECT_RESOURCE{
+@AIDL_GET_EFFECT_RESOURCE(CHARA, gerEffect = "")
+#DIM CHARA
+#DIMS 目,2
+#DIMS 口,2
+#DIMS gerEffect
+#DIM DYNAMIC gerEffectCount = 0
+#DIMS DYNAMIC gerResource, 100
+#DIMS Version
+
+Version = 
+RESULT = 0
+TRYCALLFORM AIDL_Version{NO:CHARA}
+SIF RESULT
+	Version = %RESULTS%
+
+IF gerEffect != ""
+	;照れ
+	CALL AIDL_GET_BlushFull(Version, CHARA, (STRFIND(gerEffect, "照れ") != -1))
+	IF RESULT
+		gerResource:gerEffectCount = %RESULTS%
+		gerEffectCount += 1
+	ENDIF
+	CALL AIDL_GET_Blush(Version, CHARA, (STRFIND(gerEffect, "照れ") != -1))
+	IF RESULT
+		gerResource:gerEffectCount = %RESULTS%
+		gerEffectCount += 1
+	ENDIF
+
+	;吐息
+	CALL AIDL_GET_Breath(Version, CHARA, (STRFIND(gerEffect, "吐息") != -1))
+	IF RESULT
+		gerResource:gerEffectCount = %RESULTS%
+		gerEffectCount += 1
+	ENDIF
+
+	ARRAYCOPY "gerResource", "RESULTS"
+	RETURN gerEffectCount
+ENDIF
+
+LOCALS:0 = 
+LOCALS:1 = 
+CALL AIDL_GetExpression(CHARA)
+LOCALS:0 = %RESULTS:0%
+LOCALS:1 = %RESULTS:1%
+CALL AIDL_GET_Emotion(LOCALS:0)
+目:0 = %RESULTS:1%
+口:0 = %RESULTS:2%
+CALL AIDL_GET_Emotion(LOCALS:1)
+目:1 = %RESULTS:1%
+口:1 = %RESULTS:2%
+
+RESULT = 0
+TRYCALLFORM AIDL_SFX%Version%_{NO:CHARA}
+IF RESULT
+	FOR LOCAL, 0, RESULT
+		gerResource:(2*gerEffectCount) = %RESULTS:(2*LOCAL)%
+		gerResource:(2*gerEffectCount+1) = %RESULTS:(2*LOCAL+1)%
+		gerEffectCount += 1
+	NEXT
+ENDIF
+
+;面红
+CALL AIDL_GET_BlushFull(Version, CHARA)
+IF RESULT
+	gerResource:(2*gerEffectCount) = %RESULTS:0%
+	gerResource:(2*gerEffectCount+1) = %RESULTS:1%
+	gerEffectCount += 1
+ENDIF
+
+;泪
+CALL AIDL_GET_Tears(Version, CHARA, 目:0, 目:1)
+IF RESULT
+	gerResource:(2*gerEffectCount) = %RESULTS:0%
+	gerResource:(2*gerEffectCount+1) = %RESULTS:1%
+	gerEffectCount += 1
+ENDIF
+
+;Blush
+CALL AIDL_GET_Blush(Version, CHARA)
+IF RESULT
+	gerResource:(2*gerEffectCount) = %RESULTS:0%
+	gerResource:(2*gerEffectCount+1) = %RESULTS:1%
+	gerEffectCount += 1
+ELSE
+	; ;眼黑线
+	; CALL AIDL_GET_目黑线差分(Version, CHARA, 目:0, 目:1)
+	; IF RESULT
+	; 	gerResource:(2*gerEffectCount) = %RESULTS:0%
+	; 	gerResource:(2*gerEffectCount+1) = %RESULTS:1%
+	; 	gerEffectCount += 1
+	; ENDIF
+ENDIF
+
+;心眼
+; CALL AIDL_GET_HeartEyes(Version, CHARA, 目:0, 目:1)
+; IF RESULT
+; 	gerResource:(2*gerEffectCount) = %RESULTS:0%
+; 	gerResource:(2*gerEffectCount+1) = %RESULTS:1%
+; 	gerEffectCount += 1
+; ENDIF
+
+; 吐息
+CALL AIDL_GET_Breath(Version, CHARA, 0, 口:0, 口:1)
+IF RESULT
+	gerResource:(2*gerEffectCount) = %RESULTS:0%
+	gerResource:(2*gerEffectCount+1) = %RESULTS:1%
+	gerEffectCount += 1
+ENDIF
+
+;丁日液体
+CALL AIDL_GET_PenisCum(Version, CHARA)
+IF RESULT
+	gerResource:(2*gerEffectCount) = %RESULTS:0%
+	gerResource:(2*gerEffectCount+1) = %RESULTS:1%
+	gerEffectCount += 1
+ENDIF
+
+; ;精胃
+; CALL AIDL_GET_StomachInside(Version, CHARA)
+; IF RESULT
+; 	gerResource:(2*gerEffectCount) = %RESULTS:0%
+; 	gerResource:(2*gerEffectCount+1) = %RESULTS:1%
+; 	gerEffectCount += 1
+; ENDIF
+
+; ;气泡
+; CALL AIDL_GET_SpeechBubble(Version, CHARA)
+; IF RESULT
+; 	gerResource:(2*gerEffectCount) = %RESULTS:0%
+; 	gerResource:(2*gerEffectCount+1) = %RESULTS:1%
+; 	gerEffectCount += 1
+; ENDIF
+
+
+; ;左断面
+; CALL AIDL_GET_CrossSectionL(Version, CHARA)
+; IF RESULT
+; 	gerResource:(2*gerEffectCount) = %RESULTS:0%
+; 	gerResource:(2*gerEffectCount+1) = %RESULTS:1%
+; 	gerEffectCount += 1
+; ENDIF
+
+; ;右断面
+; CALL AIDL_GET_CrossSectionR(CHARA)
+; IF RESULT
+; 	gerResource:(2*gerEffectCount) = %RESULTS:0%
+; 	gerResource:(2*gerEffectCount+1) = %RESULTS:1%
+; 	gerEffectCount += 1
+; ENDIF
+
+; 颜绘缩小
+IF FLAG:立ち絵種類
+	FOR LOCAL, 0, gerEffectCount
+		LOCALS = %AIDL_FaceDef(gerResource:(2*LOCAL))%
+		SIF !SPRITECREATED(LOCALS)
+			CALL AIDL_BUILD_Face(Version, CHARA, gerResource:(2*LOCAL))
+		gerResource:(2*LOCAL) = %LOCALS%
+		
+		IF gerResource:(2*LOCAL+1) != ""
+			LOCALS = %AIDL_FaceDef(gerResource:(2*LOCAL+1))%
+			SIF !SPRITECREATED(LOCALS)
+				CALL AIDL_BUILD_Face(Version, CHARA, gerResource:(2*LOCAL+1))
+			gerResource:(2*LOCAL+1) = %LOCALS%
+		ENDIF
+	NEXT
+ENDIF
+
+; 转换数列格式
+VARSET RESULTS
+FOR LOCAL, 0, gerEffectCount
+	RESULTS:LOCAL = %gerResource:(2*LOCAL)%
+	RESULTS:(LOCAL+gerEffectCount) = %gerResource:(2*LOCAL+1)%
+NEXT
+RETURN gerEffectCount
+;}
+
+
+; 表情特效差分{
+; AIDL{CHARA}_颜效_喘息
+@AIDL_GET_Breath(Version, CHARA, ARG=0, 口1="", 口2="")
+#DIMS Version
+#DIM CHARA
+#DIMS 口1
+#DIMS 口2
+
+IF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_颜效_喘息")
+	RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_颜效_喘息"%
+	RESULTS:1 = 
+ELSE
+	RETURN 0
+ENDIF
+
+SIF ARG
+	RETURN 1
+SIF BATHROOM(CFLAG:CHARA:現在位置)
+	RETURN 1
+SIF FLAG:時間停止
+	RETURN 0
+
+SELECTCASE 口1
+CASE "小口", "大口"
+	RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_颜效_喘息"%
+ENDSELECT
+SELECTCASE 口2
+CASE "小口", "大口"
+	RESULTS:1 = %@"%Version%AIDL{NO:CHARA}_颜效_喘息"%
+ENDSELECT
+
+SIF RESULTS:1 != "" && RESULTS:0 == ""
+	RESULTS:0 = ダミー
+SIF RESULTS:1 == ""
+	RETURN 0
+
+SIF AIDL_GetHeat(CHARA)
+	RETURN 1
+SIF EX:CHARA:Ｃ絶頂 + EX:CHARA:Ｖ絶頂 + EX:CHARA:Ａ絶頂 + EX:CHARA:Ｂ絶頂 + EX:CHARA:Ｍ絶頂 > 60
+	RETURN 1
+SIF GETPALAMLV(PALAM:CHARA:欲情, 5) + CFLAG:CHARA:溜まってる度 / 200 >= 8
+	RETURN 1
+SIF CFLAG:CHARA:うふふ && (GETPALAMLV(PALAM:CHARA:欲情, 5) + CFLAG:CHARA:溜まってる度 / 200 >= 5)
+	RETURN 1
+RETURN 0
+
+; Full face blush
+; AIDL{CHARA}_颜效_面红
+@AIDL_GET_BlushFull(Version, CHARA, ARG=0)
+#DIMS Version
+#DIM CHARA
+IF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_颜效_面红")
+	RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_颜效_面红"%
+	RESULTS:1 = 
+ELSE
+	RETURN 0
+ENDIF
+
+SIF ARG
+	RETURN 1
+SIF BASE:CHARA:酒気 > (MAXBASE:CHARA:酒気 / 10) || TCVAR:CHARA:媚薬
+	RETURN 1
+RETURN 0
+
+; Regular cheek blush
+; AIDL{CHARA}_FX_BLUSH
+@AIDL_GET_Blush(Version, CHARA, ARG=0)
+#DIMS Version
+#DIM CHARA
+SIF !SPRITECREATED(@"%Version%AIDL{NO:CHARA}_FX_BLUSH")
+	RETURN 0
+
+IF ARG || AIDL_GetHeat(CHARA) || GETPALAMLV(PALAM:CHARA:好意, 6) + GETPALAMLV(PALAM:CHARA:欲情, 6) >= 6 || INRANGE(GET_EMOTION(CHARA),40,49)
+	RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_FX_BLUSH"%
+	RESULTS:1 = 
+	RETURN 1
+ENDIF
+IF TALENT:CHARA:機嫌 > 0 || CHK_DATENOW(CFLAG:CHARA:デート中)
+	RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_FX_BLUSH"%
+	RESULTS:1 = 
+	RETURN 1
+ENDIF
+RETURN 0
+
+
+@AIDL_GET_Tears(Version, CHARA, 目1, 目2)
+#DIMS Version
+#DIM CHARA
+#DIMS 目1
+#DIMS 目2
+
+SIF FLAG:時間停止
+	RETURN 0
+
+LOCAL = TALENT:CHARA:機嫌 < 0 || CFLAG:CHARA:不機嫌 > 0
+LOCAL = LOCAL || EX:CHARA:Ｃ絶頂 + EX:CHARA:Ｖ絶頂 + EX:CHARA:Ａ絶頂 + EX:CHARA:Ｂ絶頂 + EX:CHARA:Ｍ絶頂 >= 30 || CFLAG:CHARA:溜まってる度 > 900
+SIF NOWEX:CHARA:TotalEX
+	LOCAL = LOCAL || RAND:(NOWEX:CHARA:TotalEX)
+SIF !LOCAL
+	RETURN 0
+
+RESULTS:0 = 
+RESULTS:1 = 
+SELECTCASE 目1
+CASE "常目", "暗目", "白目"
+	SIF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_颜效_睁目眼泪")
+		RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_颜效_睁目眼泪"%
+CASE "闭目"
+	SIF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_颜效_闭目眼泪")
+		RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_颜效_闭目眼泪"%
+CASE "笑目", "单目"
+	SIF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_颜效_笑目眼泪")
+		RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_颜效_笑目眼泪"%
+ENDSELECT
+IF 目2 != ""
+	SELECTCASE 目2
+	CASE "常目", "暗目", "白目"
+		SIF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_颜效_睁目眼泪")
+			RESULTS:1 = %@"%Version%AIDL{NO:CHARA}_颜效_睁目眼泪"%
+	CASE "闭目"
+		SIF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_颜效_闭目眼泪")
+			RESULTS:1 = %@"%Version%AIDL{NO:CHARA}_颜效_闭目眼泪"%
+	CASE "笑目", "单目"
+		SIF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_颜效_笑目眼泪")
+			RESULTS:1 = %@"%Version%AIDL{NO:CHARA}_颜效_笑目眼泪"%
+	ENDSELECT
+
+	IF RESULTS:1 != "" && RESULTS:0 == ""
+		RESULTS:0 = ダミー
+	ELSEIF RESULTS:0 != "" && RESULTS:1 == ""
+		RESULTS:1 = ダミー
+	ENDIF
+ENDIF
+
+RETURN RESULTS:0 != ""
+
+
+; @AIDL_GET_目黑线差分(Version, CHARA, 目1, 目2)
+; #DIMS Version
+; #DIM CHARA
+; #DIMS 目1
+; #DIMS 目2
+
+; SIF !(TFLAG:103==CHARA || TARGET==CHARA)
+; 	RETURN 0
+; SIF !AIDL_GET_指令失败判定(CHARA)
+; 	RETURN 0
+
+; RESULTS:0 = 
+; RESULTS:1 = 
+; SELECTCASE 目1
+; CASE "常目", "暗目", "白目", "单目"
+; 	SIF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_颜效_睁目黑线")
+; 		RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_颜效_睁目黑线"%
+; CASE "闭目"
+; 	SIF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_颜效_闭目黑线")
+; 		RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_颜效_闭目黑线"%
+; ENDSELECT
+; IF 目2 != ""
+; 	SELECTCASE 目2
+; 	CASE "常目", "暗目", "白目", "单目"
+; 		SIF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_颜效_睁目黑线")
+; 			RESULTS:1 = %@"%Version%AIDL{NO:CHARA}_颜效_睁目黑线"%
+; 	CASE "闭目"
+; 		SIF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_颜效_闭目黑线")
+; 			RESULTS:1 = %@"%Version%AIDL{NO:CHARA}_颜效_闭目黑线"%
+; 	ENDSELECT
+
+; 	IF RESULTS:1 != "" && RESULTS:0 == ""
+; 		RESULTS:0 = ダミー
+; 	ELSEIF RESULTS:0 != "" && RESULTS:1 == ""
+; 		RESULTS:1 = ダミー
+; 	ENDIF
+; ENDIF
+
+; RETURN RESULTS:0 != ""
+
+
+; @AIDL_GET_HeartEyes(Version, CHARA, 目1, 目2)
+; #DIMS Version
+; #DIM CHARA
+; #DIMS 目1
+; #DIMS 目2
+
+; LOCAL = AIDL_GetHeat(CHARA) 
+; LOCAL = LOCAL || (GETPALAMLV(PALAM:CHARA:欲情, 5) >= 4 && (CFLAG:CHARA:溜まってる度 + (TCVAR:CHARA:発情 + TCVAR:CHARA:媚薬) * 100 > 700))
+; SIF !LOCAL
+; 	RETURN 0
+; SIF !SPRITECREATED(@"%Version%AIDL{NO:CHARA}_颜效_心眼")
+; 	RETURN 0
+
+; RESULTS:0 = 
+; RESULTS:1 = 
+; SELECTCASE 目1
+; CASE "常目", "暗目"
+; 	RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_颜效_心眼"%
+; ENDSELECT
+
+; IF 目2 != ""
+; 	SELECTCASE 目2
+; 	CASE "常目", "暗目"
+; 		RESULTS:1 = %@"%Version%AIDL{NO:CHARA}_颜效_心眼"%
+; 	ENDSELECT
+
+; 	IF RESULTS:1 != "" && RESULTS:0 == ""
+; 		RESULTS:0 = ダミー
+; 	ELSEIF RESULTS:0 != "" && RESULTS:1 == ""
+; 		RESULTS:1 = ダミー
+; 	ENDIF
+; ENDIF
+
+; RETURN RESULTS:0 != ""
+
+
+;}
+
+; 身体特效差分{
+; AIDL{CHARA}_丁液{_膨腹}_先汁
+; AIDL{CHARA}_丁液{_膨腹}_射精
+; AIDL{CHARA}_丁液{_膨腹}_垂精
+@AIDL_GET_PenisCum(Version, CHARA)
+#DIMS Version
+#DIM CHARA
+SIF AIDL_GetDick(CHARA, AIDL_GetClothesState(CHARA)) == ""
+	RETURN 0
+
+;TSP
+SIF FLAG:時間停止
+	RETURN 0
+
+LOCAL = 0
+SIF AIDL_GetPregnancy(CHARA) != ""
+	LOCAL = 1
+
+IF NOWEX:CHARA:射精
+	IF LOCAL && SPRITECREATED(@"%Version%AIDL{NO:CHARA}_丁液_膨腹_射精")
+		RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_丁液_膨腹_射精"%
+		RESULTS:1 = 
+		RETURN 1
+	ENDIF
+	IF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_丁液_射精")
+		RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_丁液_射精"%
+		RESULTS:1 = 
+		RETURN 1
+	ENDIF
+ENDIF
+IF EX:CHARA:射精 > 5
+	IF LOCAL && SPRITECREATED(@"%Version%AIDL{NO:CHARA}_丁液_膨腹_垂精")
+		RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_丁液_膨腹_垂精"%
+		RESULTS:1 = 
+		RETURN 1
+	ENDIF
+	IF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_丁液_垂精")
+		RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_丁液_垂精"%
+		RESULTS:1 = 
+		RETURN 1
+	ENDIF
+ENDIF
+IF BASE:CHARA:勃起 >= 800
+	IF LOCAL && SPRITECREATED(@"%Version%AIDL{NO:CHARA}_丁液_膨腹_先汁")
+		RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_丁液_膨腹_先汁"%
+		RESULTS:1 = 
+		RETURN 1
+	ENDIF
+	IF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_丁液_先汁")
+		RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_丁液_先汁"%
+		RESULTS:1 = 
+		RETURN 1
+	ENDIF
+ENDIF
+RETURN 0
+
+; @AIDL_GET_SpeechBubble(Version, CHARA)
+; #DIMS Version
+; #DIM CHARA
+
+; SIF FLAG:時間停止
+; 	RETURN 0
+
+; ; 当上一个TARGET或本次TARGET不是目标时，不体现气泡
+; SIF !(TFLAG:103==CHARA || TARGET==CHARA)
+; 	RETURN 0
+
+; CALL AIDL_GET_SpeechBubbleSingle(Version, CHARA)
+; LOCALS:0 = %RESULTS%
+; CALL AIDL_GET_SpeechBubbleSingle(Version, CHARA)
+; LOCALS:1 = %RESULTS%
+
+; SIF LOCALS:0 == "" && LOCALS:1 == ""
+; 	RETURN 0
+
+; SIF LOCALS:0 == LOCALS:1
+; 	LOCALS:1 = 
+
+; SIF LOCALS:0 == ""
+; 	LOCALS:0 = ダミー
+
+; RESULTS:0 = %LOCALS:0%
+; RESULTS:1 = %LOCALS:1%
+; RETURN 1
+
+; ; AIDL{CHARA}_气泡_{气泡名}
+; @AIDL_GET_SpeechBubbleSingle(Version, CHARA)
+; #DIMS Version
+; #DIM CHARA
+; #DIMS CONST 气泡名 = "", "睡眠", "醉酒", "欲求", "不悦", "疑惑", "沉默", "愉悦", "羞涩", "绝顶", "悲伤", "惊讶", "流汗", "愤怒"
+; #DIM 气泡概率, 14
+; VARSET 气泡概率
+
+; ; 无气泡
+; 气泡概率:0 = 10
+
+; ;睡眠
+; SIF CFLAG:睡眠
+; 	气泡概率:1 = 5 + TCVAR:CHARA:睡眠深度/400
+
+; ;醉酒
+; SIF BASE:CHARA:酒気 > MAXBASE:CHARA:酒気 / 4
+; 	气泡概率:2 = 20 * BASE:CHARA:酒気 / MAXBASE:CHARA:酒気
+
+; ;欲求
+; SIF (CFLAG:CHARA:既成事実 & 合意_うふふ) && CFLAG:CHARA:溜まってる度 > 600
+; 	气泡概率:3 += CFLAG:CHARA:溜まってる度/100 - 5 + TCVAR:CHARA:発情 * 5
+
+; ;不悦
+; SIF GETPALAMLV(PALAM:CHARA:抑鬱,5) + GETPALAMLV(PALAM:CHARA:反感,5) > 2
+; 	气泡概率:4 = GETPALAMLV(PALAM:CHARA:抑鬱,5)*3 + GETPALAMLV(PALAM:CHARA:反感,5)*2
+
+; ;疑惑
+; SIF TCVAR:CHARA:泥酔 && CFLAG:CHARA:うふふ
+; 	气泡概率:5 = 15
+
+; ;愉悦
+; SIF GETPALAMLV(PALAM:CHARA:好意,10) + BASE:CHARA:ムード/200 > 10
+; 	气泡概率:7 = GETPALAMLV(PALAM:CHARA:好意,10) + BASE:CHARA:ムード/200 -5
+
+; ;羞涩
+; SIF GETPALAMLV(PALAM:CHARA:恥情,5) > 2
+; 	气泡概率:8 = GETPALAMLV(PALAM:CHARA:恥情,10) * 3
+
+; ;绝顶
+; SIF NOWEX:CHARA:TotalEX > 2
+; 	气泡概率:9 = NOWEX:CHARA:TotalEX * 10
+
+; ;悲伤
+; SIF TALENT:CHARA:機嫌 < 0 || CFLAG:CHARA:不機嫌 > 0
+; 	气泡概率:10 = MAX(0, CFLAG:CHARA:不機嫌 - TALENT:CHARA:機嫌) * 3
+
+; ;惊讶
+; 气泡概率:11 = NOWEX:CHARA:TotalEX * 2 + CUP:CHARA:苦痛/100
+
+; ;流汗
+; SIF AIDL_GET_指令失败判定(CHARA)
+; 	气泡概率:12 = 5
+
+; ;愤怒
+; 气泡概率:13 = BASE:CHARA:怒り/100
+
+; ;沉默
+; SIF SUMARRAY(气泡概率) < 15
+; 	气泡概率:6 = 5 - MAX(0, GETPALAMLV(PALAM:CHARA:好意,10) -5)
+
+
+; ; 发怒后，只会有负面气泡
+; IF CFLAG:CHARA:ブチギレ
+; 	VARSET 气泡概率
+; 	气泡概率:6 = 1		;沉默
+; 	气泡概率:5 = 2		;疑惑
+; 	气泡概率:4 = 5		;不悦
+; 	气泡概率:13 = 15	;愤怒
+; ENDIF
+
+; ; 随机选出气泡
+; LOCALS = 
+; LOCAL:1 = SUMARRAY(气泡概率)
+; LOCAL:1 = RAND:(LOCAL:1)
+; FOR LOCAL, 0, 14
+; 	LOCAL:1 -= 气泡概率:LOCAL
+; 	IF LOCAL:1 < 0
+; 		LOCALS = %气泡名:LOCAL%
+; 		BREAK
+; 	ENDIF
+; NEXT
+
+; RESULTS = 
+; SIF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_气泡_%LOCALS%")
+; 	RESULTS = %@"%Version%AIDL{NO:CHARA}_气泡_%LOCALS%"%
+; RETURN
+;}
+
+
+; 断面图差分{
+; AIDL{CHARA}_特效_精胃
+; @AIDL_GET_StomachInside(Version, CHARA)
+; #DIMS Version
+; #DIM CHARA
+
+; SIF CFLAG:CHARA:累計精飲 < 5000
+; 	RETURN 0
+
+; SIF !SPRITECREATED(@"%Version%AIDL{NO:CHARA}_特效_精胃")
+; 	RETURN 0
+
+; IF AIDL_GET_DrinkCum(CHARA)
+; 	RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_特效_精胃"%
+; 	RESULTS:1 = 
+; 	RETURN 1
+; ENDIF
+; IF CFLAG:CHARA:288 == 2
+; 	RESULTS:0 = ダミー
+; 	RESULTS:1 = %@"%Version%AIDL{NO:CHARA}_特效_精胃"%
+; 	RETURN 1
+; ENDIF
+RETURN 0
+
+
+; AIDL{CHARA}_左断_{断面名}
+; AIDL_左断_{断面名}
+; @AIDL_GET_CrossSectionL(Version, CHARA)
+; #DIMS Version
+; #DIM CHARA
+; RESULTS:0 = 
+; RESULTS:1 = 
+
+; IF AIDL_GET_撫腹指令判定(CHARA)
+; 	IF CFLAG:CHARA:妊娠経過日数 >= 40
+; 		IF 充填率(CHARA,1) >= 100 && SPRITECREATED(@"%Version%AIDL{NO:CHARA}_左断_精液羊水")
+; 			RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_左断_精液羊水"%
+; 		ELSEIF SPRITECREATED(@"%Version%AIDL{NO:CHARA}_左断_足月胎儿")
+; 			RESULTS:0 = %@"%Version%AIDL{NO:CHARA}_左断_足月胎儿"%
+; 		ENDIF
+; 	ELSEIF CFLAG:CHARA:妊娠経過日数 >= 20
+; 		IF 充填率(CHARA,1) >= 100 && SPRITECREATED("AIDL_左断_储精罐")
+; 			RESULTS:0 = AIDL_左断_储精罐
+; 		ELSEIF 充填率(CHARA,1) < 20 && SPRITECREATED("AIDL_左断_妊娠初期")
+; 			RESULTS:0 = AIDL_左断_妊娠初期
+; 		ENDIF
+; 	ELSEIF CFLAG:CHARA:妊娠経過日数
+; 		IF 充填率(CHARA,1) >= 100 && SPRITECREATED("AIDL_左断_储精罐")
+; 			RESULTS:0 = AIDL_左断_储精罐
+; 		ELSEIF 充填率(CHARA,1) < 60 && 充填率(CHARA,1) > 20 && SPRITECREATED("AIDL_左断_受精内射")
+; 			RESULTS:0 = AIDL_左断_受精内射
+; 		ELSEIF SPRITECREATED("AIDL_左断_已受精")
+; 			RESULTS:0 = AIDL_左断_已受精
+; 		ENDIF
+; 	ELSEIF CFLAG:CHARA:900 == 7
+; 		SIF 充填率(CHARA,1) >= 100 && SPRITECREATED("AIDL_左断_危险期储精罐")
+; 			RESULTS:0 = AIDL_左断_危险期储精罐
+; 	ENDIF
+
+; 	IF RESULTS:0 == ""
+; 		IF 充填率(CHARA,1) >= 100 && SPRITECREATED("AIDL_左断_储精罐")
+; 			RESULTS:0 = AIDL_左断_储精罐
+; 		ELSEIF 充填率(CHARA,1) >= 60 && SPRITECREATED("AIDL_左断_内射后3")
+; 			RESULTS:0 = AIDL_左断_内射后3
+; 		ELSEIF 充填率(CHARA,1) >= 40 && SPRITECREATED("AIDL_左断_内射后2")
+; 			RESULTS:0 = AIDL_左断_内射后2
+; 		ELSEIF 充填率(CHARA,1) >= 20 && SPRITECREATED("AIDL_左断_内射后1")
+; 			RESULTS:0 = AIDL_左断_内射后1
+; 		ENDIF
+; 	ENDIF
+	
+; 	IF 充填率(CHARA,2) >= 80
+; 		IF SPRITECREATED("AIDL_左断_肠储精罐")
+; 			IF RESULTS:0 == ""
+; 				RESULTS:0 = AIDL_左断_肠储精罐
+; 			ELSE
+; 				RESULTS:1 = AIDL_左断_肠储精罐
+; 			ENDIF
+; 		ENDIF
+; 	ENDIF
+	
+; 	RETURN RESULTS:0 != ""
+; ENDIF
+
+; IF AIDL_GET_子宫口指令判定(CHARA) && CFLAG:CHARA:妊娠経過日数 < 40
+; 	IF (充填率(CHARA,1) >= 40 || (NOWEX:MASTER:射精 && 充填率(CHARA,1) >= 20)) && SPRITECREATED("AIDL_左断_子宫内射2")
+; 		RESULTS:0 = AIDL_左断_子宫内射2
+; 	ELSEIF (NOWEX:MASTER:射精 || 充填率(CHARA,1) >= 20) && SPRITECREATED("AIDL_左断_子宫内射1")
+; 		RESULTS:0 = AIDL_左断_子宫内射1
+; 	ELSEIF SPRITECREATED("AIDL_左断_突入子宫")
+; 		RESULTS:0 = AIDL_左断_突入子宫
+; 	ENDIF
+; 	RETURN RESULTS:0 != ""
+; ENDIF
+
+; RESULTS:0 = ダミー
+
+; IF AIDL_GET_Ａ展示指令判定(CHARA)
+; 	IF 充填率(CHARA,2) >= 80 && TEQUIP:CHARA:アナルバイブ > 0 && SPRITECREATED("AIDL_左断_肠储精罐振动棒")
+; 		RESULTS:1 = AIDL_左断_肠储精罐振动棒
+; 	ELSEIF TEQUIP:CHARA:アナルバイブ > 0 && SPRITECREATED("AIDL_左断_肠振动棒")
+; 		RESULTS:1 = AIDL_左断_肠振动棒
+; 	ELSEIF 充填率(CHARA,2) >= 80 && SPRITECREATED("AIDL_左断_肠储精罐")
+; 		RESULTS:1 = AIDL_左断_肠储精罐
+; 	ENDIF
+; 	RETURN RESULTS:1 != ""
+; ENDIF
+
+; IF TEQUIP:CHARA:バイブ > 0 && RAND:3 == 0 && SPRITECREATED("AIDL_左断_跳蛋塞入")
+; 	RESULTS:1 = AIDL_左断_跳蛋塞入
+; 	RETURN 1
+; ENDIF
+
+; IF TEQUIP:CHARA:アナルバイブ > 0 && RAND:2
+; 	IF 充填率(CHARA,2) >= 80 && SPRITECREATED("AIDL_左断_肠储精罐振动棒")
+; 		RESULTS:1 = AIDL_左断_肠储精罐振动棒
+; 	ELSEIF SPRITECREATED("AIDL_左断_肠振动棒")
+; 		RESULTS:1 = AIDL_左断_肠振动棒
+; 	ENDIF
+; 	RETURN RESULTS:1 != ""
+; ELSEIF TEQUIP:CHARA:Ａセックス > -1 && RAND:2
+; 	IF NOWEX:MASTER:射精 
+; 		IF 充填率(CHARA,2) >= 80 && SPRITECREATED("AIDL_左断_肠储精罐射精")
+; 			RESULTS:1 = AIDL_左断_肠储精罐射精
+; 		ELSEIF SPRITECREATED("AIDL_左断_肠射精")
+; 			RESULTS:1 = AIDL_左断_肠射精
+; 		ENDIF
+; 	ELSE
+; 		IF 充填率(CHARA,2) >= 80 && SPRITECREATED("AIDL_左断_肠储精罐插入")
+; 			RESULTS:1 = AIDL_左断_肠储精罐插入
+; 		ELSEIF SPRITECREATED("AIDL_左断_肠插入")
+; 			RESULTS:1 = AIDL_左断_肠插入
+; 		ENDIF
+; 	ENDIF
+; 	RETURN RESULTS:1 != ""
+; ENDIF
+
+; IF CFLAG:CHARA:うふふ
+; 	IF 充填率(CHARA,1) >= 100
+; 		IF CFLAG:CHARA:妊娠経過日数 >= 40 && SPRITECREATED(@"%Version%AIDL{NO:CHARA}_左断_精液羊水")
+; 			RESULTS:1 = %@"%Version%AIDL{NO:CHARA}_左断_精液羊水"%
+; 		ELSEIF !CFLAG:CHARA:妊娠経過日数 && CFLAG:CHARA:900 == 7 && SPRITECREATED(@"AIDL_左断_危险期储精罐")
+; 			RESULTS:1 = AIDL_左断_危险期储精罐
+; 		ELSEIF SPRITECREATED(@"AIDL_左断_储精罐")
+; 			RESULTS:1 = %@"AIDL_左断_储精罐"%
+; 		ENDIF
+; 		RETURN RESULTS:1 != ""
+; 	ELSEIF 充填率(CHARA,1) >= 60
+; 		IF SPRITECREATED("AIDL_左断_内射后3")
+; 			RESULTS:1 = AIDL_左断_内射后3
+; 			RETURN 1
+; 		ENDIF
+; 	ELSEIF 充填率(CHARA,1) >= 40
+; 		IF SPRITECREATED("AIDL_左断_内射后2")
+; 			RESULTS:1 = AIDL_左断_内射后2
+; 			RETURN 1
+; 		ENDIF
+; 	ELSEIF 充填率(CHARA,1) >= 20
+; 		IF CFLAG:CHARA:妊娠経過日数 && CFLAG:CHARA:妊娠経過日数 < 20 && SPRITECREATED("AIDL_左断_受精内射")
+; 			RESULTS:1 = AIDL_左断_受精内射
+; 			RETURN 1
+; 		ELSEIF SPRITECREATED("AIDL_左断_内射后1")
+; 			RESULTS:1 = AIDL_左断_内射后1
+; 			RETURN 1
+; 		ENDIF
+; 	ENDIF
+; ENDIF
+
+; RETURN 0
+
+
+; AIDL_右断_{断面名}
+; @AIDL_GET_CrossSectionR(CHARA)
+; #DIM CHARA
+; RESULTS:0 = 
+; RESULTS:1 = 
+
+; IF AIDL_GET_Ａ展示指令判定(CHARA)
+; 	IF TEQUIP:CHARA:アナルバイブ > 0 && SPRITECREATED("AIDL_右断_振动棒肛門展示")
+; 		RESULTS:0 = AIDL_右断_振动棒肛門展示
+; 	ELSEIF 充填率(CHARA,2) >= 30 && SPRITECREATED("AIDL_右断_溢精肛門展示")
+; 		RESULTS:0 = AIDL_右断_溢精肛門展示
+; 	ELSEIF SPRITECREATED("AIDL_右断_肛門展示")
+; 		RESULTS:0 = AIDL_右断_肛門展示
+; 	ENDIF
+; 	RETURN RESULTS:0 != ""
+; ENDIF
+
+; IF AIDL_GET_Ｖ展示指令判定(CHARA)
+; 	IF TEQUIP:CHARA:バイブ > 0 && SPRITECREATED("AIDL_右断_跳蛋塞入穴展示")
+; 		RESULTS:0 = AIDL_右断_跳蛋塞入穴展示
+; 	ELSEIF 充填率(CHARA,1) >= 30 && SPRITECREATED("AIDL_右断_溢精穴展示")
+; 		RESULTS:0 = AIDL_右断_溢精穴展示
+; 	ELSEIF GETPALAMLV(PALAM:CHARA:潤滑,5) >= 4 && SPRITECREATED("AIDL_右断_湿穴展示")
+; 		RESULTS:0 = AIDL_右断_湿穴展示
+; 	ELSEIF SPRITECREATED("AIDL_右断_穴展示")
+; 		RESULTS:0 = AIDL_右断_穴展示
+; 	ENDIF
+; 	RETURN RESULTS:0 != ""
+; ENDIF
+
+; IF AIDL_GET_放尿指令判定(CHARA)
+; 	IF 充填率(CHARA,1) >= 30 && SPRITECREATED("AIDL_右断_溢精放尿")
+; 		RESULTS:0 = AIDL_右断_溢精放尿
+; 	ELSEIF GETPALAMLV(PALAM:CHARA:潤滑,5) >= 4 && SPRITECREATED("AIDL_右断_湿穴放尿")
+; 		RESULTS:0 = AIDL_右断_湿穴放尿
+; 	ELSEIF SPRITECREATED("AIDL_右断_放尿")
+; 		RESULTS:0 = AIDL_右断_放尿
+; 	ENDIF
+; 	RETURN RESULTS:0 != ""
+; ELSEIF NOWEX:CHARA:放尿 >= 2
+; 	RESULTS:0 = ダミー
+; 	IF 充填率(CHARA,1) >= 30 && SPRITECREATED("AIDL_右断_溢精放尿")
+; 		RESULTS:1 = AIDL_右断_溢精放尿
+; 	ELSEIF GETPALAMLV(PALAM:CHARA:潤滑,5) >= 4 && SPRITECREATED("AIDL_右断_湿穴放尿")
+; 		RESULTS:1 = AIDL_右断_湿穴放尿
+; 	ELSEIF SPRITECREATED("AIDL_右断_放尿")
+; 		RESULTS:1 = AIDL_右断_放尿
+; 	ENDIF
+; 	RETURN RESULTS:1 != ""
+; ENDIF
+
+; RETURN 0
+;}
+
+@AIDL_GET_OmorashiPee(ARG)
+#FUNCTION
+SIF TFLAG:103!=ARG
+	RETURNF 0
+
+SIF SoiledSelf:ARG:0
+	RETURNF 1
+
+RETURNF 0
+
+@AIDL_GET_OmorashiScat(ARG)
+#FUNCTION
+SIF TFLAG:103!=ARG
+	RETURNF 0
+
+SIF SoiledSelf:ARG:1
+	RETURNF 1
+
+RETURNF 0
+
+
+@AIDL_GET_DrinkCum(ARG)
+#FUNCTION
+SIF TFLAG:103 != ARG || !NOWEX:MASTER:射精
+	RETURNF 0
+
+; 主动指令
+SELECTCASE PREVCOM
+CASE 120,125,140,81,88
+	RETURNF 1
+ENDSELECT
+
+;特殊指令
+SELECTCASE TFLAG:前回の特殊COM
+CASE 11,1,12,8,9
+	RETURNF 1
+ENDSELECT
+
+RETURNF 0
+
+
+@AIDL_GET_指令失败判定(ARG)
+#FUNCTION
+
+;うふふ指令失败
+SIF CFLAG:ARG:うふふ && TFLAG:前回のコマンド結果 == 0
+	RETURNF 1
+
+; 移动指令不判定失败
+SIF PREVCOM == 400
+	RETURNF 0
+
+SIF TFLAG:前回のコマンド結果 < 0
+	RETURNF 1
+
+SELECTCASE PREVCOM
+CASE 300
+	;会話指令失败
+	SIF TCVAR:ARG:302 && !TALENT:ARG:恋慕 && TCVAR:ARG:301 < 100
+		RETURNF 1
+CASE 331
+	;薬入茶失败
+	SIF TIME_PROGRESS(TCVAR:ARG:300) > 30
+		RETURNF 1
+ENDSELECT
+
+RETURNF 0

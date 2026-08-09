@@ -1,0 +1,1606 @@
+;Reworked Panty Thieving System
+;Uses Enter's Datatables
+
+
+@PantyTableCreate(TEMP = 0)
+#FUNCTION
+#DIMS nTableName
+#DIM DYNAMIC TEMP
+IF TEMP
+	nTableName '= @"PANTS_TEMP"
+ELSE
+	nTableName '= @"PantyCollection"
+ENDIF
+DT_CREATE nTableName
+DT_COLUMN_ADD nTableName, "chara", "int16"
+DT_COLUMN_ADD nTableName, "panty", "int16"
+REPEAT VARSIZE("DiapeLiquidSoil")
+	DT_COLUMN_ADD nTableName, @"liquidSoil{COUNT}", "int32"
+REND
+REPEAT VARSIZE("DiapeSolidSoil")
+	DT_COLUMN_ADD nTableName, @"solidSoil{COUNT}", "int32"
+REND
+DT_COLUMN_ADD nTableName, "corpseTaint", "int32"
+DT_COLUMN_ADD nTableName, "liquidSoilBit", "int32"
+DT_COLUMN_ADD nTableName, "solidSoilBit", "int32"
+DT_COLUMN_ADD nTableName, "isWashed", "int16"
+DT_COLUMN_ADD nTableName, "washingTimer", "int16"
+
+;ARG: Target
+;PANTY: What panty the Touhou is wearing
+;ARG: Table
+    ;PantyCollection = permanent storage
+    ;PANTS_TEMP      = temp storage
+;I_ID: Panty ID to import from
+;Testing: PANTY_REWORK_GO_COLLECTION(17,103, "PANTS_TEMP") (should give Alice a fantastabab)
+@PANTY_REWORK_GO_COLLECTION(ARG, PANTY, ARGS = "PantyCollection", I_ID = 0, HAS_SOIL = 1)
+#FUNCTION
+#DIM DYNAMIC PANTY
+#DIM DYNAMIC T_ID
+#DIM DYNAMIC I_ID
+#DIM DYNAMIC HAS_SOIL
+DT_ROW_ADD ARGS, "chara", ARG, "panty", PANTY
+T_ID = RESULT
+SIF HAS_SOIL
+CALLF PANTY_REWORK_ADD_SOIL(ARG, T_ID, ARGS, I_ID)
+RETURNF T_ID
+
+@PANTY_REWORK_ADD_SOIL(ARG, T_ID, ARGS, I_ID = 0)
+#FUNCTION
+#DIM DYNAMIC T_ID
+#DIM DYNAMIC I_ID
+;DEBUGPRINTFORML Importing from: {I_ID} - Exporting to: {T_ID}
+FOR LOCAL,0,VARSIZE("DiapeLiquidSoil")
+    DT_CELL_SET ARGS, T_ID, @"liquidSoil{LOCAL}", (I_ID ? DT_CELL_GET("PANTS_TEMP", I_ID,  @"liquidSoil{LOCAL}", 1) # DiapeLiquidSoil:ARG:LOCAL), 1
+NEXT
+
+FOR LOCAL,0,VARSIZE("DiapeSolidSoil")
+    DT_CELL_SET ARGS, T_ID, @"solidSoil{LOCAL}", (I_ID ? DT_CELL_GET("PANTS_TEMP", I_ID,  @"solidSoil{LOCAL}", 1) # DiapeSolidSoil:ARG:LOCAL), 1
+NEXT
+
+DT_CELL_SET ARGS, T_ID, @"liquidSoilBit", (I_ID ? DT_CELL_GET("PANTS_TEMP", I_ID,  @"liquidSoilBit", 1) # PANTY_REWORK_SOILBIT(ARG, ARGS, T_ID, "liquid")), 1
+DT_CELL_SET ARGS, T_ID, @"solidSoilBit", (I_ID ? DT_CELL_GET("PANTS_TEMP", I_ID,  @"solidSoilBit", 1) # PANTY_REWORK_SOILBIT(ARG, ARGS, T_ID, "solid")), 1
+DT_CELL_SET ARGS, T_ID, @"isWashed", (I_ID ? DT_CELL_GET("PANTS_TEMP", I_ID,  @"isWashed", 1) # 0), 1
+DT_CELL_SET ARGS, T_ID, @"washingTimer", (I_ID ? DT_CELL_GET("PANTS_TEMP", I_ID,  @"washingTimer", 1) # 0), 1
+
+
+
+@PANTY_REWORK_IN_COLLECTION(ARG,nGetPanty,ARGS = "PantyCollection")
+#FUNCTION
+#DIM nGetPanty
+RETURNF DT_SELECT(ARGS, @"chara = {ARG} and panty = {nGetPanty}")
+
+@PANTY_REWORK_GET(ARG,ARGS)
+#DIM PANTY
+SIF !EQUIP:ARG:下半身下着２ ;bugfix custom code, panties must exist
+	RETURN
+PANTY = EQUIP:ARG:下半身下着２
+CALL PANTY_REWORK_GETTING(ARG, PANTY)
+;custom code, if ARGS != "もらう" the panty wasn't given willingly, so is AWOL
+CALL PANTY_AWOL(ARG,ARGS != "もらう")
+
+;achievements
+SIF PANTY_REWORK_IS_SOIL(ARG,"liquid",0) && PANTY_REWORK_IS_SOIL(ARG,"liquid",3) && PANTY_REWORK_IS_SOIL(ARG,"solid",0)
+    CALL AL_NOTIFY_ACHIEVEMENT_COMPLETION("soilPeePoopCum")
+SIF PANTY_REWORK_IS_SOIL(ARG,"liquid",0) && PANTY_REWORK_IS_SOIL(ARG,"liquid",1) && PANTY_REWORK_IS_SOIL(ARG,"liquid",2)
+    CALL AL_NOTIFY_ACHIEVEMENT_COMPLETION("soilPeeBloodJuice")
+
+CFLAG:ARG:ノーパン = 1
+EQUIP:ARG:下半身下着２ = 0
+CALL CLOTHES_SETTING_TRAIN(ARG)
+
+SIF CFLAG:ARG:パジャマ == 1
+	CFLAG:ARG:パジャマパンツ = 0
+
+SIF ARGS == "もらう"
+	CFLAG:ARG:ノーパン = 2
+CALLF DiapeStats(ARG,0,1)
+;qol custom code
+CALL PANTY_SPECIAL_GET(ARG, PANTY)
+
+@PANTY_REWORK_GETTING(ARG, PANTY)
+#DIM PANTY
+#DIM GAP_USED
+;addition custom code, duplicated characters
+#DIM ACTUAL_CHARACTER
+#DIMS HTML
+#DIM P_ID
+
+GAP_USED = 0
+ACTUAL_CHARACTER = NO:(ARG)
+P_ID = PANTY_REWORK_GO_COLLECTION(ARG, PANTY, "PANTS_TEMP")
+;PANTS_TEMP:ACTUAL_CHARACTER:PANTY += 1
+
+IF ITEM:コレクションのスキマ
+	IF FLAG:Cスキマ自動仕様
+		CALL PANTY_REWORK_COLLECTORS_GAP(P_ID)
+		GAP_USED = RESULT
+	ELSEIF FLAG:パンツ輸送 == 0
+		IF CFLAG:MASTER:現在位置 != CFLAG:MASTER:初期位置
+			HTML '= @"Use a Collector's Gap (Remaining：{ITEM:コレクションのスキマ}) to add "
+		;custom code, only way to translate this to english
+		ELSE
+			HTML '= @"Add "
+		ENDIF
+		SIF PANTY_REWORK_IN_COLLECTION(ARG, PANTY, "PantyCollection") == 0
+			SETCOLOR C_PINK
+		HTML += HTML_PRINT_NAS(@"%CALLNAME:ARG%'s %UNDIES_NAME_WITH_BRAND(ARG, PANTY)% ")
+        SIF STRLENS(PANTY_REWORK_SOILSTR(ARG,1))
+        HTML += @"(%PANTY_REWORK_SOILSTR(ARG,1,1)%) "
+		RESETCOLOR
+		HTML += "to your collection?"
+        HTML_PRINT HTML
+		CALL ASK_YN
+		IF !RESULT
+			CALL PANTY_REWORK_COLLECTORS_GAP(P_ID)
+			GAP_USED = RESULT
+		ENDIF
+	ENDIF
+ENDIF
+SIF !GAP_USED
+	FLAG:パンツ輸送 = 1
+RETURN GAP_USED
+
+;controls collector's gaps being used
+@PANTY_REWORK_COLLECTORS_GAP(P_ID)
+#DIM PANTY
+#DIM GAP_USED
+;addition custom code, duplicated characters
+#DIM ACTUAL_CHARACTER
+#DIM P_ID
+SIF !P_ID
+	RETURN 0
+
+GAP_USED = 0
+ACTUAL_CHARACTER = DT_CELL_GET("PANTS_TEMP", P_ID,  @"chara", 1)
+PANTY = DT_CELL_GET("PANTS_TEMP", P_ID,  @"panty", 1)
+;move panties to collection
+; FOR LOCAL, 1, DT_SELECT("PANTS_TEMP", @"chara = {ARG} and panty = {PANTY}")+1
+;     P_ID = RESULT:LOCAL
+;     CALLF PANTY_REWORK_GO_COLLECTION(ARG, PANTY, "PantyCollection", P_ID)
+;     DT_ROW_REMOVE "PANTS_TEMP", P_ID
+; NEXT
+CALLF PANTY_REWORK_GO_COLLECTION(ACTUAL_CHARACTER, PANTY, "PantyCollection", P_ID)
+DT_ROW_REMOVE "PANTS_TEMP", P_ID
+
+IF CFLAG:MASTER:現在位置 != CFLAG:MASTER:初期位置
+	ITEM:コレクションのスキマ -= 1
+	PRINTFORMW You open up a Collector's Gap and toss %CALLNAME:ACTUAL_CHARACTER%'s %COND_STR("soiled ",STRLENS(PANTY_REWORK_SOILSTR(ACTUAL_CHARACTER,,,"PANTS_TEMP",P_ID)))%%UNDIES_NAME_WITH_BRAND(ACTUAL_CHARACTER, PANTY)% inside.
+ELSE
+	PRINTFORMW %CALLNAME:ACTUAL_CHARACTER%'s %UNDIES_NAME_WITH_BRAND(ACTUAL_CHARACTER, PANTY)% added to your collection!
+ENDIF 
+GAP_USED = 1
+CALL PANTY_REWORK_UPDATE_STATUS
+RETURN GAP_USED
+
+@PANTY_REWORK_SOILBIT(ARG, TABLE_NAME = "", TABLE_ID = 0, nType = "")
+#FUNCTION
+#DIM nBIT
+#DIMS 	DYNAMIC TABLE_NAME
+#DIM 	DYNAMIC TABLE_ID
+#DIMS 	DYNAMIC nType
+VARSET nBit
+
+SELECTCASE nType
+CASE "liquid"
+	FOR LOCAL,0,VARSIZE("DiapeLiquidSoil")
+		SIF PANTY_REWORK_IS_SOIL(ARG,"liquid",LOCAL,TABLE_NAME,TABLE_ID)
+			SETBIT nBit, LOCAL
+	NEXT
+CASE "solid"
+	FOR LOCAL,0,VARSIZE("DiapeSolidSoil")
+		SIF PANTY_REWORK_IS_SOIL(ARG,"solid",LOCAL,TABLE_NAME,TABLE_ID)
+			SETBIT nBit, LOCAL
+	NEXT
+ENDSELECT
+RETURNF nBit
+
+;gets soiling state of panties
+[SKIPSTART]
+Liquid:
+Pee: Urine
+Bld: Menstrual Blood
+Jui: Love Juice
+Cum: Semen
+H2O: Water
+
+Solid:
+Poo: Scat
+Egg: Egg
+
+[SKIPEND]
+@PANTY_REWORK_SOILSTR(ARG,isShort,isHTML, TABLE_NAME = "", TABLE_ID = 0, bypassWashing = 0)
+#FUNCTIONS
+#DIMS nSTR
+#DIM DYNAMIC isShort
+#DIM DYNAMIC isHTML
+#DIMS DYNAMIC TABLE_NAME
+#DIM DYNAMIC TABLE_ID
+#DIM DYNAMIC bypassWashing
+VARSET nSTR
+;DEBUGPRINTFORML Importing from: {TABLE_ID} (%TABLE_NAME%)
+
+IF TABLE_ID && !bypassWashing
+	SIF DT_CELL_GET(TABLE_NAME,TABLE_ID, "isWashed", 1) == 1
+		RETURNF "Wash"
+ENDIF
+
+FOR LOCAL,0,VARSIZE("DiapeLiquidSoil")
+    SIF PANTY_REWORK_IS_SOIL(ARG,"liquid",LOCAL,TABLE_NAME,TABLE_ID)
+        nSTR += @"%UndiesSoilingType("liquid", LOCAL, isShort, isHTML)%/"
+NEXT
+FOR LOCAL,0,VARSIZE("DiapeSolidSoil")
+	IF DT_CELL_GET(TABLE_NAME,TABLE_ID, "isWashed", 1) == -1 && !bypassWashing
+		;going to use Scr to mean scraped solids
+		nSTR += @"Scr/"
+		BREAK
+	ENDIF
+	SIF PANTY_REWORK_IS_SOIL(ARG,"solid",LOCAL,TABLE_NAME,TABLE_ID)
+        nSTR += @"%UndiesSoilingType("solid", LOCAL, isShort, isHTML)%/"
+NEXT
+;coprse taint
+SIF PANTY_REWORK_IS_SOIL(ARG,"corpse taint",0)
+    nSTR += @"%UndiesSoilingType("corpse taint", 0, isShort, isHTML)%/"
+RETURNF SUBSTRING(nSTR,0,STRLENS(nSTR)-1)
+
+;soiling is above threshold
+@PANTY_REWORK_IS_SOIL(ARG,nType,nThing, TABLE_NAME = "", TABLE_ID = 0)
+#FUNCTION
+#DIMS nType
+#DIM nThing
+#DIMS DYNAMIC TABLE_NAME
+#DIM DYNAMIC TABLE_ID
+#DIM DYNAMIC SOIL_ABS	;absolute minimum
+#DIM DYNAMIC SOIL_PER	;percetange it's soiled
+#DIM DYNAMIC SOIL_GET	;soiling got
+SIF ARG >= CHARANUM
+	RETURNF 0
+SELECTCASE nType
+CASE "liquid"
+    SELECTCASE nThing
+    CASE 0 ;urine
+        ;300ml
+		SOIL_ABS = 300
+		;30% soiled
+		SOIL_PER = 30
+    CASE 1 ;Menstrual Blood
+        ;50ml
+        SOIL_ABS = 50
+        ;10% soiled
+		SOIL_PER = 10
+    CASE 2 ;pussy juice
+        ;50ml
+        SOIL_ABS = 50
+        ;10% soiled
+		SOIL_PER = 10
+    CASE 3 ;semen
+        ;50ml
+        SOIL_ABS = 50
+        ;10% soiled
+		SOIL_PER = 10
+    ENDSELECT
+CASE "solid"
+    SELECTCASE nThing
+    CASE 0 ;poop
+        ;150g
+        SOIL_ABS = 150
+        ;15% soiled
+        SOIL_PER = 15
+    CASE 1 ;egg
+        ;150g
+        SOIL_ABS = 150
+        ;15% soiled
+        SOIL_PER = 15
+    ENDSELECT
+CASE "corpse taint"
+	SOIL_ABS = 1
+ENDSELECT
+;no type
+SIF !SOIL_ABS && !SOIL_PER
+	RETURNF 0
+
+SELECTCASE nType
+CASE "liquid"
+	IF TABLE_ID
+		SOIL_GET = DT_CELL_GET(TABLE_NAME, TABLE_ID,  @"liquidSoil{nThing}", 1)
+	ELSE
+		SOIL_GET = DiapeLiquidSoil:ARG:nThing
+	ENDIF
+	;absolute value
+	SIF SOIL_GET > SOIL_ABS
+		RETURNF 1
+	;percentage
+	SIF SOIL_GET > (DiapeCharges:ARG:1*SOIL_PER/100)
+		RETURNF 1
+CASE "solid"
+	IF TABLE_ID
+		SOIL_GET = DT_CELL_GET(TABLE_NAME, TABLE_ID,  @"solidSoil{nThing}", 1)
+	ELSE
+		SOIL_GET = DiapeSolidSoil:ARG:nThing
+	ENDIF
+	;absolute value
+	SIF SOIL_GET > SOIL_ABS
+		RETURNF 1
+	;percentage
+	SIF SOIL_GET > (DiapePooCharges:ARG:1*SOIL_PER/100)
+		RETURNF 1
+CASE "corpse taint"
+	IF TABLE_ID
+		RETURNF DT_CELL_GET(TABLE_NAME, TABLE_ID,  @"corpse taint", 1)
+	ELSE
+		SIF IsDead:ARG:0
+			RETURNF 1
+	ENDIF
+ENDSELECT
+
+@PANTY_REWORK_SOIL_SCORE(ARG, TABLE_NAME = "", TABLE_ID = 0)
+#FUNCTION
+#DIM nScore
+#DIMS 	DYNAMIC TABLE_NAME
+#DIM 	DYNAMIC TABLE_ID
+#DIM 	DYNAMIC nThing
+VARSET nScore
+
+IF TABLE_ID
+	SIF DT_CELL_GET(TABLE_NAME,TABLE_ID, "isWashed", 1) == 1
+		RETURNF 0
+ENDIF
+
+FOR LOCAL,0,VARSIZE("DiapeLiquidSoil")
+	SIF PANTY_REWORK_IS_SOIL(ARG,"liquid",LOCAL,TABLE_NAME,TABLE_ID)
+		nScore += PANTY_REWORK_SOIL_INDEX("liquid",nThing)
+NEXT
+FOR LOCAL,0,VARSIZE("DiapeSolidSoil")
+	IF TABLE_ID
+		SIF DT_CELL_GET(TABLE_NAME, TABLE_ID,  @"isWashed",1) == -1
+			BREAK
+	ENDIF
+
+	SIF PANTY_REWORK_IS_SOIL(ARG,"solid",LOCAL,TABLE_NAME,TABLE_ID)
+		nScore += PANTY_REWORK_SOIL_INDEX("solid",nThing)
+NEXT
+RETURNF nScore
+
+@PANTY_REWORK_VALUE(TABLE_NAME,P_ID)
+#FUNCTION
+#DIM P_ID
+#DIM P_TYPE
+#DIM C_ID
+#DIM P_PRICE
+#DIMS TABLE_NAME
+#DIM P_MAX, 2
+#DIM P_THINGS_SOILED
+P_TYPE 	= DT_CELL_GET(TABLE_NAME, P_ID, "panty",1)	;panty ID
+C_ID 	= DT_CELL_GET(TABLE_NAME, P_ID, "chara",1)	;char ID
+P_THINGS_SOILED = 0
+
+;auto calc
+CALLF DiapeStats(C_ID,P_TYPE, , 1)
+P_MAX:0 = RESULT:1
+P_MAX:1 = RESULT:1
+
+;base price
+P_PRICE = 100
+
+;price by clothing price
+P_PRICE += ClothPrice("下半身下着_ずらし可能",P_TYPE,C_ID)
+
+;soiling
+FOR LOCAL,0,VARSIZE("DiapeLiquidSoil")
+	IF PANTY_REWORK_IS_SOIL(C_ID,"liquid",LOCAL,TABLE_NAME,P_ID)
+		P_PRICE += (MAX(P_MAX:0,600)*PANTY_REWORK_SOIL_INDEX("liquid",LOCAL))
+		P_THINGS_SOILED++
+		;panty is soiled, so we increase multiplier
+	ENDIF
+NEXT
+FOR LOCAL,0,VARSIZE("DiapeSolidSoil")
+	IF PANTY_REWORK_IS_SOIL(C_ID,"solid",LOCAL,TABLE_NAME,P_ID)
+		P_PRICE += (MAX(P_MAX:1,600)*PANTY_REWORK_SOIL_INDEX("solid",LOCAL))
+		P_THINGS_SOILED++
+		;panty is soiled, so we increase multiplier
+	ENDIF
+NEXT
+
+SIF GETBIT(NAS_PAIL,5)
+	TIMES P_PRICE, 2.00
+
+IF P_THINGS_SOILED >= 2
+	P_PRICE = P_PRICE * NUM_EXPONENT(2+SaveAchievementClaimed("soilPeePoopCum"),P_THINGS_SOILED)
+ENDIF
+RETURNF P_PRICE
+
+
+;score
+@PANTY_REWORK_SOIL_INDEX(nType,nThing)
+#FUNCTION
+#DIMS nType
+#DIM nThing
+#DIM DYNAMIC SOIL_SCORE	;absolute minimum
+SELECTCASE nType
+CASE "liquid"
+    SELECTCASE nThing
+    CASE 0 ;urine
+        ;2pt
+		SOIL_SCORE = 2
+    CASE 1 ;Menstrual Blood
+        SOIL_SCORE = 1
+    CASE 2 ;pussy juice
+        SOIL_SCORE = 1
+    CASE 3 ;semen
+        SOIL_SCORE = 1
+    ENDSELECT
+CASE "solid"
+    SELECTCASE nThing
+    CASE 0 ;poop
+        SOIL_SCORE = 3
+    CASE 1 ;egg
+        SOIL_SCORE = 2
+    ENDSELECT
+CASE "corpse taint"
+	SOIL_SCORE = 5
+ENDSELECT
+RETURNF SOIL_SCORE
+
+
+;initalize stuffs
+@PANTY_REWORK_DISPLAY_ALL_INIT
+nGlobalPage = 0
+PR_NextStart:0 = 0
+
+;全コレクション表示
+;引数	ARG:0	表示対象	0=Collection	,1=On Hand
+;		ARG:1	表示種類	0=Display 		,1=Selection
+;		ARG:2	Selection	0=Consolidate 	,1=Separate
+;戻り値	RESULT:0	総数
+;		RESULT:1	所有nTypes
+@PANTY_REWORK_DISPLAY_ALL_COLLECTION(ARG:0=0,ARG:1=0,ARG:2)
+#DIM C_ID
+#DIM T_COUNT
+#DIM OWN_TYPES
+#DIM OWN_WEAR
+#DIM NEXT_START = 1
+#DIM ENTRYLINESTART
+
+VARSET RESULT
+T_COUNT = 0
+OWN_TYPES = 0
+OWN_WEAR = 0
+
+SELECTCASE ARG:0
+CASE 0
+LOCALS = PantyCollection
+CASE 1
+LOCALS = PANTS_TEMP
+ENDSELECT
+
+LINESTART = LINECOUNT
+FOR C_ID,PR_NextStart:nGlobalPage,CHARANUM
+	NEXT_START = C_ID + 1
+	ENTRYLINESTART = LINECOUNT
+	SIF !DT_SELECT(LOCALS, @"chara = {C_ID}")
+        CONTINUE
+	;一枚もパンツ持ってないキャラでも着用可能数をカウントするため
+	IF FLAG:パンツ収集状況タイプB && ARG:0 == 0
+		PRINTL
+		PRINTFORML 【%CALLNAME:C_ID%】
+		CALL PANTY_REWORK_DISPLAY_COLLECTION(C_ID, ARG:0, ARG:1, ARG:2)
+		T_COUNT += RESULT:0
+		OWN_TYPES += RESULT:1
+		OWN_WEAR += RESULT:2
+	ELSEIF RESULT:0 > 0
+		PRINTL
+		PRINTFORML 【%CALLNAME:C_ID%】
+		CALL PANTY_REWORK_DISPLAY_COLLECTION(C_ID, ARG:0, ARG:1, ARG:2)
+		T_COUNT += RESULT:0
+		OWN_TYPES += RESULT:1
+	ENDIF
+	IF LINECOUNT - LINESTART > 45 ;if the last chara printed doesn't fit delete it and push it to the next page
+		NEXT_START -= 1
+		CLEARLINE LINECOUNT - ENTRYLINESTART
+		BREAK
+	ENDIF
+NEXT
+PR_NextStart:(nGlobalPage + 1) = NEXT_START ;index the first entry each page so we know where to start when going backwards
+PRINTL
+DRAWLINE
+PRINTFORM %@" Page {nGlobalPage + 1}",8, LEFT%
+PRINTFORML %@"({PR_NextStart:nGlobalPage}-{NEXT_START - 1})",10,LEFT%
+PRINTFORM %" " * 2%
+IF nGlobalPage == 0
+	SETCOLOR 0x606060
+	PRINTFORM %"Prev page",15,LEFT%
+	RESETCOLOR 
+ELSE
+	PRINTBUTTON @"%"Prev page",15,LEFT%", 888
+ENDIF
+IF NEXT_START >= CHARANUM
+	SETCOLOR 0x606060
+	PRINTFORM %"Next page",15,LEFT%
+	RESETCOLOR 
+ELSE
+	PRINTBUTTON @"%"Next page",15,LEFT%", 222
+ENDIF
+PRINTL
+
+RETURN T_COUNT, OWN_TYPES, OWN_WEAR
+
+;コレクション表示
+;引数	対象	表示対象ID
+;		ARG:0	表示対象		0=Collection		,1=On Hand
+;		ARG:1	表示種類		0=Display Only		,1=Selection
+;		ARG:2	Dupe Handling	0=Consolidate		,1=Separate
+;戻り値	RESULT:0	総数
+;		RESULT:1	所有nTypes
+@PANTY_REWORK_DISPLAY_COLLECTION(C_ID,ARG:0=0,ARG:1=0,ARG:2=0)
+#DIM C_ID                       ;character
+#DIM P_ID                       ;panty ID (in the P_ID_LIST table)
+#DIM P_TYPE						;panty type
+#DIM OWN_COUNT                  ;number owned
+#DIM N_LINE                     ;for new line
+#DIM TOTAL_NUM
+#DIM TOTAL_TYPES
+#DIM LOWER_BODY_CONFIRM
+#DIM PAJAMA_LOWER_BODY_CONFIRM
+#DIM P_ID_LIST, MAXPANTS
+#DIM PADDING = 55 ;custom code
+#DIMS HTML
+#DIMS TABLE_NAME
+#DIM PRINT_DONE
+
+VARSET RESULT
+SELECTCASE ARG:0
+CASE 0
+TABLE_NAME = PantyCollection
+CASE 1
+TABLE_NAME = PANTS_TEMP
+ENDSELECT
+TOTAL_TYPES = 0
+IF ARG:2 == 2
+TOTAL_NUM = DT_SELECT(TABLE_NAME, @"chara = {C_ID} and (isWashed = 0 or (isWashed = -1 and washingTimer > 0) or CONVERT(ISNULL(isWashed,0),'System.Boolean') = false) and (liquidSoilBit > 0 or solidSoilBit > 0 or corpseTaint > 0)", "Panty ASC, liquidSoilBit ASC, solidSoilBit ASC, corpseTaint ASC",P_ID_LIST)
+ELSE
+TOTAL_NUM = DT_SELECT(TABLE_NAME, @"chara = {C_ID}", "Panty ASC, liquidSoilBit ASC, solidSoilBit ASC, corpseTaint ASC",P_ID_LIST)
+ENDIF
+N_LINE = 0
+LOWER_BODY_CONFIRM = CFLAG:C_ID:下半身下着確認
+PAJAMA_LOWER_BODY_CONFIRM = CFLAG:C_ID:パジャマ下半身下着確認
+HTML =
+PRINT_DONE = 0
+
+DEBUGPRINTFORML Got {TOTAL_NUM} panties in the list for %CALLNAME:C_ID%
+FOR LOCAL,0,TOTAL_NUM
+	P_ID 	= P_ID_LIST:LOCAL						;entry ID in table
+	P_TYPE 	= DT_CELL_GET(TABLE_NAME, P_ID, "panty",1)	;panty ID
+	IF ARG:2
+		;don't allow diapers for laundry
+		SIF IsPadded(C_ID, , P_TYPE) && !DT_CELL_GET(TABLE_NAME, P_ID, "solidSoilBit",1) && !GET_INT(C_ID, "下半身下着_ずらし可能", P_TYPE, "Can Wash") && ARG:2 == 2
+			CONTINUE
+
+		SIF LOCAL < TOTAL_NUM-1
+			GOTO FORCE_PRINT_NO_MOVE
+	ENDIF
+
+	;handle duplicates
+	IF LOCAL
+		;panties must be unique in either soiling or type
+		IF PANTY_REWORK_IS_UNIQUE(TABLE_NAME,P_ID,P_ID_LIST:(LOCAL-1))
+			$FORCE_PRINT
+			IF TOTAL_NUM > 1 && !ARG:2
+				;switch to previous panty
+				P_ID = P_ID_LIST:(LOCAL-1)
+				P_TYPE 	= DT_CELL_GET(TABLE_NAME, P_ID, "panty",1)
+			ENDIF
+			$FORCE_PRINT_NO_MOVE
+			;printing
+			;check if it's in collection
+			IF PANTY_REWORK_IN_COLLECTION(C_ID, P_TYPE, "PantyCollection") == 0
+				SETCOLOR COLOR("PINK")
+			ELSEIF ARG:2
+				IF (STRFIND(PANTY_REWORK_OFFERING,TOSTR(P_ID)) > -1 && ARG:2 == 1) || (STRFIND(PANTY_REWORK_WASHING,TOSTR(P_ID)) > -1 && ARG:2 == 2)
+					SETCOLOR C_AQUA
+				ELSEIF PANTY_REWORK_MOST_VALUABLE(TABLE_NAME,C_ID,P_ID) > 0
+					SETCOLOR C_PINK
+				ELSE
+					RESETCOLOR
+				ENDIF
+			ELSE
+				RESETCOLOR
+			ENDIF
+
+			IF OWN_COUNT || ARG:2
+				TOTAL_TYPES ++
+				SIF !STRLENS(HTML)
+					HTML += "　"
+				;custom code, formatting printing
+				LOCALS = %CAPITALIZE(UNDIES_NAME_WITH_BRAND(C_ID, P_TYPE))%
+				IF ARG:1 == 0
+					;custom code
+					;HTML += @"%HTML_PRINT_NAS(@"%LOCALS,PADDING,LEFT%{OWN_COUNT,3}")%　"
+					LOCALS '= @"%HTML_PRINT_NAS(@"%CAPITALIZE(UNDIES_NAME_WITH_BRAND(C_ID, P_TYPE))%")%%COND_STR(@" (%PANTY_REWORK_SOILSTR(C_ID,2,2,TABLE_NAME,P_ID)%)",STRLENS(PANTY_REWORK_SOILSTR(C_ID,,,TABLE_NAME,P_ID)))%"
+					SIF HTML_STRINGLEN(LOCALS) < PADDING
+					LOCALS '= LOCALS+HTML_SPACE(MAX(PADDING-HTML_STRINGLEN(LOCALS)+(PANTY_REWORK_IS_SOIL(C_ID,"liquid",3,TABLE_NAME,P_ID)),0))
+					LOCALS '= @"%LOCALS%{OWN_COUNT,3}"
+					HTML += @"<nonbutton title='%PANTY_REWORK_PANTY_DESC(TABLE_NAME, P_ID)%'>%LOCALS%</nonbutton>　"
+				ELSE
+					;the selection mode is unused right now (?)
+					;DEBUGPRINTFORML Soiling on {P_ID} (%CALLNAME:C_ID% - %UNDIES_NAME_WITH_BRAND(C_ID, P_TYPE)%): %PANTY_REWORK_SOILSTR(C_ID,,,TABLE_NAME,P_ID)%
+					LOCALS '= @"%HTML_PRINT_NAS(@"[%CAPITALIZE(UNDIES_NAME_WITH_BRAND(C_ID, P_TYPE))%")%%COND_STR(@" (%PANTY_REWORK_SOILSTR(C_ID,2,2,TABLE_NAME,P_ID)%)",STRLENS(PANTY_REWORK_SOILSTR(C_ID,,,TABLE_NAME,P_ID)))%"
+					SIF HTML_STRINGLEN(LOCALS) < PADDING
+					LOCALS '= LOCALS+HTML_SPACE(MAX(PADDING-HTML_STRINGLEN(LOCALS)-(3*(ARG:2 ? 1 # 0 ))+(PANTY_REWORK_IS_SOIL(C_ID,"liquid",3,TABLE_NAME,P_ID)),0))
+					LOCALS += HTML_PRINT_NAS("]")
+					IF ARG:2 == 1
+					LOCALS = %LOCALS%%金額表示(PANTY_REWORK_VALUE(TABLE_NAME,P_ID)),6,LEFT%
+					ELSEIF ARG:2 == 2
+						IF STRFIND(PANTY_REWORK_WASHING,TOSTR(P_ID)) > -1 && PANTY_REWORK_WASHING_ON
+						LOCALS = %LOCALS%{PANTY_REWORK_DRYING_COST(P_TYPE)-DT_CELL_GET(TABLE_NAME, P_ID, "washingTimer", 1),3}m
+						ELSE
+						LOCALS = %LOCALS%D {PANTY_REWORK_SOIL_SCORE(C_ID,TABLE_NAME,P_ID),2}
+						ENDIF
+					ELSE
+					LOCALS = %LOCALS%{OWN_COUNT,3}
+					ENDIF
+					;LOCALS = %LOCALS,30,LEFT%{OWN_COUNT,3}　
+					HTML += @"<button value='{P_ID}' title='%PANTY_REWORK_PANTY_DESC(TABLE_NAME, P_ID)%'>%LOCALS%</button>　"
+				ENDIF
+				N_LINE ++
+				IF N_LINE % ((MAXWIDTH()-2)/(PADDING+6)) == 0 && N_LINE
+					HTML_PRINT HTML
+					VARSET HTML
+					HTML += "　"
+					N_LINE = 0
+				ENDIF
+			ENDIF
+			;===========================
+			;reset own count
+			IF TOTAL_NUM > 1 && !ARG:2
+				P_ID = P_ID_LIST:(LOCAL+1)
+				P_TYPE 	= DT_CELL_GET(TABLE_NAME, P_ID, "panty",1)
+			ENDIF
+			OWN_COUNT = 1
+			;HTML =
+			IF LOCAL == TOTAL_NUM-1
+				IF !PRINT_DONE && TOTAL_NUM > 1 && !ARG:2
+					P_ID = P_ID_LIST:(TOTAL_NUM-1)
+					P_TYPE 	= DT_CELL_GET(TABLE_NAME, P_ID, "panty",1)
+					PRINT_DONE = 1
+					GOTO FORCE_PRINT_NO_MOVE
+				ENDIF
+				BREAK
+			ENDIF
+		ELSE
+			;dupe
+			OWN_COUNT ++
+		ENDIF
+	ELSE
+		OWN_COUNT = 1
+	ENDIF
+	SIF LOCAL == TOTAL_NUM-1
+		GOTO FORCE_PRINT
+NEXT
+SIF N_LINE
+	HTML_PRINT HTML
+
+CFLAG:C_ID:下半身下着確認 = LOWER_BODY_CONFIRM
+CFLAG:C_ID:パジャマ下半身下着確認 = PAJAMA_LOWER_BODY_CONFIRM
+
+RESETCOLOR
+RETURN TOTAL_NUM, TOTAL_TYPES
+
+@PANTY_REWORK_UNIQUE_PANTIES(ARG)
+#FUNCTION
+#DIM T_COUNT	;total
+#DIM U_COUNT	;unique
+#DIM TEMP_UNDIES
+VARSET RESULT
+VARSET U_COUNT
+VARSET TEMP_UNDIES
+
+T_COUNT = DT_SELECT("PantyCollection", @"chara = {ARG}", "panty ASC")
+FOR LOCAL, 1, + T_COUNT+1
+	SIF !RESULT:LOCAL
+		BREAK
+	IF DT_CELL_GET("PantyCollection", RESULT:LOCAL,  @"panty", 1) != TEMP_UNDIES
+		U_COUNT++
+		TEMP_UNDIES = DT_CELL_GET("PantyCollection", RESULT:LOCAL,  @"panty", 1)
+	ENDIF
+NEXT
+RETURNF U_COUNT
+
+@PANTY_REWORK_UNIQUE_TOTAL
+#FUNCTION
+#DIM DYNAMIC TOTAL_COUNT
+VARSET TOTAL_COUNT
+FOR LOCAL, 0, CHARANUM
+	TOTAL_COUNT += PANTY_REWORK_UNIQUE_PANTIES(LOCAL)
+NEXT
+
+RETURNF TOTAL_COUNT
+
+@PANTY_REWORK_PANTY_TRANSFER(ARG)
+;FOR LOCAL:1,1,VAR_TEMP_MAX
+FOR LOCAL:1,1,40
+	; ;global blacklist
+	; SIF GROUPMATCH(LOCAL:1, 90, 91, 92)
+	; 	CONTINUE
+	; ;individual blacklist
+	; SELECTCASE ARG
+	; CASE 27
+	; 	;Wriggle Nightbug
+	; 	SIF INRANGE(LOCAL:1, 1,15)
+	; 		CONTINUE
+	; 	SIF INRANGE(LOCAL:1, 101,106)
+	; 		CONTINUE
+	; CASE 60
+	; 	;Parsee
+	; 	SIF INRANGE(LOCAL:1, 1,33)
+	; 		CONTINUE
+	; 	SIF INRANGE(LOCAL:1, 101,107)
+	; 		CONTINUE
+	; CASE 70
+	; 	;Kosuzu
+	; 	SIF GROUPMATCH(LOCAL:1, 58, 54)
+	; 		CONTINUE
+	; CASE 151
+	; 	;Yuugen Magan
+	; 	SIF GROUPMATCH(LOCAL:1, 90)
+	; 		CONTINUE
+	; ENDSELECT
+
+	SIF !CFLAG:ARG:(LOCAL:1 + パンツ管理)
+		CONTINUE
+	SIF !STRLENS(PANTSNAME(LOCAL:1,ARG))
+		CONTINUE
+	LOCAL:3 = 0
+	FOR LOCAL:2, 0, MIN(100,CFLAG:ARG:(LOCAL:1 + パンツ管理))
+		LOCAL:3++
+		CALLF PANTY_REWORK_GO_COLLECTION(ARG, LOCAL:1, , , 0)
+	NEXT
+	SIF LOCAL:3
+	;#;PRINTFORML %CALLNAME:ARG%: %PANTSNAME(LOCAL:1,ARG)% x{LOCAL:3}
+	CFLAG:ARG:(LOCAL:1 + パンツ管理) = 0
+NEXT
+
+@PANTY_REWORK_IS_UNIQUE(ARGS = "PantyCollection",T_ID:0,T_ID:1)
+#FUNCTION
+#DIM DYNAMIC T_ID, 2
+
+;panty type
+SIF DT_CELL_GET(ARGS, T_ID:0,  @"panty", 1) != DT_CELL_GET(ARGS, T_ID:1,  @"panty", 1)
+	RETURNF 1
+
+;soiling
+SIF DT_CELL_GET(ARGS, T_ID:0,  @"liquidSoilBit", 1) != DT_CELL_GET(ARGS, T_ID:1,  @"liquidSoilBit", 1)
+	RETURNF 1
+SIF DT_CELL_GET(ARGS, T_ID:0,  @"solidSoilBit", 1) != DT_CELL_GET(ARGS, T_ID:1,  @"solidSoilBit", 1)
+	RETURNF 1
+SIF DT_CELL_GET(ARGS, T_ID:0,  @"corpseTaint", 1) != DT_CELL_GET(ARGS, T_ID:1,  @"corpseTaint", 1)
+	RETURNF 1
+
+RETURNF 0
+
+;take care of all the html garbage
+@HTML_PRINT_NAS(strToPrint, strToolTip, strFont, nBold, nRainbow,nButton=-5342543)
+#FUNCTIONS
+#DIMS strToPrint
+#DIMS strToolTip
+#DIMS strFont
+#DIM nBold
+#DIM nRainbow
+#DIM nButton
+;get current font color by default
+SIF !STRLENS(strFont)
+	strFont '= TOSTR(GETCOLOR(),"X6")
+
+LOCALS '= HTML_ESCAPE(strToPrint)
+
+SIF nBold
+	LOCALS = <b>%LOCALS%</b>
+
+IF nButton != -5342543
+	LOCALS '= @"<button value='{nButton}' title='%HTML_ESCAPE(strToolTip)%'>%LOCALS%</button>"
+ELSE
+	SIF STRLENS(strToolTip)
+	LOCALS '= @"<nonbutton title='%HTML_ESCAPE(strToolTip)%'>%LOCALS%</nonbutton>"
+ENDIF
+
+IF nRainbow
+RETURNF HTML_RAINBOW(LOCALS)
+ELSE
+RETURNF @"<font color='#%strFont%'>%LOCALS%</font>"
+ENDIF
+
+@PANTY_REWORK_SPEND_HAVE_COLLECTION(ARG)
+SIF !ARG
+	RETURN 0
+
+DT_ROW_REMOVE "PANTS_TEMP", ARG
+
+SIF !DT_ROW_LENGTH("PANTS_TEMP")
+	FLAG:パンツ輸送 = 0
+RETURN 1
+
+@PANTY_REWORK_DIRTY
+#FUNCTION
+#DIM DYNAMIC CUR_DIRTY = 0
+#DIM P_ID
+#DIM C_ID
+#DIM P_DIRTY
+
+SIF !nPantyDirtyFindOut
+	RETURNF 0
+
+FOR LOCAL, 0, DT_ROW_LENGTH("PantyCollection")
+	P_ID = DT_CELL_GET("PantyCollection", LOCAL, "id")
+	C_ID = DT_CELL_GET("PantyCollection", LOCAL, "chara")
+
+	P_DIRTY = PANTY_REWORK_SOIL_SCORE(C_ID,"PantyCollection",P_ID)
+	SIF GETBIT(NAS_PAIL,2) && P_DIRTY <= 3
+	P_DIRTY = 0
+	SIF GETBIT(NAS_PAIL,3)
+	P_DIRTY = MIN(P_DIRTY,5)
+
+	CUR_DIRTY += P_DIRTY
+NEXT
+RETURNF CUR_DIRTY
+
+@PANTY_REWORK_MAX_DIRTY
+#FUNCTION
+#DIM DYNAMIC MAX_DIRTY = 20 ; base max
+
+
+SIF ITEM:DiaperPail
+	MAX_DIRTY += (100*ITEM:DiaperPail)
+SIF GETBIT(NAS_PAIL,0)
+	MAX_DIRTY += (50*ITEM:DiaperPail)
+SIF GETBIT(NAS_PAIL,1)
+	MAX_DIRTY += (100*ITEM:DiaperPail)
+
+RETURNF MAX_DIRTY
+
+
+@PANTY_REWORK_COLLECTION_DIRTY_INFO
+#DIM COL_GET
+
+PRINTFORMS @" <Bin Dirtiness: "
+
+SELECTCASE NAS_PAIL_DIRTY:1-NAS_PAIL_DIRTY
+CASE IS <= -50
+	COL_GET = C_D_RED
+CASE IS <= -20
+	COL_GET = C_RED
+CASE IS <= -10
+	COL_GET = C_D_ORANGE
+CASE IS <= -5
+	COL_GET = C_ORANGE
+CASE IS <= 0
+	COL_GET = C_YELLOW
+CASE IS <= 5
+	COL_GET = C_GREEN
+CASEELSE
+	COL_GET = GETCOLOR()
+ENDSELECT
+SETCOLOR COL_GET
+PRINTFORMS @"%PALAM_NUM_NAS(NAS_PAIL_DIRTY)%"
+RESETCOLOR
+PRINTFORMS @"/%PALAM_NUM_NAS(NAS_PAIL_DIRTY:1)%"
+IF NAS_PAIL_DIRTY:1-NAS_PAIL_DIRTY < 0
+	SETCOLOR COL_GET
+	PRINTFORM ({PANTY_REWORK_FIND_OUT_CHANCE()}\%)
+ENDIF
+RESETCOLOR
+PRINTFORMS @">"
+
+@PANTY_REWORK_DIRTY_FIND_OUT(ARG)
+#DIM DIFFERENCE
+#DIM FIND_CHANCE
+#DIM COLLECTION_DIRTY, 2
+#DIM WEIGHTED_CHANCE
+VARSET COLLECTION_DIRTY
+WEIGHTED_CHANCE = PANTY_REWORK_FIND_OUT_CHANCE()
+
+;smell resistance
+SELECTCASE TALENT:ARG:61
+CASE -2
+	;2 times with clean freak
+	TIMES WEIGHTED_CHANCE, 2
+CASE -1
+	;sensitive
+	TIMES WEIGHTED_CHANCE, 1.5
+CASE 1
+	;resist
+	TIMES WEIGHTED_CHANCE, 0.5
+CASE 2
+	;never happens
+	TIMES WEIGHTED_CHANCE, 0
+ENDSELECT
+
+
+SIF RAND(100)+1 > WEIGHTED_CHANCE
+	RETURN 0
+
+FOR LOCAL, 0, DT_ROW_LENGTH("PantyCollection")
+	SIF DT_CELL_GET("PantyCollection", LOCAL,  @"isWashed") == 1
+		CONTINUE
+	FOR LOCAL:1,0,VARSIZE("DiapeLiquidSoil")
+		SIF GETBIT(DT_CELL_GET("PantyCollection", LOCAL,  @"liquidSoilBit"),LOCAL:1)
+			SETBIT COLLECTION_DIRTY,LOCAL:1
+	NEXT
+	FOR LOCAL:1,0,VARSIZE("DiapeSolidSoil")
+		SIF DT_CELL_GET("PantyCollection", LOCAL,  @"isWashed") == -1
+			CONTINUE
+		SIF GETBIT(DT_CELL_GET("PantyCollection", LOCAL,  @"solidSoilBit"),LOCAL:1)
+			SETBIT COLLECTION_DIRTY:1,LOCAL:1
+	NEXT
+NEXT
+
+PRINTFORML %CALLNAME:ARG% smells something off in your room and decides to investigate...
+PRINTFORMW ・
+PRINTFORMW ・・
+PRINTFORMW ・・・
+
+;entering room
+;poo
+IF GETBIT(COLLECTION_DIRTY:1,0) && nScat
+	IF ABL:ARG:PooAddict >= 5 || ABL:ARG:PooEatAddict >= 5
+		PRINTFORML %CALLNAME:ARG% finds that your room smells like %FSYN("poo:n")%, but doesn't mind.
+		PRINTFORMW With the smell of %FSYN("poo:n")% overwhelming the room, %CALLNAME:ARG% leaves.
+		RETURN
+	ELSE
+		PRINTFORML The revolting smell of %FSYN("poo:n")% sends %CALLNAME:ARG% out, convincing %HIM_HER(ARG)% that you aren't potty trained..
+		TRYCALL SET_REP(ARG,7,,1)
+		CALL GET_ANGRY(ARG)
+		RETURN
+	ENDIF
+ENDIF
+
+PRINTFORMW Continuing on %HIS_HER(ARG)% predicament, %HE_SHE(ARG)% heads to the bin in your room and decides to smell it.
+
+;pee
+IF GETBIT(COLLECTION_DIRTY,0) && nPee
+	IF ABL:ARG:PeeAddict >= 5 || ABL:ARG:PeeDrinkAddict >= 5
+		PRINTFORML %CALLNAME:ARG% finds that the bin smells like %FSYN("pee:n")%, but doesn't mind.
+		PRINTFORMW Having found enough, %CALLNAME:ARG% leaves.
+		RETURN
+	ELSE
+		PRINTFORML The musky smell of %FSYN("pee:n")% convinces %HIM_HER(ARG)% that you aren't potty trained.
+		PRINTFORMW Having found enough, %CALLNAME:ARG% leaves.
+		TRYCALL SET_REP(ARG,7,,1)
+		CALL GET_ANGRY(ARG)
+		RETURN
+	ENDIF
+ENDIF
+
+;other dirtiness
+PRINTFORML The smell is a bit off, but %HE_SHE(ARG)% can't seem to pin it down.
+PRINTFORMW Having found enough, %CALLNAME:ARG% leaves.
+RETURN
+
+@PANTY_REWORK_FIND_OUT_CHANCE
+#FUNCTION
+#DIM DIFFERENCE
+#DIM FIND_CHANCE
+
+DIFFERENCE = NAS_PAIL_DIRTY:1-NAS_PAIL_DIRTY
+SIF DIFFERENCE >= 0
+	RETURNF 0
+
+;chance
+FIND_CHANCE = (2*ABS(DIFFERENCE))
+RETURNF LIMIT(FIND_CHANCE,0,100)
+
+@BEDWETTER_FIND_OUT_CHANCE
+#FUNCTION
+#DIM WEIGHTED_CHANCE
+VARSET WEIGHTED_CHANCE
+SIF WetBed > 250
+	WEIGHTED_CHANCE += MAX((WetBed - 250)*3,0)
+SIF MessyBed >= 250
+	WEIGHTED_CHANCE += MAX((MessyBed - 250)*10,0)
+
+;chance
+RETURNF LIMIT(WEIGHTED_CHANCE/100,0,100)
+
+@BEDWETTER_FIND_OUT(ARG)
+#DIM WEIGHTED_CHANCE
+VARSET WEIGHTED_CHANCE
+WEIGHTED_CHANCE = BEDWETTER_FIND_OUT_CHANCE()
+
+;smell resistance
+SELECTCASE TALENT:ARG:61
+CASE -2
+	;2 times with clean freak
+	TIMES WEIGHTED_CHANCE, 2
+CASE -1
+	;sensitive
+	TIMES WEIGHTED_CHANCE, 1.5
+CASE 1
+	;resist
+	TIMES WEIGHTED_CHANCE, 0.5
+CASE 2
+	;never happens
+	TIMES WEIGHTED_CHANCE, 0
+ENDSELECT
+
+SIF RAND(10000)+1 > WEIGHTED_CHANCE
+	RETURN 0
+
+SIF GETBIT(ReputationKnow:ARG:0,6)
+	RETURN 0
+
+
+PRINTFORML %CALLNAME:ARG% smells something off in your room and decides to investigate...
+PRINTFORMW ・
+PRINTFORMW ・・
+PRINTFORMW ・・・
+
+PRINTFORML %CALLNAME:ARG% sees the sorry state of your bed and suspects you as a bedwetter...
+TRYCALL SET_REP(ARG,6,,1)
+CALL GET_ANGRY(ARG)
+
+@PANTY_REWORK_PRAYING(ARG,ARG:1,ARG:2)
+;ARG 対象
+;ARG:1 願い(1=反発解除 2=感度一時上昇 3=小槌 4=時間停止バレ解除[オミット]
+;			 5=天罰 6=子宝祈願 7=サドっ気減少 8=反発履歴削除)
+#DIM TOTAL
+#DIM nTypes
+#DIM DUPE
+#DIM OFFERED
+#DIM toOffer
+#DIM nCost
+#DIM PR_LINECOUNT
+#DIM P_ID
+#DIM P_ID_LIST, MAXPANTS
+VARSET LOCAL
+TOTAL = DT_SELECT("PantyCollection",@"chara = {ARG}")
+nTypes = PANTY_REWORK_UNIQUE_PANTIES(ARG)
+DUPE = TOTAL - nTypes
+OFFERED = 0
+toOffer = 0
+SELECTCASE ARG:1
+	CASE 1
+		nCost = 10
+	CASE 2
+		nCost = 3
+	CASE 3
+		nCost = CFLAG:MASTER:魔力回収 / 2 + 1
+	CASE 4,6,8
+		nCost = 1
+	CASE 5,7
+		nCost = 3
+	;addition custom code, from KR version
+	CASE 9,10,11,12,13,15
+		nCost = 5
+	CASE 14
+		nCost = 10
+	;NAS:
+	CASE 900, 31, 9010, 9011
+		nCost = 10
+ENDSELECT
+
+
+;NAS: Pantsuist and non-pantsuist
+IF GET_RELIGION_PRECEPT(MASTER, "Panty Stealing") > 0 || ARG:2
+IF nOmutsu
+	nCost *= 1500
+ELSE
+	nCost *= 500
+ENDIF
+
+PRINTFORML A voice echoes in your head...
+CALL COLORMESSAGE(@"((If thou wishes to be bequeathed such a boon, offer a sacrifice...))",C_YELLOW,2,1) ;custom code
+;CALL COLORMESSAGE(@"((Offer up {nCost} of %CALLNAME:ARG%'s panties...))",C_YELLOW,2,1) ;custom code
+CALL COLORMESSAGE(@"((Offer up %金額表示(nCost)% in %CALLNAME:ARG%'s panties...))",C_YELLOW,2,1) ;custom code
+PRINTFORM Current amount of %CALLNAME:ARG% panties: 
+IF !nTypes
+	PRINTW Not a single one
+	RETURN -1
+ENDIF
+PRINTFORML Total {TOTAL,3}     Uniques: {nTypes,3}     Duplicates: {DUPE}
+PR_LINECOUNT = LINECOUNT
+DO
+	VARSET OFFERED
+	CLEARLINE LINECOUNT - PR_LINECOUNT
+	;value
+	LOCAL = 0
+	DO
+		P_ID = TOINT(SPLIT_SINGLE(PANTY_REWORK_OFFERING, LOCAL, "/"))
+		;PRINTFORML %CALLNAME:ARG%'s %表示ラベル:nLoop%: %LOCALS% ({LOCAL})
+		SIF !P_ID
+			BREAK
+		OFFERED += PANTY_REWORK_VALUE("PantyCollection",P_ID)
+		LOCAL++
+	LOOP 1
+
+	PRINTFORML Offering %金額表示(OFFERED)% in panties.
+	IF OFFERED < nCost
+		PRINTFORML Still need {ABS(OFFERED-nCost)} more to appease %PantsuSama()%
+	ELSE
+		PRINTFORML Will gain %金額表示(OFFERED-nCost)% as compensation
+	ENDIF
+
+	DRAWLINE
+	CALL PANTY_REWORK_DISPLAY_COLLECTION(ARG,0,1,1)
+	DRAWLINE
+	SIF OFFERED-nCost >= 0
+	PRINTFORM [0] - Offer　　
+	PRINTFORM [7] - Offer Duplicates　　
+	PRINTFORM [8] - Clear All　　
+	PRINTFORM [9] - Cancel　　
+	PRINTL
+	INPUT
+	LOCAL = RESULT
+	SELECTCASE RESULT
+	CASE 0
+		IF OFFERED-nCost >= 0
+			;remove
+			LOCAL = 0
+			DO
+				P_ID = TOINT(SPLIT_SINGLE(PANTY_REWORK_OFFERING, LOCAL, "/"))
+				;PRINTFORML %CALLNAME:ARG%'s %表示ラベル:nLoop%: %LOCALS% ({LOCAL})
+				SIF !P_ID
+					BREAK
+				DT_ROW_REMOVE "PantyCollection", P_ID
+				LOCAL ++
+			LOOP 1
+			VARSET PANTY_REWORK_OFFERING
+			BREAK
+		ENDIF
+	CASE 7
+		VARSET PANTY_REWORK_OFFERING
+
+		DT_SELECT "PantyCollection", @"chara = {ARG}", "Panty ASC, liquidSoilBit ASC, solidSoilBit ASC, corpseTaint ASC", P_ID_LIST
+		LOCAL = 0
+		DO
+			LOCAL ++
+			P_ID = P_ID_LIST:LOCAL
+			;not most valuable
+			IF PANTY_REWORK_MOST_VALUABLE("PantyCollection",ARG,P_ID) <= 0
+				PANTY_REWORK_OFFERING += @"{P_ID}/"
+				;value
+				LOCAL:1 = 0
+				VARSET OFFERED
+				DO
+					P_ID = TOINT(SPLIT_SINGLE(PANTY_REWORK_OFFERING, LOCAL:1, "/"))
+					;PRINTFORML %CALLNAME:ARG%'s %表示ラベル:nLoop%: %LOCALS% ({LOCAL})
+					SIF !P_ID
+						BREAK
+					OFFERED += PANTY_REWORK_VALUE("PantyCollection",P_ID)
+					LOCAL:1++
+				LOOP 1
+				SIF STRCOUNT(PANTY_REWORK_OFFERING,"/") >= 29
+					BREAK
+			ENDIF
+		LOOP OFFERED < nCost
+	CASE 8
+		VARSET PANTY_REWORK_OFFERING
+	CASE 9
+		RETURN -1
+	CASEELSE
+
+		IF DT_CELL_GET("PantyCollection", LOCAL, "id", 1)
+			IF STRFIND(PANTY_REWORK_OFFERING,TOSTR(LOCAL)) > -1
+				PANTY_REWORK_OFFERING '= REPLACE(PANTY_REWORK_OFFERING, @"{LOCAL}/", "")
+			ELSE
+				IF STRCOUNT(PANTY_REWORK_OFFERING,"/") >= 29
+					PRINTFORMW Maximum amount of panties ({29}) selected.
+					CONTINUE
+				ENDIF
+				PANTY_REWORK_OFFERING += @"{LOCAL}/"
+			ENDIF
+		ENDIF
+	ENDSELECT
+LOOP 1
+ELSE
+	TOTAL = 0
+	PRINTFORML A voice echoes in your head...
+	CALL COLORMESSAGE(@"((If thou wishes to be bequeathed such a boon, offer a sacrifice...))",C_YELLOW,2,1) ;custom code
+	CALL COLORMESSAGE(@"((Offer up \\{nCost*2000}...))",C_YELLOW,2,1) ;custom code
+	LOCALS '= @"Pay \\%DIGIT_GROUP(nCost*2000)%"
+	SIF MONEY >= nCost*2000
+		TOTAL = nCost
+	$LOOP
+	CALL ASK_M("Cancel",1,@"%LOCALS%",TOTAL >= nCost)
+	IF RESULT == 1
+		CALL LOST_MONEY_YEN(nCost*2000, 1)
+	ELSE
+		RETURN -1
+	ENDIF
+
+ENDIF
+
+;addition custom code
+CALL Add_GodPrayerEffect(ARG, ARG:1)
+PRINTFORML You pray next to your collection and %金額表示(nCost)% worth of them burst into flames!
+FLAG:篤信 += nCost
+SIF OFFERED-nCost > 0
+	CALL GET_MONEY_YEN(OFFERED-nCost,1)
+CALL GET_MONEY_YEN(,2)
+IF ARG:1 == 7
+	CALL COLORMESSAGE(@"%CALLNAME:ARG%'s Sadism has decreased.",C_YELLOW,2,1)
+	CALL COLORMESSAGE(@"%CALLNAME:ARG%'s Sadism Exp has been lowered.",C_YELLOW,2,1)
+	CALL COLORMESSAGE(@"%CALLNAME:ARG%'s Dominance Gems is set to 0.",C_YELLOW,2,1)
+ENDIF
+IF ARG:1 == 6
+	CALL COLORMESSAGE(@"((Thy affection and dedication art not forgotten.))",C_YELLOW,1,1) ;custom code
+	CALL COLORMESSAGE(@"((Touch %HIM_HER(ARG)% and thy wish shall be granted...))",C_YELLOW,2,1) ;custom code
+ELSEIF ARG:1 == 2 && !GANKAKE_1(ARG)
+	PRINTW
+	PRINTW ...
+	PRINTW ......
+	PRINTW .........
+	PRINTW ............
+	PRINTFORML It seems %PantsuSama()% can't make %CALLNAME:ARG%'s body any more lewd...
+	RETURN -1
+ELSE
+	CALL COLORMESSAGE(@"((Thy wish is granted...))",C_YELLOW,2,1) ;custom code
+ENDIF
+CALL NAS_PrayerEnd(MASTER,nCost/4)
+RETURN 0
+
+@NAS_GodPrayerEffect(ARG, ARG:1)
+SELECTCASE ARG:1
+	;NAS:
+	CASE 15
+		TALENT:ARG:USens++
+	CASE 900
+		TALENT:ARG:96 = LIMIT(TALENT:ARG:97-1,-4,3)
+		TALENT:ARG:97 = LIMIT(TALENT:ARG:97-1,-4,3)
+		CALLF AddBionic(ARG,74,106-(TALENT:ARG:BladderSize),0)
+		CALLF AddBionic(ARG,67,115-(TALENT:ARG:BowelSize),0)
+	CASE 32
+		;regression
+		MARK:ARG:RegressionMark --
+		SETCOLOR 247,171,166
+		PRINTFORML A sense of maturity flows through %CALLNAME:TARGET%...
+		PRINTFORMW %CALLNAME:TARGET% went down to Regression Mark LV{MARK:ARG:RegressionMark}!
+		RESETCOLOR
+		TFLAG:193 = 30
+	CASE 9010
+		;continence 
+		SIF INRANGE(PeeHold:TARGET:0,-4,5)
+		PeeHold:TARGET:0 ++
+		SIF INRANGE(PooHold:TARGET:0,-4,5)
+		PooHold:TARGET:0 ++
+		PRINTFORMW %CALLNAME:TARGET%'s got better at potty training!
+		GOTO ContChangeAfter
+	CASE 9011
+		;incontinence
+		SIF INRANGE(PeeHold:TARGET:0,-4,5)
+		PeeHold:TARGET:0 --
+		SIF INRANGE(PooHold:TARGET:0,-4,5)
+		PooHold:TARGET:0 --
+		PRINTFORMW %CALLNAME:TARGET%'s lost a bit of control!
+		$ContChangeAfter
+		PeeHoldExp:TARGET:0 = EXP_DEMAND_20(0,91,TARGET)
+		PooHoldExp:TARGET:0 = EXP_DEMAND_21(0,92,TARGET)
+		CALLF SILENT_ENDURANCECHANGE(TARGET)
+		CALLF ResetBladders(TARGET)	
+		PRINTFORM %CALLNAME:TARGET%'s potty training abilities are now at level 
+		SETCOLOR C_YELLOW
+		PRINTFORM {PeeHold:TARGET:0}【%GET_TALENTNAME_TR(1514, TALENT:TARGET:57)%】
+		IF nScat
+		RESETCOLOR
+		PRINTFORM /
+		SETCOLOR 0x6b4737
+		PRINTFORML {PooHold:TARGET:0}【%GET_TALENTNAME_TR(1500, TALENT:TARGET:58)%】
+		ENDIF
+		RESETCOLOR
+		WAIT
+	;=======================
+	;Ported from Vanilla:
+	CASE 1
+		MARK:ARG:反発刻印 --
+		CALL ASK_M("Remove Old Hate Mark as well",1,"Leave history alone",1)
+		SIF !RESULT
+			MARK:ARG:反発取得履歴 = MAX(MARK:ARG:反発取得履歴 - 1, 0)
+		TFLAG:193 = 30
+	CASE 2
+		FLAG:願掛け内容 = 999
+	CASE 3
+		CFLAG:MASTER:魔力回収 = 1
+		SIF (CFLAG:MASTER:小槌 == 4 || CFLAG:MASTER:小槌 == 5) && TALENT:MASTER:形状 == 2
+			TALENT:MASTER:形状 = CFLAG:MASTER:382
+	CASE 4
+		CFLAG:ARG:時間停止バレ = 0
+	CASE 5
+		FLAG:願掛け内容 = 204
+		TFLAG:193 = 200
+		FLAG:開運大紋購入回数 = 1
+		BASE:53:体力 = 1
+		BASE:53:気力 = 0
+	CASE 6
+		FLAG:願掛け内容 = 206
+		IF FLAG:子宝祈願 == TARGET
+			CFLAG:子宝補正 ++
+		ELSE
+			FOR LOCAL,1,CHARANUM
+				CFLAG:LOCAL:子宝補正 = 0
+			NEXT
+			CFLAG:子宝補正 ++
+		ENDIF
+		SIF TALENT:妊娠願望
+			CFLAG:子宝補正 ++
+		SIF TALENT:恋人
+			CFLAG:子宝補正 ++
+		FLAG:子宝祈願 = TARGET
+	CASE 7
+		ABL:ARG:サドっ気 -= 1
+		JUEL:ARG:優越 = 0
+		EXP:ARG:嗜虐快楽経験 = MAX(EXP:ARG:嗜虐快楽経験 - 200, 0)
+	CASE 8
+		MARK:ARG:反発取得履歴 = 0
+		TFLAG:193 = 35
+	;=============
+ENDSELECT
+
+@PANTY_REWORK_MOST_VALUABLE(ARGS,C_ID,P_COMP)
+#FUNCTION
+#DIM C_ID
+#DIM P_COMP
+#DIM P_ID
+#DIM PANTY
+#DIM TABLE_SIZE
+#DIM TEMP_TABLE, 1000
+VARSET TEMP_TABLE
+PANTY = DT_CELL_GET(ARGS, P_COMP, "panty", 1)
+
+
+;dupe checking
+DT_SELECT ARGS, @"chara = {C_ID} and panty = {PANTY} and liquidSoilBit = {DT_CELL_GET(ARGS, P_COMP, "liquidSoilBit", 1)} and solidSoilBit = {DT_CELL_GET(ARGS, P_COMP, "solidSoilBit", 1)}", "", TEMP_TABLE
+IF P_COMP != TEMP_TABLE:0
+	DEBUGPRINTFORML {P_COMP} (%CALLNAME:C_ID% - %PANTSNAME(PANTY,C_ID)%) is a duplicate of {TEMP_TABLE:1}
+	RETURNF -1
+ENDIF
+
+TABLE_SIZE = DT_SELECT(ARGS, @"chara = {C_ID} and panty = {PANTY}", "", TEMP_TABLE)
+FOR LOCAL, 0, TABLE_SIZE+1
+	P_ID = TEMP_TABLE:LOCAL
+	SIF P_ID == P_COMP 	;same panty
+		CONTINUE
+	SIF !P_ID
+		BREAK
+	IF PANTY_REWORK_VALUE(ARGS,P_COMP) < PANTY_REWORK_VALUE(ARGS,P_ID) 
+		DEBUGPRINTFORML {P_COMP} (¥{PANTY_REWORK_VALUE(ARGS,P_COMP)}) has less value than {P_ID} (¥{PANTY_REWORK_VALUE(ARGS,P_ID)})
+		RETURNF 0
+	ENDIF
+NEXT
+RETURNF 1
+
+@PANTY_REWORK_CHECK_COLLECTION(C_ID,ARG:1=0)
+#DIM C_ID
+#DIM PANTY
+VARSET RESULT
+
+;we have to check if the panty can be worn
+FOR PANTY,0,MAXPANTS
+	IF GET_INT(C_ID, "下半身下着_ずらし可能", PANTY, "コレクション表示可能")
+		RESULT:2 ++
+	ENDIF
+NEXT
+
+;NAS: Replaced
+SELECTCASE ARG:1
+CASE 0
+LOCALS = PantyCollection
+CASE 1
+LOCALS = PANTS_TEMP
+ENDSELECT
+RETURN DT_SELECT(LOCALS, @"chara = {C_ID}"), PANTY_REWORK_UNIQUE_PANTIES(C_ID), RESULT:2 + PANTY_REWORK_UNIQUE_PANTIES(C_ID)
+;======================================
+
+@PANTY_REWORK_SPEND_COLLECTION
+#DIM C_ID
+#DIM PANTY
+#DIM P_INDEX
+#DIM P_ID_LIST, MAXPANTS
+#DIM P_ID
+#DIM TOTAL_NUM
+#DIM DYNAMIC nSold
+#DIM DYNAMIC nTotalValue
+
+VARSET RESULT
+
+FOR C_ID,0,CHARANUM
+	TOTAL_NUM = DT_SELECT("PantyCollection", @"chara = {C_ID}", "Panty ASC, liquidSoilBit ASC, solidSoilBit ASC, corpseTaint ASC",P_ID_LIST)
+	FOR P_INDEX,0,TOTAL_NUM
+		P_ID = P_ID_LIST:P_INDEX
+		PANTY = DT_CELL_GET("PantyCollection", P_ID, "panty", 1)
+		IF PANTY_REWORK_MOST_VALUABLE("PantyCollection",C_ID,P_ID) < 1
+			;sell
+			nSold++
+			nTotalValue += PANTY_REWORK_VALUE("PantyCollection",P_ID)
+			DT_ROW_REMOVE "PantyCollection", P_ID
+		ENDIF
+	NEXT
+NEXT
+RETURN nSold,nTotalValue
+
+@EVENTLOAD
+#LATER
+NAS_PAIL_DIRTY:0 = PANTY_REWORK_DIRTY()
+NAS_PAIL_DIRTY:1 = PANTY_REWORK_MAX_DIRTY()
+FLAG:700 = PANTY_REWORK_UNIQUE_TOTAL()
+
+@PANTY_REWORK_PANTY_DESC(TABLE_NAME = "", P_ID = 0)
+#FUNCTIONS
+#DIMS DYNAMIC TABLE_NAME
+#DIM DYNAMIC P_ID
+#DIM DYNAMIC P_TYPE
+#DIM DYNAMIC C_ID
+#DIMS DYNAMIC HTML
+VARSET HTML
+
+C_ID 	= DT_CELL_GET(TABLE_NAME, P_ID, "chara",1)	;chara ID
+P_TYPE 	= DT_CELL_GET(TABLE_NAME, P_ID, "panty",1)	;panty ID
+
+HTML '= @"¥%DIGIT_GROUP(PANTY_REWORK_VALUE(TABLE_NAME,P_ID))%, "
+HTML += @"Dirtiness: {PANTY_REWORK_SOIL_SCORE(C_ID,TABLE_NAME,P_ID),2} (%PANTY_REWORK_SOILSTR(C_ID,,,TABLE_NAME,P_ID, 1)%)"
+SELECTCASE DT_CELL_GET(TABLE_NAME, P_ID,  @"isWashed", 1)
+CASE -1
+	HTML += " (Solids Scraped Off)"
+CASE 1
+	HTML += " (Washed)"
+ENDSELECT
+
+HTML += @"%COND_STR(" (Most Valuable)", PANTY_REWORK_MOST_VALUABLE(TABLE_NAME,C_ID,P_ID) > 0)%"
+
+RETURNF HTML
+
+@PANTY_REWORK_DRYING_COST(PANTY)
+#FUNCTION
+#DIM PANTY
+#DIMS P_NAME
+P_NAME '= TOLOWER(PANTSNAME(PANTY))
+
+SIF STRFIND(P_NAME, "barrier panties") > -1
+	RETURNF 0
+
+SIF STRFIND(P_NAME, "cloth diaper") > -1
+	RETURNF 300
+
+SIF STRFIND(P_NAME, "padded fundoshi") > -1
+	RETURNF 300
+
+SIF STRFIND(P_NAME, "briefs") > -1
+	RETURNF 180
+
+SIF STRFIND(P_NAME, "drawers") > -1
+	RETURNF 180
+
+SIF STRFIND(P_NAME, "panties") > -1
+	RETURNF 150
+
+SIF STRFIND(P_NAME, "thong") > -1 || STRFIND(P_NAME, "bikini bottom") > -1 || STRFIND(P_NAME, "g-string") > -1
+	RETURNF 60
+
+SIF STRFIND(P_NAME, "bandaid") > -1
+	RETURNF 12
+
+RETURNF 120
+
+@PANTY_REWORK_DISPLAY_COLLECTION_B(C_ID,ARG:0=0,ARG:1=0)
+#DIM C_ID
+#DIM PRDCB_TYPE
+#DIM PRDCB_COUNT
+#DIM PRDCB_INLINE
+#DIM PRDCB_TOTAL
+#DIM PRDCB_CONFIRM
+#DIM PRDCB_CONFIRM_PAJAMA
+#DIM PRDCB_TYPE_HAS
+#DIM PRDCB_POSSIBLE
+#DIM PRDCB_CONDITION_CAN
+#DIMS PRDCB_CONDITION
+#DIMS PRDCB_HTML
+
+#DIM CONST PADDING = 38 ;custom code
+
+VARSET RESULT
+VARSET PRDCB_HTML
+PRDCB_TOTAL = 0
+PRDCB_CONFIRM = CFLAG:C_ID:下半身下着確認
+PRDCB_CONFIRM_PAJAMA = CFLAG:C_ID:パジャマ下半身下着確認
+PRDCB_TYPE_HAS = 0
+PRDCB_INLINE = 0
+PRDCB_POSSIBLE = 0
+
+;以後、女性とふた
+FOR PRDCB_TYPE,0,MAXPANTS
+	PRDCB_COUNT = PANTY_REWORK_IN_COLLECTION(C_ID,PRDCB_TYPE,"PantyCollection")
+	IF PRDCB_COUNT
+		PRDCB_TOTAL += PRDCB_COUNT
+		PRDCB_TYPE_HAS ++
+		PRDCB_POSSIBLE ++
+		;PRDCB_INLINE ++
+		SIF PRDCB_TYPE == 18
+			SETCOLOR C_H_PINK
+	ELSE
+		SIF !GET_INT(C_ID, "下半身下着_ずらし可能", PRDCB_TYPE, "コレクション表示可能")
+			CONTINUE
+		;Tags check
+		SIF UnderwearTagScore(C_ID,PRDCB_TYPE) <= -100
+			CONTINUE
+		PRDCB_POSSIBLE ++
+		;PRDCB_INLINE ++
+		;SETCOLOR C_GRAY
+	ENDIF
+	SIF !STRLENS(PRDCB_HTML)
+		PRDCB_HTML '= "　"
+	;custom code, formatting printing
+	LOCALS = %PANTY_REWORK_COLLECTION_B_PANTS_STR(C_ID, PRDCB_TYPE, PRDCB_COUNT)%
+	IF HTML_STRINGLEN(LOCALS) > PADDING
+		;using the second-last entry, make a new line
+		IF PRDCB_INLINE % ((MAXWIDTH()/PADDING)-1) == 0 && PRDCB_INLINE % (MAXWIDTH()/PADDING) != 0
+			PRDCB_INLINE = -1
+			HTML_PRINT PRDCB_HTML
+			VARSET PRDCB_HTML
+		ENDIF
+		PRDCB_INLINE ++
+	ENDIF
+
+	$PRDCB_INPUT
+	PRDCB_HTML += LOCALS
+	PRDCB_INLINE ++
+	
+	IF PRDCB_INLINE % (MAXWIDTH()/PADDING) == 0 && PRDCB_INLINE
+		PRDCB_INLINE = 0
+		HTML_PRINT PRDCB_HTML
+		VARSET PRDCB_HTML
+	ENDIF
+NEXT
+SIF PRDCB_INLINE
+	PRINTL
+
+CFLAG:C_ID:下半身下着確認 = PRDCB_CONFIRM
+CFLAG:C_ID:パジャマ下半身下着確認 = PRDCB_CONFIRM_PAJAMA
+
+RETURN PRDCB_TOTAL, PRDCB_TYPE_HAS,PRDCB_POSSIBLE
+
+;ENIfied variables and using brand names, plus descriptions and HTML
+@PANTY_REWORK_COLLECTION_B_PANTS_STR(C_ID, CBPSTR_PANTY, CBPSTR_COUNT)
+#FUNCTIONS
+#DIM  C_ID
+#DIM  CBPSTR_PANTY
+#DIM  CBPSTR_COUNT
+#DIMS CBPSTR_COND
+#DIMS CBPSTR_STR
+#DIM CBPSTR_COLOR
+#DIMS CBPSTR_DESC
+
+#DIM DYNAMIC PADDING = 32 ;custom code
+#DIMS CBPSTR_NAME ;NAS customs, for constant panty names
+
+;name
+CBPSTR_NAME '= CAPITALIZE(UNDIES_NAME_WITH_BRAND(C_ID,CBPSTR_PANTY,-1))
+;conditions
+CBPSTR_COND '= CLOTHES_REQUIREMENT_TR(GET_STR(C_ID, "下半身下着_ずらし可能", CBPSTR_PANTY, "コレクション解禁CBPSTR_COND"), C_ID)
+;descriptions
+CBPSTR_DESC '= CAPITALIZE(UNDIES_NAME_WITH_BRAND(C_ID,CBPSTR_PANTY,1))
+CALLF DiapeStats(C_ID,CBPSTR_PANTY,1,1)
+CBPSTR_DESC += @"\nType: %RESULTS%\n"
+CBPSTR_DESC += @"Absorbency Level: \@ STRLENS(RESULTS:2) ? %RESULTS:2% # Average \@\n"
+SIF STRLENS(CBPSTR_COND)
+	CBPSTR_DESC += @"Requirements: %CBPSTR_COND%\n"
+
+SIF SUBSTRING(CBPSTR_NAME,0,1) != "『"
+	CBPSTR_NAME '= @" %CBPSTR_NAME%"	
+
+IF CBPSTR_COUNT	
+	CBPSTR_COLOR = C_WHITE
+	SIF STRLENS(LOCALS) > PADDING
+		PADDING = PADDING * 2 + 5
+		CBPSTR_STR '= @"%CBPSTR_NAME,PADDING,LEFT%{LIMIT(CBPSTR_COUNT, 0, 999),3}" + "　" * 1
+ELSE
+	CBPSTR_COLOR = C_GRAY
+	;NAS: Added character argument
+	SIF SUBSTRING(CBPSTR_COND,0,1) != "『" && STRLENS(CBPSTR_COND)
+		CBPSTR_COND '= @" %CBPSTR_COND%"	
+	IF CBPSTR_PANTY == 18
+		CBPSTR_COND '= "？？？？？"
+		;付与文字列は「XXX枚　」で全角3+半角1
+		CBPSTR_STR '= @"%CBPSTR_COND,PADDING,LEFT%" + " " + "　" * 2
+	ELSEIF STRLENS(CBPSTR_COND)
+		CBPSTR_STR '= @"%CBPSTR_COND,PADDING,LEFT%" + " " + "　" * 2
+	ELSE
+		CBPSTR_STR '= @"%CBPSTR_NAME,PADDING,LEFT%" + " " + "　" * 2
+	ENDIF
+ENDIF
+RETURNF HTML_PRINT_NAS(CBPSTR_STR,CBPSTR_DESC,TOSTR(CBPSTR_COLOR,"X6"))

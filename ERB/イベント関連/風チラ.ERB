@@ -1,0 +1,567 @@
+@WINDY_PANCHIRA
+
+;デフォルトの確率は25%
+LOCAL = 25
+
+;時止め中だと発生しない
+SIF FLAG:70
+	RETURN 0
+
+;あなた一人だけだと発生しない
+SIF TARGET <= 0
+	RETURN 0
+
+;対象が睡眠中だと発生しない
+SIF CFLAG:睡眠
+	RETURN 0
+
+;屋外（屋根の有無は問わない）でないと発生しない
+SIF !OUTROOF(CFLAG:MASTER:現在位置) && INROOM(CFLAG:MASTER:現在位置)
+	RETURN 0
+
+;地底以外だと晴れか曇りでないと発生しない
+SIF GET_MAPID(CFLAG:MASTER:現在位置) != 9 && !(TIME:5 >= 0 && TIME:5 <= 3) 
+	RETURN 0
+
+;地底以外で台風、および吹雪だと発生しない
+SIF GET_MAPID(CFLAG:MASTER:現在位置) != 9 && GROUPMATCH(FLAG:異常気象, 9, 10)
+	RETURN 0
+
+;会話、仕事を手伝う、自由行動に付き合う、休憩、掃除、戦闘訓練、待つのいずれかでないと発生しない
+SIF !(SELECTCOM == 300 || SELECTCOM == 304 || SELECTCOM == 368 || SELECTCOM == 403 || SELECTCOM == 410 || SELECTCOM == 411 || SELECTCOM == 440)
+	RETURN 0
+
+;一部の自由行動では発生しない
+IF SELECTCOM == 368
+	SELECTCASE Activity_Type:TARGET
+	CASE 2,3,7,11,13,15,16,18
+		RETURN 0
+	ENDSELECT
+ENDIF
+
+;一度発生したら5ターンのクールタイムあり
+SIF FLAG:風チラCT > 0
+	RETURN 0
+
+;暴風以上だとパンツどころではないので発生しない
+SIF WIND_VELOCITY >= 2
+	RETURN 0
+
+;妖怪の山（山頂）だと発生確率上昇
+SIF GET_MAPID(CFLAG:MASTER:現在位置) == 8
+	LOCAL += 10
+
+;地底以外で強風だと発生確率上昇
+SIF WIND_VELOCITY == 1 && GET_MAPID(CFLAG:MASTER:現在位置) != 9
+	LOCAL += 10
+
+$LOOP
+IF RAND:2 == 0
+	SIF EQUIP:TARGET:ズボン
+		RETURN 0
+	SIF !(EQUIP:TARGET:スカート || EQUIP:TARGET:ワンピース || EQUIP:TARGET:着物) || EQUIP:TARGET:0 == 0
+		RETURN 0
+	;着物だと発生確率低下
+	SIF !(EQUIP:TARGET:スカート || EQUIP:TARGET:ワンピース) && EQUIP:TARGET:着物
+		LOCAL -= 10
+	;デート中だと発生確率低下
+	SIF CHK_DATENOW(CFLAG:TARGET:デート中)
+		LOCAL -= 10
+	IF RAND:100 < LOCAL + CFLAG:TARGET:めくれ補正
+		CALL PANCHIRA
+	ELSE
+		RETURN 0		
+	ENDIF
+ELSE
+	SIF EQUIP:MASTER:ズボン
+		RETURN 0
+	SIF !(EQUIP:MASTER:スカート || EQUIP:MASTER:ワンピース || EQUIP:MASTER:着物) || EQUIP:MASTER:0 == 0
+		RETURN 0
+	SIF !(EQUIP:MASTER:スカート || EQUIP:MASTER:ワンピース) && EQUIP:MASTER:着物
+		LOCAL -= 10
+	SIF CHK_DATENOW(CFLAG:TARGET:デート中)
+		LOCAL -= 10
+	IF RAND:100 < LOCAL
+		CALL REV_PANCHIRA
+	ELSE
+		RETURN 0		
+	ENDIF
+ENDIF
+RETURN 1
+
+@PANCHIRA
+DRAWLINE
+;custom code, sentence structure is completely different in the translation because lmao DIFFERENT LANGUAGES GUYS????
+IF GET_MAPID(CFLAG:MASTER:現在位置) != 9 && WIND_VELOCITY == 1 ;not in underworld
+	PRINTFORM A strong wind that has been quite active in the area suddenly picks up, 
+	IF EQUIP:TARGET:スカート
+		PRINTFORM blowing %CALLNAME:TARGET%'s %SHOW_BOTTOM(TARGET,1)% wide open
+	ELSEIF EQUIP:TARGET:着物 || EQUIP:TARGET:ワンピース
+		PRINTFORM blowing the %SPLIT_G("bottom:hem")% of %CALLNAME:TARGET%'s %SHOW_TOP(TARGET, EQUIP:TARGET:着物 ? 1 # 2)% wide open
+	ELSE ;shouldn't happen, but just in case to report an error
+		PRINTFORM ERROR!
+	ENDIF
+	PRINTFORM  just as %HE_SHE(TARGET)% lets %HIS_HER(TARGET)% guard down for a second!
+ELSE
+	PRINTFORM A sudden gust of wind catches %CALLNAME:TARGET% off guard and 
+	IF EQUIP:TARGET:スカート
+		PRINTFORM %SPLIT_G("lifts:pulls:knocks")% up %HIS_HER(TARGET)% %SHOW_BOTTOM(TARGET,1)%!
+	ELSEIF EQUIP:TARGET:着物 || EQUIP:TARGET:ワンピース
+		PRINTFORM %SPLIT_G("lifts:pulls:knocks")% up the %SPLIT_G("bottom:hem")% of %HIS_HER(TARGET)% %SHOW_TOP(TARGET, EQUIP:TARGET:着物 ? 1 # 2)%!
+	ELSE ;shouldn't happen, but just in case to report an error
+		PRINTFORM ERROR!
+	ENDIF
+ENDIF
+;end of first sentence
+PRINTFORM <br>
+ 
+PRINTFORM In that instant, you end up getting a clear view of %HIS_HER(TARGET)% 
+
+IF !EQUIP:TARGET:下半身下着２
+	PRINTFORM bare nether regions 
+ELSE
+	PRINTFORM %PANTS_DESCRIPTION_TR(TARGET)% 
+ENDIF
+
+PRINTFORM previously %SPLIT_G("hidden under:hidden behind:covered by")% %HIS_HER(TARGET)% 
+
+IF EQUIP:TARGET:スカート
+	PRINTFORM %SHOW_BOTTOM(TARGET,1)%
+ELSEIF EQUIP:TARGET:着物
+	PRINTFORM %SHOW_TOP(TARGET,1)%
+ELSEIF EQUIP:TARGET:ワンピース
+	PRINTFORM %SHOW_TOP(TARGET,2)%
+ELSE
+	PRINTFORM ERROR!
+ENDIF
+
+LOCALS = %" "%while you were 
+
+SELECTCASE SELECTCOM
+
+CASE 300 ;conversation
+	PRINTFORM %LOCALS% having a conversation
+CASE 304 ;help with work
+	IF CFLAG:TARGET:350 == 46 ;play
+		PRINTFORM %LOCALS% playing games with %HIM_HER(TARGET)%
+	ELSE
+		PRINTFORM %LOCALS% helping %HIM_HER(TARGET)% with %HIS_HER(TARGET)% work
+	ENDIF
+CASE 368 ;join in (idle activity)
+	SELECTCASE Activity_Type:TARGET
+	CASE 0 ;navelgazing
+		PRINTFORM %LOCALS% inquiring into %HIS_HER(TARGET)% thought process
+	CASE 1 ;playing
+		PRINTFORM %LOCALS% playing games with %HIM_HER(TARGET)%
+	CASE 4 ;cleaning
+		PRINTFORM %LOCALS% helping %HIM_HER(TARGET)% clean
+	CASE 5 ;exercising
+		PRINTFORM %LOCALS% joining in on %HIS_HER(TARGET)% workout
+	CASE 6 ;reading
+		PRINTFORM %LOCALS% asking about the book %HE_SHE(TARGET)% was reading
+	CASE 8 ;jamming (music)
+		IF TFLAG:193 == -2 ;when you just listen
+			SELECTCASE TALENT:TARGET:音楽知識
+			CASE 1
+				PRINTFORM %LOCALS% listening to %HIS_HER(TARGET)% musical performance
+			CASE 2
+				PRINTFORM %LOCALS% listening to %HIS_HER(TARGET)% song
+			CASE 3
+				PRINTFORM %LOCALS% admiring %HIS_HER(TARGET)% dance
+			ENDSELECT
+		ELSE
+			SELECTCASE TALENT:TARGET:音楽知識
+			CASE 1
+				PRINTFORM %LOCALS% jamming together with %HIM_HER(TARGET)%
+			CASE 2
+				PRINTFORM %LOCALS% accompanying %HIS_HER(TARGET)% song
+			CASE 3
+				PRINTFORM %LOCALS% accompanying %HIS_HER(TARGET)% dance
+			ENDSELECT
+		ENDIF
+	CASE 9 ;foraging
+		PRINTFORM %LOCALS% helping %HIM_HER(TARGET)% forage
+	CASE 10 ;fishing
+		IF TFLAG:193 < 0 ;just look
+			PRINTFORM %LOCALS% watching %HIM_HER(TARGET)% fish
+		ELSE
+			PRINTFORM %LOCALS% fishing next to %HIM_HER(TARGET)%
+		ENDIF
+	CASE 12 ;relaxing
+		PRINTFORM %LOCALS% relaxing with %HIM_HER(TARGET)%
+	CASE 14 ;shopping
+		PRINTFORM %LOCALS% helping %HIM_HER(TARGET)% shop
+	CASE 17 ;snowman
+		PRINTFORM %LOCALS% helping %HIM_HER(TARGET)% build a snowman
+	ENDSELECT
+CASE 403 ;Rest
+	PRINTFORM %LOCALS% taking a breather with %HIM_HER(TARGET)%
+CASE 410 ;Cleaning
+	IF TFLAG:193 ;when helping you
+		PRINTFORM %LOCALS% cleaning with %HIM_HER(TARGET)%
+	ELSE
+		PRINTFORM %LOCALS% cleaning up in front of %HIM_HER(TARGET)%
+	ENDIF
+CASE 411 ;Combat Training
+	PRINTFORM %LOCALS% training with %HIM_HER(TARGET)%
+CASE 440 ;Wait
+	IF CHK_DATENOW(CFLAG:TARGET:デート中)
+		PRINTFORM %LOCALS% sharing a moment together on a date
+	ELSE
+		PRINTFORM %LOCALS% in the vicinity at the time
+	ENDIF
+
+ENDSELECT
+
+PRINTFORM .
+
+CALL PRINT_BREAK,,"wait:dc"
+
+CALL KOJO_MESSAGE_SEND("PANCHIRA",0,TARGET)
+CALL PANCHIRA_SOURCE
+
+RETURN 1
+
+;player gets rolled
+@REV_PANCHIRA
+DRAWLINE
+IF GET_MAPID(CFLAG:MASTER:現在位置) != 9 && WIND_VELOCITY == 1
+	PRINTFORM A strong wind that has been quite active in the area suddenly picks up, 
+	IF EQUIP:MASTER:スカート
+		PRINTFORM blowing your %SHOW_BOTTOM(MASTER,1)% wide open
+	ELSEIF EQUIP:MASTER:着物 || EQUIP:MASTER:ワンピース
+		PRINTFORM blowing the %SPLIT_G("bottom:hem")% of your %SHOW_TOP(MASTER, EQUIP:MASTER:着物 ? 1 # 2)% wide open
+	ELSE ;shouldn't happen, but just in case to report an error
+		PRINTFORM ERROR!
+	ENDIF
+	PRINTFORM  just as you let your guard down for a second!
+ELSE
+	PRINTFORM A mischievous gust of wind suddenly erupts beneath your feet, catching you off guard and 
+	IF EQUIP:MASTER:スカート
+		PRINTFORM %SPLIT_G("lifting:pulling:knocking")% up your %SHOW_BOTTOM(MASTER,1)%!
+	ELSEIF EQUIP:MASTER:着物 || EQUIP:MASTER:ワンピース
+		PRINTFORM %SPLIT_G("lifting:pulling:knocking")% up the %SPLIT_G("bottom:hem")% of your %SHOW_TOP(MASTER, EQUIP:MASTER:着物 ? 1 # 2)%!
+	ELSE ;shouldn't happen, but just in case to report an error
+		PRINTFORM ERROR!
+	ENDIF
+ENDIF
+
+
+;end of first sentence, split into two to prevent run-in
+PRINTFORM <br>
+
+IF SELECTCOM == 368 && Activity_Type:TARGET == 10 && RAND:2 == 0 ;fishing
+	PRINTFORM Fortunately, %CALLNAME:TARGET% doesn't seem to have noticed your indecent display, as %HE_SHE(TARGET)% was too busy fishing...
+	CALL PRINT_BREAK,,"wait:dc"
+	FLAG:風チラCT = 6
+	RETURN 0
+ENDIF
+
+PRINTFORM %CALLNAME:TARGET%
+
+IF SELECTCOM == 440 ;wait
+	IF CHK_DATENOW(CFLAG:TARGET:デート中)
+		PRINTFORM , who happens to be nearby,
+	ELSE
+		PRINTFORM  accidentally
+	ENDIF
+ENDIF
+
+PRINTFORM  ends up catching a glimpse of your 
+
+IF !EQUIP:MASTER:下半身下着２
+	PRINTFORM exposed nether regions
+ELSE
+	PRINTFORM %PANTS_DESCRIPTION_TR(MASTER)%
+ENDIF
+
+PRINTFORM  on full display
+
+SELECTCASE SELECTCOM
+
+CASE 300 ;conversation
+	PRINTFORM  while you were having a conversation
+CASE 304 ;help with work
+	IF CFLAG:TARGET:350 == 46
+		PRINTFORM  after inviting you to play a game
+	ELSE
+		PRINTFORM  while %HE_SHE(TARGET)% was receiving help for %HIS_HER(TARGET)% work from you
+	ENDIF
+CASE 368 ;join in (idle activity)
+	SELECTCASE Activity_Type:TARGET
+	CASE 0 ;navelgazing
+		PRINTFORM  while %HE_SHE(TARGET)% was busy pondering %HIS_HER(TARGET)% thoughts
+	CASE 1 ;playing
+		PRINTFORM  while %HE_SHE(TARGET)% was playing games with you
+	CASE 4 ;cleaning
+		PRINTFORM  while %HE_SHE(TARGET)% was getting help from you with the cleaning
+	CASE 5 ;exercising
+		PRINTFORM  while you were exercising together
+	CASE 6 ;reading
+		PRINTFORM  while %HE_SHE(TARGET)% was reading a book in front of you
+	CASE 8 ;jamming (music)
+		IF TFLAG:193 == -2 ;when you just listen
+			SELECTCASE TALENT:TARGET:音楽知識
+			CASE 1
+				PRINTFORM  while %HE_SHE(TARGET)% was performing right in front of you
+			CASE 2
+				PRINTFORM  while %HE_SHE(TARGET)% was singing right in front of you
+			CASE 3
+				PRINTFORM  while %HE_SHE(TARGET)% was dancing right in front of you
+			ENDSELECT
+		ELSE
+			SELECTCASE TALENT:TARGET:音楽知識
+			CASE 1
+				PRINTFORM  while %HE_SHE(TARGET)% was performing alongside you
+			CASE 2
+				PRINTFORM  while %HE_SHE(TARGET)% was singing along to your performance
+			CASE 3
+				PRINTFORM  while %HE_SHE(TARGET)% was dancing to your performance
+			ENDSELECT
+		ENDIF
+	CASE 9 ;foraging
+		PRINTFORM  while %HE_SHE(TARGET)% was busy foraging with your help
+	CASE 10 ;fishing
+		IF TFLAG:193 < 0 ;just look
+			PRINTFORM  while %HE_SHE(TARGET)% was fishing as you looked
+		ELSE
+			PRINTFORM  while %HE_SHE(TARGET)% was fishing next to you
+		ENDIF
+	CASE 12 ;relaxing
+		PRINTFORM  while you were relaxing together
+	CASE 14 ;shopping
+		PRINTFORM  while %HE_SHE(TARGET)% was enjoying the shopping experience with your help
+	CASE 17 ;snowman
+		PRINTFORM  while %HE_SHE(TARGET)% was getting help from you building a snowman
+	ENDSELECT
+CASE 403 ;Rest
+	PRINTFORM  while %HE_SHE(TARGET)% was taking a breather with you
+CASE 410 ;Cleaning
+	IF TFLAG:193 ;when helping you
+		PRINTFORM  while you were cleaning up together
+	ELSE
+		PRINTFORM  while %HE_SHE(TARGET)% was watching you clean
+	ENDIF
+CASE 411 ;Combat Training
+	PRINTFORM  while %HE_SHE(TARGET)% was training with you
+CASE 440 ;Wait
+	PRINTFORM  right in front of her eyes as %HE_SHE(TARGET)% was looking at you
+ENDSELECT
+
+PRINTFORM ...
+
+CALL PRINT_BREAK,,"wait:dc"
+
+CALL KOJO_MESSAGE_SEND("REV_PANCHIRA",0,TARGET)
+CALL REV_PANCHIRA_SOURCE
+
+RETURN 1
+
+@PANCHIRA_SOURCE
+IF TALENT:恋人
+	IF !EQUIP:TARGET:下半身下着２
+		SOURCE:TARGET:情愛 += 600
+		SOURCE:TARGET:欲情 += 700
+		SOURCE:TARGET:誘惑 += 800
+		SOURCE:TARGET:露出 += 1000
+	ELSE
+		SOURCE:TARGET:情愛 += 600
+		SOURCE:TARGET:欲情 += 500
+		SOURCE:TARGET:誘惑 += 500
+		SOURCE:TARGET:露出 += 700
+	ENDIF
+ELSEIF TALENT:恋慕
+	IF !EQUIP:TARGET:下半身下着２
+		SOURCE:TARGET:情愛 += 400
+		SOURCE:TARGET:欲情 += 700
+		SOURCE:TARGET:誘惑 += 800
+		SOURCE:TARGET:露出 += 1000
+	ELSE
+		SOURCE:TARGET:情愛 += 400
+		SOURCE:TARGET:欲情 += 500
+		SOURCE:TARGET:誘惑 += 500
+		SOURCE:TARGET:露出 += 700
+	ENDIF
+ELSEIF TALENT:愛欲 || TALENT:セフレ
+	IF !EQUIP:TARGET:下半身下着２
+		SOURCE:TARGET:欲情 += 600
+		SOURCE:TARGET:誘惑 += 800
+		SOURCE:TARGET:露出 += 1000
+	ELSE
+		SOURCE:TARGET:欲情 += 400
+		SOURCE:TARGET:誘惑 += 500
+		SOURCE:TARGET:露出 += 700
+	ENDIF
+ELSEIF TALENT:思慕
+	IF !EQUIP:TARGET:下半身下着２
+		SOURCE:TARGET:欲情 += 300
+		SOURCE:TARGET:誘惑 += 400
+		SOURCE:TARGET:露出 += 800
+		SOURCE:TARGET:逸脱 += 10
+	ELSE
+		SOURCE:TARGET:欲情 += 100
+		SOURCE:TARGET:誘惑 += 100
+		SOURCE:TARGET:露出 += 500
+	ENDIF
+ELSE
+	IF !EQUIP:TARGET:下半身下着２
+		SOURCE:TARGET:露出 += 800
+		SOURCE:TARGET:逸脱 += 20
+		SOURCE:TARGET:反感 += 10
+	ELSE
+		SOURCE:TARGET:露出 += 500
+		SOURCE:TARGET:反感 += 10
+	ENDIF
+ENDIF
+
+CALL SOURCE_情愛(TARGET)
+CALL SOURCE_欲情(TARGET)
+CALL SOURCE_誘惑(TARGET)
+CALL SOURCE_露出(TARGET)
+CALL SOURCE_逸脱(TARGET)
+CALL SOURCE_反感(TARGET)
+FLAG:風チラCT = 6
+CFLAG:TARGET:下半身下着確認 = 1
+
+RETURN 1
+
+
+
+@REV_PANCHIRA_SOURCE
+IF TALENT:MASTER:性別 == 2
+	IF TALENT:恋人
+		IF !EQUIP:MASTER:下半身下着２
+			SOURCE:TARGET:情愛 += 600
+			SOURCE:TARGET:欲情 += 700
+			SOURCE:TARGET:歓楽 += 500
+			SOURCE:TARGET:辱め += 600
+			SOURCE:MASTER:露出 += 1000
+		ELSE
+			SOURCE:TARGET:情愛 += 600
+			SOURCE:TARGET:欲情 += 300
+			SOURCE:TARGET:歓楽 += 400
+			SOURCE:TARGET:辱め += 500
+			SOURCE:MASTER:露出 += 700
+		ENDIF
+	ELSEIF TALENT:恋慕
+		IF !EQUIP:MASTER:下半身下着２
+			SOURCE:TARGET:情愛 += 400
+			SOURCE:TARGET:欲情 += 700
+			SOURCE:TARGET:歓楽 += 500
+			SOURCE:TARGET:辱め += 600
+			SOURCE:MASTER:露出 += 1000
+		ELSE
+			SOURCE:TARGET:情愛 += 400
+			SOURCE:TARGET:欲情 += 300
+			SOURCE:TARGET:歓楽 += 400
+			SOURCE:TARGET:辱め += 500
+			SOURCE:MASTER:露出 += 700
+		ENDIF
+	ELSEIF TALENT:愛欲 || TALENT:セフレ
+		IF !EQUIP:MASTER:下半身下着２
+			SOURCE:TARGET:欲情 += 500
+			SOURCE:TARGET:歓楽 += 300
+			SOURCE:TARGET:辱め += 400
+			SOURCE:MASTER:露出 += 1000
+		ELSE
+			SOURCE:TARGET:欲情 += 200
+			SOURCE:TARGET:歓楽 += 300
+			SOURCE:TARGET:辱め += 300
+			SOURCE:MASTER:露出 += 700
+		ENDIF
+	ELSEIF TALENT:思慕
+		IF !EQUIP:MASTER:下半身下着２
+			SOURCE:TARGET:欲情 += 100
+			SOURCE:TARGET:逸脱 += 20
+			SOURCE:MASTER:露出 += 800
+		ELSE
+			SOURCE:TARGET:歓楽 += 100
+			SOURCE:TARGET:辱め += 100
+			SOURCE:MASTER:露出 += 500
+		ENDIF
+	ELSE
+		IF !EQUIP:MASTER:下半身下着２
+			SOURCE:TARGET:逸脱 += 50
+			SOURCE:TARGET:反感 += 50
+			SOURCE:MASTER:露出 += 800
+		ELSE
+			SOURCE:TARGET:歓楽 += 50
+			SOURCE:MASTER:露出 += 500
+		ENDIF
+	ENDIF
+ELSE
+	IF TALENT:恋人
+		IF !EQUIP:MASTER:下半身下着２
+			SOURCE:TARGET:情愛 += 600
+			SOURCE:TARGET:欲情 += 700
+			SOURCE:TARGET:歓楽 += 600
+			SOURCE:TARGET:辱め += 800
+			SOURCE:MASTER:露出 += 1000
+		ELSE
+			SOURCE:TARGET:情愛 += 600
+			SOURCE:TARGET:欲情 += 500
+			SOURCE:TARGET:歓楽 += 500
+			SOURCE:TARGET:辱め += 500
+			SOURCE:MASTER:露出 += 700
+		ENDIF
+	ELSEIF TALENT:恋慕
+		IF !EQUIP:MASTER:下半身下着２
+			SOURCE:TARGET:情愛 += 400
+			SOURCE:TARGET:欲情 += 700
+			SOURCE:TARGET:歓楽 += 600
+			SOURCE:TARGET:辱め += 700
+			SOURCE:MASTER:露出 += 1000
+		ELSE
+			SOURCE:TARGET:情愛 += 400
+			SOURCE:TARGET:欲情 += 500
+			SOURCE:TARGET:歓楽 += 500
+			SOURCE:TARGET:辱め += 400
+			SOURCE:MASTER:露出 += 700
+		ENDIF
+	ELSEIF TALENT:愛欲 || TALENT:セフレ
+		IF !EQUIP:MASTER:下半身下着２
+			SOURCE:TARGET:欲情 += 600
+			SOURCE:TARGET:歓楽 += 500
+			SOURCE:TARGET:辱め += 700
+			SOURCE:MASTER:露出 += 1000
+		ELSE
+			SOURCE:TARGET:欲情 += 400
+			SOURCE:TARGET:歓楽 += 400
+			SOURCE:TARGET:辱め += 400
+			SOURCE:MASTER:露出 += 700
+		ENDIF
+	ELSEIF TALENT:思慕
+		IF !EQUIP:MASTER:下半身下着２
+			SOURCE:TARGET:欲情 += 400
+			SOURCE:TARGET:歓楽 += 200
+			SOURCE:TARGET:辱め += 300
+			SOURCE:TARGET:逸脱 += 10
+			SOURCE:MASTER:露出 += 800
+		ELSE
+			SOURCE:TARGET:欲情 += 400
+			SOURCE:TARGET:歓楽 += 200
+			SOURCE:TARGET:辱め += 100
+			SOURCE:MASTER:露出 += 500
+		ENDIF
+	ELSE
+		IF !EQUIP:MASTER:下半身下着２
+			SOURCE:TARGET:歓楽 += 50
+			SOURCE:TARGET:逸脱 += 10
+			SOURCE:MASTER:露出 += 800
+		ELSE
+			SOURCE:TARGET:歓楽 += 100
+			SOURCE:MASTER:露出 += 500
+		ENDIF
+	ENDIF
+ENDIF
+
+CALL SOURCE_情愛(TARGET)
+CALL SOURCE_欲情(TARGET)
+CALL SOURCE_歓楽(TARGET)
+CALL SOURCE_辱め(TARGET)
+CALL SOURCE_逸脱(TARGET)
+CALL SOURCE_反感(TARGET)
+CALL SOURCE_露出(MASTER)
+FLAG:風チラCT = 6
+
+RETURN 1

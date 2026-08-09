@@ -1,0 +1,469 @@
+;-------------------------------------------------
+;銭湯
+;日常系コマンド、レベル1
+;-------------------------------------------------
+@COM432
+#DIM 回復前体力１
+#DIM 回復前気力１
+#DIM 回復後体力１
+#DIM 回復後気力１
+#DIM 回復前体力２
+#DIM 回復前気力２
+#DIM 回復後体力２
+#DIM 回復後気力２
+#DIMS 台詞
+回復前体力１ = BASE:MASTER:体力
+回復前気力１ = BASE:MASTER:気力
+IF DAY * 1440 + TIME - EX:MASTER:前回の入浴時刻 < 360
+	TFLAG:194 = 1
+	PRINTFORML Just got in a short while ago.
+	RETURN -1
+ELSEIF PLACE_SENTO(CFLAG:MASTER:現在位置) == 2
+	;番台ちゃんを怒らせてしまった場合
+	IF TFLAG:209 == 4
+		CALL SPTALK, 0, "怒り", 14, "「.........」",1
+		PRINTFORML You sense a very tense glare coming from the bathhouse attendant.
+		PRINTFORML Better try coming back another day...
+		RETURN -1
+	;番台ちゃん通常運行
+	ELSE
+		;お金足りなかったイベントを見ている
+		IF TFLAG:209 == 3
+			台詞 = 「...Oh, it's you.」/「Mmm, well? Any luck scrounging up some money for the fee this time?」
+		;やめるを選んだけどやっぱり入りたくなった
+		ELSEIF TFLAG:209 == 2
+			台詞 = 「...Huh, changed your mind? Fancy to go in?」
+		;それ以外
+		ELSE
+			;ぐうたらであまりやる気がない番台ちゃん
+			台詞 = 「...%SPLIT_G("'ullo:'elcome")%～」
+		ENDIF
+		台詞 = %台詞%/「The fee is %金額表示(400)% as usual.」
+		CALL SPTALK, 0, "通常", 14, @"%台詞%",1
+		DRAWLINE
+		SIF MAIN_MAP == 2
+			PRINTFORML [2] Pay %金額表示(5000)% to rent out the bathhouse
+		PRINTFORML [1] Pay %金額表示(400)% to bathe
+		PRINTFORML [0] Cancel
+		$LOOP_hitozato
+		INPUT
+		IF RESULT == 2 && MAIN_MAP == 2
+			IF MONEY < 5000
+				{
+				台詞 = 「...Oh, you want to rent out the place? And how much do you think you can pay for it? Is that so.」
+						/「Look here, this kind of service requires fair compensation. Get it?」
+						/「So quit acting up and just bathe at home if you haven't even got two yen to rub together!」
+				}
+				CALL SPTALK, 0, "通常", 14, @"%台詞%",1
+				RETURN -1
+			ELSE
+				CALL PAY_SENTO, 5000
+				{
+				台詞 = 「...Oh, you want to rent out the place?」
+						/「Hmph... I mean, I can pretty much guess what it's going to be used for...」
+						/「Well, since you're such a well-paying customer, I'm willing to turn a blind eye.」/「Tell you what, it's yours for the next 24 hours.」
+						/「So be my guest, enjoy your time...」
+				}
+				CALL SPTALK, 0, "通常", 14, @"%台詞%",1
+				CALLF 銭湯貸切(DAY, 1)
+				RETURN 1
+			ENDIF
+		ELSEIF RESULT == 1
+			IF MONEY < 400
+				{
+				台詞 = 「...Mhmm, go right ahead and enjoy...」
+						/「Hey, wait a sec! Are you pulling my leg here?! That's not nearly enough!」
+						/「.........」
+				}
+				CALL SPTALK, 0, "通常", 14, @"%台詞%",1
+				;煽り耐性無い番台ちゃんブチギレ
+				IF TFLAG:209 >= 2
+					台詞 =  「...Listen, I don't have time for this either.」/「I can get angry too when it comes down to it, you know?」
+					CALL SPTALK, 0, "怒り", 14, @"%台詞%",1
+					TFLAG:209 = 4
+				ELSE
+					;I always thought she suggested the hot springs at the underworld, but that one is even more expensive, so hakurei shrine's bath might be the next logical choice as far as publicity goes
+					{
+					台詞 = 「Look, this might come out of left field, but...」
+							/「If you're really strapped for cash right now, how about a little suggestion?」
+							/「It's quite a walk from here, but there's a hot spring near the top of the hill by the Shrine.」/「Why don't you go there instead of bothering me for nothing?」
+					}
+					CALL SPTALK, 0, "通常", 14, @"%台詞%",1
+					TFLAG:209 = 3
+				ENDIF
+				RETURN -1
+			ELSE
+				CALL PAY_SENTO, 400
+				台詞= 「...Mhmm, go right ahead and enjoy...」
+				SIF TARGET != MASTER && CFLAG:TARGET:6 > 0 && !CFLAG:TARGET:睡眠 
+					台詞 = %台詞%/「...Oh, and just so you know, I'll be keeping an eye on you, so don't try anything funny.」
+				CALL SPTALK, 0, "通常", 14, @"%台詞%",1
+				IF TARGET != MASTER && CFLAG:TARGET:6 > 0 && !CFLAG:TARGET:睡眠 
+					回復前体力２ = BASE:TARGET:体力
+					回復前気力２ = BASE:TARGET:気力
+					CALL ODEKAKE_OFURO(TARGET,1)
+					回復後体力２ = BASE:TARGET:体力
+					回復後気力２ = BASE:TARGET:気力
+					PRINTFORMW Once inside, you part ways with %CALLNAME:TARGET% in front of the dressing room for now and make your way to the bathing area alone.
+				ENDIF
+
+				CALL ODEKAKE_OFURO(MASTER,1)
+
+				DRAWLINE
+				CALL TRIPLEDOT, "timed" ;custom code
+				PRINTFORMW You soak in the bath.
+				CALL TRIPLEDOT, "reverse:timed" ;custom code
+				;大衆浴場は30分固定
+				TIME += 30
+				;大衆浴場総入湯回数はフラグごとオミット
+				;大衆浴場時限入湯回数+1
+				TFLAG:210 += 1
+				;大衆浴場フラグを1に設定
+				TFLAG:209 = 1
+				RETURN 1
+			ENDIF
+		ELSEIF RESULT == 0
+			;煽り耐性無い番台ちゃんブチギレ
+			IF TFLAG:209 >= 2
+				台詞 = 「...Geez, I don't get paid nearly enough to deal with your type.」/「I can get angry too when it comes down to it, you know?」
+				CALL SPTALK, 0, "怒り", 14, @"%台詞%",1
+				TFLAG:209 = 4
+			ELSE
+				{
+				台詞 = 「Don't wanna? ...Well, fair 'nuff.」
+						/「Look, this might come out of left field, but...」
+						/「If you're really strapped for cash right now, how about a little suggestion?」
+						/「It's quite a walk from here, but there's a hot spring near the top of the hill by the Shrine.」/「Why don't you go there instead of bothering me for nothing?」
+				}
+				CALL SPTALK, 0, "通常", 14, @"%台詞%",1
+				TFLAG:209 = 2
+			ENDIF
+			RETURN -1
+		ELSE
+			GOTO LOOP_hitozato
+		ENDIF
+	ENDIF
+ELSEIF PLACE_SENTO(CFLAG:MASTER:現在位置) == 9
+	LOCAL = 0
+	;番台を怒らせてしまった場合
+	IF TFLAG:211 == 4
+		PRINTFORML You sense a very tense glare coming from the bathhouse attendant.
+		PRINTFORML Better try coming back another day...
+		RETURN -1
+	;番台妖怪通常運行
+	ELSE
+		;初めて旧地獄温泉で入浴コマンドを選択した場合。周回後にゅーぷらん開放
+		IF !STRCOUNT(CSTR:0:0, "地獄温泉/")
+			CSTR:0:0 = %CSTR:0:0%地獄温泉/
+			PRINTFORML 「'ullo 'dere, visitor! Welcome to our humble establishment, gya!」
+			PRINTFORML 「Wha-? You're a human? No way, no way! How didya get 'ere?」
+			PRINTFORML 「Now 'dat's rare! So what brings ya, gya?」
+			PRINTFORMW You tell the youkai bath attendant that you'd like to use the hot spring.
+			PRINTFORML 「You kiddin'! You ain't yanking my chain 'ere, are ya? You sure you can handle 'da heat, gya? Huh? Huh?」
+			PRINTFORML 「Hmmm... Mhmmm...」
+			PRINTFORML 「Oh, you got money? Well, why didn'tcha say so? 'dat changes everythin'! I love money, gya!」
+			PRINTFORMW 「We're always happy to see a good payin' customer!」
+			IF !FLAG:周回数
+				PRINTFORML 「Wow, so you came aaaall 'dis way just to soak in some water, gya? You're crazy, %PRINT_MALE("man_:girl", MASTER)%! Crazy!」
+			ELSE
+				PRINTFORML 
+				PRINTFORMW 「And 'ey, you came right at 'da right time, %PRINT_MALE("buddy:sister", MASTER)%! Or as 'dey say in foreign lands, "guddo taimingu", gya!」
+				PRINTFORML 「As luck would 'ave it, today's 'da big day we launch our new special service called "Nyuu Puran"!」
+				;a little explanation
+				PRINTFORML ..."Nyuu Puran"?
+				PRINTFORML The attendant's assistant quietly informs you that it's actually called "New Plan", but is quickly shushed.
+				PRINTFORML 「Oi, shut it! And don't interrupt me! I know how to spell 'dose fancy foreign words better 'dan anyone, gya!」
+				;--------------------
+				PRINTFORMW 「Ahem! Basically, we got a bunch of hot chicks for you to choose from, all lined up in one fine place ready to have some fun wit' ya!」
+				PRINTFORML 「And 'dey're all dyin' for ya to spend some of 'dat sweet coin on 'em, dear customer!」
+				PRINTFORML 
+				PRINTFORMW 「So c'mon, time's a wastin'! Get out 'dere, pick one right now and 'ave a blast, gya! Go, go!」
+				PRINTFORML 「Ge-he-he...!」
+				PRINTFORMW The youkai attendant lets out a cackle with a dirty grin and ushers you on...
+				SETBIT SENTO_FLAG:9, 旧地獄温泉_BIT_ニュープラン_完成
+				GOTO SKIP
+			ENDIF
+		;にゅーぷらん開放から初めて来た
+		ELSEIF !GETBIT(SENTO_FLAG:9, 旧地獄温泉_BIT_ニュープラン_完成) && 旧地獄温泉_ニュープラン_完成日 && DAY >= 旧地獄温泉_ニュープラン_完成日
+			PRINTFORML 「'ullo 'dere, visitor! Welcome to our humble establishment, gya!」
+			PRINTFORML 「And 'ey, you came right at 'da right time, %PRINT_MALE("buddy:sister", MASTER)%! Or as 'dey say in foreign lands, "guddo taimingu", gya!」
+			PRINTFORML 「As luck would 'ave it, today's 'da big day we launch our new special service called "Nyuu Puran"!」
+			PRINTFORML 「Basically, we got a bunch of hot chicks for you to choose from, all lined up in one fine place ready to have some fun wit' ya!」
+			PRINTFORMW 「And 'dey're all dyin' for ya to spend some of 'dat sweet coin on 'em, dear customer!」
+			PRINTFORML
+			PRINTFORMW 「So c'mon, time's a wastin'! Get out 'dere, pick one right now and 'ave a blast, gya! Go, go!」
+			PRINTFORML 「Ge-he-he...!」
+			PRINTFORMW The youkai attendant lets out a cackle with a dirty grin and ushers you on...
+			SETBIT SENTO_FLAG:9, 旧地獄温泉_BIT_ニュープラン_完成
+			GOTO SKIP
+		;お金足りなかったイベントを見ている
+		ELSEIF TFLAG:211 == 3
+			PRINTFORML 「I don't want no broke types in 'ere, got it?! You're only a customer if you're willing to pay money, gya!」
+		;やめるを選んだけどやっぱり入りたくなった
+		ELSEIF TFLAG:211 == 2
+			PRINTFORML 「Coming all 'da way to 'da dept's of eart' and not taking a dip in 'da hot spring, you're nuts, gya!」
+			PRINTFORML 「You're missing more 'dan half of what life has to offer, gya!」
+		ELSE
+			PRINTFORML 「'ullo again, good customer! Welcome to our humble establishment, gya!」
+		ENDIF
+		;それ以外
+		PRINTFORML 「Alright, alright, 'ere's 'da deal. Gimme what you got, and I'll give you what you want! Fair 'nuff, gya?」
+		PRINTFORML 「C'mon, hurry up now! Pay me 'dis much, gya! Chop chop!」
+		PRINTFORML The youkai attendant points to something that looks like a price pad nearby and presses you incessantly to part with your money...
+		$SKIP
+		DRAWLINE
+		PRINTFORML [1] Pay %金額表示(1000)% to bathe
+		;にゅーぷらん選択肢
+		SIF CHECK_NEWPLAN()
+			PRINTFORML [2] Pay %金額表示(10000)% to %\@ STRCOUNT(CSTR:0:0,"泡入浴") ? rent out the bathhouse # try out the "New Plan" \@%
+		PRINTFORML [0] Cancel
+		$LOOP_titei
+		INPUT
+		SELECTCASE RESULT
+			CASE 0
+				;番台ブチギレ
+				IF TFLAG:211 >= 2
+					PRINTFORML 「Nga～! Nga～!! Nga～!!!」
+					PRINTFORML 「Go away, you cheapskate!」
+					PRINTFORML 「I ain't got time to waste on charity wit' people who cannae do business wit' me, gya!」
+					TFLAG:211 = 4
+				ELSE
+					PRINTFORML 「Whaaaa... 'den git outta 'ere! I don't need you hangin' 'round 'ere and bot'erin' me, gya!」
+					PRINTFORML 「'dose who don't pay for services ain't no customers of mine! Scram!!!」
+					TFLAG:211 = 2
+				ENDIF
+				RETURN -1
+			CASE 1
+				IF MONEY < 1000
+					PRINTFORMW The youkai attendant is hard at work, counting every single coin to make sure it all adds up...
+					PRINTFORMW 「.........」
+					PRINTFORMW 「Is 'dis some kinda cruel joke? You t'ink 'dis is funny?!」
+					PRINTFORMW 「How dare you call yourself a customer and say you can pay when you ain't got no blink, gya!」
+					;番台ブチギレ
+					IF TFLAG:211 >= 2
+						PRINTFORML 「Nga～! Nga～!! Nga～!!!」
+						PRINTFORML 「I ain't got time coddling people who don't got money in 'deir pockets, gya! Git!!!」
+						TFLAG:211 = 4
+					ELSE
+						PRINTFORML 「You came all 'da way to 'dis fancy place and you ain't got any money, gya? What didya t'ink was gonna happen, huh, "customer"?」
+						PRINTFORML 「Or are you just 'ere to mess wit' me, gya?!」
+						TFLAG:211 = 3
+					ENDIF
+					RETURN -1
+				ELSE
+					CALL PAY_SENTO, 1000
+					PRINTFORMW The youkai attendant is hard at work, counting every single coin to make sure it all adds up...
+					PRINTFORML 「Ayup, it all checks out, gya! Take your time and have fun!」
+					IF TARGET != MASTER && CFLAG:TARGET:6 > 0 && !CFLAG:TARGET:睡眠 && TALENT:TARGET:性別 != 2
+						PRINTFORML （Look at %PRINT_MALE("'im:'er", MASTER)% bringing %HIS_HER(MASTER)% chick along, what a nifty %PRINT_MALE("fella", MASTER)%! Gehehe!）
+						PRINTFORML （Gonna use my suu-paa teku-nikku and ogle 'em curves on 'dat broad 'till 'da cows come home!）
+						PRINTFORMW You head to the dressing room together with %CALLNAME:TARGET%.
+						PRINTFORMW %HE_SHE(TARGET,1)% seems a little embarrassed by all the looks %HE_SHE(TARGET)%'s getting from you...
+						回復前体力２ = BASE:TARGET:体力
+						回復前気力２ = BASE:TARGET:気力
+						CALL ODEKAKE_OFURO(TARGET,2)
+						IF CHK_DATENOW(CFLAG:TARGET:デート中)
+							CALL Add_RedThread ;addition custom code
+							EXP:MASTER:デート経験 ++
+							EXP:TARGET:デート経験 ++
+						ENDIF
+						SOURCE:TARGET:露出 += 300 + (ABL:TARGET:親密 * 15)
+						回復後体力２ = BASE:TARGET:体力
+						回復後気力２ = BASE:TARGET:気力
+					ENDIF
+					$OFURO
+					CALL ODEKAKE_OFURO(MASTER,2)
+					DRAWLINE
+					CALL TRIPLEDOT, "timed" ;custom code
+					IF TARGET != MASTER && CFLAG:TARGET:6 > 0 && !CFLAG:TARGET:睡眠
+						PRINTFORMW You and %CALLNAME:TARGET% relax at the hot spring, enjoying yourselves together.
+					ELSE
+						PRINTFORMW You relax \@ LOCAL ? in the privacy of your exclusive bathing room, alone and lonely # at the hot spring\@.
+					ENDIF
+					CALL TRIPLEDOT, "reverse:timed" ;custom code
+					;旧地獄温泉は30分固定
+					TIME += 30
+					;旧地獄温泉総入湯回数はフラグごとオミット
+					;旧地獄温泉時限入湯回数+1
+					TFLAG:212 += 1
+					;旧地獄温泉フラグを1に設定
+					TFLAG:211 = 1
+					PRINTFORML Maybe you can make alcohol from this hot water as well...
+					PRINTFORML Draw some and return home?
+					CALL ASK_YN ;custom code, consistency
+					IF !RESULT ;custom code
+						VAR_WATER = 地獄温泉の水
+						PRINTFORML You draw some %VAR_WATER_TR(VAR_WATER)%.
+						IF MAIN_MAP != 9
+							PRINTFORML Carrying it around like this would be too tiring, so you return home.
+							CALL 外出先から帰宅
+						ELSE ;custom code
+							PRINTFORML Better hurry back and feed it to your Sake Bug.
+						ENDIF
+					ENDIF
+					RETURN 1
+				ENDIF
+			CASE 2
+				SIF !CHECK_NEWPLAN()
+					GOTO LOOP_titei
+				IF FLAG:甲斐性無
+					PRINTFORML 「Wait up, %PRINT_MALE("buddy:sister", MASTER)%... You just barely got your foot in 'da door and you're all antsy already, your arms and legs and voice and all, gya.」
+					PRINTFORMW 「Forget it, I say, forget it. You're such a wuss you'll scare away all 'da chicks before 'da action, gya!」
+					CLEARLINE 2
+					GOTO LOOP_titei
+				ELSEIF FLAG:デート相手
+					PRINTFORML 「Hey %PRINT_MALE("buddy:sister", MASTER)%, don'tcha know when to quit while you're ahead, gya?」
+					PRINTFORMW 「Your lady 'ere is already giving me 'da evil eye, I'm terrified, gya...」
+					CLEARLINE 2
+					GOTO LOOP_titei
+				ELSEIF GETBIT(TFLAG:一日一回, 9)
+					PRINTFORML 「...Ohh, whazzat? Back for more?」
+					PRINTFORMW 「Sorry %PRINT_MALE("buddy:sister", MASTER)%, no dice. 'da room's only good for once a day, gya!」
+					CLEARLINE 2
+					GOTO LOOP_titei
+				ELSEIF (TARGET != MASTER && CFLAG:TARGET:態度 > 0 && !CFLAG:TARGET:睡眠) || CFLAG:MASTER:同行
+					PRINTFORML 「Sorry to burst your bubble, %PRINT_MALE("buddy:sister", MASTER)%...」
+					PRINTFORMW 「But 'da "puran" is for solo use only, gya!」
+					CLEARLINE 2
+					GOTO LOOP_titei
+				ENDIF
+				CALL INVITE_NEWPLAN
+				SIF RESULT < 2
+					RETURN RESULT
+				LOCAL = 1
+				GOTO OFURO
+			CASEELSE
+				CLEARLINE 1
+				GOTO LOOP_titei
+		ENDSELECT
+	ENDIF
+ENDIF
+回復後体力１ = BASE:MASTER:体力
+回復後気力１ = BASE:MASTER:気力
+; DRAWLINE
+; PRINTFORML STA+{ABS(回復後体力１ - 回復前体力１)}（%CALLNAME:MASTER%）
+; PRINTFORML ENE+{ABS(回復後気力１ - 回復前気力１)}（%CALLNAME:MASTER%）
+; IF TARGET
+	; PRINTFORML STA+{ABS(回復後体力２ - 回復前体力２)}（%CALLNAME:TARGET%）
+	; PRINTFORML ENE+{ABS(回復後気力２ - 回復前気力２)}（%CALLNAME:TARGET%）
+; ENDIF
+RETURN 1
+
+;銭湯
+@COM_ABLE432
+;移動実行判定
+SIF !TFLAG:100
+	RETURN 0
+;一括管理
+SIF GLOBAL_COMABLE(432)
+	RETURN RESULT
+;停止中は不可
+SIF FLAG:70 == 1
+	RETURN 0
+;睡眠中
+SIF CFLAG:睡眠
+	RETURN 0
+;添い寝中
+SIF CFLAG:添い寝中
+	RETURN 0
+;お風呂のある場所以外は不可
+SIF !PLACE_SENTO(CFLAG:MASTER:現在位置)
+	RETURN 0
+;物陰
+SIF FLAG:潜伏
+	RETURN 0
+SIF CFLAG:うふふ == 2
+	RETURN 0
+;貸し切っているなら必要はない
+SIF 銭湯貸切(DAY)
+	RETURN 0
+RETURN 1
+
+@PLACE_SENTO(ARG)
+#FUNCTION
+;人里
+IF ARG == GET_MAP_REPLACEMENT(223)
+	RETURNF 2
+;地底
+ELSEIF ARG == GET_MAP_REPLACEMENT(934)
+	RETURNF 9
+ELSE
+	RETURNF 0
+ENDIF
+
+@PAY_SENTO, ARG
+#DIM PLACE, 1
+
+MONEY -= ARG
+PLACE = PLACE_SENTO(CFLAG:MASTER:現在位置)
+SIF !PLACE
+	RETURN 0
+
+SENTO_CONSUMPTION:PLACE += ARG
+SELECTCASE PLACE
+	CASE 9
+		;2万以上消費した場合、ニュープランが選択できるようになる
+		IF SENTO_CONSUMPTION:9 >= 旧地獄温泉_ニュープラン_必要額
+			旧地獄温泉_ニュープラン_完成日 = DAY + 旧地獄温泉_ニュープラン_工期
+		ENDIF
+ENDSELECT
+RETURN 1
+
+@ODEKAKE_OFURO(ARG,ARG:1)
+;logging custom code - restoration effects from the cypress bath
+#DIM 回復率_体力, 4
+#DIM 回復率_気力, 4
+#DIM 回復率_精力, 4
+#DIM DYNAMIC Restore
+;------------------------------------
+
+;ARG=1人里　ARG=2地底 =3プール
+RESET_STAIN ARG
+STAIN:ARG:4 = 0
+CFLAG:ARG:膣内射精 = 0
+CFLAG:ARG:アナル射精 = 0
+CFLAG:ARG:口に精液 = 0
+CFLAG:ARG:顔に精液 = 0
+CFLAG:ARG:手に精液 = 0
+CFLAG:ARG:脇に精液 = 0 ;custom code
+;NAS: bug fix
+CFLAG:ARG:風呂 = MAX(CFLAG:ARG:風呂 - 1000,0)
+SIF TALENT:ARG:機嫌 == -1 && (SoiledSelf:ARG:0 || SoiledSelf:ARG:1)
+	TALENT:ARG:機嫌 = 0
+SoiledSelf:ARG:0 = 0
+SoiledSelf:ARG:1 = 0
+TCVAR:ARG:PeeAccidentTime = 0
+TCVAR:ARG:PooAccidentTime = 0
+BASE:ARG:尿意 = 0
+IF PantiesType:ARG:0 == "Naked" || ARG != MASTER
+	CALLF DiapeStats(ARG,CFLAG:ARG:きょうのぱんつ,1)
+ENDIF
+SELECTCASE ARG:1
+	CASE 1
+		;logging custom code
+		回復率_体力:0 = 200
+		回復率_気力:0 = 300
+
+		回復率_体力:1 = 250
+		回復率_気力:1 = 350
+
+		回復率_体力:2 = 300
+		回復率_気力:2 = 400
+
+		回復率_体力:3 = 350
+		回復率_気力:3 = 500
+
+		SIF ITEM:ヒノキ風呂 && NEAR_BATH() == CFLAG:MASTER:現在位置
+			Restore = MIN(ITEM:ヒノキ風呂,3)
+	
+		CALL RECOVER_PERMIL(ARG, 回復率_体力:Restore, "体力", 1) ;logging custom code
+		CALL RECOVER_PERMIL(ARG, 回復率_体力:Restore, "気力", 1) ;logging custom code
+	CASE 2
+		CALL RECOVER_PERMIL(ARG, 300, "体力", 1)
+		CALL RECOVER_PERMIL(ARG, 400, "気力", 1)
+	CASE 3
+		CALL RECOVER_PERMIL(ARG, 60, "体力", 1)
+		CALL RECOVER_PERMIL(ARG, 150, "気力", 1)
+ENDSELECT
+SIF ARG == MASTER
+	EX:MASTER:前回の入浴時刻 = DAY * 1440 + TIME

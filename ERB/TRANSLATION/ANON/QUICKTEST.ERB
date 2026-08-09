@@ -1,0 +1,186 @@
+@OPTION_MOD_QUICKTEST
+#DIM nLineCnt_Head
+LOADGLOBAL
+FOR LOCAL, 0, 100
+    PRINTL
+NEXT
+CUSTOMDRAWLINE ＊
+PRINTFORML Quicktest Options
+CUSTOMDRAWLINE ＊
+nLineCnt_Head = LINECOUNT
+DevTest = 2
+IF !DAY
+    CALL ADD_ALL_CHARACTERS()
+    CALL Name_Array_Set
+ENDIF
+REDRAW 0
+DO
+    SIF LINECOUNT - nLineCnt_Head > 0
+        CLEARLINE LINECOUNT - nLineCnt_Head
+
+    CALL CUSTOM_QUICKTEST_STATE
+    SELECTCASE RESULT
+        CASE 0
+            IF !DAY
+			;delete characters when done
+                DELALLCHARA
+            ENDIF
+            DevTest = 0
+            SAVEGLOBAL
+            RETURN
+        CASEELSE
+    ENDSELECT
+LOOP 1
+
+;==========================================================================
+;Quicktest State Menu Formatting
+;==========================================================================
+@CUSTOM_QUICKTEST_STATE(C_ID,OP)
+#DIMS    OP         ;実行オプション
+#DIM     C_ID       ;登録番号
+#DIM     PAGE       ;表示中のページ
+#DIM CREDRAW
+#DIM FIRST_LINE
+FIRST_LINE = LINECOUNT
+$REPRINT
+CLEARLINE LINECOUNT - FIRST_LINE
+CREDRAW = CURRENTREDRAW()
+REDRAW 0
+TRYCALLFORM QUICKTEST_MENU
+DRAWLINE
+PRINTFORML 
+PRINTBUTTON "[0] Return", 0
+DO
+    INPUT
+    SELECTCASE RESULT
+        CASE 0
+            RETURN 0
+        CASE IS >= 100
+            TRYCALLFORM CUSTOM_QUICKTEST_OPTION_RESULT_{RESULT}
+        CASEELSE
+            $RETRY
+            REUSELASTLINE Invalid Input
+            CONTINUE
+    ENDSELECT
+    BREAK
+LOOP 1
+GOTO REPRINT
+
+@PRINT_QUICKTEST_MENU(ARG, ARGS, ARGS:1, ARGS:2)
+IF ARGS != ""
+    IF ARGS:1 != ""
+        PRINTFORML
+        SETCOLOR C_YELLOW
+        PRINTFORML %ARGS:1%
+        PRINTFORML
+        RESETCOLOR
+    ENDIF 
+    PRINTFORML [{ARG}] - %ARGS%
+    IF ARGS:2 != ""
+        SETCOLOR C_GRAY
+        PRINTFORML %ARGS:2%
+        RESETCOLOR
+    ENDIF 
+ENDIF
+
+;==========================================================================
+;Quicktest Menu Options
+;==========================================================================
+@QUICKTEST_MENU
+#DIMS QuicktestOptionHeader,1000
+#DIMS QuicktestOptionName,1000
+#DIMS QuicktestOptionDescription,1000
+VARSET QuicktestOptionName
+
+QuicktestOptionHeader:100 '= "Player Settings"
+QuicktestOptionName:100 '= @"Set Character (ID 0 copy): %nameArray:DevTestOptions:na_Name%"
+QuicktestOptionDescription:100 '= "Character set if the dev test random character setting isn't enabled."
+QuicktestOptionName:101 '= @"Random Characters： \@ DevTestOptions:1 ? Yes # No \@"
+QuicktestOptionDescription:101 '= "Become a random character when starting a new devtest game"
+QuicktestOptionName:102 '= @"TSP： \@ DevTestOptions:2 ? Yes # No \@"
+QuicktestOptionDescription:102 '= "Have timestop (4000 TSP)"
+QuicktestOptionName:104 '= @"Always Futa： \@ DevTestOptions:4 ? Yes # No \@"
+QuicktestOptionDescription:104 '= "Ignore gender and always have the character be a futanari"
+QuicktestOptionName:105 '= @"Whereabouts Sense： \@ DevTestOptions:5 ? Yes # No \@"
+QuicktestOptionDescription:105 '= "Have quick access to Whereabouts Sense, even if it's not unlocked globally"
+QuicktestOptionName:106 '= @"Placeholder Callname： \@ DevTestOptions:6 ? Yes # No \@"
+QuicktestOptionDescription:106 '= "Instead of the character's first name, you'll be called \%CALLNAME:MASTER\%"
+QuicktestOptionName:107 '= @"Forbidden Knowledge： \@ DevTestOptions:7 ? Yes # No \@"
+QuicktestOptionDescription:107 '= "Get access to cool sex stuff"
+QuicktestOptionName:108 '= @"Combat Abilities： \@ DevTestOptions:10 != -1 ? Level {DevTestOptions:10} # Inherit \@"
+QuicktestOptionDescription:108 '= "Override the character's combat abilities with a different value"
+QuicktestOptionName:109 '= @"All Items： \@ DevTestOptions:11 ? Yes # No \@"
+QuicktestOptionDescription:109 '= "Have all items from the start"
+QuicktestOptionName:110 '= @"Menstrual Cycle Visualization： \@ DevTestOptions:12 ? Yes # No \@"
+QuicktestOptionDescription:110 '= "Showcases the girl's menstrual cycles"
+
+FOR LOCAL, 0, 1000
+    CALL PRINT_QUICKTEST_MENU(LOCAL, QuicktestOptionName:LOCAL, QuicktestOptionHeader:LOCAL, QuicktestOptionDescription:LOCAL)
+NEXT
+
+
+;==========================================================================
+;Lists all touhous and allows you to select them for quicktest
+;==========================================================================
+@CUSTOM_QUICKTEST_OPTION_RESULT_100
+PRINTFORML Who?
+DRAWLINE
+FOR LOCAL,0,CHARANUM-1
+	PRINTFORMLC [{LOCAL}] %nameArray:(LOCAL):na_Name%
+NEXT
+PRINTFORML 
+DRAWLINE
+PRINTFORML [999] Stop
+INPUT
+SELECTCASE RESULT
+	CASE 0 TO CHARANUM-2
+	DevTestOptions = RESULT
+ENDSELECT	
+
+@CUSTOM_QUICKTEST_OPTION_RESULT_101
+DevTestOptions:1 = !DevTestOptions:1
+
+@CUSTOM_QUICKTEST_OPTION_RESULT_102
+DevTestOptions:2 = !DevTestOptions:2
+
+@CUSTOM_QUICKTEST_OPTION_RESULT_104
+DevTestOptions:4 = !DevTestOptions:4
+
+@CUSTOM_QUICKTEST_OPTION_RESULT_105
+DevTestOptions:5 = !DevTestOptions:5
+
+@CUSTOM_QUICKTEST_OPTION_RESULT_106
+DevTestOptions:6 = !DevTestOptions:6
+
+@CUSTOM_QUICKTEST_OPTION_RESULT_107
+DevTestOptions:7 = !DevTestOptions:7
+
+;==========================================================================
+;List all possible values for combat skills
+;==========================================================================
+@CUSTOM_QUICKTEST_OPTION_RESULT_108
+#DIM curRank = -1
+#DIM  RANK       ;評価ランク、数が小さいほど優秀
+#DIM  RANK_NUM   ;評価尺度に含まれる評価の種数
+
+PRINTFORML Please enter a value
+PRINTFORML [-1] - Original Values
+FOR LOCAL,0,(MaxNonHLevel+1)
+	SELECTCASE LOCAL
+	CASE 0 TO 6
+		CALL PRINT_RANK(LOCAL,"MAX_6")
+		PRINTBUTTON @" {LOCAL}", LOCAL
+		PRINTFORML
+	ENDSELECT
+NEXT
+
+PRINTFORML [-2] Cancel
+INPUT
+SIF RESULT != -2
+DevTestOptions:10 = RESULT
+
+@CUSTOM_QUICKTEST_OPTION_RESULT_109
+DevTestOptions:11 = !DevTestOptions:11
+
+@CUSTOM_QUICKTEST_OPTION_RESULT_110
+DevTestOptions:12 = !DevTestOptions:12

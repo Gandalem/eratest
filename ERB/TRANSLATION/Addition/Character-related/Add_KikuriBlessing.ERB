@@ -1,0 +1,317 @@
+﻿@UNIQUE_COM_キクリの祝福
+#DIM BlessingType
+#DIM TMP
+#DIM BlessingCount
+CALL SET_KOJO_COLOR(152)
+IF MARK:152:反発刻印
+    PRINTFORMDL Kikuri glares at you.
+    PRINTFORMW 「No way! I'm not blessing you, jerk!」
+    RETURN -1
+ENDIF
+PRINTFORML 「A blessing, you say? Of course!」
+PRINTFORMW 「So how big of a blessing would you like?」
+$PICK_A_BLESSING
+CALL ASK_M("Small blessing (\\10000)", MONEY >= 10000, "Regular blessing (\\60000)", MONEY >= 60000, "Deluxe blessing (\\250000)", MONEY >= 250000, "More info", 1, "Current blessings", 1, "Never mind", 1)
+SELECTCASE RESULT
+    CASE 0
+        BlessingType = 1
+        PRINTFORML 「Just a small one, hm? All right.」
+        PRINTFORMDW Kikuri looks a little disappointed.
+        CALL KIKURI_DO_BLESSING(BlessingType)
+
+    CASE 1
+        BlessingType = 2
+        PRINTFORMW 「Regular? Good choice! That's the one most of my clients go for.」
+        CALL KIKURI_DO_BLESSING(BlessingType)
+
+    CASE 2
+        BlessingType = 3
+        PRINTFORMDW Kikuri's eyes go wide.
+        PRINTFORML 「Whoa... not many people are willing to buy this one.」
+        PRINTFORMW 「All right, time to show you what I can do!」
+        CALL KIKURI_DO_BLESSING(BlessingType)
+
+    CASE 3
+        PRINTFORML 「So I'm a goddess of marriage, right?」
+        PRINTFORMW 「That means I can bless people's relationships. People like... you, for example!」
+        PRINTFORMDW Kikuri grins at you.
+        PRINTFORML 「So the way it works is, you pay me a reasonable fee, and I strengthen the connection between you and the person of your choice for a while.」
+        PRINTFORML 「There are three tiers of blessing. The small blessing costs \\10,000 and lasts for a day.」
+        PRINTFORMW 「The regular blessing costs \\60,000 and lasts for a week. And the deluxe blessing costs \\250,000 and lasts for a whole month!」
+        PRINTFORMW 「...Hey, don't give me that look! I have to get my clothes custom made, and they aren't cheap!」
+        GOTO PICK_A_BLESSING
+
+    CASE 4
+        PRINTFORML 「OK, here's who I'm currently blessing your relationship with...」
+        PRINTFORMDL 
+        BlessingCount = 0
+        FOR TMP,1,CHARANUM
+            IF CFLAG:TMP:祝福の持続時間
+                PRINTFORMD %CALLNAME:TMP%: Expires in {CFLAG:TMP:祝福の持続時間} \@ CFLAG:TMP:祝福の持続時間 > 1 ? days # day\@
+                IF CFLAG:TMP:触媒を与えた
+                    PRINTFORMDL  (Strong blessing)
+                ELSE
+                    PRINTFORMDL 
+                ENDIF
+                BlessingCount ++
+            ENDIF
+        NEXT
+        IF !BlessingCount
+            PRINTFORML 「...Nobody, actually.」
+            PRINTFORMDL Kikuri looks at you expectantly.
+            PRINTFORMW 「So how about you give me a small sum and so I can fix that?」
+        ELSE
+            PRINTFORMDW 
+        ENDIF
+        GOTO PICK_A_BLESSING
+
+    CASE 4
+        PRINTFORML 「Aww...」
+        PRINTFORMDL Kikuri pouts.
+        PRINTFORMW 「Come back if you ever change your mind, okay?」
+        RESETCOLOR
+        RETURN 1
+
+ENDSELECT
+
+@KIKURI_CALCULATE_TARGETS
+#DIM BlessingTarget
+#DIM TMP
+#DIM DYNAMIC TargetCount
+FOR TMP,1,CHARANUM
+    IF CFLAG:TMP:面識 && !CFLAG:TMP:祝福の持続時間 == TMP
+        TargetCount ++
+        BlessingTarget = TMP
+    ENDIF
+NEXT
+RETURN TargetCount, BlessingTarget, TMP
+
+@KIKURI_PANTIES_CHECK(BlessingTarget)
+#DIM BlessingTarget
+#DIM TotalCount
+#DIM UniqueCount
+#DIM Dupes
+VARSET LOCAL
+CALL CHECK_COLLECTION(BlessingTarget)
+TotalCount = RESULT:0
+UniqueCount = RESULT:1
+Dupes = TotalCount - UniqueCount
+IF !UniqueCount
+    PRINTFORMDL Unfortunately, you don't have anything you can use as a catalyst.
+    RETURN -1
+ENDIF
+PRINTFORM Current amount of %CALLNAME:BlessingTarget%'s panties: 
+PRINTFORML Total {TotalCount,3}     Uniques: {UniqueCount,3}     Duplicates: {Dupes}
+SIF BlessingTarget == 152 && !IS_FALLEN(152)
+    PRINTFORML Something tells you it might not be a good idea to hand Kikuri a pair of the panties you stole from her...
+
+LOCALS = Offer duplicates
+SIF Dupes < 1
+    LOCALS = Offer panties without duplicates
+CALL ASK_M("Cancel",1,@"%LOCALS%",TotalCount >= 1)
+IF RESULT == 1
+    CFLAG:BlessingTarget:(パンツ管理 + LOCAL) -= 1
+    PRINTFORMDW You summon a pair of %CALLNAME:BlessingTarget%'s panties from your collection and hand them to Kikuri%COND_STR(", making sure nobody else sees you do it", GET_TARGETNUM() > 1)%.
+    RETURN 1
+ENDIF
+
+@KIKURI_DO_BLESSING(BlessingType)
+#DIM BlessingType
+#DIM BlessingTarget
+#DIM BlessingPrice
+#DIM nLineCnt_Head
+#DIM TMP
+$BLESSING_SELECT
+PRINTFORML 「Which person do you want to strengthen your relationship with?」
+RESETCOLOR
+DRAWLINE
+nLineCnt_Head = LINECOUNT
+REDRAW 0
+FOR TMP,1,CHARANUM
+    SIF CFLAG:TMP:面識 && !CFLAG:TMP:祝福の持続時間
+        PRINTFORMLC [{TMP, 3}] %CALLNAME:TMP%
+NEXT
+PRINTFORML
+PRINTFORML [-1] Cancel
+INPUT
+BlessingTarget = RESULT
+CALL M_KOJO_COLOR_K152
+$DO_BLESSING
+IF BlessingTarget == -1
+    $CANCEL
+    PRINTFORMW 「Changed your mind, huh? Okay...」
+    RESETCOLOR
+    RETURN -1
+ELSEIF BlessingTarget < 0 || BlessingTarget >= CHARANUM
+    PRINTFORMW 「Uh... who's that?」
+    GOTO BLESSING_SELECT
+ELSEIF BlessingTarget == 0
+    PRINTFORMW 「If you wanna improve your relationship with yourself, you want Eirin-san, not me.」
+ELSEIF !CFLAG:BlessingTarget:面識
+    PRINTFORMW 「Hey, I can't bless a relationship with a person you've never even met!」
+    GOTO BLESSING_SELECT
+ELSEIF CFLAG:BlessingTarget:祝福の持続時間
+    PRINTFORMW 「Um... I'm already blessing your relationship with her.」
+    GOTO BLESSING_SELECT
+    GOTO BLESSING_SELECT
+ELSEIF BlessingTarget == 152
+    PRINTFORML 「M-M-M...」
+    PRINTFORMW 「M-M-M-M-Me?!」
+    PRINTFORMDW Kikuri's face turns a darker shade of bronze. If she were a human, she'd probably be crimson.
+    PRINTFORMW 「I, um... s-sure! I can bless our relationship. Just give me a minute to calm down.」
+    PRINTFORML （I can't believe it! Finally, I'm gonna be the one getting married!）
+    PRINTFORMW （I can't wait to tell Konn-chan!）
+ELSEIF CFLAG:MASTER:現在位置 == CFLAG:BlessingTarget:現在位置
+    PRINTFORML 「You sure you wanna get blessed when she's right over there?」
+    PRINTFORMW 「Okay, if you say so...」
+ELSEIF BlessingTarget == 150
+    PRINTFORML 「Oooh... you like Konn-chan?」
+    PRINTFORMDW Kikuri grins.
+    PRINTFORMW 「You've got good taste! Just for that, you get half off.」
+    BlessingPrice /= 2
+ELSEIF BlessingTarget == 76
+    PRINTFORML 「Going after the shinigami, huh?」
+    PRINTFORMW 「She may be lazy, but my blessing will have her heart working overtime whenever she sees you!」
+ELSEIF BlessingTarget == 30
+    PRINTFORML 「You like Eiki-sama?」
+    PRINTFORMDW Kikuri giggles.
+    PRINTFORML 「I always thought she was already married... to her job!」
+    PRINTFORMW 「But that's not a problem for me. Once I bless your relationship with her, she'll be writing a dozen love letters for every piece of paperwork she signs!」
+ELSEIF BlessingTarget == 113
+    PRINTFORML 「Whoa... Hecatia-sama?!」
+    PRINTFORMDW Kikuri looks at you in awe.
+    PRINTFORML 「You must be really confident to try and win the heart of the goddess of Hell herself.」
+    PRINTFORMW 「...Can you ask her to start making her T-shirts in my size? I've always wanted to wear one...」
+ELSEIF TALENT:BlessingTarget:恋人
+    PRINTFORML 「Oh, you're already in a relationship?」
+    PRINTFORML 「Could it be... you're planning on getting married?!」
+    PRINTFORMDW Kikuri's eyes gleam, and she clenches her fists excitedly.
+    PRINTFORML 「Oh, I can't remember the last time I got to preside over a wedding!」
+    PRINTFORMW 「I'm going to need to have a new dress made...」
+    PRINTFORMDW Kikuri continues rambling about weddings for a while before you cough politely.
+    PRINTFORMDW She stops talking and blushes a little.
+    PRINTFORML 「My apologies, %CALLNAME:MASTER%-san. It's just... I'm a goddess of marriage who barely gets to do her job.」
+    PRINTFORMW 「Anyway, I'll be sure to give you an extra strong blessing at no extra charge!」
+ELSEIF TALENT:BlessingTarget:恋慕
+    PRINTFORML 「Oooh! This girl's in love with you!」
+    PRINTFORMW 「Are you one of those %PRINT_MALE("guy", MASTER)%s who likes it when girls confess to you? Hehe, that's cute...」
+    PRINTFORMW 「All right then! Time to cook up a blessing that'll make sure you two have the most lovey-dovey date ever!」
+ELSEIF TALENT:BlessingTarget:思慕
+    PRINTFORML 「It looks like this girl is starting to develop feelings for you.」
+    PRINTFORMW 「Don't worry! Once my blessing takes effect, those feelings will turn into full-blown love in no time!」
+ELSEIF TALENT:BlessingTarget:愛欲 || TALENT:BlessingTarget:セフレ == 1
+    PRINTFORML 「You and this girl are just friends with benefits.」
+    PRINTFORMDW Kikuri looks a little disappointed.
+    PRINTFORML 「Have you had a change of heart, then?」
+    PRINTFORMW 「Don't worry. My blessing will change all that lust to love in a flash!」
+ELSEIF ABL:BlessingTarget:親密 >= 5
+    PRINTFORML 「You and this girl are just friends right now.」
+    PRINTFORML 「I guess you want something more, huh?」
+    PRINTFORMW 「OK then, just sit tight and let me work my magic!」
+ELSE
+    PRINTFORML 「It looks like you and this girl don't know each other very well.」
+    PRINTFORMW 「But my blessing will fix that!」
+ENDIF
+
+CALL ASK_M("I changed my mind", 1, @"Bless your relationship with %CALLNAME:BlessingTarget%", 1)
+IF RESULT
+    PRINTFORML 「Okay, this'll be stronger if you have a catalyst. Like a lock of the girl's hair, a drawing of her... stuff like that.」
+    PRINTFORMW 「Do you have one?」
+    PRINTFORML 
+    CALL KIKURI_PANTIES_CHECK(BlessingTarget)
+    IF RESULT
+        CALL SET_KOJO_COLOR(152)
+        IF BlessingTarget == 152
+            IF TALENT:152:恋人
+                PRINTFORML 「Oh hey, those are my panties!」
+                PRINTFORMDW Kikuri giggles.
+                CALL HPH_PRINT, @"「Are you seriously carrying them around with you all the time? You're such a pervHPH」", "W"
+            ELSEIF IS_FALLEN(152)
+                PRINTFORML 「Wait a sec... those are my panties!」
+                PRINTFORMDW Kikuri frowns at you.
+                PRINTFORMW 「I'll do the blessing... but when I'm done, we're gonna have a talk about where you got those from.」
+            ELSE
+                PRINTFORML 「Wait a sec... those are my panties!」
+                PRINTFORMDW Kikuri glares at you.
+                PRINTFORML 「So you're the one who stole them!」
+                PRINTFORMW 「Forget it. I don't do business with panty-snatching freaks like you!」
+                CALL GET_ANGRY(152, 2)
+                RETURN 1
+            ENDIF
+        ELSE
+            PRINTFORML 「Her panties?」
+            PRINTFORMDW Kikuri frowns at you.
+            PRINTFORMW 「You didn't steal them, did you?」
+        ENDIF
+        CFLAG:BlessingTarget:触媒を与えた = 1
+    ELSE
+        CALL SET_KOJO_COLOR(152)
+        PRINTFORML 「You don't have one, huh?」
+        PRINTFORMW 「That's okay. I can still bless \@ BlessingTarget == 152 ? our # your\@ relationship, it just won't be as strong.」
+    ENDIF
+    PRINTFORMDL 
+    PRINTFORMDW Kikuri reaches out of her mirror and looks at you expectantly.
+    PRINTFORMDW You hand the money over. She counts it, then stashes it away in a pocket of her kimono.
+    PRINTFORMW 「All right then, it's time. Clasp your hands, close your eyes, and bow to me.」
+    PRINTFORMDW You do so, feeling the anticipation build in the air.
+    PRINTFORMDW Kikuri concentrates, and you feel... lighter, somehow. It's as if a gentle breeze has lifted the weight from your shoulders.
+    PRINTFORMW 「I've purified the area. Now for the blessing itself...」
+    PRINTFORMDW She takes a deep breath, and then her clear voice rings out like a bell, resonating in the tranquil space.
+    PRINTFORMW 「On this fortunate day, as %CALLNAME:MASTER% stands before me, Kikuri, goddess of love...」
+    PRINTFORMW 「I grant my blessing unto the relationship between \@ BlessingTarget == 152 ? us # %HIM_HER(MASTER)% and %CALLNAME:BlessingTarget%.\@」
+    PRINTFORMW 「May \@ BlessingTarget == 152 ? our # their\@ love be as enduring as the mountains, as powerful as the seas, as fierce as fire, as gentle and tender as a flower growing in the depths of the woods.」
+    PRINTFORMW 「May \@ BlessingTarget == 152 ? we # they\@ see \@ BlessingTarget == 152 ? our # their\@ love for one another reflected in each others' eyes, just as clearly as %CALLNAME:MASTER% can see %HIS_HER(MASTER)% own reflection on my body.」
+    PRINTFORMW 「May \@ BlessingTarget == 152 ? we # they\@ share every moment of \@ BlessingTarget == 152 ? our # their\@ lives, from now until the moment \@ BlessingTarget == 152 ? we # they\@ die, in good times and bad, in sickness and in health, in joy and in sorrow.」
+    PRINTFORMW 「May the bonds of love between \@ BlessingTarget == 152 ? us # them\@ remain unbroken forevermore.」
+    PRINTFORMW 「May the gods guide \@ BlessingTarget == 152 ? our # their\@ steps, and may \@ BlessingTarget == 152 ? we # they\@ always find \@ BlessingTarget == 152 ? our # their\@ way back to one another, no matter where fate may guide \@ BlessingTarget == 152 ? us # them\@.」
+    PRINTFORMW 「Okay, %CALLNAME:MASTER%, you can open your eyes.」
+    PRINTFORMDW You open your eyes and stand up straight. The world seems to shimmer with a new light.
+    PRINTFORMDW You can see yourself reflected in Kikuri, just like always...
+    PRINTFORMDW But now you see %CALLNAME:BlessingTarget% standing next to you, smiling and holding your hand.
+    IF BlessingTarget == 152
+        PRINTFORMDW And you can see yourself and Kikuri reflected in the reflected Kikuri's body.
+        PRINTFORMDW The reflections go on and on until they're too small to see. You're starting to feel dizzy...
+    ENDIF
+    PRINTFORMDW Then the reflection of you and %CALLNAME:BlessingTarget% wavers and fades away, replaced with your normal reflection.
+    PRINTFORMW You feel the bond between yourself and %CALLNAME:BlessingTarget% growing stronger...
+    PRINTFORMDL 
+    PRINTFORMW 「Thanks for your patronage!」
+    PRINTFORMDW Kikuri beams at you.
+    PRINTFORMW 「Come back if you ever need another blessing.」
+    SELECTCASE BlessingType
+        CASE 1
+            CALL PAY_MONEY_YEN(10000, 1)
+            CFLAG:BlessingTarget:祝福の持続時間 = 1
+
+        CASE 2
+            CALL PAY_MONEY_YEN(60000, 1)
+            CFLAG:BlessingTarget:祝福の持続時間 = 7
+
+        CASE 3
+            CALL PAY_MONEY_YEN(250000, 1)
+            CFLAG:BlessingTarget:祝福の持続時間 = 30
+    ENDSELECT
+ELSE
+    GOTO CANCEL
+ENDIF
+
+;------------------------------------------------------
+;process the extra flags
+;when starting the day
+@EVENTTRAIN
+FOR LOCAL,1,CHARANUM
+    IF CFLAG:LOCAL:祝福の持続時間
+        CFLAG:LOCAL:祝福の持続時間 -= 1
+        IF !CFLAG:LOCAL:祝福の持続時間
+            PRINTFORMDL Somehow, you feel a little less close to %CALLNAME:LOCAL%...
+            CFLAG:LOCAL:触媒を与えた = 0
+        ENDIF
+    ENDIF
+NEXT
+
+;ng reset
+@NG_CUSTOM_RESET_VAR_7
+FOR LOCAL,1,CHARANUM
+    CFLAG:LOCAL:触媒を与えた = 0
+    CFLAG:LOCAL:祝福の持続時間 = 0
+NEXT

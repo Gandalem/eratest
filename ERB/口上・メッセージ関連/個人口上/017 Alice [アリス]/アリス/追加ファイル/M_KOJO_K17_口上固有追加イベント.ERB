@@ -1,0 +1,3001 @@
+;*********************************************************************************
+;
+;
+;	K17口上内で使うイベント系関数群
+;
+;	□目次	^[ \t]*(@)	でアウトライン絞込
+;
+;K17_DATE_EVENT_RELIEF			デートイベント再判定用
+;K17_TALENT_UPDOWN				素質の操作
+;K17_FIRSTKISS					ファーストキス-MASTER用
+;K17_FIRSTKISS_ALICE			ファーストキス-アリス用
+;K17_CHECK_時間停止バレ			時間停止バレの条件式
+;K17_時間停止バレ				MASTERの時間停止バレ時のテキスト
+;K17_乱交開始					各所の乱交開始テキストを合体
+;K17_押し倒し喘ぎタイプ選択		押し倒し時のタイプ選択
+;K17_処女喪失					処女喪失した時のイベント
+;K17_うふふ感想戦				うふふの終了時のイベント
+;K17_無理矢理中出し				ガチレイプ時
+;K17_RELATION_EV				関係性が進んだ時に呼ぶ用　ヒント表示あり
+;K17_RELATION_ANNOUNCE			RELATION_EVが呼ばれた時に実際表示する用
+;K17_HINT						ヒントの表示
+;K17_お風呂イベント				他でも使えるようにちょっと手入れしたい
+;K17_上海イベント				おまけ
+;K17_オナバレ追加イベント		オナバレイベントの追加拡張イベント
+;K17_ONABARE					本体のものを改造したもの　同居自慰で使う
+;K17_NASIKUZUSI					同上
+;
+;*********************************************************************************
+
+
+;*********************************************************************************
+;		DATE_EVENTをコピペ、改造
+;
+;	この口上では本体の条件から外れても
+;	M_KOJO_SPEVENT_K17_3　から　M_KOJO_SPEVENT_K17_1　M_KOJO_SPEVENT_K17_2　に入る
+;
+;	本体既存のDATE_EVENTにちょっと手入れ
+;	SP_EVENT3、引数0(通常帰宅)の頭に入れて、イベント通過フラグ(CFLAG:17:1004,1005)で判定再度呼び出し
+;	もうファーストキスキスした場合、イベントをキャンセルした場合などの救済
+;	告白して恋人になるイベントもMASTERに恋人がいても発生（2人目の恋人になるとかはできない）
+;	この判定に入るトリガーはTCVAR:17:351
+;	完走判定はTCVAR:17:350
+;	一日一回だけどちらかのイベントを完走できる、判定は何度でも
+;
+;	デートイベント全体の流れ
+;	SPEVENT_K17_1判定(デートキス)→SPEVENT_K17_3(反発刻印消去)→SPEVENT_K17_2判定(告白)→
+;	SPEVENT_K17_3(通常終了)→K17_DATE_EVENT_RELIEF(ここ)→SPEVENT_K17_3(通常終了の残り以降)
+;
+;	告白イベは元ファイルからCALLされてる以上逃れられないのでSPEVENT_K17_1内選択肢スキップ仕様
+;	こちらから呼ばれてデートイベントへ戻った時は通常通り
+;	大丈夫かこれかなり複雑になりすぎてる
+;
+;*********************************************************************************
+;FileName_DATE_CMN.ERB ----------------------------- Rev1.01
+;デート帰りイベント (CFLAG:13)
+;CALL		USER
+;ARG		キャラNO
+;RETURN		VOID
+;COMMENT	
+;-----------------------------------------------------------
+@K17_DATE_EVENT_RELIEF(ARG)
+TCVAR:K17C_ID:キスキャンセル=0
+
+VARSET LOCAL
+;キャンセルフラグ（外部参照にて使用のこと 例:LOCAL@DATE_EVENT:99 = 1
+;LOCAL:99 = 0
+;パラメータによる発生基礎値生成
+
+LOCAL = MARK:ARG:不埒刻印 * 10 + MARK:ARG:快楽刻印 * 10
+IF TALENT:ARG:恋慕
+	LOCAL += MIN(ABL:ARG:親密 * 10, 100) + MIN(ABL:ARG:欲望 * 10,100) + MIN(ABL:ARG:奉仕精神 * 10,100)
+	LOCAL += MIN(EXP:ARG:デート経験,100) + MIN(EXP:ARG:愛情経験,100)
+ELSEIF TALENT:ARG:思慕
+	LOCAL += MIN(ABL:ARG:親密 * 10, 50) + MIN(ABL:ARG:欲望 * 10,50) + MIN(ABL:ARG:奉仕精神 * 10,50)
+	LOCAL += MIN(EXP:ARG:デート経験,50)
+ENDIF
+LOCAL += GETPALAMLV(PALAM:ARG:欲情,10) * 5 + GETPALAMLV(PALAM:ARG:好意,10) * 5 + GETPALAMLV(PALAM:ARG:恭順,10) * 5
+;60
+LOCAL += BASE:ARG:ムード / 50 + (1000 - BASE:ARG:理性) / 30
+LOCAL += TALENT:ARG:度胸 * 10 + TALENT:ARG:性的興味 * 10 - TALENT:ARG:自制心 * 10 - TALENT:ARG:無関心 * 10 
+
+;この判定とキス関係除去
+;合意無し（キス成功してない）
+;ELSEIF !(CFLAG:ARG:1 & 1) && !(CFLAG:ARG:13 & 1)
+
+;成功判定
+IF (LOCAL > 220 + TALENT:ARG:一線越えない * 30 + TALENT:ARG:キス未経験 * 20) && CFLAG:ARG:合意判定 > 180 && (TALENT:ARG:思慕 || TALENT:ARG:恋慕) && !CFLAG:K17C_ID:K17C_CF_デートイベント
+	CALL KOJO_MESSAGE_SEND("SP_EVENT",1,ARG,0)
+	;キャンセルフラグ
+	IF !TCVAR:ARG:キスキャンセル
+		IF TALENT:MASTER:キス未経験
+			CALL SET_FIRSTKISS(MASTER, ARG, 1)
+			EXP:ARG:愛情経験 += 10
+		ENDIF
+		IF TALENT:ARG:キス未経験
+			CALL SET_FIRSTKISS(ARG, MASTER, 1)
+			EXP:ARG:キス経験 ++
+			EXP:MASTER:キス経験 ++
+		EXP:ARG:愛情経験 += 10
+		ENDIF
+		SETBIT CFLAG:ARG:既成事実 , 0
+		SETBIT CFLAG:ARG:デート後イベントフラグ , 0
+	ENDIF
+	RETURN 1
+;告白していない（MASTERに恋人が居ない）
+;ELSEIF !(CFLAG:ARG:1 & 4) && !(CFLAG:ARG:13 & 2) && !TALENT:MASTER:恋人
+;告白イベント	;成功判定
+ELSEIF CFLAG:K17C_ID:K17C_CF_デートイベント && (LOCAL > 530 + TALENT:ARG:一線越えない * 20)
+
+	CALL KOJO_MESSAGE_SEND("SP_EVENT",2,ARG,0)
+	;恋人になる選択肢はこっちに　上のイベントでも判定しておく
+	IF !(CFLAG:ARG:1 & 4) && !TALENT:MASTER:恋人
+		PRINTFORML How do you respond to %CALLNAME:ARG%'s confession?
+		PRINTFORM [1] - Accept
+		PRINTFORML 　- You can only have {FLAG:追加恋人枠 + 1} lover\@FLAG:追加恋人枠?s#\@ -
+		PRINTFORM [2] - Refuse
+		$INPUT_LOOP
+		INPUT
+		IF RESULT > 2 || RESULT < 1
+			CLEARLINE 1
+			GOTO INPUT_LOOP
+		ELSEIF RESULT == 1
+			SETBIT CFLAG:ARG:既成事実 , 2
+			SETBIT CFLAG:MASTER:既成事実, 2
+			TALENT:MASTER:恋人 = NO:ARG
+			TALENT:ARG:恋人 = 1
+			SETBIT CFLAG:ARG:デート後イベントフラグ , 1
+			CALL KOJO_MESSAGE_SEND("SP_EVENT",2,ARG,RESULT)
+			PRINTL
+			PRINTFORM You and %CALLNAME:ARG% are now 
+			SETCOLOR C_PINK
+			PRINT Lovers
+			RESETCOLOR
+			PRINTW !			
+			RETURN 1
+		ELSE
+			CALL KOJO_MESSAGE_SEND("SP_EVENT",2,ARG,RESULT)
+			RETURN 1
+		ENDIF
+	ENDIF
+
+ELSEIF !MARK:ARG:反発刻印
+	;改造前のこの地点に入ったものをもう一度ここで再評価する
+	;ここで戻るので一回判定のみ一度外す
+	;普通に失敗
+	TCVAR:K17C_ID:K17C_TC_デートイベ判定=1
+	RETURN 0
+	;CALL KOJO_MESSAGE_SEND("SP_EVENT",3,ARG,0)
+ENDIF
+;反発ありで消し失敗
+;フラグリセ
+TCVAR:K17C_ID:K17C_TC_デートイベ判定=1
+RETURN 0
+
+
+
+;*********************************************************************************
+;	素質の操作
+;	
+;	概要
+;	口上内イベントで上下
+;	書き換えフラグ忘れそうになるのでここで一括処理
+;	素質に対して1～-1(素直 なし 反抗的　など)範囲で操作
+;	今のところ対応してる番号
+;	・プライド	13	K17C_TALENT_プライド	1プライド高い～0なし～プライド低い
+;	・態度		11	K17C_TALENT_態度		1素直～0なし～-1反抗的
+;
+;	09/05	0の時の-2とか考えてオーバーフロー対策追記　色々考えすぎて汚い
+;	09/08	LIMITにした←便利！
+;
+;	変数	：CFLAG:17:1001　口上全体で書き換えを行うかのフラグ　0、1で書き換え、-1でしない
+;	引数0	：キャラID
+;	変数1	：書き換える素質番号
+;	変数2	：書き換える数値
+;	戻り値	：書き換えたら1　書き換えなかったら0
+;*********************************************************************************
+@K17_TALENT_UPDOWN(ARG=K17C_ID,ARG:1,ARG:2)
+VARSET LOCAL
+;書き換えフラグ
+SIF CFLAG:K17C_ID:K17C_CF_素質変化フラグ < 0 || ARG!=K17C_ID
+	RETURN 0
+;現在既に最高値なら返す	
+SIF TALENT:ARG:(ARG:1) == -1 && ARG:2 < 0
+	RETURN 0
+SIF TALENT:ARG:(ARG:1) == 1 && ARG:2 > 0
+	RETURN 0
+
+;元の値を保存
+LOCAL = TALENT:ARG:(ARG:1)
+
+PRINTL
+SELECTCASE ARG:1
+	;プライド　1でも2でも失う⇔取り戻しでいいか
+	CASE  K17C_TALENT_プライド
+		LIMIT (TALENT:ARG:(ARG:1))+ARG:2,-1,1
+		TALENT:ARG:(ARG:1) = RESULT
+		;正負を見る
+		IF ARG:2<0
+			PRINTFORMD %CALLNAME:ARG% is no longer [Prideful]!
+			
+		ELSEIF ARG:2>0
+			PRINTFORMD %CALLNAME:ARG% became [Prideful]!
+		ENDIF
+		
+	;態度
+	CASE K17C_TALENT_態度
+		LIMIT (TALENT:ARG:(ARG:1))+ARG:2,-1,1
+		TALENT:ARG:(ARG:1) = RESULT
+		;下げる時
+		IF ARG:2<0
+			;反抗的→消滅
+			SIF TALENT:ARG:(ARG:1) <= 0 && LOCAL==1
+				PRINTFORMD %CALLNAME:ARG% is no longer [Defiant]!
+			SIF !LINEISEMPTY()
+				PRINTW
+			;なし→素直
+			SIF TALENT:ARG:(ARG:1) == -1 && LOCAL>=0
+				PRINTFORMD %CALLNAME:ARG% became [Docile]!
+		ELSEIF ARG:2>0
+			;上げる時
+			SIF TALENT:ARG:(ARG:1) >= 0 && LOCAL==-1
+				PRINTFORMD %CALLNAME:ARG% is no longer [Docile]!
+			SIF !LINEISEMPTY()
+				PRINTW
+			SIF TALENT:ARG:(ARG:1) == 1 && LOCAL!=1
+				PRINTFORMD %CALLNAME:ARG% became [Defiant]!
+		ENDIF
+	;追加したらここへCASE作る
+	CASEELSE
+		PRINTFORMDL An unexpected talent (ID {ARG:1}) has been passed into K17_TALENT_UPDOWN.
+		CALL HPH_PRINT,"「An error occurred, so report this, okay?HPH」", "L"
+ENDSELECT
+SIF !LINEISEMPTY()
+	PRINTW
+RETURN 1
+
+;*********************************************************************************
+;	ファーストキスイベント
+;	初めてキスが呼ばれた時の口上をここに書いとく
+;	経験に関係なくMASTER（プレイヤーから）能動的に意識ありで呼んだ用
+;
+;	09/05	微妙な場面なので名前呼びに固定
+;
+;	引数0	：キャラID
+;	戻り値	：通過初回のみ1　二度目以降0
+;*********************************************************************************
+@K17_FIRSTKISS(ARG)
+
+IF CFLAG:K17C_ID:K17C_CF_FKマスター
+	CFLAG:K17C_ID:K17C_CF_FKマスター = MIN(CFLAG:K17C_ID:K17C_CF_FKマスター+1,10000)
+	RETURN 0
+ELSE
+	SELECTCASE K17_GRT(ARG)
+		CASE IS >= K17C_恋慕
+			PRINTFORML 「You want to kiss?」
+			CALL HPH_PRINT,"「Nnー... ChuuHPH」", "W"
+			CALL HPH_PRINT,"「More... MmphHPH ...NnchuuHPH」", "L"
+			CALL HPH_PRINT,"「Haa...HPH We finally...did thisHPH」", "L"
+			;custom code
+			IF CFLAG:K17C_ID:1092
+				PRINTFORMDL "Did I make you wait...?"
+			ELSE
+				PRINTFORMDL Looks like you made her wait...
+			ENDIF
+			PRINTFORML 「It's fine now, don't worry about it.」
+			PRINTFORML 「Let's do this a lot more from now on, okay?」
+		CASE IS >= K17C_思慕
+			IF ABL:ARG:親密 >= 7
+				PRINTFORML 「You...want to kiss?」
+				CALL HPH_PRINT,@"「Nn... %CALLNAME:MASTER%... ChuuHPH」", "W"
+				PRINTFORML 「Ehe... Ehehe...」
+				;custom code
+				IF CFLAG:K17C_ID:1092
+					PRINTFORMDL "I just suddenly felt the urge to do that, but was it okay...?"
+				ELSE
+					PRINTFORMDL You just suddenly felt the urge to do that, but was it okay...
+				ENDIF
+				CALL HPH_PRINT,"「Well, it...it was a little embarrassingBPB」", "L"
+			ELSE
+				PRINTFORML 「Eh? A k-kiss?」
+				CALL HPH_PRINT,"「Ah...BPB」", "W"
+				PRINTFORML 「Th-That was too sudden...」
+				;custom code
+				IF CFLAG:K17C_ID:1092
+					PRINTFORMDL "I just suddenly felt the urge to do that, did you not like it...?"
+				ELSE
+					PRINTFORMDL You just suddenly felt the urge to do that, but maybe she didn't like it...
+				ENDIF
+				CALL HPH_PRINT,"「I'd been thinking of doing that someday, but not so suddenlyBPB」", "L"
+			ENDIF
+		CASE IS >= K17C_お友達
+			PRINTFORML 「Eh, %K17_CNAME()%, so you...wanted to do this kind of thing...」
+			;custom code
+			IF CFLAG:K17C_ID:1092
+				PRINTFORMDL "I just did it without thinking, did you not like it...?"
+			ELSE
+				PRINTFORMDL You just did it without thinking, but maybe she didn't like it...
+			ENDIF
+			PRINTFORML 「...」
+		CASEELSE
+			PRINTFORMW 「Kuh...」
+			;custom code
+			IF CFLAG:K17C_ID:1092
+				PRINTFORMDL "I just did it without thinking, did you not like it...?"
+			ELSE
+				PRINTFORMDL You just did it without thinking, but maybe she didn't like it...
+			ENDIF
+			PRINTFORML 「...Jerk.」
+			
+	ENDSELECT
+	
+	
+	
+	;正真正銘ファーストキス
+	
+	IF K17_GRT(ARG)>=K17C_思慕 && !CFLAG:K17C_ID:K17C_CF_FK && !TALENT:ARG:キス未経験
+		;思慕↑
+		PRINTW
+		;時間停止中のキスでキス経験上がっちゃうんだよねどうしよう
+		;未経験は口上呼ばれる前に消えちゃう……未経験だったかとっとくか
+		;今のところヤリマンでもキス未経験のままなので放置かな
+		IF EXP:ARG:キス経験 == 1
+			PRINTFORML 「That was...my first kiss.」
+			PRINTFORMDL Despite her appearances, your kiss with %CALLNAME:TARGET% was surprisingly innocent and awkward.
+			PRINTW
+		ENDIF
+		IF (EXP:MASTER:キス経験 == 1)
+			PRINTFORML 「It was your first kiss, too?」
+			PRINTFORML 「Oh...（I'm glad...）」
+			PRINTFORMDL You feel you were able to connect your feelings with hers.
+			PRINTW
+		ENDIF
+		
+	ELSEIF !CFLAG:K17C_ID:K17C_CF_FK && (EXP:MASTER:キス経験 == 1)
+		;知り合い程度
+		PRINTW
+		IF K17_GRT(ARG) >= K17C_お友達
+			;仲良くなり始め
+			PRINTFORML 「I wanted...my first kiss...to be more romantic.」
+			PRINTFORMDL %CALLNAME:TARGET% seems rather dissatisfied.
+			IF (EXP:MASTER:キス経験 == 1)
+				PRINTFORML 「It was your first kiss, too?」
+				IF TALENT:MASTER:性別 == 2
+					PRINTFORML 「I see... Maybe men don't really think much of it...」
+				ELSE
+					PRINTFORML 「...You're rather casual about it, even though you're a woman...」
+				ENDIF
+			ENDIF
+			SIF !CFLAG:K17C_ID:K17C_CF_デートイベント
+				PRINTFORML 「So much for my plans...」
+		ELSE
+			;他人
+			PRINTFORML 「...!」
+			PRINTFORMDL Slap! Her hand comes flying across your cheek.
+			SIF CFLAG:TARGET:弱み握られ
+				PRINTFORML 「Even if you know my dark secrets, I'm not your doll...」
+			PRINTFORMDL You can see tears pooling in %CALLNAME:TARGET%'s eyes...
+			BASE:ARG:怒り += 1000
+		ENDIF
+	ENDIF
+	
+	;ムード評価
+	IF K17_GRT(ARG) >= K17C_思慕
+		SELECTCASE BASE:ARG:ムード
+			CASE IS >= 750
+				PRINTFORML 「The atmosphere was perfect...」
+			CASE IS >= 500
+				PRINTFORML 「The mood could've been a little better, though.」
+			CASEELSE
+				PRINTFORML 「But next time, think of the mood a little, okay?」
+		ENDSELECT
+	ENDIF
+	
+	
+	
+	;どっちからしたかを保存
+	SIF CFLAG:K17C_ID:K17C_CF_FK == 0
+		CFLAG:K17C_ID:K17C_CF_FK = -1
+	
+	CFLAG:K17C_ID:K17C_CF_FKマスター++
+	TRYCALL K17_RELATION_EV( K17C_RTF_キス )
+	RETURN 1
+ENDIF
+
+RETURN 0
+
+;*********************************************************************************
+;	ファーストキス（アリス）イベント
+;	呼ぼ出しがM_KOJO_SPEVENT_K17_1、カウンターコマンドとあるので
+;	初めてキスが呼ばれた時の口上をここに書いとく
+;	経験に関係なくアリスから初めてした時用
+;
+;	09/05	微妙な場面なので名前呼びに固定
+;
+;	引数0	：キャラID
+;	戻り値	：通過初回のみ1　二度目以降0
+;*********************************************************************************
+@K17_FIRSTKISS_ALICE(ARG)
+
+IF CFLAG:K17C_ID:K17C_CF_FKアリス
+	CFLAG:K17C_ID:K17C_CF_FKアリス = MIN(CFLAG:K17C_ID:K17C_CF_FKアリス+1,10000)
+	RETURN 0
+ELSE
+	SELECTCASE K17_GRT(ARG)
+		CASE IS >= K17C_恋慕
+			PRINTFORML 「I love you...」
+			CALL HPH_PRINT,"「Let's kiss, shall we? Nnn... ChuuHPH」", "L"
+			PRINTFORMDL You accept %CALLNAME:TARGET%'s kiss...
+			PRINTFORML 「Fufu, that's the first kiss from me, isn't it?」
+		CASE IS >= K17C_思慕
+			CALL HPH_PRINT,"「I like you... ChuuHPH」", "L"
+			PRINTFORMDL %CALLNAME:TARGET% kisses you unexpectedly...
+			PRINTFORML 「That's the first kiss from me, isn't it?」
+		CASEELSE
+			PRINTFORML 「Chuu.」
+			PRINTFORMDL %CALLNAME:TARGET% kisses you unexpectedly...
+			PRINTFORML 「Getting me to kiss you... Just what kind of sneaky magic did you use?」
+	ENDSELECT
+	
+	;正真正銘ファーストキス思慕以上
+	IF K17_GRT(ARG)>=K17C_思慕 && !CFLAG:K17C_ID:K17C_CF_FK && !TALENT:ARG:キス未経験
+		;コマンド呼び出し用　M_KOJO_SPEVENT_K17_1は別途用意
+		IF EXP:MASTER:キス経験 == 1
+			PRINTFORML 「Looks like I took your first kiss.」
+			PRINTFORML 「I'm glad you were my first kiss, too...」
+			PRINTFORMDL You feel like you were able to convey your emotions for each other.
+			
+		ELSE
+			PRINTFORML 「That was my first kiss.」
+			PRINTFORMDL Despite her appearances, %CALLNAME:TARGET%'s kiss was a bit awkward.
+		ENDIF
+	ENDIF
+	
+	
+	
+	;どっちからしたかを保存
+	SIF CFLAG:K17C_ID:K17C_CF_FK == 0
+		CFLAG:K17C_ID:K17C_CF_FK = 1
+	
+	CFLAG:K17C_ID:K17C_CF_FKアリス++
+	TRYCALL K17_RELATION_EV( K17C_RTF_キス )
+	RETURN 1
+ENDIF
+
+RETURN 0
+
+;*********************************************************************************
+;	時間停止バレの条件式
+;
+;	ちょっと複雑になったので新設
+;	あくまでこのアリスの口上のみの条件式
+;
+;	引数0	：キャラID 一応いれてアリス以外かみとく
+;	引数1	：ランダム基本値
+;	引数2	：疑い閾値
+;	戻り値	：真偽
+;*********************************************************************************
+@K17_CHECK_時間停止バレ(iID=K17C_ID,iRand_Base=20,iDoubt_Base=0)
+#FUNCTION
+#DIM iID
+#DIM iRand_Base
+#DIM iDoubt_Base
+
+;キャラIDチェック
+SIF iID != K17C_ID
+	RETURNF 0
+;すでにバレてるか
+SIF CFLAG:iID:時間停止バレ == 1
+	RETURNF 0
+SIF FLAG:なりきり == K17C_咲夜ID
+	RETURNF 1
+;あげたものか見る
+SIF CFLAG:iID:ノーパン == 2
+	RETURNF 0
+;疑い50以上か見る
+SIF CFLAG:iID:K17C_CF_疑い < iDoubt_Base
+	RETURNF 0
+;アリスのパンツあるか見る
+SIF !K17_CHECK_輸送パンツ(iID)
+	RETURNF 0
+;ランダム通過
+SIF !(K17_PERCENT(iRand_Base + CFLAG:iID:K17C_CF_疑い))
+	RETURNF 0
+	
+
+RETURNF 1
+
+
+;*********************************************************************************
+;	MASTERの時間停止バレ時のテキスト
+;
+;	引数0	：キャラID
+;	戻り値	：疑い0で1　疑いありで2
+;*********************************************************************************
+@K17_時間停止バレ(ARG=K17C_ID)
+#DIM DYNAMIC iDown_好感度=0
+#DIM DYNAMIC iDown_信頼度=0
+RESULT = 0
+IF CFLAG:ARG:K17C_CF_疑い == 0
+	PRINTFORML 「Fuu... Having such an ability, yet doing such fairy-like pranks.」
+	PRINTFORML 「Don't you understand that you're just squandering your talent?」
+	PRINTFORML 「The only other person I know that has such an incredible ability is %K17_CNAME(K17C_咲夜ID)%.」
+	PRINTFORMDW Blah blah...
+	PRINTFORMDW ...Nag nag...
+	PRINTFORMDW ...Blah blah... Nag nag...
+	PRINTFORMDW You reconsider your life choices a little...!
+	RESULT = 1
+ELSE
+	;疑い中
+	PRINTFORML 「...So you've been behind all this recent mischief with my body...」
+	SELECTCASE K17_GRT(ARG)
+		CASE IS >= K17C_恋慕
+			PRINTFORML 「Fuu... Do you know how worried I was that some stranger was playing around with my body...?」
+			PRINTFORML 「I don't want anyone to touch my body except for you... Idiot...」
+			PRINTFORMDL %CALLNAME:TARGET% buries her face in your chest and beats it with her fists.
+			PRINTFORMDL It seems her sense of relief is larger than her anger...
+			PRINTW
+			PRINTFORML 「Ah, don't get the wrong idea, I'm not angry at you or anything.」
+			PRINTFORMDL You're not so sure about that.
+			CALL K17_MARK_反発刻印()
+		CASE IS >= K17C_思慕逢引
+			PRINTFORML 「...If it's you, doing it normally is... No, I suppose I just misunderstood our relationship...」
+			iDown_好感度 = CFLAG:ARG:好感度/6
+			iDown_信頼度 = CFLAG:ARG:信頼度/6
+			CALL K17_MARK_反発刻印(1)
+		CASE IS >= K17C_思慕
+			PRINTFORML 「...I feel so betrayed... No, I suppose getting my hopes up is my own fault.」
+			PRINTFORML 「How regrettable...」
+			iDown_好感度 = CFLAG:ARG:好感度/4
+			iDown_信頼度 = CFLAG:ARG:信頼度/4
+			CALL K17_MARK_反発刻印(2)
+		CASEELSE
+			PRINTFORML 「So this is the kind of person you were...」
+			PRINTFORML 「How regrettable...」
+			PRINTFORMDL You seem to have lost all credibility with %CALLNAME:TARGET%...
+			iDown_好感度 = CFLAG:ARG:好感度
+			iDown_信頼度 = CFLAG:ARG:信頼度
+			CALL K17_MARK_反発刻印(3)
+	ENDSELECT
+	RESULT = 2
+ENDIF
+
+;好感度と信頼度の変化
+IF iDown_好感度 || iDown_信頼度
+	PRINTL
+	CALL CHANGE_CFLAG(2, K17C_ID, -iDown_好感度)
+	CALL CHANGE_CFLAG(4, K17C_ID, -iDown_信頼度)
+ENDIF
+;停止バレ
+CFLAG:ARG:時間停止バレ = 1
+;疑いがあり、無自覚処女喪失していれば自覚
+SIF TALENT:ARG:処女  == -1 && CFLAG:ARG:K17C_CF_疑い
+	TALENT:ARG:処女 = 0
+
+RETURN RESULT
+
+;*********************************************************************************
+;	乱交が開始されたときのイベント
+;	アリスから乱交相手に対する反応
+;	情事発覚とか一緒に押し倒し、押し倒されなどの反応は各所でやる
+;	そのあとこれをくっつける感じ
+;
+;	引数0	：乱交相手のID
+;*********************************************************************************
+@K17_乱交開始(ARG)
+
+SELECTCASE ARG
+	;気安い系
+	CASE K17C_霊夢ID,K17C_魔理沙ID,K17C_パチュリーID,K17C_幽香ID,K17C_咲夜ID,K17C_メディスンID
+		;アリスが恋人な場合
+		IF TALENT:TARGET:恋人
+			PRINTFORML 「...Hmm, what's this? %K17_CNAME(ARG)%, %K17_RS("are you blushing?/are you embarrassed?/you're blushing.")%」
+			PRINTFORML 「Now then, %K17_CNAME(ARG)%, %K17_RS("come/join me/come this way")% and let's %K17_RS("love/drain")% %K17_CNAME()% together.」
+			PRINTFORML 「Ah, but please don't forget, %HE_SHE(MASTER)% is mine, after all.」
+			PRINTFORMDL You feel like you've gotten into a pretty crazy situation...
+		;相手が恋人か見る　あわわわ……
+		ELSEIF TALENT:ARG:恋人
+			PRINTFORML 「Is it...really okay for me to be here? %K17_CNAME(ARG)%... If you say so... But I won't hold back, okay?」
+			PRINTFORMDL Though she says that, %CALLNAME:TARGET% still seems to have some reservations.
+		ELSE
+			PRINTFORML 「Now then, %K17_CNAME(ARG)%, %K17_RS("come/join me/come this way")% and let's %K17_RS("love/drain")% %K17_CNAME()% together.」
+			PRINTFORMDL You feel like you've gotten into a pretty crazy situation...
+		ENDIF
+	;尊敬系
+	CASE K17C_魅魔ID,K17C_ルイズID,K17C_神綺ID,K17C_夢子ID
+		
+		;アリスが恋人な場合
+		IF TALENT:TARGET:恋人
+			PRINTFORML 「If %K17_CNAME(ARG)% gets serious, I wouldn't stand a chance, after all.」
+			PRINTFORMDL %CALLNAME:TARGET% cuddles up to you and whispers this into your ear.
+			PRINTFORML 「%K17_CNAME(ARG)%... I would just kindly like to remind you that %K17_CNAME(MASTER)% is my %PRINT_MALE("boy", MASTER)%friend.」
+		;相手が恋人か見る　あわわわわわわ……
+		ELSEIF TALENT:ARG:恋人
+			PRINTFORMDL %CALLNAME:TARGET% hastily assumes a formal sitting posture.
+			PRINTFORML 「...%K17_CNAME(ARG)%, would you allow me to remain?」
+			PRINTFORMDL %CALLNAME:TARGET% is showing an unusual amount of respect.
+		ELSE
+			PRINTFORML 「%K17_CNAME(ARG)%... Umm, then I will be joining you.」
+			PRINTFORMDL %CALLNAME:TARGET% is being unusually respectful.
+		ENDIF
+		PRINTW
+		PRINTFORML 「What's with that face, %K17_CNAME()%... Stop staring so much at %K17_CNAME(ARG)%'s chest, dummy...」
+		PRINTFORML （%HE_SHE(MASTER)%'s was definitely comparing us just now... Argh.）
+	;知らない人
+	CASEELSE
+		;アリスが恋人な場合
+		IF TALENT:TARGET:恋人
+			PRINTFORML 「...I'd just like to remind you that %K17_CNAME()% is mine.」
+			PRINTFORML 「Ahh, sorry, I didn't mean you need to hold back. After all, %HE_SHE(MASTER)%'s that kind of person, right?」
+			PRINTFORML 「Umm, %K17_CNAME(ARG)%, was it...?」
+			PRINTFORML 「...Good grief, just where did you catch such a nice %PRINT_MALE("boy", ARG)%.」
+			PRINTFORMDL %CALLNAME:TARGET% hugs %CALLNAME:(ARG)% tightly.
+		;相手が恋人
+		ELSEIF TALENT:ARG:恋人
+			PRINTFORML 「This %PRINT_MALE("man", ARG)%... %HE_SHE(ARG)%'s your %PRINT_MALE("boy", ARG)%friend, right?」
+			PRINTFORMDL %CALLNAME:TARGET% whispers into your ear.
+			PRINTFORML 「Umm, %K17_CNAME(ARG)%, was it...?」
+			PRINTFORML 「I see, thank you...」
+			PRINTFORMDL Saying this, %CALLNAME:TARGET% seems to have some reservations.
+		;お互い恋人じゃない場合
+		ELSE
+			PRINTFORML 「Umm, %K17_CNAME(ARG)%, was it...?」
+			PRINTFORML 「Perhaps we have some compatibility?」
+			PRINTFORML 「Fufu, after all, we like the same person, right?」
+		ENDIF
+ENDSELECT
+RETURN 1
+
+;*********************************************************************************
+;	押し倒し喘ぎタイプ選択
+;
+;	最低条件はRTの恋人
+;	押し倒され経験済み
+;	押し倒しで通常以外の喘ぎタイプを経験済み
+;*********************************************************************************
+@K17_押し倒し喘ぎタイプ選択
+
+IF FIRSTTIME("押し倒し喘ぎタイプ選択")
+	PRINTFORML 「Ah, I'm sorry, just a moment... Umm...」
+	PRINTFORML 「I'm happy you're always willing to be intimate with me like this, but... Sometimes I worry you'll get tired of me...」
+	PRINTFORML 「So don't hold back... I'm okay with anything you want to do... Okay?」
+	
+ELSE
+	PRINTFORML 「Umm, what do you...want to do today?」
+ENDIF
+PRINTL
+{
+CALL K17_ASK_M
+	("Let's make love like we always do...",1,
+	@"I want you to accept my desires...",CFLAG:K17C_CF_受け_お手伝い系,
+	@"I want to try some rough play...",CFLAG:K17C_CF_受け_合意襲い系,
+	@"I want to ravish you while you resist...",CFLAG:K17C_CF_受け_無理矢理系,
+	@"I want you to take the lead...",1)
+}
+
+SELECTCASE RESULT
+	CASE 0
+		CALL K17_SET_AUTO_PVOICE(,,K17C_受け_おねだり系)
+		PRINTFORML 「Like we always do... Fufu.」
+		PRINTFORMDL %CALLNAME:TARGET%'s cheeks flush with a rosy tinge.
+		PRINTFORMDL She slides up next to you and whispers into your ear.
+		CALL HPH_PRINT,@"「Making %K17_RS("passionate/sweet")% love with you... That's fine with me, tooHPH」", "L"
+		PRINTW
+	CASE 1
+		CALL K17_SET_AUTO_PVOICE(,,K17C_受け_お手伝い系)
+		PRINTFORML 「You want %K17_RS("to do as you please with me/to use me like a sexual outlet")%...%K17_RS(" Like I'm a doll/")%」
+		PRINTFORMDL After hearing your request, %CALLNAME:TARGET% fidgets and rubs her thighs together nervously.
+		PRINTFORML 「Okay, come here...」
+		PRINTW
+	CASE 2
+		CALL K17_SET_AUTO_PVOICE(,,K17C_受け_合意襲い系)
+		PRINTFORML 「It's just play, okay? There are things you shouldn't ever do to a woman...」
+		PRINTFORMDL As your fingers lightly brush %CALLNAME:TARGET%, she flinches back in an exaggerated manner.
+		CALL HPH_PRINT,"「NoooHPH Don't hurt me...」", "L"
+		PRINTFORMDL A pang of guilt squeezes your heart, but %CALLNAME:TARGET% sidles up to you and whispers gently.
+		PRINTW
+		CALL HPH_PRINT,@"「%K17_RS("It's okay/I'm fine")%, it's just play... So %K17_RS("mess me up/treat me roughly/violate me")%HPH」", "L"
+		PRINTW
+	CASE 3
+		CALL K17_SET_AUTO_PVOICE(,,K17C_受け_無理矢理系)
+		PRINTFORML 「No...! No way! You're such a freak!」
+		PRINTFORMDL You reflexively jump away from %CALLNAME:TARGET% at her sudden outburst.
+		PRINTFORMDL Seeing your reaction, %CALLNAME:TARGET% sidles up to you and whispers into your ear.
+		PRINTW
+		CALL HPH_PRINT,"「Don't worry... Have your way with meHPH」", "L"
+		PRINTW
+	CASE 4
+		CFLAG:うふふ = 2
+{
+		CALL K17_CHOICE(
+			"Oho... And what would you like me to do to you?",
+			@"I want you to have your way with me...",
+			@"I want you to wring me dry...",
+			@"I want you to assault me...",
+			@"I want you to discipline me...")
+}
+		;タイプ決めてから呼べばいい
+		SELECTCASE RESULT
+			CASE 0
+				CFLAG:K17C_ID:K17C_CF_喘ぎタイプ = K17C_攻め_お手伝い系
+			CASE 1
+				CFLAG:K17C_ID:K17C_CF_喘ぎタイプ = K17C_攻め_おねだり系
+			CASE 2
+				CFLAG:K17C_ID:K17C_CF_喘ぎタイプ = K17C_攻め_合意襲い系
+			CASE 3
+				CFLAG:K17C_ID:K17C_CF_喘ぎタイプ = K17C_攻め_無理矢理系
+		ENDSELECT
+		
+		CALL M_KOJO_EVENT_K17_10(1,0)
+ENDSELECT
+RETURN 1
+
+
+;*********************************************************************************
+;	処女喪失時のイベント
+;	あーだめだ、無理矢理のプライオリティ間違ってるな、地の文直さないと
+;
+;	引数0	：キャラID
+;	戻り値	：成否判定
+;*********************************************************************************
+@K17_処女喪失(ARG=K17C_ID)
+;非処女なら戻す
+SIF TCVAR:ARG:破瓜 == 0 || FLAG:時間停止
+	RETURN 0
+
+;-------------------------------------------------
+;無自覚処女喪失のチェック
+;合意のときのみ
+;-------------------------------------------------
+IF TCVAR:ARG:破瓜 == -1 && !FLAG:時間停止 && !TCVAR:ARG:泥酔 && !CFLAG:MASTER:イタズラ
+	PRINTFORML （H-Huh? That felt smoother than I expected... Is it really inside...?）
+	IF K17_GRT(ARG) >= K17C_思慕 && TCVAR:ARG:無理矢理 != 1 && CFLAG:K17C_ID:K17C_CF_喘ぎタイプ != K17C_受け_合意襲い系 && CFLAG:K17C_ID:K17C_CF_喘ぎタイプ != K17C_受け_無理矢理系
+		PRINTFORML 「%K17_AP_NUM(2)%... E-Even though...this is my first time...」
+		PRINTFORML 「It didn't hurt at all... Does that mean...that we're really compatible? %K17_AP_NUM(2,1)%」
+	ENDIF
+	PRINTFORMDL It seems %CALLNAME:TARGET% really thought she was still a virgin...
+	RETURN 1
+ENDIF
+
+
+;関係性別に地の文が変わるので対応
+IF TCVAR:ARG:泥酔
+	PRINTFORML 「Ow... Wha? It suddenly hurts...down there.」
+	PRINTFORMDL %CALLNAME:TARGET% seems to be too disoriented to realize what's happened to her.
+;睡眠姦　良い子は眠っている間にママにしちゃおうね～
+ELSEIF CFLAG:ARG:睡眠
+	PRINTFORML 「...Fnyahhh?!...」
+	PRINTFORMDL %CALLNAME:TARGET%'s body jumps for a moment, but she doesn't wake up.
+ELSEIF TALENT:ARG:無知
+	PRINTFORML 「Oww... It feels all...tingly down there...」
+
+ELSEIF TCVAR:ARG:無理矢理 == 1 || (CFLAG:K17C_ID:K17C_CF_喘ぎタイプ & K17C_喘ぎF_襲い && !(CFLAG:K17C_ID:K17C_CF_喘ぎタイプ & K17C_喘ぎF_攻め))
+	;無理矢理つきor 襲い系の受け
+	;縛ったりしてもここくるはず
+	PRINTFORML 「No%K17_AP_DEC()% Don't put it in%K17_AP_DEC()% I-I'm still a virgin%K17_AP_DEC()% So stop, noooooo%K17_AP_DEC(1)%」
+	PRINTFORML 「It's inside... It's really inside...%K17_AP_DEC(1)%」
+	PRINTFORMDL With %CALLNAME:TARGET%'s struggling form pinned down, you push your %TINKO(PLAYER)% into her in one motion, robbing her of her maidenhood.
+	PRINTFORML 「I can't believe... My first time was...%K17_AP_DEC(1)%」
+	
+;親愛かつ相手が主人(現在親愛がないので、恋人で代用　恋慕一括
+ELSEIF TALENT:ARG:恋慕
+	;恋慕＆恋人
+	;恋慕
+	IF !(CFLAG:K17C_ID:K17C_CF_喘ぎタイプ & K17C_喘ぎF_攻め)
+		;受け
+		;ねだり系
+		
+		PRINTFORML 「S-So we're really going to do it... It's my first time, so... Slowly... Okay?」
+		PRINTFORML 「Ah... Nnnkuh... Uuuu～～～～～!」
+		PRINTFORMDL As your %TINKO(PLAYER)% pushes through her hymen, %CALLNAME:TARGET% gives you a smile, her face covered in sweat.
+		PRINTW
+		PRINTFORML 「It's okay... It hurts, but... I'm too happy, thank you, %K17_CNAME()%.」
+		PRINTFORML 「I'm so happy...that we've finally become one.」
+		PRINTFORMDL %CALLNAME:TARGET% endures the pain as she gives you a brave smile...
+	ELSE
+		;攻め
+		PRINTFORML 「I-I'm going to have my way with you... Nn... Nnkuh!」
+		PRINTFORML （Even though it's my first time... I can't believe I'm taking the lead...）
+	ENDIF
+	
+ELSEIF TALENT:ARG:思慕
+	PRINTFORML （Ow... This...hurts more than I expected...!!）
+	PRINTFORML 「Uu... Uuu... I'm sorry, it hurts...」
+	PRINTFORMDL %CALLNAME:TARGET%'s arousal seems to wither away as she fights through the pain.
+ELSE
+	PRINTFORML 「It's going inside... Ah...!」
+ENDIF
+RETURN 1
+
+;*********************************************************************************
+;	うふふ終了イベント
+;	主導権が途中で変わることもあるので
+;	押し倒しがどっちだったか関係なく終わった時の処理
+;	合意取得のRTF保存などもここで一括処理する
+;
+;	引数0	：開始時の主導権　恐らく乱交でTARGETになってない時もあるので乱交時は別に返す
+;	引数1	：開始時の溜まってる度
+;*********************************************************************************
+@K17_うふふ感想戦(ARG,ARG:1)
+#DIM DYNAMIC iRT	= 0		;EXで取る方
+#DIM DYNAMIC iReview = 0	;評価
+#DIM DYNAMIC iFriends = 0	;友達保存
+#DIM DYNAMIC iTNum = 0		;TARGET人数
+
+iTNum = GET_TARGETNUM()
+PRINTL
+
+IF TCVAR:泥酔
+	;泥酔時
+	PRINTFORML 「Somehow that felt...more realistic than usual...」
+	PRINTFORML  （It's like...I really had sex...）
+	PRINTFORMDL Her memory still hazy, %CALLNAME:TARGET% seems to think what just happened was a dream...
+	RETURN 1
+;ELSEIF TCVAR:泥酔姦バレ
+;	;泥酔姦バレ　あっれーないや
+;	PRINTFORML 「……えっ……えっ……どういう……なんで！？」
+ENDIF
+
+;無理矢理フラグ見る
+CALL K17_無理矢理中出し(TARGET)
+SIF RESULT
+	RETURN 1
+
+;初回感想飛ばし
+IF !(CFLAG:K17C_ID:K17C_CF_RTF & K17C_RTF_うふふ) && CFLAG:TARGET:既成事実 & 合意_うふふ
+	
+	;うふふ合意初回限定
+	SELECTCASE K17_GRT()
+		CASE IS >= K17C_恋慕
+			PRINTFORML 「Hey... I was thinking...」
+			PRINTFORMDL %CALLNAME:TARGET% brings her face close to your ear and whispers.
+			PRINTFORML 「Let's keep doing this, more and more, together... Okay?」
+			PRINTFORMDL With that, %CALLNAME:TARGET% kisses you on the cheek and smiles.
+			PRINTFORML （And maybe we'll...do even lewder things...）
+		CASE IS >= K17C_思慕
+			PRINTFORML 「Hey, uhhー... %K17_CNAME()%, would you want...to do this...again?」
+			PRINTFORML 「I-I see... Very well, then...」
+			PRINTFORMDL Saying no more, %CALLNAME:TARGET% turns her gaze downward and blushes.
+			PRINTFORML （Next time, I should prepare better, and make myself more presentable...）
+		CASEELSE
+			PRINTFORML 「Nn... Are we finished...?」
+			PRINTFORML （That didn't feel as special as I thought...）
+	ENDSELECT
+	
+ELSE
+	iRT = K17_GRT_EX(TARGET)
+	IF (!(CFLAG:K17C_ID:K17C_CF_喘ぎタイプ & K17C_喘ぎF_攻め) && !(CFLAG:K17C_ID:K17C_CF_喘ぎタイプ & K17C_喘ぎF_襲い)) || CFLAG:K17C_ID:K17C_CF_喘ぎタイプ & K17C_喘ぎF_攻め
+		;関係性別後戯　アリスはなんか優しそうな気がする（願望
+		SELECTCASE K17_LOWER_LIMIT_RAND(iRT,K17C_思慕,K17C_恋慕)
+			CASE IS >= K17C_恋慕
+				CALL HPH_PRINT,"「Nnn～～ ChuuHPH Was it... good for you?」", "L"
+			CASE IS >= K17C_思慕
+				CALL HPH_PRINT,"「Nnn～HPH ...Let's tidy up, then...」", "L"
+			CASEELSE
+				PRINTFORML 「Nn... Looks like it's finished...」
+		ENDSELECT
+	ELSE
+		;受けの襲い系
+		SELECTCASE K17_LOWER_LIMIT_RAND(iRT,K17C_思慕,K17C_恋慕)
+			CASE IS >= K17C_恋慕
+				CALL HPH_PRINT,@"「Nnn～～ ChuuHPH ...I got violatedHPH You %K17_RS("pervert/animal/big dummy")%.」", "L"
+			CASE IS >= K17C_思慕
+				PRINTFORML 「Getting me all worked up like that... %K17_RS("Is this what you're into?/What if I get addicted to this?")% You %K17_RS("pervert/lecher/dummy")%.」
+			CASEELSE
+				PRINTFORML 「Even though I said no... Good grief.」
+		ENDSELECT
+	ENDIF
+ENDIF
+;----------------
+;後処理
+;----------------
+;中出しのカウンター
+IF TCVAR:K17C_ID:K17C_TC_中出しカウント
+	PRINTW
+	CALL HPH_PRINT,@"「%K17_SPLIT_SHUFFLE(@"%K17_RS("Hyahn/Nyan/Hiie/Kyaa")%BPB\\...","\\")%」", "L"
+	PRINTFORML （%HIS_HER(MASTER,1)% stuff inside me... It's leaking out...）
+	;custom code
+	SIF TCVAR:K17C_ID:K17C_TC_中出しカウント > 1 && !CFLAG:妊娠自覚状態
+		PRINTFORML （%HE_SHE(MASTER,1)% did %K17_RS("come inside me/shoot it inside me/seed me")% %NUM_ADVERB(TCVAR:K17C_ID:K17C_TC_中出しカウント)%...）
+	;解禁具合セレクト
+	SELECTCASE RAND(0,(CFLAG:K17C_ID:生解禁)+1)
+		CASE 0
+			PRINTFORML （Maybe %K17_RS(@"being filled up/doing it raw/letting %HIM_HER(MASTER)% cum inside me")% like that feels better, after all...?）
+		CASE 1
+			PRINTFORML （I wonder if %HE_SHE(MASTER)% wants to %K17_RS("fertilize/impregnate/make a baby with")% me?）
+		CASE 2
+			PRINTFORML （I wonder...if %K17_RS("I got pregnant/we made a baby")%?）
+	ENDSELECT
+ENDIF
+;服装チェック
+IF EQUIP:0
+	;へたくそだなー映画とかでよくあるこういう描写がいいはずなんだけど
+	PRINTFORMDL Still flushed from the heat of the moment, %CALLNAME:TARGET% turns her back to you and cheerfully puts her clothes and ruffled hair into order.
+ENDIF
+
+RESULT = 0
+;初回フラグ保存したときも戻す
+SIF CFLAG:TARGET:既成事実 & 合意_うふふ
+	TRYCALL K17_RELATION_EV( K17C_RTF_うふふ )
+;恋慕未満感想飛ばし
+SIF iRT < K17C_恋慕 || RESULT || TFLAG:抱きつきモード
+	RETURN 1
+PRINTW
+
+;----------------
+;乱交時の対応
+;初回はありえないはず
+;----------------
+IF  iTNum > 1
+	;とりあえず友達優先で取る
+	iFriends = K17_GET_TARGETS_ID()
+	PRINTFORML 「%K17_CNAME(iFriends)%, thank you as well...」
+	
+	;知り合い反応
+	SIF K17_GET_FRIENDS(iFriends)
+		PRINTFORML （\@ARG==-1 ? Being loved # Doing it\@ in front of %K17_CNAME(iFriends)% like that...%K17_RS("is embarrassing/is making me blush/makes me nervous")%, after all.）
+	RETURN 1
+ENDIF
+
+
+;----------------
+;感想戦
+;----------------
+IF ARG == -1 || TALENT:MASTER:性別 == 1
+	;アリスを押し倒した時の評価
+	;MASTERが竿なしの女性の場合もこっち
+	;----------------
+	;評価計算
+	;----------------
+	;開始時の溜まってる度から、どれ位の割合減ったか取得
+	iReview =   K17_ROUND( LIMIT(CFLAG:TARGET:溜まってる度,0,1000)*100 , LIMIT(ARG:1,0,1000))
+	iReview = 100-iReview
+	SELECTCASE iReview
+		;満足
+		CASE IS >= 70
+			PRINTDATAL
+				DATAFORM （Nnn... My head...feels so clear now%K17_HEART()%）
+				DATAFORM （I really...enjoyed that%K17_HEART()%）
+				DATAFORM （Ahhh%K17_HEART()% So good...）
+			ENDDATA
+			PRINTFORML 「%K17_RS("I thought... /...")%That %K17_RS("was really good/felt really good/was so satisfying")%...」
+			PRINTDATADL
+				DATAFORM %CALLNAME:TARGET% is practically glowing with satisfaction as she smiles at you.
+				DATAFORM %CALLNAME:TARGET% intertwines her fingers with yours as she looks down bashfully.
+				DATAFORM %CALLNAME:TARGET% snuggles up against you as she wears a satisfied smile.
+			ENDDATA
+		;もうちょっと
+		CASE IS >= 45
+			PRINTDATAL
+				DATAFORM （...Just a little more... Haa, %K17_RS("I mustn't think like that/how shameless")%%K17_BLUSH()%）
+				DATAFORM （Nnnー... Just %K17_RS("a little more/a little longer/one more time")%, would have been nice... Oh well.）
+				DATAFORM （Thinking that %K17_RS("wasn't quite enough/a little more would have been nice")%... I wonder if %HIS_HER(MASTER)% perversion is rubbing off on me...）
+			ENDDATA
+			PRINTFORMDL %CALLNAME:TARGET% seems a little lost in thought with a %K17_RS("blushing/reddening/flushed")% face.
+		;不満
+		CASEELSE
+			PRINTDATAL
+				DATAFORM （...I wonder...if %HE_SHE(MASTER)% is %K17_RS("just teasing me/putting me off/telling me to wait")%...?）
+				DATAFORM （We're already finished... %K17_RS(@"What's going on...?/Is %HE_SHE(MASTER)% tired...?/Is %HE_SHE(MASTER)% tired of me...?/If only I had more feminine appeal...")%）
+				DATAFORM （What's with %HIM_HER(MASTER,,1)%... Would %K17_RS("being/making love")% with me a little longer...have been such a bad thing?）
+			ENDDATA
+			PRINTFORMDL %CALLNAME:TARGET% %K17_RS(@"puffs up her cheeks/looks up at you/rubs her thighs together")% with a little dissatisfaction.
+	ENDSELECT
+ELSEIF ARG == K17C_ID
+	;竿ありMASTERでアリスが押し倒した時
+	;----------------
+	;評価計算
+	;----------------
+	;開始時の精力から、どれ位の割合減ったか取得
+	;TODO: the dependence of iReview on remaining player vigor might lead to some weird cases the session ends due to Alice's
+	;stamina, or she hits 0 sexual frustration, but she still complains because the player has remaining vigor. Might happen if
+	;the AI doesn't choose many player service actions.
+	iReview =   K17_ROUND( LIMIT(BASE:MASTER:精力,0,MAXBASE:MASTER:精力)*100 , LIMIT(ARG:1,0,MAXBASE:MASTER:精力))
+	iReview = 100-iReview
+	
+	SELECTCASE iReview
+		;満足
+		CASE IS >= 60
+			PRINTDATAL
+				DATAFORM （I wonder if I...overdid it a little%K17_HEART()%）
+				DATAFORM （%HE_SHE(MASTER,1)% seems so satisfied...%K17_HEART()%）
+				DATAFORM （%HIS_HER(MASTER,1)% face, so full of satisfaction... How adorable%K17_HEART()%）
+			ENDDATA
+			PRINTFORML 「%K17_RS("How was it/What did you think/")%～? Fufu...」
+			PRINTFORMDL Having been drained by the %K17_RS("smugly/contentedly/lewdly")% smiling %CALLNAME:TARGET%, you just stare off into space for a while.
+		
+		;もうちょっと
+		CASE IS >= 30
+			PRINTDATAL
+				DATAFORM （I wonder if not having the initiative...%K17_RS(@"was embarrassing/made %HIM_HER(MASTER,,1)% feel uneasy/wasn't to %HIS_HER(MASTER)% liking")%...）
+				DATAFORM （I wanted to go a little longer... Maybe this %K17_RS(@"was embarrassing/made %HIM_HER(MASTER,,1)% feel uneasy/wasn't to %HIS_HER(MASTER)% liking")%... %K17_RS("Hauu/Uuu/Hmph")%.）
+				DATAFORM （Nnnー... Just %K17_RS("a little more/a little longer/one more time")%... Oh well.）
+			ENDDATA
+			PRINTFORMDL You pat %CALLNAME:TARGET%'s head as she looks up at you with a little uncertainty.
+			
+		;不満
+		CASEELSE
+			PRINTDATAL
+				DATAFORM （...Maybe... %K17_RS(@"it wasn't good/%HE_SHE(MASTER)% didn't like it/%HE_SHE(MASTER)%'s holding it in")%...?）
+				DATAFORM （We're already finished... %K17_RS(@"What's going on...?/Is %HE_SHE(MASTER)% tired...?/Is %HE_SHE(MASTER)% tired of me...?/If only I had more feminine appeal...")%）
+				DATAFORM （What's with %HIM_HER(MASTER,,1)%... Would %K17_RS("being/making love")% with me a little longer...have been such a bad thing?）
+			ENDDATA
+			PRINTFORMDL %CALLNAME:TARGET% %K17_RS(@"puffs up her cheeks/looks up at you/rubs her thighs together")% with a little dissatisfaction.
+	ENDSELECT
+ENDIF
+
+RETURN 1
+
+;*********************************************************************************
+;	無理矢理中出しした場合の怒り→うふふ解除
+;	また普通にうふふ終了できたパターンに対応
+;
+;	中出しカウントと無理矢理フラグを初期化して戻す
+;
+;	引数0	：キャラID　略アリス
+;	戻り値	：無理矢理フラグを見て表示したら1　表示しなかったら0
+;*********************************************************************************
+@K17_無理矢理中出し(iID=K17C_ID)
+#DIM iID
+
+SIF !TCVAR:iID:無理矢理
+	RETURN 0
+
+PRINTFORML 「Even though I said %K17_RS("no/you couldn't/to stop")%... %K17_RS("You're the worst/You liar/I can't believe you")%...」
+
+;中出し
+IF TCVAR:K17C_ID:K17C_TC_中出しカウント
+	;危険日見る
+	IF ESTRUS_CYCLE(iID) >= 7
+		PRINTFORML （Wh-Wh-What am I going to do?! ...%K17_RS("Today is dangerous/I'm going to get pregnant")%...）
+	ELSE
+		PRINTFORML （...%K17_RS("Today's not too dangerous/I wouldn't get pregnant today")%, right...?）
+	ENDIF
+ENDIF
+
+PRINTFORMDL %CALLNAME:iID% begins to sulk in irritation...
+
+;TCVAR:iID:無理矢理 = 0
+TCVAR:K17C_ID:K17C_TC_中出しカウント = 0
+RETURN 1
+
+
+;*********************************************************************************
+;	関係性を評価する
+;
+;	09/08	あれこれなんか頭弱くね　初回限定をどうするかあとで考える
+;	09/09	なんとかスッキリ 実際上がるタイミングに差異があるので呼ぶときに初回判定
+;	09/10	結局CFLAG使うことに 動的判定でフラグ立っててもここへ来た時に初回判定できるはず
+;			フラグ上げてから呼んであげて
+;	11/24	フラグ値の加算をor演算に　動的とグローバルに差異がある場合UPDATEすることに
+;
+;	引数0	：取得フラグ（K17C_RTF_
+;	引数1	：キャラID 省略でアリス
+;	戻り値	：書き換えたら1　グローバルにもう追加されていたら0
+;*********************************************************************************
+@K17_RELATION_EV(ARG:0,ARG:1=K17C_ID)
+#DIM iRTnum
+#DIM iRTF
+
+iRTF = K17_RT_FG(K17C_ID)
+
+SIF CFLAG:K17C_ID:K17C_CF_RTF & ARG:0
+	RETURN 0
+
+iRTnum = FINDELEMENT (K17C_RTF,ARG:0)
+SIF iRTnum == -1
+	THROW 引数({ARG:0})不正なフラグを取得
+
+;取得フラグ保存
+CFLAG:K17C_ID:K17C_CF_RTF |= K17C_RTF:iRTnum
+
+;UPTATE
+SIF iRTF != CFLAG:K17C_ID:K17C_CF_RTF
+	CFLAG:K17C_ID:K17C_CF_RTF = iRTF
+
+CALL K17_RELATION_ANNOUNCE(iRTnum)
+
+
+;ヒント表示 とりあえず今のところ毎回表示
+SIF RESULT == 1 ;&& CFLAG:K17C_ID:K17C_CF_上海イベント >= 1
+	CALL K17_HINT(iRTnum)
+PRINTW
+RETURN 1
+
+
+;*********************************************************************************
+;	取得したフラグと現在の関係性を比較してアナウンスする
+;
+;	手入れ案件
+;	09/16	たぶんこれでおｋ
+;	10/07	最高値の設定を追加
+;
+;	引数0	：取得フラグナンバー
+;	引数1	：キャラID 省略でアリス
+;	戻り値	：読めたら1
+;*********************************************************************************
+@K17_RELATION_ANNOUNCE(ARG:0,ARG:1=K17C_ID)
+#DIM iRTnum
+
+iRTnum=K17_GRT(ARG:1)
+
+	PRINTL
+
+	;最高値を得た
+	IF CFLAG:K17C_ID:K17C_CF_RTF >= K17C_RTM_恋人
+		PRINTFORMDL Your relationship with %CALLNAME:(ARG:1)% has deepened.
+		PRINTFORMDL You've reached the ultimate stage of your relationship with %CALLNAME:(ARG:1)%.
+		RETURN 0
+	ENDIF
+
+	IF ARG <= iRTnum
+		;現在の関係性と得られたフラグとRTが合致か下か
+		IF ARG:0 <= (K17C_RT_MAX/2)
+			PRINTFORMDL You feel like your relationship with %CALLNAME:(ARG:1)% is progressing smoothly...!
+		ELSE
+			PRINTFORMDL You feel like your relationship with %CALLNAME:(ARG:1)% is deepening...!
+		ENDIF
+		RETURN 1
+		
+	ELSEIF ARG == iRTnum+1
+		;現在の関係性より得たフラグが1つ上で上がらない（なにか忘れ
+		IF ARG <= (K17C_RT_MAX/2)
+			PRINTFORMDL Your relationship with %CALLNAME:(ARG:1)% is at a standstill.
+			PRINTFORMDL There's something important you're forgetting...
+		ELSE
+			PRINTFORMDL Your relationship with %CALLNAME:(ARG:1)% hasn't deepened.
+			PRINTFORMDL There's something you're missing...
+		ENDIF
+		RETURN 1
+		
+	ELSEIF ARG > iRTnum+1
+		;1以上上　（飛ばし過ぎ
+		IF ARG <= (K17C_RT_MAX/2)
+			PRINTFORMDL Your relationship with %CALLNAME:(ARG:1)% might have progressed...
+		ELSE
+			PRINTFORMDL Your relationship with %CALLNAME:(ARG:1)% might have deepened...
+		ENDIF
+		RETURN 1
+	ENDIF
+	
+	
+	
+RETURN 0
+
+;*********************************************************************************
+;	ひんと表示
+;
+;	万一を考えてグローバルでも呼べるように
+;	現在のRELATION_TYPEに対して足りないフラグに対してアナウンスする
+;	CSTRにぶっこんで能力表示→キャラ紹介にでも表示したいんだけど設計的に無理かな
+;
+;	10/07	最高値の条件式を追加
+;	11/24	マージ停止　UPDATE前の状態の例外処理を追加
+;
+;	引数0	：取得フラグナンバー　省略で現在の関係性の次段階を表示
+;*********************************************************************************
+@K17_HINT(ARG=0)
+#DIMS cHINT,K17C_RT_MAX
+#DIM iRTnum 	= 0
+#DIM iRT_Flag	= 0
+VARSET LOCALS
+
+;--------------------
+;初期化
+;--------------------
+iRT_Flag	= K17_RT_FG()
+iRTnum		= K17_GRT()
+
+;--------------------
+;保存と差異を見る
+;--------------------
+SIF iRT_Flag != CFLAG:K17C_ID:K17C_CF_RTF
+	CFLAG:K17C_ID:K17C_CF_RTF = iRT_Flag
+
+;--------------------
+;ひんと文章の初期化
+;--------------------
+VARSET cHINT
+FOR p,1,K17C_RT_MAX
+
+;	;取得フラグの表示初期化
+;	IF iRT_Flag & K17C_RTF:p
+;		LOCALS += UNICODE(0x2665)
+;	ELSE
+;		LOCALS += UNICODE(0x2661)
+;	ENDIF
+
+	SELECTCASE p
+		
+		CASE K17C_お友達
+			IF ABL:K17C_ID:親密 >= 5
+				cHINT:p += CALLNAME:K17C_ID+" would like to engage in a little conversation..."
+			ELSE
+				cHINT:p += CALLNAME:K17C_ID+@" still doesn't see you as a friend..."
+			ENDIF
+		CASE K17C_思慕
+			IF (ABL:17:欲望 - ABL:K17C_ID:親密) >= 1
+				;セフレルート
+				cHINT:p += CALLNAME:K17C_ID+"'s body has yet to be fully developed..."
+			ELSE
+				;純愛ルート
+				cHINT:p += CALLNAME:K17C_ID+@" doesn't seem to have developed a crush on you yet..."
+			ENDIF
+			
+		CASE K17C_思慕キス
+			cHINT:p += @"You haven't even kissed "+CALLNAME:K17C_ID+" yet..."
+			
+		CASE K17C_思慕逢引
+			cHINT:p += CALLNAME:K17C_ID+@" would like to make sure you hear her out during a date..."
+			
+		CASE K17C_思慕うふふ
+			cHINT:p += CALLNAME:K17C_ID+@" has not consented to sexual intercourse with you just yet..."
+			
+		CASE K17C_恋慕
+			IF (ABL:17:欲望 - ABL:K17C_ID:親密) >= 2 && ABL:K17C_ID:欲望 <= 10
+				cHINT:p += CALLNAME:K17C_ID+@" seems to want to get a lot more physical with you..."
+			ELSE
+				cHINT:p += "There's not much love being made between "+CALLNAME:K17C_ID+@" and you..."
+			ENDIF
+			
+		CASE K17C_恋慕告白
+			cHINT:p += CALLNAME:K17C_ID+@" would like to make sure you hear her confession..."
+			
+		CASE K17C_恋慕生解禁
+			cHINT:p += CALLNAME:K17C_ID+@" didn't agree to have babies with you just yet..."
+			
+		CASE K17C_性癖
+			cHINT:p += "Looks like "+CALLNAME:K17C_ID+" still has some secrets to tell..."
+			
+		CASE K17C_恋人
+			IF TALENT:MASTER:恋人!=0 && TALENT:MASTER:恋人!=K17C_ID
+				cHINT:p += "Better instill some more pleasure into "+CALLNAME:K17C_ID+"'s body..."
+			ELSE
+				cHINT:p += "Seems like "+CALLNAME:K17C_ID+" wants to become your girlfriend..."
+			ENDIF
+			
+		CASE IS >= K17C_RT_MAX
+			cHINT:p += "Currently, you seem to be on top of things with "+CALLNAME:K17C_ID+"."
+		CASEELSE
+			;bug warning
+			cHINT:p += "「...I hope I didn't do anything funny to you, by any chance?」\n"
+			cHINT:p += "「If you could let me know about this, that would be great...」"
+	ENDSELECT
+NEXT
+
+
+
+;PRINTFORMDL 現在の%CALLNAME:K17C_ID%との関係性数値　{iRTnum}/10　現在の関係：{K17_GET_RELATION_NAME(iRTnum)}
+;PRINTFORMD 取得フラグ　
+;SETCOLOR C_PINK
+;SETFONT "Times New Roman"
+;PRINTFORML %LOCALS%
+;SETFONT
+
+
+
+;--------------------
+;最高値を得ている
+;--------------------
+IF CFLAG:K17C_ID:K17C_CF_RTF == K17C_RTM_恋人 || iRT_Flag == K17C_RTM_恋人
+	PRINTFORMDL Currently, you seem to be on top of things with %CALLNAME:K17C_ID%.
+	RETURN 0
+ENDIF
+
+;SIF CFLAG:K17C_ID:K17C_CF_RTF > K17C_RTM_恋人
+;	THROW CFLAG:K17C_ID:K17C_CF_RTF({CFLAG:K17C_ID:K17C_CF_RTF})不正なフラグ値
+
+
+;次回までを表示 順調、飛ばし過ぎ
+IF ARG != iRTnum+1
+	iRTnum += 1
+	PRINTFORMDL To advance to the next stage...
+	;CSTR:K17C_ID:5 = 次の段階へ進むには……
+ENDIF
+
+
+;SIF ARG > iRTnum
+;	iRTnum =ARG
+;PRINTFORML 「iRTnum{iRTnum}iRT_Flag{iRT_Flag}
+
+;マスクを見て立ってないフラグのヒントを表示
+FOR i,iRTnum,i<=-1,-1
+	IF !(iRT_Flag & K17C_RTF:i)
+		PRINTFORMDL %cHINT:i%
+	ENDIF
+NEXT
+
+RETURN 1
+
+
+;*********************************************************************************
+;	朝フェライベント
+;	朝起きた時に同じ場所にいるとき
+;
+;	引数0	：キャラID
+;	備考	：判定に使うTCVARフラグが必要
+;*********************************************************************************
+@K17_朝フェライベント(ARG=K17C_ID)
+
+SIF TCVAR:ARG:K17C_TC_朝フェラ
+	RETURN 0
+;とりあえず今のところ竿持ちだけ
+SIF !(TALENT:MASTER:性別 >= 2)
+	RETURN 0
+
+TCVAR:K17C_ID:K17C_TC_朝フェラ = 1
+
+;MASTERの溜まってる度の判定とかも必要かな　今のところフレーバー
+PRINTFORML 「What a nice morning today, as well.」
+PRINTFORMDL Just a little earlier...
+PRINTFORMDL ...
+PRINTFORMDL ......
+PRINTFORMDW .........
+PRINTFORML 「%K17_チュパ音(K17C_受け_おねだり系,ABL:K17C_部位M_キス,3)% ...%HE_SHE(MASTER,1)%'s still, sleeping.」
+PRINTFORML 「%K17_チュパ音(K17C_受け_おねだり系,ABL:K17C_部位M_キス,2)% ...Even with %HIS_HER(MASTER)% %K17_CALL_G()% like this.」
+PRINTFORML 「Cum... %K17_チュパ音(K17C_受け_おねだり系,ABL:K17C_部位M_キス,2,1)%」
+PRINTFORMDL Feeling something strange, you find %CALLNAME:TARGET% under the sheets with her face buried in your crotch.
+CALL HPH_PRINT,@"「Ahnn, good morningBPB Nnn～～ ShlrrrrpHPHHPH」", "L"
+;custom code
+IF CFLAG:K17C_ID:1092
+	PRINTFORMDL "At least move your head away before talking..."
+	PRINTW
+	PRINTFORMDL "What are you doing?"
+ELSE
+	PRINTFORMDL You wish she'd at least move her face away before talking...
+	PRINTW
+	PRINTFORMDL You ask her what she's doing.
+ENDIF
+PRINTW
+PRINTFORML 「Wha, you're the one who told me to wake you up in the morning like this.」
+PRINTFORMDL Hmm, did you say that? You don't really remember...
+RETURN 1
+;*********************************************************************************
+;	お風呂イベント
+;	ONABAREみたいなやつ軽く作ってみる
+;	汎用性について考えるのはやめた……そのうち地の文と口上分離
+;	あれ思ったよりなんかエロい
+;
+;	引数0	：キャラID
+;	戻り値	：裸見たいの？の答え
+;			：1我慢して見ない	で失敗
+;			：2我慢して見ない	で成功
+;			：3見たい！			で失敗
+;			：4見たい！			で成功
+;			：0そもそもどっちかが性的な目でみてなかったのでなんもなし それかもう今日はやった
+;*********************************************************************************
+@K17_お風呂イベント(ARG)
+#DIM 視姦必要値 = 0
+#DIM iRand = 0
+;イベントは一日一回
+SIF TCVAR:K17C_ID:K17C_TC_お風呂イベント
+	RETURN 0
+TCVAR:K17C_ID:K17C_TC_お風呂イベント = 1
+
+IF HETEROSEX(MASTER,ARG)
+	SIF TALENT:ARG:性別嗜好 == -1 || TALENT:MASTER:性別嗜好 == -1
+		RETURN 0
+ENDIF
+
+PRINTL
+PRINTFORML 「%K17_RS("Kyaahn/Gyaahn/Hyaahn")%?!」
+PRINTFORMDL You hear a dull thud and a rather dopey shriek from %CALLNAME:ARG%.
+PRINTFORML 「Ouch... I slipped and fell...」
+PRINTFORMDL Having landed on her butt, %CALLNAME:ARG% is forced to crouch.
+PRINTFORMDL Her delicate, milky white back and her %HIP_TR(ARG)% are exposed to view.
+PRINTW
+PRINTFORML 「I'm fine, I'm fine, you don't have to come closer! Your front! Cover your front!」
+;custom code
+IF CFLAG:K17C_ID:1092
+	PRINTFORMDL "This is the bath, so I can't do anything about that."
+ELSE
+	PRINTFORMDL It's not like you can do anything about that in the bath...
+ENDIF
+PRINTFORMDL %CALLNAME:ARG% desperately tries to hide her privates with her hands.
+PRINTFORMDL You approach %CALLNAME:ARG% as she does that and extend out a hand to help her up.
+
+CALL HPH_PRINT,"「Uu～～～～!! BPB」", "L"
+PRINTFORMDL But she stiffens and blushes furiously at the sight of you.
+PRINTW
+;うふふ前
+IF !(K17_RT_FG(ARG) & K17C_RTF_うふふ)
+	;MASTER竿判定のみ
+	IF TALENT:MASTER:性別 >= 2
+		;アリスにはない
+		SIF !(TALENT:ARG:性別 >= 2)
+			PRINTFORML （I-I-I-I-I-It's just swinging around?!）
+		
+		;感想など
+		SELECTCASE TALENT:MASTER:形状
+			;可愛い
+			CASE 1
+				PRINTFORML （...It's cuter than I expected...）
+			;粗チン
+			CASE 2
+				PRINTFORML （...Wow, it's tiny...）
+			;光る！誰だよこれ考えたやつ笑うわこんなん
+			CASE 4
+				PRINTFORML （Why is it shining like that?!）
+			;イボ付き
+			CASE 5
+				PRINTFORML （Why is it all bumpy like that?!）
+			;でかい！
+			CASE 6
+				PRINTFORML （Wha... How is it so big...?）
+			;普通　なんかほめとけ
+			CASEELSE
+				PRINTFORML （It's...%K17_RS("naughtier/more erotic/lewder")%...than I expected.）
+		ENDSELECT
+	;竿なし　乳比べ
+	ELSE
+		IF TALENT:MASTER:バストサイズ > TALENT:ARG:バストサイズ
+			PRINTFORML （%HIS_HER(MASTER,1)% boobs...are bigger than mine... They're %K17_RS("bouncing/jiggling/flopping")% around.）
+		ELSEIF TALENT:MASTER:バストサイズ < TALENT:ARG:バストサイズ
+			PRINTFORML （%HIS_HER(MASTER,1)% boobs... They look %K17_RS("soft and/small and/")% cute.）
+		ELSE
+			PRINTFORML （They're the same size as mine, but... They look %K17_RS("naughty/erotic/lewd")%...）
+		ENDIF
+	ENDIF
+;うふふ後
+ELSE
+	PRINTFORML （%HIS_HER(MASTER)% body... It's %K17_RS("amazing/nice/incredible/sexy")% as always, but...）
+	;MASTER竿判定のみ
+	IF TALENT:MASTER:性別 >= 2
+		PRINTFORML （%K17_CALL_G(MASTER,0,1)%, you're exposing yourself too much...）
+	ELSE
+		PRINTFORML （I ended up seeing %HIS_HER(MASTER)% %K17_CALL_P(K17C_部位B,1,MASTER)%...）
+	ENDIF
+;うふふ判定終端
+ENDIF
+
+PRINTFORMDL You could have sworn you heard %CALLNAME:ARG% swallow hard just now...
+PRINTW
+PRINTFORML 「...Ha!?」
+PRINTFORML 「It's not what you think... Huh? My back is... I can't, stand...」
+PRINTFORMDL %CALLNAME:ARG% is sitting with her butt flat on the ground, unable to move.
+PRINTFORMDL She's still covering her privates with her hands, but...
+PRINTFORMDL Her silky smooth thighs, normally hidden by her clothes...
+PRINTFORMDL And her %OPPAI_DESCRIPTION_TR(ARG,1)% through the gaps in her arms steal your attention.
+PRINTFORML 「Hey, you're staring way too much! At least have the decency to look the other way...」
+PRINTFORMDL %CALLNAME:ARG% timidly takes your hand and stands up with your help.
+PRINTW
+PRINTFORML 「Thank you... But you don't have to stare so much...」
+PRINTFORML （If %HE_SHE(MASTER)% looks at me like that... With %K17_RS(@"that lewd stare/those greedy eyes/those hungry, bestial eyes/that glint in %HIS_HER(MASTER)% eyes")%... I feel bad for hiding myself...）
+
+CALL K17_CHOICE("「D-Do you really want to look that badly...?」","Be a "+\@ TALENT:MASTER:2 == 2 ? gentleman # lady \@+" and decline","Vigorously agree")
+;チョロいなー
+;見抜きいいですかも作りたい
+
+;ONABARE　"見ててあげるからどうぞそのまま"　の条件コピペちょい改変要調整
+視姦必要値 = 抱き寄せ必要値(ARG) - 30 + TALENT:ARG:羞恥心 * 50 - ABL:ARG:露出癖 * 50 - CFLAG:ARG:溜まってる度 / 20
+SIF  TALENT:ARG:プライド > 0
+	視姦必要値 += 100
+SIF CFLAG:ARG:既成事実 & 合意_うふふ
+	視姦必要値 -= 50
+SIF TALENT:ARG:度胸 < 0
+	視姦必要値 -= 200
+
+;-----------------------------
+;そんなことはない　で失敗
+;-----------------------------
+IF RESULT == 0 && CFLAG:ARG:合意判定 <= 視姦必要値
+	
+	PRINTFORML 「I'm grateful you helped me...」
+	PRINTFORML 「But if possible... Please keep this a secret...」
+	
+	TIME += 5
+	RETURN 1
+	
+;-----------------------------
+;そんなことはない　で成功
+;-----------------------------
+ELSEIF RESULT == 0 && CFLAG:ARG:合意判定 > 視姦必要値
+	
+	PRINTFORML 「...Umm... Am I really that unattractive?」
+	;custom code
+	IF CFLAG:K17C_ID:1092
+		PRINTFORMDL "No, that's not it at all."
+		PRINTFORMDL "I'm trying my hardest not to stare, and I'd appreciate it if you picked up on that."
+	ELSE
+		PRINTFORMDL You firmly shake your head in denial.
+		PRINTFORMDL You tell her you're trying your best not to stare.
+	ENDIF
+	PRINTFORML 「I-I see. Thank you...」
+	PRINTFORMDL After saying that, %CALLNAME:ARG% approaches you, her face flushed crimson...
+	PRINTW
+	
+	;SIF ABL:ARG:露出癖
+	;	iRand = RAND(1,(LIMIT(ABL:ARG:露出癖,1,5))+1)
+	iRand = K17_LOWER_LIMIT_RAND(ABL:ARG:露出癖,1,5)
+	IF iRand
+		SELECTCASE iRand
+			CASE IS >= 5
+			 	PRINTFORMDL She takes your hand and presses them against her %K17_RS("boobs/chest")%.
+				CALL HPH_PRINT,@"「Just a little... AhnnHPH This is a special serviceBPB」", "L"
+				PRINTFORMDL You get to feel her %OPPAI_DESCRIPTION_TR(ARG,1)% in the palm of your hand for a little bit.
+			CASE IS >= 3
+				PRINTFORMDL She hugs you from the %K17_RS("front/side/back")%, still naked.
+				CALL HPH_PRINT,@"「They're pressing up...? Yes, I'm pressing them against you. YaahnHPH You're not allowed to moveBPB」", "L"
+				PRINTFORMDL You get to feel her %OPPAI_DESCRIPTION_TR(ARG,1)% for a little bit.
+			CASE IS >= 1
+				PRINTFORMDL She takes your hand.
+				PRINTFORML 「You can look...just for a little, okay?」
+				PRINTFORMDL Turning away and squeezing her eyes shut, %CALLNAME:ARG% slowly lowers the arms hiding her chest.
+				PRINTFORMDL You catch a glimpse of her %NIPPLE_DESCRIPTION(ARG,1)%.
+		ENDSELECT
+		PRINTFORMD Lastly, 
+	ENDIF
+	PRINTFORMDL \@ iRand ? you # You\@ feel a kiss on your %K17_RS("cheek/forehead/chest/neck")%.
+	CALL HPH_PRINT,"「This is our secret, okay?BPB」", "L"
+	CALL HPH_PRINT,"「Okay... Let's finish up hereBPB」", "L"
+	TIME += 10
+	RETURN 2
+
+;-----------------------------
+;じっくり見たい　失敗
+;-----------------------------
+ELSEIF RESULT == 1 && CFLAG:ARG:合意判定 <= 視姦必要値
+	
+	PRINTFORMDL A shiver snakes through %CALLNAME:ARG%'s body as soon as she hears that.
+	PRINTFORML 「Idiot! You're way too shameless about your intentions!」
+	PRINTFORMDL As she raises her hand to slap you, her %K17_RS("nipples/chest/crotch")% becomes exposed.
+	PRINTFORML 「Kyaaaーー」
+	PRINTFORMDL She rolls up again into a ball, trying to hide her body.
+	PRINTFORML 「Y-You're the worst...」
+	
+	SIF MARK:ARG:反発刻印 < 3
+		MARK:ARG:反発刻印 ++
+	TIME += 5
+	RETURN 3
+
+;-----------------------------
+;じっくり見たい　成功
+;-----------------------------
+ELSEIF RESULT == 1 && CFLAG:ARG:合意判定 > 視姦必要値
+	
+	
+	IF ABL:ARG:露出癖 >=5
+		iRand = RAND(0,6)
+	ELSEIF ABL:ARG:露出癖
+		iRand = RAND(0,ABL:ARG:露出癖+1)
+	ENDIF
+	;露出判定　恥じらいは持っておこう
+	SELECTCASE iRand
+		CASE IS >= 5
+			PRINTFORML 「Saying you're fine with just looking... Is that part of your plan?」
+			PRINTW
+			PRINTFORMDL %CALLNAME:ARG% begins groping her own breasts, showing them off to you.
+			PRINTFORML （If %HE_SHE(MASTER)% looks at me with that %K17_RS("fixed/lewd/animalistic")% stare... I'm going to get %K17_RS("excited/wet/aroused")%...）
+			PRINTFORMDL Staying just outside your each, she jiggles her body up and down with a flushed expression.
+			PRINTFORMDL Her breathing is a little ragged from excitement.
+			
+		CASE IS >= 3
+			PRINTFORML 「You're really only allowed to look today... Okay?」
+			PRINTW
+			PRINTFORMDL %CALLNAME:ARG% squeezes her breasts together with her arms, creating some cleavage for you to see.
+			PRINTFORML （%K17_RS(@"Making %HIM_HER(MASTER,,1)% look at me lewdly like that/Teasing %HIM_HER(MASTER,,1)% like this/Making %HIM_HER(MASTER,,1)% wait like this")%...is kind of fun...）
+			PRINTFORMDL %CALLNAME:ARG% makes several suggestive poses, intentionally trying to arouse you.
+			PRINTFORMDL Her breathing is a little ragged from excitement.
+			
+		CASE IS >= 1
+			CALL HPH_PRINT,"「This is just to show my appreciation...BPB」", "L"
+			PRINTW
+			PRINTFORMDL Turning away and squeezing her eyes shut, %CALLNAME:ARG% slowly lowers the arms hiding her chest.
+			PRINTFORML 「Kuh... You're only allowed to look...okay?」
+			PRINTFORMDL %CALLNAME:ARG%'s breathing is shaking with nervousness.
+			
+		CASEELSE
+			;これがやりたかっただけってはっきりわかんだね
+			PRINTFORML 「I knew it... This is way too embarrassing, but...」
+			PRINTW
+			PRINTFORMDL As %CALLNAME:TARGET% waffles about, you grab both her wrists and pin them against the wall behind her.
+			PRINTFORML 「Kyah! Wait... Seriously... You can only look...okay?」
+			PRINTFORMDL %CALLNAME:ARG%'s body and breathing are shaking with apprehension.
+	ENDSELECT
+	
+	
+	PRINTFORMDL With each breath, her %OPPAI_DESCRIPTION_TR(ARG,1)% bounce up and down.
+	PRINTW
+	PRINTFORMDL The %NIPPLE_DESCRIPTION(ARG,1)% she was trying to hide earlier are now in full view.
+	PRINTFORMDL You stare at her body close enough to feel each other's breath, and %CALLNAME:ARG% twists her body in a ticklish manner.
+	PRINTFORMDL As your gaze lowers from her breasts, to her stomach, to her belly button, she swings her lower half around.
+	PRINTFORMDL Looking more closely at her %HIP_TR(ARG)%, you realize the part that hit the floor earlier is tinged red.
+	PRINTFORMDL After your eyes have made a tour of the rest of her body, they finally rest on her most important part.
+	PRINTW
+;	;長いカット　現在の状態（汚れや相手の性格など）を考えた描写する　そのうち
+;	PRINTW
+;	CALL HPH_PRINT,@"「%K17_RS("ひゃん/にゃん/やっん/あんっ")%BPB　ってちょっと！　触るっのは、だめぇんHPH」", "L"
+;	PRINTFORMDL 触診のつもりで優しく撫でたつもりだったが、%CALLNAME:ARG%は敏感に反応して声を上げていた
+;	CALL HPH_PRINT,"「触るのはっ、なしぃBPB」", "L"
+;	PRINTFORMDL それから一周してようやく表側に戻るが、%CALLNAME:ARG%が腰を引いてしまっていて肝心な部分がよく見えない
+;	PRINTFORMDL 尻を掴まれるのと自分で脚を開くのどちらがいいかと聞くと、観念したように%CALLNAME:ARG%自ら脚を少しだけ開いてみせた
+	
+	IF ABL:ARG:露出癖 >= 3
+		CALL HPH_PRINT,"「...HPH」", "L"
+		PRINTFORMDL %CALLNAME:ARG% sits down with a light sigh and slowly spreads apart her legs.
+		;くぱぁですねわかりますかね
+		PRINTFORMDL Using two fingers, she spreads apart her %FSYN("labia")% and exposes the full depth of her %FSYN("vagina")%.
+		PRINTFORMDL Her feminine hole is %K17_RS("glistening with moisture/wriggling as if inviting you inside")%.
+	ELSE
+		CALL HPH_PRINT,"「...BPB」", "L"
+		PRINTFORMDL %CALLNAME:ARG% fidgets in embarrassment, forcefully rubbing her thighs together...
+		PRINTFORMDL You feel like you can hear a moist squishing sound.
+	ENDIF
+	PRINTFORMDL You spend some time thoroughly appreciating %CALLNAME:ARG%'s nude body...
+	PRINTW
+	PRINTFORML 「Th-That's all, now...」
+	
+	;オナバレのコピペ　要精査
+	CFLAG:ARG:好感度 += ABL:ARG:欲望 * CFLAG:ARG:溜まってる度 / 200 * ABL:ARG:露出癖
+	;恥情を自慰中毒レベル準拠で上げるよ
+	CALL JUEL_UP_SPECIAL(ARG,"恥情","自慰中毒",30,1)
+	;欲情を自慰中毒準拠で上げるよ
+	CALL JUEL_UP_SPECIAL(ARG,"欲情","自慰中毒",30,1)
+	EXP:ARG:露出快楽経験 += CFLAG:ARG:溜まってる度 / 200 * ABL:ARG:露出癖
+	PALAM:ARG:潤滑 += 1000
+	
+	;プライド下げ
+	CALL K17_TALENT_UPDOWN(ARG,K17C_TALENT_プライド,-1)
+	
+	TIME += 30
+	RETURN 4
+ENDIF
+
+
+
+;*********************************************************************************
+;	上海を使ってみるテスト
+;	あくまでアリスの付属品としてのフレーバーです
+;	上海という名前を持つキャラが独立追加(マスター含む)されたら戻る
+;	そんときはなんか別の考える
+;	調子乗って好き勝手やった、今は反省してる　上海……えっちな子っ
+;
+;	条件：キャラに上海がいない
+;		：アリスと面識がある
+;		：アリスが寝ているときの忍び込み
+;		：上海好感度が0以上 イベントフラグが0以上
+;		：一日一回
+;	きびしくね？　同拠点じゃないとそもそも寝てるとこに侵入できない
+;	なんか他にも呼べるようにするか考える
+;
+;	引数1	：キャラID 省略でアリス　念のためアリス以外追い返し
+;	戻り値	：完走判定
+;	備考	：念のためTRYCALLで呼ぶ
+;*********************************************************************************
+@K17_上海イベント(ARG=K17C_ID)
+#DIMS			cName	;上海のMASTERへの呼び方
+#DIM	iSelectFlag,3	;セレクトフラグ
+#DIM DYNAMIC	iTmp=0	;RESULTの退避
+VARSET iSelectFlag
+VARSET cName
+
+FINDCHARA CALLNAME, "上海"
+SIF RESULT != -1
+	RETURN 0
+SIF ARG != K17C_ID || TARGET != K17C_ID
+	RETURN 0
+SIF K17_GET_CHARA_POSNUM(ARG) > 1
+	RETURN 0
+	
+;とりあえず今のところ起きちゃっても平気なように
+;SIF !CFLAG:ARG:睡眠
+;	RETURN 0
+
+;初回終わるまで一応見てみる
+IF !FIRSTTIME("上海イベント",1)
+	SIF CFLAG:K17C_ID:K17C_CF_上海好感度<0 || CFLAG:K17C_ID:K17C_CF_上海イベント<0
+		RETURN 0
+ENDIF
+
+;一日一回フラグ
+SIF TCVAR:K17C_ID:K17C_TC_上海 == 1
+	RETURN 0
+TCVAR:K17C_ID:K17C_TC_上海 = 1
+
+PRINTFORMDL ...
+PRINTFORMDL ......
+PRINTFORMDW .........
+PRINTFORMDL You feel something looking your way.
+
+IF !CFLAG:ARG:面識
+	PRINTFORMDL As you try and look closer, you meet eyes with a doll.
+	PRINTFORMDL A shiver runs down your spine and you decide not to pry any further.
+	PRINTW
+	RETURN 0
+ENDIF
+
+;上海テキストカラー
+IF FLAG:口上テキスト設定 > 0
+	IF FLAG:口上色
+		SETCOLOR K17C_上海COLOR
+	ELSE
+		RESETCOLOR
+	ENDIF
+ELSE
+	RESETCOLOR
+ENDIF
+
+;呼び名の初期化　誰が気づくんだこんなとこ
+cName = 貴様
+SIF CFLAG:K17C_ID:K17C_CF_上海好感度 > 50 && CFLAG:K17C_ID:K17C_CF_上海イベント>=1
+	cName = You
+SIF CFLAG:K17C_ID:K17C_CF_上海好感度 > 350 && CFLAG:K17C_ID:K17C_CF_上海イベント>=2
+	cName = %CALLNAME:MASTER%
+SIF CFLAG:K17C_ID:K17C_CF_上海好感度 > 1000 && CFLAG:K17C_ID:K17C_CF_上海イベント>=3
+	cName = Master
+
+IF FIRSTTIME("上海イベント")
+	PRINTFORMDL As you look around, you meet eyes with Shanghai.
+	PRINTFORML 「...」
+	PRINTFORMDL Now that you look more closely, it's a very skillfully made doll.
+	$INPUT_LOOP1
+	PRINTL
+	PRINTFORMDL In fact, it's so well-made, you can't help but feel a bit curious...
+	PRINTL
+	PRINTFORMDL [0] Try poking its cheek
+	PRINTFORMDL [1] Look under its skirt
+	PRINTFORMDL [2] Grope its small breasts
+	PRINTFORMDL [3] It's not like it'll respond, so leave it alone
+	PRINTFORMDL [4] Explain these choices
+	
+	INPUT
+	SELECTCASE RESULT
+		CASE 0
+			PRINTFORMDL You poke its cheeks, which are surprisingly soft.
+			PRINTFORML 「...Hey, quit it.」
+			CFLAG:K17C_ID:K17C_CF_上海好感度 = MIN(CFLAG:K17C_ID:K17C_CF_上海好感度 + 10,10000)
+		CASE 1
+			PRINTFORMDL As you flip its skirt, you can see a pair white drawers underneath.
+			PRINTFORML 「...Hey, quit it, idiot.」
+			CFLAG:K17C_ID:K17C_CF_上海好感度 = MIN(CFLAG:K17C_ID:K17C_CF_上海好感度 + 5,10000)
+		CASE 2
+			PRINTFORMDL You rub its breasts, which are surprisingly soft, and you feel like it jumps slightly.
+			CALL HPH_PRINT,"「...YahnnBPB」", "L"
+			CFLAG:K17C_ID:K17C_CF_上海好感度 = MIN(CFLAG:K17C_ID:K17C_CF_上海好感度 + 20,10000)
+		CASE 3
+			PRINTFORMDL Let's stop thinking about such pointless things...
+			IF FLAG:口上テキスト設定 > 0
+				IF FLAG:口上色
+					TRYCALLFORM M_KOJO_COLOR_K{NO:ARG}
+				ELSE
+					RESETCOLOR
+				ENDIF
+			ELSE
+				RESETCOLOR
+			ENDIF
+			CFLAG:K17C_ID:K17C_CF_上海イベント = -1
+			RETURN 0
+		CASE 4
+			PRINTFORMDL Choosing options 0 to 2 will start an event with Shanghai.
+			PRINTFORMDL In this event, Shanghai will begin moving and talking on its own, and maybe even something more...?
+			PRINTFORMDL If you'd prefer not to see this, please choose option 3.
+			PRINTFORMDL Choosing option 3 will prevent Shanghai's event from occurring in the future.
+			GOTO INPUT_LOOP1
+		CASEELSE
+			GOTO INPUT_LOOP1
+	ENDSELECT
+	
+	
+	PRINTFORMDL ...?!?!
+	PRINTW
+	PRINTFORML 「%cName%, you'll lay your hands on anything, won't you?」
+	PRINTFORMDL Grumbling, Shanghai sits up straight.
+	PRINTFORML 「%CALLNAME:ARG% is sleeping, so come back later.」
+	PRINTW
+	PRINTFORMDL She's sleeping, but the doll is moving on its own...
+	PRINTFORMDL You feel a renewed appreciation for her craftsmanship.
+	PRINTFORMDL You subconsciously reach out a hand towards the doll and begin stroking its head.
+	PRINTFORML 「Ah, stop... Don't touch me so casually...」
+	PRINTFORMDL It feels a lot more human than usual...
+	PRINTFORML 「...Whatever. %cName%, I suppose I'll tell you.」
+	PRINTW
+	PRINTFORML 「I'm Shanghai, a doll that's always by %CALLNAME:ARG%'s side.」
+	;custom code
+	IF CFLAG:K17C_ID:1092
+		PRINTFORMDL "I'm aware, but I've never seen you speak so fluently before."
+		PRINTFORMDL "Is magic really capable of something like this...?"
+	ELSE
+		PRINTFORMDL Though you already know that, you've never seen it speak so fluently before.
+		PRINTFORMDL Is magic really capable of something like this...?
+	ENDIF
+	PRINTFORML 「If it were, %CALLNAME:TARGET% would have already fulfilled her life's dream...」
+	PRINTW
+	;custom code
+	IF CFLAG:K17C_ID:1092
+		PRINTFORMDL "What do you mean...?"
+	ELSE
+		PRINTFORMDL What does that mean...?
+	ENDIF
+	PRINTFORML 「This doll didn't originally possess a soul, but it ended up awakening as a result of an incident...」
+	PRINTFORML 「In other words, I gained consciousness as a youkai.」
+	;custom code
+	IF CFLAG:K17C_ID:1092
+		PRINTFORMDL "I don't really get it, but being able to speak is a good thing, right?"
+	ELSE
+		PRINTFORMDL You don't really get it, but isn't being able to speak a good thing?
+	ENDIF
+	PRINTW
+	PRINTFORML 「Not necessarily, no.」
+	PRINTFORML 「I'm only able to move around freely like this when %CALLNAME:TARGET% is sleeping, and I'm not under her control.」
+	;custom code
+	IF CFLAG:K17C_ID:1092
+		PRINTFORMDL "Shouldn't I tell %CALLNAME:TARGET% then?"
+	ELSE
+		PRINTFORMDL Maybe you should tell %CALLNAME:TARGET% then...
+	ENDIF	
+	PRINTW
+	PRINTFORML 「No, stop! Don't... This isn't what %CALLNAME:TARGET% would want...」
+	;custom code
+	IF CFLAG:K17C_ID:1092
+		PRINTFORMDL "Are you sure...?"
+	ELSE
+		PRINTFORMDL You wonder about that...
+	ENDIF	
+	PRINTFORML 「Anyway, keep this a secret from %CALLNAME:TARGET%.」
+	PRINTW
+	PRINTFORML 「Enough about me... %cName%.」
+	PRINTFORML 「%cName%, what kind of relationship do you want with %CALLNAME:TARGET%?」
+	PRINTFORMDL The conversation suddenly steers in your direction.
+	PRINTFORML 「If you like, I can offer you some advice.」
+	;上海好感度上げ
+	CFLAG:K17C_ID:K17C_CF_上海好感度 = MIN(CFLAG:K17C_ID:K17C_CF_上海好感度 + 10,10000)
+;-----------------------------
+;二回目以降
+;-----------------------------
+ELSE
+	PRINTFORMDL Shanghai comes your way.
+	PRINTFORML 「If you're here for %CALLNAME:TARGET%, she's still sleeping.」
+	IF CFLAG:K17C_ID:K17C_CF_上海イベント<10
+		PRINTFORML 「%cName%, again?」
+	ELSE
+		PRINTFORML 「%cName%, again? It's been more than 10 times now.」
+		PRINTFORML 「Could it be... %K17_RS("You've fallen for me/You actually like me/You've come for a little tryst with me")%?」
+		;custom code
+		IF CFLAG:K17C_ID:1092
+			PRINTFORMDL "Certainly, you're cute just like %CALLNAME:ARG%"
+		ELSE
+			PRINTFORMDL She does look pretty cute, just like %CALLNAME:ARG%.
+		ENDIF	
+		PRINTFORML 「So I'm just a side gig in the end, huh... Well, unless there's a god, it's not like I've got a route or anything.」
+		;custom code
+		IF CFLAG:K17C_ID:1092
+			PRINTFORMDL "If you're looking for a god, there was one %K17_RS("drinking at the banquet/tilling a potato farm/painting the leaves/just over there/wandering about/wearing a weird T-shirt")%"/.
+		ELSE
+			PRINTFORMDL You remember seeing a god %K17_RS("drinking at the banquet/tilling a potato farm/painting the leaves/just over there/wandering about/wearing a weird T-shirt")%"/.
+		ENDIF		
+		PRINTFORML 「That's not really what I meant... Whatever.」
+		PRINTW
+	ENDIF
+	
+	PRINTFORML 「... So, what kind of relationship do you want with %CALLNAME:ARG%?」
+	PRINTFORML 「I can give you some advice.」
+	;上海好感度上げ
+	CFLAG:K17C_ID:K17C_CF_上海好感度 = MIN(CFLAG:K17C_ID:K17C_CF_上海好感度 + 5,10000)
+	
+ENDIF
+
+;上海イベント回数++
+CFLAG:K17C_ID:K17C_CF_上海イベント = MIN(CFLAG:K17C_ID:K17C_CF_上海イベント + 1,10000)
+
+PRINTL
+IF CFLAG:K17C_ID:K17C_CF_上海イベント > 1
+;custom code, lover check patch
+{
+	CALL K17_ASK_M(
+		"I want to marry her",1,
+		"I want to go out with her",!TALENT:K17C_ID:恋人,
+		"I want to deepen my relationship with her",1,
+		"I want her to be a little naughtier",CFLAG:ARG:既成事実 & 合意_うふふ,
+		"I'd rather get to know you better",1,
+		"Forget that, I want panties",1)
+}
+ELSE
+	;初回は関係性進める固定
+	RESULT = 2
+ENDIF
+iTmp = RESULT
+;上海テキストカラー
+IF FLAG:口上テキスト設定 > 0
+	IF FLAG:口上色
+		SETCOLOR K17C_上海COLOR
+	ELSE
+		RESETCOLOR
+	ENDIF
+ELSE
+	RESETCOLOR
+ENDIF
+
+SELECTCASE iTmp
+
+	;-----------------------------
+	;結婚したい
+	;-----------------------------
+	CASE 0
+		IF CFLAG:K17C_ID:K17C_CF_上海好感度 > 1000
+			CALL HPH_PRINT,"「You'll really become my master...HPH」", "L"
+		ELSE
+			PRINTFORML 「...If that happens... You'll become my master too? Geh...」
+		ENDIF
+		;custom code
+		IF CFLAG:K17C_ID:1092
+			PRINTFORMDL "Once I marry %CALLNAME:ARG%, I want to adopt you as our child."
+		ELSE
+			PRINTFORMDL Once you're married with %CALLNAME:ARG%, you'd like to adopt Shanghai as your child.
+		ENDIF	
+		CALL HPH_PRINT,"「Wh-What are you blabbering about...BPB」", "L"
+		CFLAG:K17C_ID:K17C_CF_上海好感度 = MIN(CFLAG:K17C_ID:K17C_CF_上海好感度 + 50,10000)
+		PRINTW
+		IF CFLAG:ARG:生解禁 >= 2
+			PRINTFORML 「Just have kids normally...」
+		ELSE
+			PRINTFORML 「Shouldn't you convince her to make kids normally, first?」
+		ENDIF
+		TIME += 5
+		
+	;-----------------------------
+	;恋人にしたい　アリスが恋人ではないときだけ入れる
+	;-----------------------------
+	CASE 1
+		
+		;これはもちろん罠
+		IF TALENT:MASTER:恋人!=0 && TALENT:MASTER:恋人!=K17C_ID
+			PRINTFORML 「%cName%, don't you already have a lover? What a playboy.」
+			PRINTFORMDL You've been found out...
+			CFLAG:K17C_ID:K17C_CF_上海好感度 = MAX(CFLAG:K17C_ID:K17C_CF_上海好感度 - 20,-10000)
+		
+		ELSEIF CFLAG:ARG:K17C_CF_告白イベント
+			IF CFLAG:ARG:K17C_CF_告白イベント >= 2
+				PRINTFORML 「I can't believe you can say that with a straight face after turning her down so many times...」
+				PRINTFORMDL You've been found out...
+				CFLAG:K17C_ID:K17C_CF_上海好感度 = MAX(CFLAG:K17C_ID:K17C_CF_上海好感度 - 10,-10000)
+			ELSE
+				PRINTFORML 「I can't believe you can say that with a straight face after already turning her down...」
+				PRINTFORMDL You've been found out...
+				CFLAG:K17C_ID:K17C_CF_上海好感度 = MAX(CFLAG:K17C_ID:K17C_CF_上海好感度 - 5,-10000)
+			ENDIF
+			
+		ELSE
+			PRINTFORML 「Hmmー, why not just try confessing your feelings, then?」
+			;custom code
+			IF CFLAG:K17C_ID:1092
+				PRINTFORMDL "Yeah, but it's hard to work up the courage..."
+			ELSE
+				PRINTFORMDL That's the obvious answer but it's hard to work up the courage...
+			ENDIF
+		ENDIF
+		
+		IF !(TALENT:MASTER:恋人!=0 && TALENT:MASTER:恋人!=K17C_ID)
+			PRINTFORML 「Hmmー... Well, let me fill you in on something.」
+			PRINTW
+			PRINTFORML 「Every single night, %CALLNAME:TARGET% pretends I'm you and practices confessing her feelings.」
+			;custom code
+			IF CFLAG:K17C_ID:1092
+				PRINTFORMDL "Are you serious..."
+			ELSE
+				PRINTFORMDL Is she serious...
+			ENDIF
+			IF !CFLAG:ARG:K17C_CF_告白イベント
+				PRINTFORML 「It wants to make me die of cringe, so hurry up and let her confess already.」
+				PRINTFORML 「Maybe if you go on a date, or something.」
+			ELSE
+				PRINTFORML 「It wants to make me die of cringe, so hurry up and answer her feelings already.」
+			ENDIF
+		ENDIF
+		
+		TIME += 5
+		
+	;-----------------------------
+	;関係性を進めたい これをやりたいがためにえらいかかったな
+	;-----------------------------
+	CASE 2
+		;custom code
+		IF CFLAG:K17C_ID:1092
+			PRINTFORMDL "I want to get to know her better, of course, but...I'm not sure what I should do."
+		ELSE
+			PRINTFORMDL You want to get to know her better, of course, but...you're not sure what I should do.
+		ENDIF
+		PRINTFORML 「...What an unreliable %PRINT_MALE("guy", MASTER)%. Well fine, here's some advice...」
+		TRYCALL K17_HINT()
+		TIME += 5
+		
+	;-----------------------------
+	;えっちになってほしい
+	;-----------------------------
+	CASE 3
+		PRINTFORML 「You really just follow your animal instincts, don't you...」
+		PRINTFORML 「I don't even have the physiology for that kind of thing so I can't say I really relate.」
+		PRINTFORML 「So that's not really something I can help you with.」
+		;custom code
+		IF CFLAG:K17C_ID:1092
+			PRINTFORMDL "That's too bad..."
+		ELSE
+			PRINTFORMDL That's too bad...
+		ENDIF
+		PRINTW
+		PRINTFORML 「Although, I've gotta say, %CALLNAME:TARGET% sure does seem to practice a lot.」
+		;custom code
+		IF CFLAG:K17C_ID:1092
+			PRINTFORMDL "...Meaning?"
+		ELSE
+			PRINTFORMDL ...What does that mean?
+		ENDIF
+		PRINTFORML 「Like fondling her own body while calling out your name.」
+		IF !CFLAG:K17C_ID:K17C_CF_性癖取得
+			PRINTFORMDL You feel like you heard something incredible just now...
+			PRINTFORML 「Maybe she'd like you to help her practice too?」
+			;custom code
+			IF CFLAG:K17C_ID:1092
+				PRINTFORMDL "What is that supposed to mean..."
+			ELSE
+				PRINTFORMDL What is that supposed to mean...
+			ENDIF
+		ELSE
+			PRINTFORMDL She does have some weird kinks...
+		ENDIF
+		TIME += 5
+		
+	;-----------------------------
+	;上海と仲良くしたい
+	;-----------------------------
+	CASE 4
+		CFLAG:K17C_ID:K17C_CF_上海好感度 = MIN(CFLAG:K17C_ID:K17C_CF_上海好感度 + 10,10000)
+		PRINTFORML 「...Hah? I'm a doll, you know?」
+		PRINTFORML 「If you've got the time for that, spend it on %CALLNAME:TARGET% instead...」
+		;custom code
+		IF CFLAG:K17C_ID:1092
+			PRINTFORMDL "What should we do today to get to know each other better..."
+		ELSE
+			PRINTFORMDL What should you do today to get to know her better...
+		ENDIF
+		PRINTFORML 「Well, I'm just a doll, so it's not like it matters what you do to me.」
+		;絶対えっちなことなんかに負けない！ｷﾘｯ
+		TIME += 5
+		
+		;アリスとうふふ前は上海うふふはやめておこう
+		IF CFLAG:ARG:既成事実 & 合意_うふふ
+			SIF CFLAG:K17C_ID:K17C_CF_上海好感度>=50
+				iSelectFlag:0 = 1
+			SIF CFLAG:K17C_ID:K17C_CF_上海好感度>=150
+				iSelectFlag:1 =1
+			SIF CFLAG:K17C_ID:K17C_CF_上海好感度>=350
+				iSelectFlag:2 =1
+		ENDIF
+		PRINTL
+		{
+		CALL K17_ASK_M(
+			"Pat her head",1,
+			"Pat her body too",iSelectFlag:0 ,
+			"Lick her",iSelectFlag:1 ,
+			"Do something shameful",iSelectFlag:2 )
+		}
+		iTmp = RESULT
+		;上海テキストカラー
+		IF FLAG:口上テキスト設定 > 0
+			IF FLAG:口上色
+				SETCOLOR K17C_上海COLOR
+			ELSE
+				RESETCOLOR
+			ENDIF
+		ELSE
+			RESETCOLOR
+		ENDIF
+
+		SELECTCASE iTmp
+			
+			;-----------------------------
+			;頭を撫でる
+			;-----------------------------
+			CASE 0
+				PRINTFORMDL You decide to pat Shanghai's head to your heart's content.
+				PRINTFORMDW Pat pat pat
+				PRINTFORMDW        Pat pat pat
+				PRINTFORMDW               Pat pat pat
+				PRINTFORML 「Are you really enjoying yourself...?」
+				PRINTW
+				;custom code
+				IF CFLAG:K17C_ID:1092
+					PRINTFORMDL "This is my way of expressing my affection..."
+				ELSE
+					PRINTFORMDL This is just your way of expressing your affection...
+				ENDIF
+				CALL HPH_PRINT,"「I-Is that so...BPB」", "L"
+				PRINTFORMDL You keep patting Shanghai's head as she blushes.
+				TIME += 5
+				
+			;-----------------------------
+			;身体も撫でてみる
+			;-----------------------------
+			CASE 1
+				PRINTFORMDL You decide to pat Shanghai's body to your heart's content.
+				PRINTFORMDW Pat pat pat
+				PRINTFORMDW        Pat pat pat
+				PRINTFORMDW               Pat pat pat
+				PRINTFORML 「Hey...」
+				PRINTW
+				;custom code
+				IF CFLAG:K17C_ID:1092
+					PRINTFORMDL "No interrupting Hyper Patting Time."
+				ELSE
+					PRINTFORMDL You tell her not to interrupt Hyper Patting Time.
+				ENDIF
+				PRINTFORML 「Stop patting my head so much, you're going to muss up my hair.」
+				;custom code
+				IF CFLAG:K17C_ID:1092
+					PRINTFORMDL "Oh, so I should pat other parts too."
+				ELSE
+					PRINTFORMDL So she's unsatisfied with just patting her head.
+				ENDIF
+				PRINTFORML 「Listen here, %CALLNAME:TARGET% takes care of my hair every day...」
+				PRINTW
+				;custom code
+				IF CFLAG:K17C_ID:1092
+					PRINTFORMDL "Then how about this washboard chest?"
+				ELSE
+					PRINTFORMDL Then how about this washboard chest...
+				ENDIF
+				PRINTFORML 「Gah, what are you...」
+				CALL HPH_PRINT,"「AhnnHPH」", "L"
+				PRINTW
+				CALL HPH_PRINT,"「Wh-What are youuu～BPB」", "L"
+				;custom code
+				IF CFLAG:K17C_ID:1092
+					PRINTFORMDL "Mmm, what's with that sexy little voice?"
+				ELSE
+					PRINTFORMDL Hmm, that voice was oddly erotic.
+				ENDIF
+				CALL HPH_PRINT,@"「%K17_RS("Yahn/Stop/No")%HPH ...I can't, my voiceBPB ...%K17_RS("Nyan/Ahnn/Yahnn/Hyan")%HPH」", "L"
+				PRINTW
+				CALL HPH_PRINT,@"「No... %K17_RS("Nooo/Stoppp")%～～～～HPHHPH」", "L"
+				PRINTFORMDL You keep stroking her chest with your finger for a while, her body twitching about with every movement.
+				CALL HPH_PRINT,"「Haa, haa... I've never...felt like this...BPB」", "L"
+				TIME += 10
+				
+			;-----------------------------
+			;ぺろぺろ
+			;-----------------------------
+			CASE 2
+				;custom code
+				IF CFLAG:K17C_ID:1092
+					PRINTFORMDL "Let's lick her today."
+				ELSE
+					PRINTFORMDL You decide to lick her today.
+				ENDIF
+				PRINTFORML 「Can I just say something?」
+				PRINTFORML 「%CALLNAME:TARGET% always takes time to make sure she looks her best before seeing you.」
+				PRINTFORML 「Don't do anything that would destroy that... Uwaaah! What are youー」
+				;custom code
+				IF CFLAG:K17C_ID:1092
+					PRINTFORMDL "I'm just taking off your drawers."
+				ELSE
+					PRINTFORMDL You tell her you're just taking off her drawers.
+				ENDIF
+				PRINTW
+				PRINTFORML 「Wh-Wh-Whaー」
+				;custom code
+				IF CFLAG:K17C_ID:1092
+					PRINTFORMDL "I said I was going to lick you, didn't I?"
+				ELSE
+					PRINTFORMDL After all, you said you were going to lick her today.
+				ENDIF
+				PRINTFORML 「～～～～～～?!」
+				PRINTFORMDL You pull off her drawers, spread her legs apart with your hands, and bring your face to her crotch.
+				PRINTW
+				PRINTFORMDL Lick... Lick, lick... Shliiickkk.
+				PRINTFORML 「～～～!　Uu!!」
+				PRINTFORMDL Tightly covering her mouth with her hands, Shanghai desperately tries to keep quiet.
+				PRINTFORML 「Sto... Stoooppp...」
+				PRINTW
+				;custom code
+				IF CFLAG:K17C_ID:1092
+					PRINTFORMDL "I thought you said you'd be fine with anything because you're a doll."
+				ELSE
+					PRINTFORMDL Didn't she say she'd be fine with anything since she's a doll?
+				ENDIF
+				CALL HPH_PRINT,@"「I-I take it back... So please stop... %K17_RS("Kyahn/Ahnn/Yahnn")%BPB」", "L"
+				;custom code
+				IF CFLAG:K17C_ID:1092
+					PRINTFORMDL "You look like you're enjoying yourself..."
+				ELSE
+					PRINTFORMDL She seems to be enjoying this...
+				ENDIF
+				PRINTW
+				CALL HPH_PRINT,@"「Th-There's no way...HPH That I'd, feel good, from... %K17_RS("Nyan/Ahnn/Yahnn/Hyan")%HPH」", "L"
+				CALL HPH_PRINT,@"「So you can, stop now... %K17_RS("Nyan/Ahnn/Yahnn/Hyan")%HPH StooppppHPH」", "L"
+				;custom code
+				IF CFLAG:K17C_ID:1092
+					PRINTFORMDL "If you don't explain properly, I won't understand."
+				ELSE
+					PRINTFORMDL You tell her she needs to explain properly for you to understand.
+				ENDIF
+				PRINTW
+				CALL HPH_PRINT,@"「Even though I'm just a doll... Having my crotch licked is making me feel good... %K17_RS("Nyan/Ahnn/Yahnn/Hyan")%HPH」", "L"
+				PRINTFORMDL High on the sense of victory, you continue licking her...
+				PRINTW
+				CALL HPH_PRINT,@"「F-Feels good... Cumminggg～～～HPHHPHHPH」", "L"
+				PRINTFORMDL After a while, Shanghai's body begins to convulse, her eyes losing focus from the violent orgasm.
+				CALL HPH_PRINT,@"「Haa, haa... %cName%, there's something wrong with your head... Doing this to a doll... %K17_RS("Nyan/Ahnn/Yahnn/Hyan")%HPH」", "L"
+				PRINTW
+				PRINTFORMDL As the aftershocks of the orgasm subside, Shanghai tries to catch her breath.
+				PRINTFORMDL You wipe clean her drenched thighs, and she twitches again in response.
+				PRINTFORMDL Maybe you got a little carried away...
+				TIME += 20
+				
+			;-----------------------------
+			;イケナイコト　射精の方法が思いつかなかったんでフレーバー
+			;ちゃんとイけないことになったな（激ウマ
+			;-----------------------------
+			CASE 3
+				;custom code
+				IF CFLAG:K17C_ID:1092
+					PRINTFORMDL "Let's do something shameless today."
+				ELSE
+					PRINTFORMDL You decide to do something shameless to her today.
+				ENDIF
+				PRINTFORMDL ...
+				PRINTFORMDL ......
+				PRINTFORMDW .........
+				PRINTFORML 「%cName%, there's something wrong with you!!」
+				PRINTFORML 「You'd better keep your word...」
+				PRINTW
+				PRINTFORMDL You carefully remove Shanghai's clothes and neatly fold them, taking care not to soil them.
+				PRINTFORMDL Sadly, Shanghai doesn't have any genitalia.
+				
+				;竿・体型判定
+				IF TALENT:MASTER:体型 > -5
+					IF TALENT:MASTER:性別 >= 2
+						PRINTFORMDL Taking off your clothes in front of Shanghai, you bring out your stiff member and have her embrace it.
+					ELSE
+						PRINTFORMDL Taking off your clothes in front of Shanghai, you spread your legs and press your crotch against Shanghai.
+					ENDIF
+				ELSE
+					PRINTFORMDL After taking off your clothes in front of Shanghai, you have her get on top of you.
+				ENDIF
+				PRINTW
+				PRINTFORML 「This is...so absurd...」
+				PRINTFORML 「Nn, nnn, come on, hurry up...and cum...」
+				IF TALENT:MASTER:体型 > -5
+					PRINTFORMDL Shanghai uses her whole body to service your \@TALENT:MASTER:性別 >= 2 ? penis # vagina\@.
+				ELSE
+					PRINTFORMDL Shanghai shakes her hips back and forth, servicing your \@TALENT:MASTER:性別 >= 2 ? penis # vagina\@.
+				ENDIF
+				PRINTW
+				PRINTFORMDL Just having her rub against you doesn't feel as good as you thought...
+				PRINTFORML 「Kuh... Am I, no good...after all...?」
+				PRINTFORMDL As she looks up at you with anxious eyes, you suddenly feel a burst of arousal within you.
+				PRINTW
+				;これやりたかっただけ
+				CALL HPH_PRINT,"「Come onHPH　", "W"
+				CLEARLINE 1
+				CALL HPH_PRINT,"「Come onHPH Keep goingHPH　", "W"
+				CLEARLINE 1
+				CALL HPH_PRINT,"「Come onHPH Keep goingHPH Do your bestHPH　", "W"
+				CLEARLINE 1
+				CALL HPH_PRINT,@"「Come onHPH Keep goingHPH Do your bestHPH HPHYour %K17_CALL_G()%HPH」", "W"
+				PRINTL
+				PRINTFORMDL Rub... Rub... Rub...
+				PRINTW
+				CALL HPH_PRINT,@"「Oh no... I'm going toHPH %K17_RS("Kuh/No/Nyaaa")%～～～～HPHHPH」", "L"
+				PRINTFORMDL As Shanghai moves her \@TALENT:MASTER:体型 > -5 ? whole body # hips \@ back and forth, her body begins to convulse.
+				PRINTFORMDL The sheer perversity of her figure causes a wave of lust to crash through you...
+				PRINTW
+				CALL HPH_PRINT,"「Haa, haaHPH ...Is it...over?」", "L"
+				PRINTFORML 「Make sure, you...clean me up...」
+				PRINTFORMDL As promised, you wipe her soaked body clean.
+				TIME += 30
+		ENDSELECT
+		
+		
+	;-----------------------------
+	;パンツほしい
+	;-----------------------------
+	CASE 5
+		PRINTFORML 「%cName%, you've got guts, don't you?」
+		PRINTFORML 「Don't even think about saying that around %CALLNAME:TARGET%, even as a joke.」
+		;custom code
+		IF CFLAG:K17C_ID:1092
+			PRINTFORMDL "I don't really get it, but okay, I guess."
+		ELSE
+			PRINTFORMDL You don't really get it, but you nod your assent anyway.
+		ENDIF
+		PRINTW
+		PRINTFORML 「Besides, if %CALLNAME:TARGET% suddenly found herself going commando, it'd be pretty suspicious.」
+		;custom code
+		IF CFLAG:K17C_ID:1092
+			PRINTFORMDL "I'm fine with yours, then."
+		ELSE
+			PRINTFORMDL You tell Shanghai you're fine taking hers, then.
+		ENDIF
+		PRINTFORML 「Just what goes on in that head of yours, anyway... It'll be suspicious if my panties are gone, too.」
+		PRINTFORML 「Why would you even be interested in my panties, anyway?」
+		PRINTW
+		;custom code
+		IF CFLAG:K17C_ID:1092
+			PRINTFORMDL "At least let me see them, then!"
+		ELSE
+			PRINTFORMDL You say you'd be fine just seeing them, then.
+		ENDIF
+		PRINTFORML 「%cName%, I'd pegged you for a pervert, but this is next level...」
+		PRINTFORML 「...Haa... Fine, do as you please.」
+		PRINTFORMDL Hearing that, you happily move to flip up Shanghai's skirt, but it'd be kind of boring if she doesn't react...
+		;custom code
+		IF CFLAG:K17C_ID:1092
+			PRINTFORMDL "In that case, can you roll up your skirt for me?"
+		ELSE
+			PRINTFORMDL You ask Shanghai to roll up her skirt herself.
+		ENDIF
+		PRINTW
+		PRINTFORML 「What kind of farce is this...」
+		PRINTFORMDL Though she looks as you with exasperation, she does as you request, and a slight tinge of crimson rises to her cheeks.
+		PRINTFORMDL A spark of mischief lights up in your heart, and you gently blow on her crotch.
+		CALL HPH_PRINT,"「HyahnBPB」", "L"
+		PRINTW
+		PRINTFORML 「Wh-Wh-What are you...」
+		CALL HPH_PRINT,@"「No... %K17_RS("Nyan/Ahnn/Yahnn/Hyan")%BPB %K17_RS("Nyan/Ahnn/Yahnn/Hyan")%BPB I said, stop... %K17_RS("Nyan/Ahnn/Yahnn/Hyan")%HPH」", "L"
+		PRINTFORMDL You keep blowing on her lower half for a while, enjoying the sight of her body writhing about...
+		CFLAG:K17C_ID:K17C_CF_上海好感度 = MIN(CFLAG:K17C_ID:K17C_CF_上海好感度 + 10,10000)
+		TIME += 10
+ENDSELECT
+PRINTL
+PRINTFORMDL ...
+PRINTFORMDL ......
+PRINTFORMDW .........
+PRINTFORML 「Nn... Any more fooling around, and %CALLNAME:TARGET% might wake up.」
+PRINTFORML 「...Let's stop here...for today...」
+PRINTFORMDL Speaking with a faltering voice, Shanghai returns to being just a normal doll.
+PRINTFORMDL .........
+PRINTFORMDL ......
+PRINTFORMDW ...
+PRINTL
+IF FLAG:口上テキスト設定 > 0
+	IF FLAG:口上色
+		TRYCALLFORM M_KOJO_COLOR_K{NO:ARG}
+	ELSE
+		RESETCOLOR
+	ENDIF
+ELSE
+	RESETCOLOR
+ENDIF
+
+RETURN 1
+
+
+
+
+;*********************************************************************************
+;	オナバレ追加イベント
+;	性癖がつくやつ
+;	設計がひどいな、そのうち引数1はタイプになるかな
+;
+;	引数0	：与えられるイベントの番号（M_KOJO_EVENT_K17_26のARG）　鑑賞なら2　オナバレックスなら4
+;	引数1	：受けの種類のみあとで使いたいので番地貰う
+;	引数2	：キャラID　省略でアリス
+;	戻り値	：追い返されたら0　思慕以上で完走1
+;	備考	：CFLAG:1011　0bitが鑑賞　1bitがオナバレックス
+;*********************************************************************************
+@K17_オナバレ追加イベント(ARG,pRand,ARG:2=K17C_ID)
+#DIM REF pRand
+#DIM DYNAMIC fChange = 1 ;妄想既読による変更設定　固定イベの時は変えない
+
+;追い返し条件&エラーチェック
+SIF ARG:2 != K17C_ID || !(ARG==2 || ARG==4)
+	RETURN 0
+SIF K17_GRT(TARGET) < K17C_思慕
+	RETURN 0
+SIF CFLAG:(ARG:2):K17C_CF_オナバレ追加イベ  > 3
+	THROW フラグ値想定外エラー　K17C_CF_オナバレ追加イベ
+;------------------------------------------
+;初回限定
+;------------------------------------------
+IF CFLAG:(ARG:2):K17C_CF_オナバレ追加イベ  == 0
+	PRINTW
+	;custom code
+	IF CFLAG:K17C_ID:1092
+		PRINTFORMDL "Since you're so 'passionate' about 'research'..."
+		PRINTFORMDL "I can't help but wonder if you've used me as 'research data'..."
+	ELSE
+		PRINTFORMDL Since she's so "passionate" about her "research..."
+		PRINTFORMDL You can't help but wonder if she's used you as "research data"...
+	ENDIF
+	PRINTFORMDL The moment you suggest that, %CALLNAME:TARGET%'s face begins to burn bright red.
+	PRINTFORMW 「...I-I have... I'm sorryyy...」
+	PRINTFORML 「...I've even fantasized about having my research "discovered", like this...」
+	PRINTFORMDL You feel like she revealed something pretty incredible just now...
+	PRINTW
+ENDIF
+
+;------------------------------------------
+;二回目以降ここから
+;MASTERとうふふ経験したことあるか見る
+;------------------------------------------
+IF GETBIT(CFLAG:TARGET:既成事実,1) 
+
+	;custom code
+	IF CFLAG:K17C_ID:1092
+		PRINTFORMDL "So what was today's 'research data'?"
+	ELSE
+		PRINTFORMDL You wonder what today's "research data" was...
+	ENDIF
+	PRINTW
+	;受け妄想
+	;pRand = RAND:K17C_受け妄想数
+	;もし処女or初回なら小悪魔受け固定
+	IF ARG==4 && (TALENT:(ARG:2):処女 || !(CFLAG:K17C_ID:K17C_CF_オナバレ追加イベ & 2))
+		pRand = K17C_小悪魔受け
+		fChange = 0
+	ENDIF
+	PRINTFORML 「%K17_H妄想(K17C_受け,pRand,fChange)%」
+	PRINTFORML 「That kind of setting...」
+	pRand = RESULT:1
+	;恋慕↑で攻め妄想も
+	IF K17_GRT(TARGET) >= K17C_恋慕
+		;攻め妄想
+		PRINTFORML 「And also...」
+		PRINTW
+		PRINTFORML 「%K17_H妄想(K17C_攻め)%」
+	ENDIF
+	;そのうち自慰中毒で追加
+	
+	CALL HPH_PRINT,"「That's...the \"data\" I used... BPB」", "L"
+	PRINTW
+	PRINTFORMDL Your head is spinning...
+	PRINTFORMDL It seems %CALLNAME:TARGET% has been using you as a "research specimen".
+	
+	
+	;------------------------------------------
+	;性癖取得判定　恋慕以上
+	;必然的に二回目以降
+	;------------------------------------------
+	IF CFLAG:(ARG:2):K17C_CF_オナバレ追加イベ  && K17_GRT(TARGET) >= K17C_恋慕
+		PRINTW
+		PRINTFORML 「...And I hope this doesn't make you hate me, but...」
+		PRINTFORMDL Is she really still worried about that at this point...?
+		
+		;鑑賞済み
+		SIF CFLAG:(ARG:2):K17C_CF_オナバレ追加イベ  & 1
+			PRINTFORML 「I think...exposing my %K17_RS("fantasies/fantasizing")% to you like this...has become %K17_RS("a new addiction/a new fetish/arousing")% for me...」
+		;両方済み
+		SIF CFLAG:(ARG:2):K17C_CF_オナバレ追加イベ  >= 3 && ARG == 4
+			PRINTFORML 「And then, what you do to me next... %K17_RS("I'm always looking forward to it./I really loved that./I'm always trying to tempt you, you know?")%」
+		
+		PRINTFORMDL %CALLNAME:TARGET% confesses her secrets to you, trembling and almost crying in shame.
+		
+		;両方取得
+		IF CFLAG:(ARG:2):K17C_CF_オナバレ追加イベ  >= 3 && ARG == 4
+			PRINTFORML 「After all, this is all because of you... So take some responsibility...」
+			;関係が進んだって表示する関数作るか　作ったー
+			CFLAG:K17C_ID:K17C_CF_性癖取得 = 1
+			CALL K17_RELATION_EV(K17C_RTF_性癖)
+			SIF !RESULT
+				PRINTW
+			
+		;片方のみ
+		ELSE
+			PRINTFORML 「I think I'm turning into a pervert thanks to you... Just what do you plan to do about that?」
+			PRINTW
+		ENDIF
+	ENDIF
+
+;------------------------------------------
+;うふふ経験なし
+;自主トレ！　自主トレだから！
+;------------------------------------------
+ELSEIF !CFLAG:(ARG:2):K17C_CF_オナバレ追加イベ 
+	;初回
+	PRINTFORML 「It's not like it's my fault! You're always tempting me and giving me the wrong idea...」
+	PRINTFORML 「It makes me think we might move further some day...」
+	PRINTFORML 「And then I start...fantasizing...」
+	;custom code
+	IF CFLAG:K17C_ID:1092
+		PRINTFORMDL "So what kind of fantasies do you have about me?"
+	ELSE
+		PRINTFORMDL You wonder what she fantasizes about...
+	ENDIF
+	;小悪魔受け
+	pRand = K17C_小悪魔受け
+	PRINTFORML 「%K17_H妄想(K17C_受け,pRand,0)%」
+	CALL HPH_PRINT,"「Today was that kind of settingBPB」", "L"
+	PRINTW
+ELSE
+	;二回目以降
+	;小悪魔受け、誘い受け妄想のみ
+	;custom code
+	IF CFLAG:K17C_ID:1092
+		PRINTFORMDL "So what was today's fantasy?"
+	ELSE
+		PRINTFORMDL You wonder what she fantasized about today...
+	ENDIF
+	pRand = K17C_小悪魔受け
+	SIF RAND:2
+		pRand = K17C_誘い受け
+	PRINTFORML 「%K17_H妄想(K17C_受け,pRand,0)%」
+	CALL HPH_PRINT,"「Today was that kind of settingBPB」", "L"
+	PRINTW
+ENDIF
+
+;妄想暴露で弱み
+IF !CFLAG:TARGET:弱み握られ
+	PRINTL
+	PRINTFORMDL Found out %CALLNAME:TARGET%'s【Weakness】!
+	PRINTW
+	CFLAG:TARGET:弱み握られ = 1
+ENDIF
+
+;妄想既読保存
+CALLF K17_H妄想既読(K17C_受け,pRand,0)
+;追加イベ完走フラグ取得
+SIF ARG==2
+	SETBIT CFLAG:(ARG:2):K17C_CF_オナバレ追加イベ ,0
+SIF ARG==4
+	SETBIT CFLAG:(ARG:2):K17C_CF_オナバレ追加イベ ,1
+
+RETURN 1
+
+
+;*********************************************************************************
+;	オナバレを同居自慰から呼ぶために本体から解体改造
+;
+;	独立解体できるように口上固有関数は使わない
+;	
+;	ホントまだコピペしただけのテスト版
+;	とりあえず動作おｋ
+;	KOJO_MESSAGE_SEND("EVENT",26,ARG,0,1)
+;	↑のように引数4に1を追加　EVENT26でARG:1に入ってくるはず
+;	この口上では同居自慰で見られた瞬間、失礼しましたのみARG:1==1で分岐
+;	本当は全部分岐させたほうがいいかも
+;	とりあえずの仮置き
+;
+;	一晩中がんばる選択
+;	とりあえず一晩中頑張ると徹夜がつくようにした
+;	経験値計算とかまだ全然わからんので、とりあえず本家仕様の半分にやっつけ
+;
+;	引数0	：キャラID
+;*********************************************************************************
+@K17_ONABARE(ARG)
+#DIM なし崩し必要値
+LOCAL:2 = RAND:2
+
+;口上から呼ぶのでフォント色初期化
+RESETCOLOR
+
+
+;PRINTFORMW 鍵が開いていたので勝手に上がった
+;PRINTFORMW 奥からくぐもった声が聞こえる……
+;
+;PRINTFORMW %CALLNAME:MASTER%が、気づかれないように部屋の中を覗くと、%CALLNAME:ARG%がオナニーに耽っていた
+
+
+;----以下が同居自慰の地の文----
+;PRINTFORML 夜中、%CALLNAME:MASTER%は物音を聞いて目を覚ました
+;PRINTFORML ……%CALLNAME:LOCAL%が%CALLNAME:MASTER%の手を握りながら声を押し殺して自慰に耽っていた……
+;----これを表示してから入る-----
+
+PRINTFORM %CALLNAME:ARG%'s clothes are only covering her upper body, and she plays with her fingers as she
+
+IF TALENT:ARG:恋慕
+	PRINTFORMW  calls out your name.
+;気弱系,真面目系
+ELSEIF CFLAG:ARG:性格傾向 == 1 || CFLAG:ARG:性格傾向 == 4
+	PRINTFORMW  stifles a moan.
+;強気系
+ELSE
+	PRINTFORMW  lets out a moan.
+ENDIF
+
+;デカパイ
+PRINTFORM  She fondles her 
+IF TALENT:ARG:バストサイズ > 0
+	PRINTFORM voluptuous breasts 
+;ちっぱい
+ELSEIF TALENT:ARG:バストサイズ < 0
+	PRINTFORM trembling thin chest 
+;普通
+ELSE
+	PRINTFORM swaying tits 
+ENDIF
+PRINTFORMW as she spreads her legs wide giving better access to her nether region.
+PRINTFORMW %CALLNAME:ARG% inserts her saliva-soaked finger into her \@ !LOCAL:2 ? vagina # anus \@.
+PRINTFORMDL As she approaches her climax, %CALLNAME:ARG% squeezes your hand tightly, and you unconsciously squeeze back.
+
+PRINTFORML Realizing you're awake, %CALLNAME:ARG% freezes up, even forgetting to hide her body, and just stares at you...
+CALL KOJO_MESSAGE_SEND("EVENT",26,ARG,0,1)
+PRINTFORMW 
+$LOOP
+CALL CHOICE("What to say...","Apologize","I'll just keep looking, so continue","It feels better with two people")
+IF RESULT == 0
+	PRINTFORML You burn the scene before you into your eyes, apologize, and go back to bed before %CALLNAME:ARG% regains her senses.
+	SIF !CFLAG:ARG:弱み握られ
+		PRINTFORML Found out %CALLNAME:ARG%'s【Weakness】!
+	CALL KOJO_MESSAGE_SEND("EVENT",26,ARG,1,1)
+	CFLAG:ARG:オナバレ = 1
+	CFLAG:ARG:弱み握られ = 1
+	;TIME += 5
+ELSEIF RESULT == 1
+	なし崩し必要値 = 抱き寄せ必要値(ARG) - 50 + TALENT:ARG:羞恥心 * 50 - ABL:ARG:露出癖 * 30 - CFLAG:ARG:溜まってる度 / 20
+	SIF  TALENT:ARG:プライド > 0
+		なし崩し必要値 += 100
+	SIF CFLAG:ARG:既成事実 & 合意_うふふ
+		なし崩し必要値 -= 50
+	SIF TALENT:ARG:度胸 < 0
+		なし崩し必要値 -= 200
+	;失敗
+	IF CFLAG:ARG:合意判定 <= なし崩し必要値
+		GOTO GOOUT
+	;成功
+	ELSE
+		CALL KOJO_MESSAGE_SEND("EVENT",26,ARG,2,1)
+		PRINTFORM For a moment %CALLNAME:ARG% looks 
+		IF TALENT:ARG:恋慕
+			PRINTFORM glad and a bit confused
+		;気弱系,真面目系
+		ELSEIF CFLAG:ARG:性格傾向 == 1 || CFLAG:ARG:性格傾向 == 4
+			PRINTFORM hesitant and embarrassed
+		;強気系,素直系,その他
+		ELSEIF CFLAG:ARG:性格傾向 == 2 || CFLAG:ARG:性格傾向 == 3 || CFLAG:ARG:性格傾向 == 5
+			PRINTFORM disgusted and shocked
+		ENDIF
+		PRINTFORML , before letting out a small sigh.
+		IF TALENT:ARG:恋人
+			PRINTFORML She takes off her remaining clothes and spreads her legs before you.
+		;気弱系,真面目系
+		ELSEIF CFLAG:ARG:性格傾向 == 1 || CFLAG:ARG:性格傾向 == 4
+			PRINTFORML She burns with embarrassment as she opens her clothes a bit more, but clamps her legs shut.
+		;強気系,素直系,その他
+		ELSEIF CFLAG:ARG:性格傾向 == 2 || CFLAG:ARG:性格傾向 == 3 || CFLAG:ARG:性格傾向 == 5
+			PRINTFORML She removes her clothes, but still hides her important places.
+		ENDIF
+		PRINTFORML After that, you encourage %CALLNAME:ARG% to continue.
+		PRINTFORMW She sighs, before starting to move her hands.
+
+		PRINTFORML A wet sound is made as she plunges her middle finger into her \@ !LOCAL:2 ? vagina # anus \@.
+		;デカパイ
+		IF TALENT:バストサイズ > 0
+			PRINTFORML Her other hand gropes her breasts, the flesh deforming around her digits.
+		;ちっぱい
+		ELSEIF TALENT:バストサイズ < 0
+			PRINTFORML She squeezes and rubs her nipples with her other hand.
+		;普通
+		ELSE
+			PRINTFORML She fondles her breasts with her other hand.
+		ENDIF
+		PRINTFORMW The lascivious scene is made all the more lewd as she begins moaning in earnest.
+		IF TALENT:ARG:恋人
+			PRINTFORML She starts moving her fingers with more force as she calls out your name.
+			PRINTFORML Fluids seeps from both of %CALLNAME:ARG%'s mouths as she stares at you with an enraptured expression.
+			PRINTFORMW You swallow hard.
+			PRINTFORML She begins fingering her \@ !LOCAL:2 ? vagina # anus \@ even faster while continuing to fondle her breasts.
+			PRINTFORMW And then, %CALLNAME:ARG% calls out your name before her entire body trembles in orgasm.
+		;気弱系,真面目系
+		ELSEIF CFLAG:ARG:性格傾向 == 1 || CFLAG:ARG:性格傾向 == 4
+			PRINTFORML Although embarrassed, she plays with her breasts and \@ !LOCAL:2 ? vagina # anus \@.
+			PRINTFORML However, as her nipples become more flush and harden, it's clear she's enjoying it.
+			PRINTFORMW %HIS_HER(ARG,1)% voice grows louder, and she spreads her legs a bit more.
+			PRINTFORML Not knowing or caring you're watching, she spreads herself shamelessly wide, not hiding anything.
+			PRINTFORML %HIS_HER(ARG,1)% thick love juices flow down her thigh as it begins to twitch.
+			PRINTFORMW When %CALLNAME:ARG% finally reaches orgasm, a torrent of liquid shoots out.
+		;強気系,素直系,その他
+		ELSEIF CFLAG:ARG:性格傾向 == 2 || CFLAG:ARG:性格傾向 == 3 || CFLAG:ARG:性格傾向 == 5
+			PRINTFORML %CALLNAME:ARG% stops you from approaching, reminding you that you're only allowed to watch.
+			PRINTFORML Squeezing her breasts, she plays with her \@ !LOCAL:2 ? vagina # anus \@, making wet noises each time.
+			PRINTFORMW She notices her spectator looks dissatisfied, so she spreads her legs wider.
+			PRINTFORML Love juice flows down her thigh as she begins playing with her clitoris.
+			PRINTFORML Feeling your gaze on her, %CALLNAME:ARG% begins moving her fingers even faster.
+			PRINTFORMW She suddenly rams her fingers inside her \@ !LOCAL:2 ? vagina # anus \@, pushing her over the edge.
+		ENDIF
+	ENDIF
+	PRINTFORML %CALLNAME:ARG%'s entire body twitches and spasms from the pleasure.
+	PRINTFORML You decide not to press further but go to back to bed without hesitating.
+	PRINTFORML But before that, perhaps a souvenir is in order?
+	CALL ASK_YN
+	IF !RESULT
+		PRINTFORML Before returning to sleep, you take %CALLNAME:ARG%'s %PANTSNAME(EQUIP:ARG:下半身下着２, ARG)% and put them in your pocket.
+		;TSTR:3 = %CALLNAME:ARG%{EQUIP:ARG:下半身下着２}/
+		;CSTR:MASTER:12 += TSTR:3
+		CALL PANTS_GET(ARG)
+	ENDIF
+	
+	CFLAG:ARG:オナバレ = 3
+	CFLAG:ARG:好感度 += ABL:ARG:欲望 * CFLAG:ARG:溜まってる度 / 200 * ABL:ARG:露出癖
+	;恥情を自慰中毒レベル準拠で上げるよ
+	CALL JUEL_UP_SPECIAL(ARG,"恥情","自慰中毒",30,1)
+	;欲情を自慰中毒準拠で上げるよ
+	CALL JUEL_UP_SPECIAL(ARG,"欲情","自慰中毒",30,1)
+	EXP:ARG:露出快楽経験 += CFLAG:ARG:溜まってる度 / 200 * ABL:ARG:露出癖
+	EXP:ARG:自慰経験 +=  CFLAG:ARG:溜まってる度 / 200 * ABL:ARG:露出癖
+	;TIME += 27
+ELSEIF RESULT == 2
+	なし崩し必要値 = 抱き寄せ必要値(ARG) - 150 + TALENT:ARG:羞恥心 * 30 - CFLAG:ARG:溜まってる度 / 20
+	SIF  TALENT:ARG:プライド > 0
+		なし崩し必要値 += 50
+	SIF CFLAG:ARG:既成事実 & 合意_うふふ
+		なし崩し必要値 -= 50
+	SIF TALENT:ARG:度胸 < 0
+		なし崩し必要値 -= 200
+	$ GOOUT
+	IF CFLAG:ARG:合意判定 <= なし崩し必要値
+;		CALL KOJO_MESSAGE_SEND("EVENT",26,ARG,3,0)
+;		PRINTFORML %CALLNAME:ARG%はわけのわからないことを喚き散らして%CALLNAME:MASTER%を追い出した
+		PRINTFORML %CALLNAME:ARG% becomes livid at your suggestion and lobs a pillow at your face before angrily going to bed.
+		SIF !CFLAG:ARG:弱み握られ
+			PRINTFORML %CALLNAME:ARG%の【弱味】を握った
+		SIF MARK:ARG:反発刻印 < 3
+			MARK:ARG:反発刻印 ++
+		CFLAG:ARG:オナバレ = 1
+		CFLAG:ARG:弱み握られ = 1
+		;TIME += 5
+	ELSE
+		CALL K17_NASIKUZUSI(ARG)
+	ENDIF
+ENDIF
+
+;*********************************************************************************
+;	なし崩し
+;	引数0	：キャラID
+;*********************************************************************************
+@K17_NASIKUZUSI(ARG)
+#DIM 前戯１
+;1=C 2=B 3=M
+#DIM 前戯２
+#DIM 本番はどっちか
+#DIM 注入量
+#DIM 好感度上昇量
+#DIM 経験増加数,58
+;０ならＶ、１ならＡ
+VARSET 経験増加数
+CALL KOJO_MESSAGE_SEND("EVENT",26,ARG,4,1)
+LOCAL:1 = MIN(ABL:ARG:欲望, 10) + CFLAG:ARG:溜まってる度 / 200
+PRINTFORML You jump awake and pounce on the trembling %CALLNAME:ARG%.
+PRINTFORMW Embracing %PNAME(ARG)%, you ask her what she wants to do.
+PRINTFORM Going along with her request, you 
+
+IF TALENT:ARG:キス未経験
+	前戯１ = 3
+	JUEL:ARG:4 += 100
+	経験増加数:4 += 3 + ABL:ARG:Ｍ感覚 * 2
+	経験増加数:27 = 経験増加数:4
+ELSEIF !RAND:3
+	前戯１ = 3
+	経験増加数:4 += 3 + ABL:ARG:Ｍ感覚 * 2
+	経験増加数:27 = 経験増加数:4
+	;M感覚に応じて快Ｍ追加
+	CALL JUEL_UP_SPECIAL(ARG,"快Ｍ","Ｍ感覚",20)
+ELSEIF ABL:ARG:Ｃ感覚 >= ABL:ARG:Ｂ感覚
+	前戯１ = 1
+	;C感覚に応じて快C追加
+	CALL JUEL_UP_SPECIAL(ARG,"快Ｃ","Ｃ感覚",20)
+	経験増加数:0 += RAND:(LOCAL:1 * 2) 
+	経験増加数:5 += 経験増加数:0 / 2
+ELSE
+	前戯１ = 2
+	;B感覚に応じて快B追加
+	CALL JUEL_UP_SPECIAL(ARG,"快Ｂ","Ｂ感覚",20)
+	経験増加数:3 += RAND:(LOCAL:1 * 2) 
+	経験増加数:8 += 経験増加数:3 / 2
+ENDIF
+
+SELECTCASE 前戯１
+	CASE 1
+		PRINTDATA
+			DATAFORM play with her clitoris
+			DATAFORM prod her clitoris
+			DATAFORM roll her clitoris between your fingers
+			DATAFORM lick her clitoris
+		ENDDATA
+	CASE 2
+		PRINTDATA
+			DATAFORM play with her nipples
+			DATAFORM caress her breasts
+			DATAFORM fondle each of her breasts with one hand
+			DATAFORM lick her nipples
+			DATAFORM bite playfully on her nipples
+		ENDDATA
+	CASE 3
+		PRINTDATA
+			DATAFORM stroke her hair as you 
+			DATAFORM softly 
+			DATAFORM passionately 
+		ENDDATA
+ENDSELECT
+IF 前戯１ == 3
+	IF TALENT:ARG:キス未経験
+		PRINTFORM take her first kiss
+	ELSE
+		PRINTFORM kiss her
+	ENDIF
+ENDIF
+PRINTW .
+PRINTFORM After that you 
+本番はどっちか = 0
+前戯２ = RAND:3
+IF !TALENT:ARG:処女 & ABL:ARG:Ａ感覚 >= ABL:ARG:Ｖ感覚
+	本番はどっちか = 1
+	前戯２ += 10
+ENDIF
+
+SELECTCASE 前戯２
+	CASE 0
+		PRINTFORM caress her labia
+	CASE 1
+		PRINTFORM finger her lightly
+	CASE 2
+		PRINTFORM lick her vagina
+	CASE 10
+		PRINTFORM fondle her %HIP_TR(ARG)%
+	CASE 11
+		PRINTFORM caress her anus
+	CASE 12
+		PRINTFORM finger her anus lightly
+ENDSELECT
+;PRINT 、
+
+PRINTDATA
+	DATAFORM , teasing her thoroughly
+	DATAFORM , making her come
+	DATAFORM  while teasing her with obscene words
+ENDDATA
+PRINTW .
+PRINT Finally, you 
+PRINTDATA
+	DATAFORM push her down on all fours, mounting her like a beast
+	DATAFORM embrace her from the front
+	DATAFORM put her in a mating-press position
+	DATAFORM let her mount you
+ENDDATA
+PRINTDATA
+	DATAFORM , whispering sweet words in her ears before you
+	DATAFORM , before you gently
+	DATAFORM , before you violently
+	DATAFORM , before you passionately
+ENDDATA
+
+IF TALENT:ARG:処女 && !本番はどっちか
+	PRINTFORM  snatch her virginity away.
+ELSE
+	PRINTDATA
+		DATAFORM  fuck
+		DATAFORM  ravish
+		DATAFORM  violate
+	ENDDATA
+ENDIF
+PRINTFORM her {LOCAL:1} times, 
+
+IF 本番はどっちか
+	注入量 = ABL:ARG:アナル * 40
+	;A感覚に応じて快A追加
+	CALL JUEL_UP_SPECIAL(ARG,"快Ａ","Ａ感覚",20)
+	;JUEL:ARG:2 += JUEL_DEMAND_2(0,0,ARG) / 5
+	経験増加数:21 += LOCAL:1
+	経験増加数:17 += LOCAL:1
+	経験増加数:7 += 2 * LOCAL:1
+	経験増加数:2 += LOCAL:1 * 2
+ELSE
+	注入量 = ABL:ARG:膣 * 40
+	;V感覚に応じて快V追加
+	CALL JUEL_UP_SPECIAL(ARG,"快Ｖ","Ｖ感覚",20,1)
+	経験増加数:20 += LOCAL:1
+	経験増加数:16 += LOCAL:1
+	経験増加数:6 += 2 * LOCAL:1
+	経験増加数:1 += 2 * LOCAL:1
+ENDIF
+注入量 += ABL:ARG:欲望 * LOCAL:1 * 3
+注入量 = MIN(注入量, BASE:MASTER:精力)
+;欲情を欲望準拠で上げるよ
+CALL JUEL_UP_SPECIAL(ARG,"欲情","欲望",25)
+BASE:MASTER:精力 = MAX(BASE:MASTER:精力 - 注入量,0)
+PRINTFORMW pouring {注入量}ml of semen into her \@本番はどっちか ? anus# vagina\@...
+IF !本番はどっちか
+	CFLAG:ARG:累計膣内精液 += 注入量
+	EX:ARG:膣内精液 += 注入量
+	CALL SAMEN_SHOOT3(注入量 , MASTER, ARG)
+ELSE
+	CFLAG:ARG:累計アナル精液 += 注入量
+	EX:ARG:アナル内精液 += 注入量
+ENDIF
+IF 前戯１ == 3 
+	SIF TALENT:MASTER:キス未経験
+		CALL SET_FIRSTKISS(MASTER, ARG, 2)
+	SIF TALENT:ARG:キス未経験
+		CALL SET_FIRSTKISS(ARG, MASTER, 2, "流されるままに")
+ENDIF
+IF TALENT:ARG:処女 == 1 && !本番はどっちか
+	SETCOLOR 247,171,166
+	PRINTFORMW 【Virginity Loss】
+	CALL SET_HISTORY_LOST_V(ARG, MASTER, "ペニス", "自室", "流されるままに")
+ENDIF
+IF !CFLAG:ARG:アナル処女喪失記念日 && 本番はどっちか
+	SETCOLOR 247,171,166
+	PRINTFORMW 【Anal Virginity Loss】
+	CALL SET_HISTORY_LOST_A(ARG, MASTER, "ペニス", "自室", "流されるままに")
+ENDIF
+RESETCOLOR
+FOR LOCAL,0,58
+	IF 経験増加数:LOCAL
+		PRINTFORML %EXP_TR(LOCAL)% ＋{経験増加数:LOCAL}
+		EXP:ARG:LOCAL += 経験増加数:LOCAL
+	ENDIF
+NEXT
+PRINTFORMW ...
+PRINTFORMW ......
+PRINTFORMW .........
+
+CALL KOJO_MESSAGE_SEND("EVENT",26,ARG,5,1)
+;TIME += 117
+EXP:MASTER:清掃経験 ++
+DOWNBASE:MASTER:体力 = LOCAL:1 * 80
+DOWNBASE:MASTER:気力 = LOCAL:1 * 100
+好感度上昇量 = ABL:ARG:欲望 * CFLAG:ARG:溜まってる度 / 25
+CALL CHANGE_CFLAG(2,ARG,好感度上昇量)
+CFLAG:ARG:溜まってる度 = 0
+
+IF TALENT:ARG:恋慕
+	PRINTFORML After finishing, you are about to go back to sleep, but %CALLNAME:ARG% wants more...
+	CALL ASK_YN("Sleep anyway","Guess we're not sleeping tonight")
+	IF !RESULT
+		GOTO BYEBYE
+	ELSE
+		;お招きフラグにARGを代入
+;		CFLAG:ARG:お招き = ARG
+;		CFLAG:MASTER:お招き = ARG
+;		;初期位置をOMANEKIBEYA()=98にする
+;		CFLAG:ARG:初期位置 = OMANEKIBEYA()
+;		;移動させる
+;		CFLAG:ARG:現在位置 = OMANEKIBEYA()
+;		CFLAG:MASTER:現在位置 = OMANEKIBEYA()
+		;IF NEMUKE() < 720
+		CFLAG:MASTER:徹夜 = 1
+;			PRINTFORML %CALLNAME:MASTER%は今日一日%CALLNAME:ARG%のところで過ごすことにした
+;			PRINTFORML しばらく一緒に眠って、起きて、掃除をして、イチャイチャして、食事を作って食べて、
+;			PRINTFORMW またイチャイチャして、セックスして寝た
+		PRINTFORMDL Without any thought towards sleeping, you instead make love with %CALLNAME:ARG% all through the night.
+		PRINTFORMDL As you continue to single-mindedly indulge in each other's bodies, the sun rises before you know it.
+		PRINTFORMDL You notice the air is rank with the stench of sex, and your clothes and bedsheets are scattered about, soaked in bodily fluids.
+		PRINTFORMDW Having orgasmed so many times that her eyes can't see straight, %CALLNAME:ARG% finally collapses into slumber, completely satisfied.
+		
+		;要精査とりあえず本家仕様の半分で
+		VARSET 経験増加数
+		IF 本番はどっちか
+			注入量 = ABL:ARG:アナル * MIN(ABL:ARG:親密,15) * 10 /2
+			CALL JUEL_UP_SPECIAL(LOCAL,"快Ａ","Ａ感覚",20)
+			経験増加数:21 += MIN(ABL:ARG:親密,15)
+			経験増加数:17 += MIN(ABL:ARG:親密,15)
+			経験増加数:7 += MIN(ABL:ARG:親密,15) * 2
+			経験増加数:2 += MIN(ABL:ARG:親密,15) * 2
+		ELSE
+			注入量 = ABL:ARG:膣 * MIN(ABL:ARG:親密,15) * 10 /2
+			CALL JUEL_UP_SPECIAL(LOCAL,"快Ｖ","Ｖ感覚",20)
+			経験増加数:20 += MIN(ABL:ARG:親密,15)
+			経験増加数:16 += MIN(ABL:ARG:親密,15)
+			経験増加数:6 += 2 * MIN(ABL:ARG:親密,15)
+			経験増加数:1 += 2 * MIN(ABL:ARG:親密,15)
+		ENDIF
+		経験増加数:41 =  MIN(ABL:ARG:親密,15) * 2
+		注入量 = MIN(注入量, BASE:MASTER:精力)
+		;欲情を欲望準拠で上げるよ
+		CALL JUEL_UP_SPECIAL(ARG,"欲情","欲望",20)
+		BASE:MASTER:精力 = MAX(BASE:MASTER:精力 - 注入量,0)
+		IF !本番はどっちか
+			CFLAG:ARG:累計膣内精液 += 注入量
+			EX:ARG:膣内精液 += 注入量
+			CALL SAMEN_SHOOT3(注入量 , MASTER, ARG)
+		ELSE
+			CFLAG:ARG:累計アナル精液 += 注入量
+			EX:ARG:アナル内精液 += 注入量
+		ENDIF
+		FOR LOCAL,0,58
+			IF 経験増加数:LOCAL
+				PRINTFORML %EXP_TR(LOCAL)% ＋{(経験増加数:LOCAL)/2}
+				EXP:ARG:LOCAL += (経験増加数:LOCAL)/2
+			ENDIF
+		NEXT
+;		DOWNBASE:MASTER:体力 += MIN(ABL:ARG:親密,15) * 40
+;		DOWNBASE:MASTER:気力 += MIN(ABL:ARG:親密,15) * 60
+		
+		;このあと徹夜込みの回復となる
+		BASE:MASTER:体力 = 0
+		BASE:MASTER:気力 = 0
+		好感度上昇量 = ABL:ARG:親密 * 40
+;			EXP:MASTER:清掃経験 ++
+;			EXP:MASTER:料理経験 ++
+;			TIME += 360 - NEMUKE()
+;		ELSE
+;			PRINTFORML 眠くなってきたので、そのまま%CALLNAME:ARG%と一緒に寝た
+;			好感度上昇量 = ABL:ARG:親密 * 25
+;		ENDIF
+		CALL CHANGE_CFLAG(2,ARG,好感度上昇量/2)
+;		CFLAG:MASTER:就寝時間 = DAY * 1440 + TIME
+		BEGIN AFTERTRAIN
+		RETURN 1
+	ENDIF
+ENDIF
+
+;TWあなたは片づけせずにはいられない
+$BYEBYE
+PRINTFORMW As %CALLNAME:ARG% stares into space with unfocused eyes atop the bed, you tell her you should do this again before going back to sleep.
+IF !CFLAG:ARG:ノーパン
+	PRINTFORML Before sleeping, perhaps a souvenir is in order?
+	CALL ASK_YN
+	IF !RESULT
+		PRINTFORML Before returning to sleep, you take %CALLNAME:ARG%'s %PANTSNAME(EQUIP:ARG:下半身下着２, ARG)% and put them in your pocket.
+		CALL PANTS_GET(ARG)
+	ENDIF
+	CFLAG:ARG:オナバレ = 2
+ENDIF

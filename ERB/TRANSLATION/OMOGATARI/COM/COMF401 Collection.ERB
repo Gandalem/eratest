@@ -1,0 +1,140 @@
+;-------------------------------------------------
+;コレクション
+;日常系コマンド、レベル1
+;-------------------------------------------------
+@COM401_PANTY_REWORK
+#DIM C_ID                       ;character
+#DIM P_ID                       ;panty ID (in the P_ID_LIST table)
+#DIM P_TYPE						;panty type
+#DIM OWN_COUNT                  ;number owned
+#DIM TOTAL_NUM
+#DIM P_ID_LIST, MAXPANTS
+#DIM PADDING = 55 ;custom code
+#DIMS HTML
+#DIM PRINT_DONE
+
+TOTAL_NUM = DT_SELECT("PANTS_TEMP", , "Chara ASC, Panty ASC, liquidSoilBit ASC, solidSoilBit ASC, corpseTaint ASC",P_ID_LIST)
+HTML =
+
+;printing
+FOR LOCAL,0,MAXPANTS
+	P_ID 	= P_ID_LIST:LOCAL						;entry ID in table
+	P_TYPE 	= DT_CELL_GET("PANTS_TEMP", P_ID, "panty",1)	;panty ID
+	C_ID 	= DT_CELL_GET("PANTS_TEMP", P_ID, "chara",1)	;char ID
+	IF C_ID >= CHARANUM
+	;character does not exist
+		DT_CELL_SET "PANTS_TEMP", P_ID, "chara", CSV_CHARANUM(), 1
+		C_ID = CSV_CHARANUM()
+	ENDIF
+
+	;handle duplicates
+	IF LOCAL
+		;panties must be unique in either soiling or type
+		IF PANTY_REWORK_IS_UNIQUE("PANTS_TEMP",P_ID,P_ID_LIST:(LOCAL-1))
+			$FORCE_PRINT
+			IF TOTAL_NUM > 1
+				;switch to previous panty
+				P_ID = P_ID_LIST:(LOCAL-1)
+				P_TYPE 	= DT_CELL_GET("PANTS_TEMP", P_ID, "panty",1)
+			ENDIF
+			$FORCE_PRINT_NO_MOVE
+			;printing
+			;check if it's in collection
+			IF PANTY_REWORK_IN_COLLECTION(C_ID, P_TYPE, "PantyCollection") == 0
+				SETCOLOR COLOR("PINK")
+			ELSE
+				RESETCOLOR
+			ENDIF
+
+			IF OWN_COUNT
+				SIF !STRLENS(HTML)
+					HTML += "　"
+				;the selection mode is unused right now (?)
+				DEBUGPRINTFORML Soiling on {P_ID} (%CALLNAME:C_ID% - %UNDIES_NAME_WITH_BRAND(C_ID,P_TYPE,1)%): %PANTY_REWORK_SOILSTR(C_ID,,,"PANTS_TEMP",P_ID)%
+				LOCALS '= @"%HTML_PRINT_NAS(@"%CAPITALIZE(UNDIES_NAME_WITH_BRAND(C_ID,P_TYPE,1))%")%%COND_STR(@" (%PANTY_REWORK_SOILSTR(C_ID,2,2,"PANTS_TEMP",P_ID)%)",STRLENS(PANTY_REWORK_SOILSTR(C_ID,,,"PANTS_TEMP",P_ID)))%"
+				SIF HTML_STRINGLEN(LOCALS) < PADDING
+				LOCALS '= LOCALS+HTML_SPACE(MAX(PADDING-HTML_STRINGLEN(LOCALS)+(PANTY_REWORK_IS_SOIL(C_ID,"liquid",3,"PANTS_TEMP",P_ID)),0))
+				
+				RESETCOLOR
+				;money
+				LOCALS:1 = %MONEYSTR_HTML(PANTY_REWORK_VALUE("PANTS_TEMP",P_ID))%
+				LOCALS:1 = %LOCALS:1%%HTML_SPACE(MAX(6-HTML_STRINGLEN(LOCALS:1)))%
+				
+				;dirtiness
+				LOCALS:2 '= @"D: {PANTY_REWORK_SOIL_SCORE(C_ID,"PANTS_TEMP",P_ID),2}"
+				SELECTCASE PANTY_REWORK_SOIL_SCORE(C_ID,"PANTS_TEMP",P_ID)
+				CASE IS >= 12
+					LOCALS:2 = %COLOR_PRINT_HTML(LOCALS:2, "C_D_RED")%
+				CASE IS >= 10
+					LOCALS:2 = %COLOR_PRINT_HTML(LOCALS:2, "C_RED")%
+				CASE IS >= 8
+					LOCALS:2 = %COLOR_PRINT_HTML(LOCALS:2, "C_D_ORANGE")%
+				CASE IS >= 5
+					LOCALS:2 = %COLOR_PRINT_HTML(LOCALS:2, "C_ORANGE")%
+				CASE IS >= 2
+					LOCALS:2 = %COLOR_PRINT_HTML(LOCALS:2, "C_YELLOW")%
+				CASE IS >= 1
+					LOCALS:2 = %COLOR_PRINT_HTML(LOCALS:2, "C_GREEN")%
+				CASEELSE
+				ENDSELECT
+				LOCALS = %LOCALS% (%LOCALS:1%, %LOCALS:2%) x{OWN_COUNT,3}
+				;LOCALS = %LOCALS,30,LEFT%{OWN_COUNT,3}　
+				HTML += @"%@"%CALLNAME:C_ID%'s", 15, LEFT% %LOCALS% - added to the collection"
+				HTML_PRINT HTML
+				VARSET HTML
+				HTML += "　"
+			ENDIF
+			;===========================
+			;reset own count
+			IF TOTAL_NUM > 1
+				P_ID = P_ID_LIST:(LOCAL+1)
+				P_TYPE 	= DT_CELL_GET("PANTS_TEMP", P_ID, "panty",1)
+			ENDIF
+			OWN_COUNT = 1
+			;HTML =
+			IF LOCAL == TOTAL_NUM-1
+				IF !PRINT_DONE && TOTAL_NUM > 1
+					P_ID = P_ID_LIST:(TOTAL_NUM-1)
+					P_TYPE 	= DT_CELL_GET("PANTS_TEMP", P_ID, "panty",1)
+					PRINT_DONE = 1
+					GOTO FORCE_PRINT_NO_MOVE
+				ENDIF
+				BREAK
+			ENDIF
+		ELSE
+			;dupe
+			OWN_COUNT ++
+		ENDIF
+	ELSE
+		OWN_COUNT = 1
+	ENDIF
+	SIF LOCAL == TOTAL_NUM-1
+		GOTO FORCE_PRINT
+
+	; SIF PANTS_TEMP:LOCAL:種類
+	; PRINTFORML %@"%CALLNAME:LOCAL%'s", 15, LEFT% %PANTSNAME(種類, LOCAL, 1), 36, LEFT% - added to the collection
+	; CFLAG:LOCAL:293 = 0
+NEXT
+
+;transfering
+FOR LOCAL,0, TOTAL_NUM
+	P_ID 	= P_ID_LIST:LOCAL						;entry ID in table
+	P_TYPE 	= DT_CELL_GET("PANTS_TEMP", P_ID, "panty",1)	;panty ID
+	C_ID 	= DT_CELL_GET("PANTS_TEMP", P_ID, "chara",1)	;char ID
+	CALLF PANTY_REWORK_GO_COLLECTION(C_ID, P_TYPE, "PantyCollection", P_ID)
+	DT_ROW_REMOVE "PANTS_TEMP", P_ID
+NEXT
+
+CALL PANTY_REWORK_UPDATE_STATUS
+;(You need a pail)
+RETURN 1
+
+@PANTY_REWORK_UPDATE_STATUS
+FLAG:700 = PANTY_REWORK_UNIQUE_TOTAL()
+SIF !DT_ROW_LENGTH("PANTS_TEMP")
+FLAG:パンツ輸送 = 0
+NAS_PAIL_DIRTY:0 = PANTY_REWORK_DIRTY()
+NAS_PAIL_DIRTY:1 = PANTY_REWORK_MAX_DIRTY()
+
+PRINTFORML Your collection has \@FLAG:700>1?{FLAG:700} different kinds#1 pair\@ of panties now.
+PRINTFORMW Current Dirtiness: {NAS_PAIL_DIRTY}/{NAS_PAIL_DIRTY:1}

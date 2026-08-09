@@ -1,0 +1,380 @@
+@ADD_CUSTOM_COM483
+#DIMS DYNAMIC html
+#DIM COM483_RESULT
+#DIM COM483_LINECOUNT
+
+COM483_LINECOUNT = LINECOUNT
+DO
+VARSET html
+CLEARLINE LINECOUNT-COM483_LINECOUNT
+SETCOLOR 103,228,126
+PRINTL 【Recollection Mode】
+RESETCOLOR
+html += @"x/y rivals defeated"
+html += @"<br>"
+html += @"Funds: %MONEYSTR_HTML(MONEY)%\@ MONEY:2 ? %" "%(Charisma: %CHARISMA_HTML(MONEY:2)%)#\@"
+HTML_PRINT html
+SETCOLOR C_GRAY
+CUSTOMDRAWLINE ━
+RESETCOLOR
+
+[IF_DEBUG]
+SETCOLOR C_YELLOW
+PRINTFORML [DEBUG] Battle Testing:
+RESETCOLOR
+PRINTFORML [100] - Character: %NAME:(EZB_SETTINGS_PLAYER)% 
+PRINTFORML [{180,3}] - Battle Size: {EZB_SETTINGS_PLAYERTEAM}v{EZB_SETTINGS_ENEMYTEAM}
+PRINTFORML [181] - Combat League: \@ EZB_SETTINGS_TEAM_LEVEL < 0 ? Use Player Level	 # %EZB_RANKS(EZB_SETTINGS_TEAM_LEVEL,1)% \@
+PRINTFORML [182] - Fight Touhous: %YesOrNo(EZB_SETTINGS_FIGHT_TOUHOU)%
+PRINTFORM [183] - Combat System: 
+SELECTCASE EZB_SETTINGS_BATTLE_SYS
+CASE 0
+	PRINTFORML Current system (Megaten-like)
+CASE 1
+	PRINTFORML New system (Fire Embelum-like)
+CASE 2
+	PRINTFORML eraTW Legacy
+ENDSELECT
+PRINTL
+PRINTFORML [560] - Initiate Mob Battle
+PRINTFORML [561] - Initiate Mob NPC Battle
+;#; PRINTFORML [562] - DEBUG: TGC_CombatInit
+SETCOLOR C_GRAY
+CUSTOMDRAWLINE ━
+RESETCOLOR
+[ENDIF]
+PRINTFORML [564] - Remminise Battle
+PRINTFORML [565] - Remminise Boss Battle
+SETCOLOR C_GRAY
+CUSTOMDRAWLINE ━
+RESETCOLOR
+PRINTFORML [999] - Return
+INPUT
+COM483_RESULT = RESULT
+SELECTCASE COM483_RESULT
+CASE 180
+	CALL ASK_M("Change my team size", 1, "Change my enemy's team size", 1, "Leave", 1)
+	SELECTCASE RESULT
+	CASE 0
+		PRINTFORML Please select a team size
+		PRINTFORML Max team size is 100
+		INPUT
+		LOCAL = RESULT
+		SELECTCASE RESULT
+		CASE IS > 100
+			PRINTFORML Team size is too big
+		CASE IS < 1
+			PRINTFORML Minimum team size must be 1
+		CASEELSE
+			PRINTFORML Change accepted
+			PRINTFORMW Your team size is now {LOCAL}
+			EZB_SETTINGS_PLAYERTEAM = LOCAL
+		ENDSELECT
+	CASE 1
+		PRINTFORML Please select a team size
+		PRINTFORML Enemy's max team size is 100
+		INPUT
+		LOCAL = RESULT
+		SELECTCASE RESULT
+		CASE IS > 100
+			PRINTFORML Team size is too big
+		CASE IS < 1
+			PRINTFORML Minimum team size must be 1
+		CASEELSE
+			PRINTFORML Change accepted
+			PRINTFORMW The enemy's team size is now {LOCAL}
+			EZB_SETTINGS_ENEMYTEAM = LOCAL
+		ENDSELECT
+	ENDSELECT
+CASE 181
+	PRINTFORML Please select a combat league (legacy EZB stuff)
+	FOR LOCAL, 0, 11
+		PRINTFORML [{LOCAL,2,RIGHT}] - %EZB_RANKS(LOCAL,1)%
+	NEXT
+	PRINTL
+	PRINTFORML [-9] - Return
+	INPUT
+	LOCAL = RESULT
+	SELECTCASE RESULT
+	CASE -9
+		CONTINUE
+	CASE IS < 0
+		PRINTFORML Change accepted
+		PRINTFORMW Enemies will now be scaled to your current league rank.
+		EZB_SETTINGS_TEAM_LEVEL = -1
+	CASEELSE
+		PRINTFORML Change accepted
+		PRINTFORMW Enemies will now be scaled to %EZB_RANKS(LOCAL,1)%
+		EZB_SETTINGS_TEAM_LEVEL = LOCAL
+	ENDSELECT
+CASE 182
+	EZB_SETTINGS_FIGHT_TOUHOU = !EZB_SETTINGS_FIGHT_TOUHOU
+CASE 183
+	IF EZB_SETTINGS_BATTLE_SYS >= 2
+		EZB_SETTINGS_BATTLE_SYS = 0
+	ELSE
+		EZB_SETTINGS_BATTLE_SYS++
+	ENDIF
+CASE 560
+CALL EZB_START_BATTLE(0,0)
+RETURN
+CASE 561
+CALL EZB_START_BATTLE(0,1)
+CASE 562
+CALL EZB_START_BATTLE(0,0,,1)
+GOTO Turn999
+CASE 564
+SETCOLOR 103,228,126
+PRINTL 【Character Battles】
+RESETCOLOR
+PRINTFORML Select a rival to fight
+LOCAL:3 = 0
+FOR LOCAL,0,4000
+	FOR LOCAL:1,0,LoG_RivalVariantMax
+		CALLF LoG_RIVALDATA(LOCAL+(LOCAL:1*10000))
+		SIF LoG_CharaID == -1
+			CONTINUE
+		PRINTBUTTON @"[%EZB_TITLES(LOCAL+(LOCAL:1*10000)),35,LEFT%] ", LOCAL+(LOCAL:1*10000)
+	NEXT
+NEXT
+PRINTL
+PRINTL
+PRINTFORML [-1] Cancel
+INPUT
+SELECTCASE RESULT
+CASE IS >= 0
+	LOG_RECOLLECTION_BATTLE = 1
+	CALL LoG_ChallengePlayer(,RESULT)
+	LOG_RECOLLECTION_BATTLE = 0
+	RETURN
+CASE -15454
+	CONTINUE
+ENDSELECT
+CASE 565
+	SETCOLOR 103,228,126
+	PRINTL 【Stage Boss Battles】
+	RESETCOLOR
+	FOR LOCAL,0,7
+		PRINTBUTTON @"[%LoG_StageName(LOCAL),15,LEFT%] ", -10*(LOCAL+1)
+	NEXT
+	PRINTL
+	PRINTL
+	PRINTFORML [-1] Cancel
+	INPUT
+	SELECTCASE RESULT
+	CASE -80 TO -10
+		LOG_RECOLLECTION_BATTLE = 1
+		CALL LoG_StageBattle((RESULT+10)*-1/10)
+		LOG_RECOLLECTION_BATTLE = 0
+		RETURN
+	CASE -15454
+		CONTINUE
+	ENDSELECT
+;CALL TGC_CombatInit(1)
+CASE 999
+	$Turn999
+	; MASTER = 0
+	; FLAG:POSTAL = 0
+	RETURN
+ENDSELECT
+LOOP 1
+
+
+@ADD_CUSTOM_COM_ABLE483
+;押し倒す実行判定
+SIF !TFLAG:100
+	RETURN 0
+SIF !SaveIsEZB
+	RETURN 0
+SIF InTrain == 3
+	RETURN 0
+
+RETURN (ENTRANCE == CFLAG:MASTER:300)
+
+@EZB_START_BATTLE(IsRanked,NPCBattle,DanmakuBattle,TGCBattle)
+#DIM IsRanked
+#DIM NPCBattle
+#DIM DanmakuBattle
+#DIM nChara
+#DIM TGCBattle
+#DIM rankedCombatantLevel
+
+EasyBattleIsRanked = IsRanked
+FLAG:POSTAL = 0
+
+IF IsRanked || EZB_SETTINGS_TEAM_LEVEL == -1
+	rankedCombatantLevel = EZB_LEAGUE:MASTER:0 
+ELSE
+	rankedCombatantLevel = EZB_SETTINGS_TEAM_LEVEL
+ENDIF
+
+IF EZB_SETTINGS_PLAYERTEAM < 1 || EZB_SETTINGS_ENEMYTEAM < 1
+	PRINTFORML Cannot have a battle that is a {EZB_SETTINGS_PLAYERTEAM}v{EZB_SETTINGS_ENEMYTEAM}
+	PRINTFORML Setting to {MAX(EZB_SETTINGS_PLAYERTEAM,1)}v{MAX(EZB_SETTINGS_ENEMYTEAM,1)}
+	EZB_SETTINGS_PLAYERTEAM = MAX(EZB_SETTINGS_PLAYERTEAM,1)
+	EZB_SETTINGS_ENEMYTEAM = MAX(EZB_SETTINGS_ENEMYTEAM,1)
+ENDIF
+IF !GETBIT(TALENT:MASTER:ESP,0) && DanmakuBattle && !NPCBattle
+	PRINTFORMW Cannot do Danmaku as you are incapable of Danmaku.
+	RETURN
+ENDIF
+VARSET FactionRank
+FOR LOCAL, 0, CHARANUM
+	SIF LOCAL == MASTER
+		CONTINUE
+	SIF GET_MAPID(CFLAG:LOCAL:300) == 18
+		CFLAG:LOCAL:300 = SUKIMA()
+	CALLF HESOYAM(LOCAL)
+	;CFLAG:LOCAL:弾幕特能 = 9223372036854775807
+	;CFLAG:LOCAL:弾幕特能 = 4
+NEXT
+CALLF RemoveAllCombatants()
+SIF !NPCBattle
+CALLF AddCombatant(MASTER,0)
+;CALLF EQUIPWEAPON(MASTER,EasyBattleSave:4)
+;CALLF PANTY_REWORK_CHANGE(MASTER,103)
+;CALL EasyBattleArmor(MASTER,EasyBattleSave:4)
+CALL CLOTHES_SETTING_TRAIN(MASTER)
+; ABL:MASTER:42 = MAX(ABL:MASTER:42,EasyBattleSave:5)
+; ABL:MASTER:66 = MAX(ABL:MASTER:66,EasyBattleSave:5)
+; ABL:MASTER:67 = MAX(ABL:MASTER:67,EasyBattleSave:5)
+; VARSET currentSpellCards
+; FOR LOCAL, 1, 100
+; 	;フラグ0番が100を兼ねているのでこの形に
+; 	IF GET_STR(MASTER, "SpellCard", LOCAL, "名前") != ""
+; 		currentSpellCards:LOCAL = MASTER*1000+LOCAL
+; 	ELSE
+; 		BREAK
+; 	ENDIF
+; NEXT
+
+IF !NPCBattle
+	CFLAG:MASTER:300 = 1810
+	CFLAG:MASTER:デート中 = 18
+ENDIF
+
+$STARTBATTLE
+
+SIF EZB_SETTINGS_FIGHT_TOUHOU
+CALLF FISHER_YATES_SHUFFLE_F(CHARANUM)
+SIF EZB_SETTINGS_RANDOM_WEAPONS
+FLAG:POSTAL = 2
+VARSET LOCAL
+
+WHILE GetCombatantSize(1) < (EasyBattleIsRanked ? 1 # EZB_SETTINGS_PLAYERTEAM)
+	SIF !EZB_SETTINGS_FIGHT_TOUHOU
+		GOTO MakeMob
+
+	IF nChara == SHAFFLE_ARRAY:LOCAL
+		;PRINTFORML nChara ({nChara}) IS EQUAL TO THE SHUFFLE ARRAY
+		;PRINTFORML SETTING ANOTHER CHARACTER
+		GOTO MakeMob
+	ENDIF
+	nChara = SHAFFLE_ARRAY:LOCAL
+	IF nChara <= 0
+		GOTO MakeMob
+	ELSEIF nChara >= CHARANUM
+		LOCAL++
+		CONTINUE
+    ELSEIF CFLAG:nChara:出禁
+        $MakeMob
+		nChara = FREE_MOB_SLOT()
+		CALL EZB_MAKE_FIGHTER(nChara, rankedCombatantLevel)
+		;SIF nChara > RANDOM_CHARANUM*2
+		;	THROW Too many characters spawned! {CHARANUM} vs {EZB_SETTINGS_PLAYERTEAM} needed, only got {GetCombatantSize(1)} in combat!		
+    ELSEIF IsDead:nChara:0
+        GOTO MakeMob    
+	ELSEIF nChara == MASTER
+		GOTO MakeMob
+	ELSEIF GetCombatant(nChara)
+		GOTO MakeMob
+	ELSEIF !TALENT:nChara:ESP && DanmakuBattle
+		GOTO MakeMob
+	ENDIF
+    ;EQUIP:nChara:Weapon = ARMUP(nChara)	
+	;SIF !EQUIP:nChara:Weapon
+	; CALLF EQUIPWEAPON(nChara,EasyBattleSave:4)
+	; CALLF PANTY_REWORK_CHANGE(nChara,103)
+	; CALL EasyBattleArmor(nChara,EasyBattleSave:8)
+	CALL CLOTHES_SETTING_TRAIN(nChara)		
+	;FactionRank:nChara:0 = 2
+	CFLAG:nCHara:300 = 1810
+
+	
+	; IF EasyBattleSave:11
+	; ABL:nChara:42 = RAND(0,EasyBattleSave:8+1)
+	; ABL:nChara:66 = RAND(0,EasyBattleSave:8+1)
+	; ABL:nChara:67 = RAND(0,EasyBattleSave:8+1)	
+	; ELSE
+	; ABL:nChara:42 = MAX(ABL:nChara:42,EasyBattleSave:8)
+	; ABL:nChara:66 = MAX(ABL:nChara:66,EasyBattleSave:8)
+	; ABL:nChara:67 = MAX(ABL:nChara:67,EasyBattleSave:8)
+	; ENDIF
+    CALLF AddCombatant(nChara,0)
+	;PRINTFORML Attacker #{LOCAL}: %CALLNAME:(lcAttackers:Local)%
+	LOCAL ++
+WEND
+WHILE GetCombatantSize(2) < (EasyBattleIsRanked ? 1 # EZB_SETTINGS_ENEMYTEAM)
+	SIF !EZB_SETTINGS_FIGHT_TOUHOU
+		GOTO MakeMob2
+
+	IF nChara == SHAFFLE_ARRAY:LOCAL
+		;PRINTFORML nChara ({nChara}) IS EQUAL TO THE SHUFFLE ARRAY
+		;PRINTFORML SETTING ANOTHER CHARACTER
+		GOTO MakeMob2
+	ENDIF
+    nChara = SHAFFLE_ARRAY:LOCAL
+	IF nChara <= 0
+		GOTO MakeMob2
+	ELSEIF nChara >= CHARANUM
+		LOCAL++
+		CONTINUE
+    ELSEIF CFLAG:nChara:出禁
+        $MakeMob2
+		nChara = FREE_MOB_SLOT()
+		CALL EZB_MAKE_FIGHTER(nChara, rankedCombatantLevel)
+		;SIF nChara > RANDOM_CHARANUM*2
+		;	THROW Too many characters spawned! {CHARANUM} vs {EasyBattleSave:7} needed, only got {GetCombatantSize(2)} in combat!		
+    ELSEIF IsDead:nChara:0
+        GOTO MakeMob2
+	ELSEIF nChara == MASTER
+		GOTO MakeMob2
+	ELSEIF GetCombatant(nChara)
+		GOTO MakeMob2
+	ELSEIF !TALENT:nChara:ESP && DanmakuBattle
+		GOTO MakeMob2
+    ENDIF
+	;EQUIP:nChara:Weapon = ARMUP(nChara)	
+	;SIF !EQUIP:nChara:Weapon
+	; CALLF EQUIPWEAPON(nChara,EasyBattleSave:4)
+	; CALLF PANTY_REWORK_CHANGE(nChara,103)
+	; CALL EasyBattleArmor(nChara,EasyBattleSave:9)
+	CALL CLOTHES_SETTING_TRAIN(nChara)
+	;FactionRank:nChara:1 = 2
+	CFLAG:nCHara:300 = 1810
+
+
+	; IF EasyBattleSave:11
+	; ABL:nChara:42 = RAND(0,EasyBattleSave:9+1)
+	; ABL:nChara:66 = RAND(0,EasyBattleSave:9+1)
+	; ABL:nChara:67 = RAND(0,EasyBattleSave:9+1)	
+	; ELSE			
+	; ABL:nChara:42 = MAX(ABL:nChara:42,EasyBattleSave:9)
+	; ABL:nChara:66 = MAX(ABL:nChara:66,EasyBattleSave:9)
+	; ABL:nChara:67 = MAX(ABL:nChara:67,EasyBattleSave:9)
+	; ENDIF
+    CALLF AddCombatant(nChara,1)
+	;PRINTFORML Victim #{LOCAL-EasyBattleSave:6}: %CALLNAME:(lcVictims:(LOCAL-EasyBattleSave:6))%	
+	LOCAL++
+WEND
+
+
+IF IsRanked
+CALL EZB_RANKED_BATTLE_CARD(MASTER,nChara)
+ENDIF
+
+IF TGCBattle
+CALL TGC_CombatInit(1)
+ELSE
+CALL KNIFE_FIGHT(CombatantIDFromSlot(0,0),CombatantIDFromSlot(1,0), !DanmakuBattle)
+ENDIF

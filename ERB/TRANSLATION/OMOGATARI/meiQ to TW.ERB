@@ -1,0 +1,127 @@
+@BODY_PARTS_HEALTH(ARG, nPart)
+#FUNCTION
+#DIM nBodyHealth
+#DIM nPart
+
+SIF BodyPartHealth:ARG:nPart:1 == 0
+	RETURNF 100
+nBodyHealth = ((BodyPartHealth:ARG:nPart:0*100)/(BodyPartHealth:ARG:nPart:1))
+RETURNF nBodyHealth
+
+;meiQ
+@BODY_PARTS_HEALTH_CALC( nCharaIdx )
+#FUNCTION
+#DIM nCharaIdx
+
+#DIM nPartsNum
+#DIM nHealthBuf
+#DIM nHealthValue
+
+nHealthValue = 100
+SIF IsDead:nCharaIdx:0
+    RETURNF 0
+
+; 部位の損壊度からHealth値を求める
+FOR nPartsNum, 0, 100
+    SIF STRLENS( BDY_PART_NAME(nPartsNum) ) <= 0
+        CONTINUE
+    ; オトコなら膣,卵巣,子宮は対象外
+    SIF (!HAS_VAGINA(nCharaIdx)) && (GROUPMATCH(nPartsNum,62,63,64))
+        CONTINUE
+    ; 女でフタナリでないならペニス,睾丸は除く
+    SIF (!HAS_PENIS(nCharaIdx)) && (GROUPMATCH(nPartsNum,68,69,70,71))
+        CONTINUE
+    ; 女でフタナリでなら睾丸は除く  ← MEMO:意見の割れるところかも
+    SIF (IS_HERM(nCharaIdx)) && (nPartsNum == 71)
+        CONTINUE
+
+    ; 存在しない部位はチェック対象外
+    ;SIF BodyPartRemoved:nCharaIdx:nPartsNum > 0
+    ;	CONTINUE
+
+    ; 部位の損壊度を算出
+    nHealthBuf = BODY_PARTS_HEALTH( nCharaIdx, nPartsNum )
+    ; 部位による最低値保障
+    SELECTCASE nPartsNum
+        ; (最低値:0) 
+        ;essential parts: you die when you lose them
+        CASE 12, 1, 11, 47, 40, 77
+        ;CASE "脳", "頭", "首", "心臓"
+            nHealthBuf = MAX( 1, nHealthBuf )
+        ; (最低値:35) 
+        ;critical parts: max 35%
+        CASE 52, 53, 67, 47, 45, 46, 75, 76
+        ;CASE "腹部", "胃", "腸", "心臓"
+            nHealthBuf = MAX( 35, nHealthBuf+35 )
+        ; (最低値:55) 
+        ; important parts:
+        ;CASE "胸", "背", "尻", "食道", "膣", "子宮", "肛門", "右腕", "左腕", "右腿", "左腿"
+        CASE 55, 65, 63, 64, 61, 20, 30, 81, 91, 92, 93, 82, 83
+            nHealthBuf = MAX( 55, nHealthBuf+55 )
+        ; (最低値:75) 上記以外の部位
+        ;all other parts can fuck off
+        CASEELSE
+            nHealthBuf = 100
+        ;    nHealthBuf = MAX( 75, nHealthBuf )
+    ENDSELECT
+    IF nHealthValue > nHealthBuf
+        nHealthValue = LIMIT( nHealthBuf, 0, 100 )
+    ENDIF
+NEXT
+
+RETURNF nHealthValue
+
+@GET_HEALTH_COLOR( nCharaIdx, nHealthValue=-1, nColorPatern )
+#FUNCTION
+	#DIM nCharaIdx
+	#DIM nHealthValue
+	#DIM nColorPatern
+
+	#DIM nHealthColor
+	#DIM nflgUndead
+
+	nHealthColor = 0xFFFFFF
+	SIF nHealthValue == -1
+    nHealthValue = BODY_PARTS_HEALTH_CALC(nCharaIdx)
+
+	; Health値でカラーが変わる（正常→軽傷→中傷→重傷：緑→黄色→オレンジ→赤）
+	SELECTCASE nColorPatern
+		CASE 0
+				SELECTCASE nHealthValue
+					; 正常
+					CASE IS > 80
+						nHealthColor = 0x00F000
+					; 軽傷
+					CASE IS > 54
+						nHealthColor = 0xF0F000
+					; 中傷
+					CASE IS > 34
+						nHealthColor = 0xF0B000
+					; 重傷
+					CASE IS > 0
+						nHealthColor = 0xAA5555
+					; 死亡
+					CASE IS <= 0
+						nHealthColor = 0x555555
+				ENDSELECT
+		CASE 1
+				SELECTCASE nHealthValue
+					; 正常
+					CASE IS > 80
+						nHealthColor = 0xC0C0C0
+					; 軽傷
+					CASE IS > 54
+						nHealthColor = 0xF0F000
+					; 中傷
+					CASE IS > 34
+						nHealthColor = 0xF0B000
+					; 重傷
+					CASE IS > 0
+						nHealthColor = 0xAA5555
+					; 死亡
+					CASE IS <= 0
+						nHealthColor = 0x555555
+				ENDSELECT
+	ENDSELECT
+
+	RETURNF nHealthColor

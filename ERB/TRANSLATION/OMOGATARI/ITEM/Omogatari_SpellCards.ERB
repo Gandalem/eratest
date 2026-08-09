@@ -1,0 +1,2967 @@
+;Spell cards
+;CharacterID+Card ID
+;Example: 1026
+
+
+@SHOW_COLLECTION_SPELLCARD
+PRINTFORML ☆Received SpellCards☆
+FOR LOCAL, 0, CHARANUM
+	;SIF LOCAL == MASTER
+	;	CONTINUE
+	IF (!CFLAG:LOCAL:出禁 && !IsDead:LOCAL:0) && !TALENT:LOCAL:行きずり
+		SIF !HasCardsOfChara(LOCAL)
+			SETCOLOR C_GRAY
+		PRINTFORMLC [{LOCAL}] %STNAME(LOCAL), 15, LEFT%
+		RESETCOLOR
+	ENDIF
+NEXT
+PRINTL 
+DRAWLINE
+PRINTFORML [999] - Return
+INPUT
+
+IF RESULT == 999
+		RETURN
+ELSEIF INRANGE(RESULT, 0, CHARANUM) && !CFLAG:RESULT:出禁 && !TALENT:RESULT:行きずり
+	CALL SHOW_CARD_GAVE(RESULT)
+ENDIF
+RESTART
+
+@SHOW_CARD_GAVE(CHARA)
+#DIM CHARA
+#DIM SCORE
+#DIM GIFT_NUM
+#DIM LINE
+#DIM FAVO
+;custom code
+#DIM nLineCnt_Head
+nLineCnt_Head = LINECOUNT
+DO
+SIF LINECOUNT - nLineCnt_Head > 0
+	CLEARLINE LINECOUNT - nLineCnt_Head
+
+PRINTFORML 　☆Spell Cards from %CALLNAME:CHARA%                 ●Select and review
+CALL SpellCardList(CHARA,1)
+DRAWLINE
+PRINTFORML [996] - Previous character
+PRINTFORML [997] - Next character
+PRINTFORML [999] - Return
+INPUT
+IF RESULT == 999
+	FAVO = 0
+	RETURN
+ELSEIF RESULT == 998
+	ITEM:お気に入りアイテム = FAVO
+ELSEIF RESULT == 997
+	FOR LOCAL, CHARA + 1, CHARANUM
+		IF HasSpellCards:LOCAL:1
+			CHARA = LOCAL
+			CLEARLINE 7 + LINE
+			RESTART
+		ENDIF
+	NEXT
+	FOR LOCAL, 0, CHARA + 1
+		IF HasSpellCards:LOCAL:1
+			CHARA = LOCAL
+			CLEARLINE 7 + LINE
+			RESTART
+		ENDIF
+	NEXT
+ELSEIF RESULT == 996
+	FOR LOCAL, 0, CHARA
+		LOCAL:1 = CHARA - LOCAL
+		IF HasSpellCards:(LOCAL:1):1
+			CHARA = LOCAL:1
+			CLEARLINE 7 + LINE
+			RESTART
+		ENDIF
+	NEXT
+	FOR LOCAL, 0, CHARANUM
+		LOCAL:1 = CHARANUM - LOCAL
+		IF HasSpellCards:(LOCAL:1):1
+			CHARA = LOCAL:1
+			CLEARLINE 7 + LINE
+			RESTART
+		ENDIF
+	NEXT
+ELSEIF INRANGE(RESULT, 0, 100) && HasSpellCards:CHARA:RESULT
+
+ENDIF
+LOOP 1
+
+@SpellCardList(CHARA,ifButton = 0)
+#DIM CHARA
+#DIM SCORE
+#DIM GIFT_NUM
+#DIM LINE
+#DIM FAVO
+#DIM ifButton
+
+IF !GETBIT(TALENT:CHARA:ESP,0)
+	PRINTFORML This character is incapable of Danmaku
+	RETURN 0
+ENDIF
+
+FOR LOCAL, 1, 100
+	;フラグ0番が100を兼ねているのでこの形に
+	IF GET_STR(CHARA, "SpellCard", LOCAL, "名前") != ""
+		;IF HasSpellCards:CHARA:LOCAL
+		;	PRINTBUTTON @"%GET_STR(CHARA, "SpellCard", LOCAL, "名前")%", LOCAL
+		;ELSE
+			IF ifButton
+			PRINTBUTTON @"%GET_STR(CHARA, "SpellCard", LOCAL, "名前"), 80, LEFT%", LOCAL
+			ELSE
+			PRINTFORM %GET_STR(CHARA, "SpellCard", LOCAL, "名前"), 80, LEFT%
+			ENDIF
+		;ENDIF
+		CALL PRINT_RANK(GET_INT(CHARA, "SpellCard", LOCAL, "Grade"), "MAX_6")
+		PRINTFORM  {GET_INT(CHARA, "SpellCard", LOCAL, "Grade"), 2} 
+		IF GET_INT(CHARA, "SpellCard", LOCAL, "TSP")
+		CALL PRINT_COLORBAR((GET_INT(CHARA, "SpellCard", LOCAL, "TSP")), 4000, 30, UNICODE(0x2585), UNICODE(0x2585), BARCOLORSET("水色"), RESULT:1)
+		PRINTFORM  {GET_INT(CHARA, "SpellCard", LOCAL, "TSP")} TSP/use 
+		ENDIF		
+		IF GET_INT(CHARA, "SpellCard", LOCAL, "ESP")
+		CALL PRINT_COLORBAR((GET_INT(CHARA, "SpellCard", LOCAL, "ESP")), 4000, 30, UNICODE(0x2585), UNICODE(0x2585), BARCOLORSET("オレンジ"), RESULT:1)
+		PRINTFORM  {GET_INT(CHARA, "SpellCard", LOCAL, "ESP")} ESP/use 
+		ENDIF
+		SIF GET_INT(CHARA, "SpellCard", LOCAL, "Last Spell")
+			PRINTFORM (Last Spell) 
+		PRINTL
+	ELSE
+		LINE = LOCAL
+		BREAK
+	ENDIF
+NEXT
+
+@HasCardsOfChara(ARG)
+#FUNCTION
+FOR LOCAL, 0, 100
+	SIF HasSpellCards:ARG:LOCAL
+		RETURNF 1
+	SIF ARG == MASTER
+		RETURNF 1
+	SIF GET_STR(ARG, "SpellCard", LOCAL, "名前") == ""
+		RETURNF 0
+NEXT
+
+@SpellCardCount(ARG)
+#FUNCTION
+
+FOR LOCAL, 1, 100
+	SIF GET_STR(ARG, "SpellCard", LOCAL, "名前") == ""
+		BREAK
+NEXT
+LOCAL--
+RETURNF LOCAL
+
+@EXIST_SpellCard_ID
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+;要素名→ID変換用関数
+;必要なら各オブジェクトで同様に作成のこと
+@SpellCard_ID(ARG:0, ARGS:0, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS V_NAME                  ;作成する変数名
+#DIMS C_NAME, OBJ_ID_LAST + 1 ;データ保持
+#DIM  O_ID                    ;参照用
+IF ARGS:0 == "RESET"
+	VARSET C_NAME
+	FOR O_ID, 1, OBJ_ID_LAST + 1
+		C_NAME:O_ID = %GET_STR(, "SpellCard", O_ID, "名前")%
+	NEXT
+ELSE
+	O_ID = FINDELEMENT(C_NAME, ESCAPE(ARGS:0), , , 1)
+	CALLF MAKE_INT(V_NAME, O_ID)
+ENDIF
+
+;=============================================================================================================
+; Player
+;=============================================================================================================
+@EXIST_SpellCard1
+#LOCALSIZE 1
+#LOCALSSIZE 1
+@SpellCard1(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 5
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+SELECTCASE ARG
+CASE 0, 15, 62, 102
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "「King Crimson」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Within『King Crimson』's ability, this world's time disappears, and no one remembers the movements they made within this segment of time!")		
+	CASE "TSP"
+		IF GetCombatant(ARG, 1)
+			LOCAL = GetCombatantSize(2)*4 + GetCombatantSize(1)
+		ELSEIF GetCombatant(ARG, 2)
+			LOCAL = GetCombatantSize(1)*4 + GetCombatantSize(2)
+		ELSE
+			CALLF MAKE_INT(V_NAME, 2000)
+			RETURNF
+		ENDIF
+		CALLF MAKE_INT(V_NAME, MIN(32000, (1300*LOCAL*LOCAL*LOCAL - 151700*LOCAL*LOCAL + 7943500*LOCAL)/18042))
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 18)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 450)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 100
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Ally Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 100
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Ally Dodge"
+	;	chance to HIT, 0-100%
+		LOCAL = 100
+		CALLF MAKE_INT(V_NAME, LOCAL)		
+	CASE "Hostile Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 0
+		CALLF MAKE_INT(V_NAME, LOCAL)						
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 1
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Dream Sign 「Duplex Barrier」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"The bullets fly in straight lines, but the barrier distorts their paths. If you mentally fill in the space between the two barriers, this can be an extremely easy card.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 500)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 7)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 450)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 20
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 80
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 12
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Moon Sign 「Moonlight Ray」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"The wielder shoots rings of small bullets, one of them aimed at the target, as two thick lasers close in from the sides in a similar way to Sara's final phase in Mystic Square.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 450)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 0)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 350)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 20
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 50
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 2
+		CALLF MAKE_INT(V_NAME, LOCAL)		
+	CASE "Damage Type"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)					
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT		
+CASE 14
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Ice Sign 「Icicle Fall」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Cirno shoots lines of ice shard-like bullets to her sides, that then fall forming an arc. This spell card is infamous for having a large safe spot right in front of Cirno on easy mode, which can be used to beat the card with no effort. On normal mode this was corrected by having her shoot 5-way yellow bullets aimed at the player, but it can again be bypassed by placing the character's hurtbox over Cirno's head.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 100)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 0)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 230)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 5
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 20
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 1
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 1
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 54
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Fire Sign 「Agni Shine」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Patchouli creates waves of fireballs that circle around her, then change angle and expand the circle outwards.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 300)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 3)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 300)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 40
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 5
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 58
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Flower Sign 「Gorgeous Sweet Flower」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Meiling makes an expanding flower pattern with yellow crystal shard-like bullets at a random starting point, as she shoots slow rings of red shard-like bullets aimed at the player.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 300)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 3)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 300)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 40
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 5
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 113
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Otherworld 「Oumagatoki」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 600)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 11)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 400)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 20
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 5
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 30
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT	
+CASEELSE
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Generic Bomb")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"A generic bomb. Maxes out your dodge.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 300)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 0)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 300)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 20
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 1
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "Dodge"
+	;	chance to HIT, 0-100%
+		LOCAL = 100
+		CALLF MAKE_INT(V_NAME, LOCAL)				
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+ENDSELECT
+
+@EXIST_SpellCard2
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+@SpellCard2(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+SELECTCASE ARG
+CASE 0
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "「Chaos Skip」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Slow the target for a short time by suppressing motor activity in the brain")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 180)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, UniversalRank("B"))			
+	CASE "Target Movement"
+	;	chance to HIT, 0-100%
+		LOCAL = 40
+		CALLF MAKE_INT(V_NAME, LOCAL)					
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 1
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Dream Land 「Great Duplex Barrier」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"No matter how hard you run after Reimu, she just gets further away. Have you ever had an experience like this? That's the power of Duplex Barrier.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 1500)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 15)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 550)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 20
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 80
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 40
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 9
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 12
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Night Sign 「Night Bird」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Wielder shoots arcs of bullets, one of the bullets in the arc being aimed at the target.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 300)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 3)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 350)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 20
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 15
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 4
+		CALLF MAKE_INT(V_NAME, LOCAL)					
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 14
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Hail Sign 「Hailstorm」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Cirno shoots multiple lines of shard-like bullets in a wave of circles around her that stop, then each circle takes a seemingly ordered direction in an arc below herself.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 300)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 3)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 230)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 20
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 4
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT	
+CASE 15
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Conjuring 「Misdirection」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Sakuya launches a flurry of aimed, kunai-shaped red bullets while she dashes to the side, then shortly appears on the other side and throws aimed knives.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 400)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 5)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 230)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 30
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 4
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT	
+CASE 54
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Water Sign 「Princess Undine」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"She shoots 3-way thin lasers aimed at the player while expeding blue bullets from above herself. Then she shoots multiple lines of large aimed bullets, as she shoots a 3-way pattern of slow, medium sized blue bullets that also aim at the player.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 300)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 3)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 300)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 40
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 5
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT	
+CASE 58
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Flower Sign 「Selaginella 9」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"The base is similar to the previous spell card, but meiling starts lower, the yellow bullets redirect themselves twice to form a simpler pattern, and the red aimed rings are much faster.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 500)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 11)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 360)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 12
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 15
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 60
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 5
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT	
+CASE 62
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Impossible Request 「Jewel from the Dragon's Neck -Five-Colored Shots-」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"One of the impossible requests that %CALLNAME:62% presented. Each jewel contains stars, and it's said that if you collect 7 of them, it'll grant anything you wish")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 500)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 7)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 500)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 25
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 20
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 1
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT	
+CASE 113
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Earth 「Impurity Within One's Body」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 600)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 13)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 700)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 50
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 32
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 1
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 1
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT	
+ENDSELECT
+
+@EXIST_SpellCard3
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+@SpellCard3(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+SELECTCASE ARG
+CASE 0
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "「Chaos Skip」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Teleport the target to a random position near where it started. Objects above a certain size cannot be teleported.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 180)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, UniversalRank("B"))			
+	CASE "Target Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 0
+		CALLF MAKE_INT(V_NAME, LOCAL)						
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 1
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Spirit Sign 「Dream Seal -Spread-」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"The most straightforward approach there is. %HE_SHE(ARG,1)% shoots more bullets as time passes by, so it's unexpectedly easy to die.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 180)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 3)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 300)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 5
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 40
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 1
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 2
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 12
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Darkness Sign 「Demarcation」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Wielder shoots blue, green and red rings that stop, then the bullets turn in a sharp angle and expand the circles. Odds bullets go right and even bullets go left. Then shoots clumps of blue bullets aimed at the target.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 550)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 3)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 350)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 40
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 4
+		CALLF MAKE_INT(V_NAME, LOCAL)						
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT	
+CASE 14
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Freeze Sign 「Perfect Freeze」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Cirno starts by shooting rainbow colored bullets from herself in random directions. When she stops, the bullets still on the screen \"freeze\" and turn white, and Cirno shoots aimed blue bullets (whether the bullets form a 5-way pattern with the center aimed at the player, or a 6-way aimed around them depends on Rank). Once she is finished, each individual frozen bullet takes a random direction, and Cirno repeats the pattern until the spell ends.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 500)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 5)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 300)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 15
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 25
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 15
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Conjuring 「Mesmerizing Misdirection」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Very similar to \"Misdirection\", but the kunai bounce when they touch a wall, and will only disappear when they go through the bottom of the screen")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 550)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 7)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 300)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 18
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 30
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 4
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT	
+CASE 54
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Wood Sign 「Sylphy Horn」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Patchouli shoots green bullets from herself that fall to the lower left corner, while the right side of the screen spawns more green bullets that go in the same direction.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 300)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 3)
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 300)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 5
+		CALLF MAKE_INT(V_NAME, LOCAL)
+	CASE "Burst"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)
+	CASE "Pellets"
+		LOCAL = 70
+		CALLF MAKE_INT(V_NAME, LOCAL)
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)
+	CASE "Multi Hit"
+		LOCAL = 5
+		CALLF MAKE_INT(V_NAME, LOCAL)
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 58
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Rainbow Sign 「Colorful Rainbow Wind Chime」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Meiling shoots a complex spinning pattern from herself, which can be dodged simply by tapping left and right at similar times in every instance of the spell. She starts at the top of the screen and goes down to about the center of the screen at a medium speed.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 500)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 11)
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 360)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 12
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 40
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 5
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 5
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT		
+CASE 62
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Divine Treasure 「Brilliant Dragon Barrette」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"When the dragon's eyes turn red, a tsunami will come. ...Or so they often say, but did dragons really appear more often than tsunamis back then?")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 900)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 13)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 550)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 15
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 30
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 40
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 5
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT		
+CASE 113
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Moon 「Apollo Reflection Mirror」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 800)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 13)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 700)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 30
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 48
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 12
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 4
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT	
+ENDSELECT
+
+@EXIST_SpellCard4
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+@SpellCard4(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+SELECTCASE ARG
+CASE 1
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Scattered Spirit 「Dream Seal -Worn-」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Honestly, %CALLNAME:ARG%'s not even looking at %HIS_HER(ARG)% opponent at all. %HES_SHES(ARG,1)% just shooting wherever. It's like a child's slapfight.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 800)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 10)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 650)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 5
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 180
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 1
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 7
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 14
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Snow Sign 「Diamond Blizzard」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Explosions of shard-like bullets take place around Cirno as she erratically travels across the screen.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 500)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 5)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 300)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 15
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 25
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 2
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 15
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Illusion Existence 「Clock Corpse」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Sakuya shoots small bullets from herself in random directions, then stops time and aims an arc of knives at the player, creates lanes of knives that go downwards, and resumes time.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 550)
+	CASE "TSP"
+		CALLF MAKE_INT(V_NAME, 500)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 9)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 300)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 34
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 5
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 15
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 2
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT	
+CASE 54
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Earth Sign 「Lazy Trilithon」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Patchouli spawns brown bullets that slowly go lower in the screen and take a random direction in seemingly large clumps.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 300)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 3)
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 300)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 2
+		CALLF MAKE_INT(V_NAME, LOCAL)
+	CASE "Burst"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)
+	CASE "Pellets"
+		LOCAL = 140
+		CALLF MAKE_INT(V_NAME, LOCAL)
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)
+	CASE "Multi Hit"
+		LOCAL = 100
+		CALLF MAKE_INT(V_NAME, LOCAL)
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 58
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Illusion Sign 「Imaginary Flower Yumekazura」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Meiling spawns bullets from a flower-like shape around her in a way that seems to be aimed towards the player, and the individual bullets go in random directions.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 500)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 5)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 360)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 40
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 40
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 5
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT		
+CASE 62
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Impossible Request 「Buddha's Stone Bowl -Indomitable Will-」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"One of the impossible requests that Kaguya presented. An unbreakable stone bowl. Was Kaguya trying to eat stone-pot bibimbap or something with this?")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 650)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 9)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 400)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 8
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 45
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT			
+CASE 113
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Otherworld 「Hell's Non-Ideal Danmaku」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 1000)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 13)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 400)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 15
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 100
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT	
+ENDSELECT
+
+@EXIST_SpellCard5
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+@SpellCard5(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+SELECTCASE ARG
+CASE 1
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Dream Sign 「Evil-Sealing Circle」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"A spell that seals the opponent using enchanted amulets. If you die, getting your items back will be a pain. Counterattack with your bombs! (no actually don't)")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 800)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 11)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 650)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 12
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 60
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 15
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 4
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 54
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Metal Sign 「Metal Fatigue」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"She spawns large yellow bullets in a circle around her, and those first generation bullets in turn spawn bullets of the same kind around themselves. The second generation bullets won't reproduce. This gives the illusion that Patchouli is spinning bullets around herself and repelling them.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 300)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 3)
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 300)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 4
+		CALLF MAKE_INT(V_NAME, LOCAL)
+	CASE "Burst"
+		LOCAL = 2
+		CALLF MAKE_INT(V_NAME, LOCAL)
+	CASE "Pellets"
+		LOCAL = 100
+		CALLF MAKE_INT(V_NAME, LOCAL)
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)
+	CASE "Multi Hit"
+		LOCAL = 100
+		CALLF MAKE_INT(V_NAME, LOCAL)
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 58
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Colorful Sign 「Vivid Chaotic Dance」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Similar to the previous spell, but Meiling produces bullets in a spiral around her that go downwards in organized lanes, replacing the falling bullets from the prior spell card.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 700)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 11)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 360)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 20
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 40
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 40
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 5
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT	
+CASE 62
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Divine Treasure 「Buddhist Diamond」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Why did Kaguya want something like this at all? I can't help but imagine a 'bibimbap' sort of thing.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 950)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 14)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 400)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 18
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 13
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 65
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 7
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT			
+CASE 113
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Earth 「Rain Falling in Hell」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 1500)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 16)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 600)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 15
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 15
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 30
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT	
+ENDSELECT
+
+@EXIST_SpellCard6
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+@SpellCard6(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+SELECTCASE ARG
+CASE 1
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Divine Arts 「Omnidirectional Dragon-Slaying Circle」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"You can't watch how these amulets are moving at all while playing. Who's %HE_SHE(ARG)% even trying to show the amulets' beautiful movement to?")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 1600)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 15)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 800)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 15
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 150
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 30
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 4
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 54
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Fire Sign 「Agni Shine High Level」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Patchouli creates waves of fireballs that circle around her, then change angle and expand the circle outwards.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 650)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 8)
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 300)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 14
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 60
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 7
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 58
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Colorful Sign 「Vivid Chaotic Dance」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Similar to the previous spell, but Meiling produces bullets in a spiral around her that go downwards in organized lanes, replacing the falling bullets from the prior spell card.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 700)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 11)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 360)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 20
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 40
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 40
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 5
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT		
+CASE 62
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Impossible Request 「Robe of Fire Rat -Unhurried Mind-」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"One of the impossible requests that %CALLNAME:62% presented. Did she want a fire-resistant suit or something? Like a \"with this, not even phoenix fire can touch ya!\" sort of thing.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 650)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 10)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 400)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 25
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 5
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 40
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 2
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT	
+CASE 113
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Moon 「Lunatic Impact」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 1500)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 16)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 2400)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 80
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 4
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT		
+ENDSELECT
+
+@EXIST_SpellCard7
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+@SpellCard7(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+SELECTCASE ARG
+CASE 1
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Spirit Sign 「Dream Seal -Concentrate-」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"One of the Spell Cards that looks considerably different from the version the player uses. The amulets move as if they have minds of their own; it's like something from a dream.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 1000)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 9)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 200)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 40
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 60
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 1
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 54
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Wood Sign 「Sylphy Horn High Level」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Behaves very similarly to \"Sylphy Horn\", but the direction of the bullets changes to the lower right, and it's far denser.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 700)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 8)
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 300)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 16
+		CALLF MAKE_INT(V_NAME, LOCAL)
+	CASE "Burst"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)
+	CASE "Pellets"
+		LOCAL = 70
+		CALLF MAKE_INT(V_NAME, LOCAL)
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)
+	CASE "Multi Hit"
+		LOCAL = 8
+		CALLF MAKE_INT(V_NAME, LOCAL)
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 58
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Colorful Sign 「Dazzling Color Typhoon」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Meiling forms a pattern that looks like a flower around her, and the bullets that come out curve in random directions all over the screen.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 800)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 12)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 450)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 15
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 60
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 4
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT			
+CASE 62
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Divine Treasure 「Salamander Shield」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Fire rats, salamanders and phoenixes are all surrounded by fire, but I wonder if their insides are normal. At the very least, they would need blood that doesn't boil... wait, but Esidi(abbr.)")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 1200)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 15)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 400)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 30
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 80
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 5
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT	
+CASE 113
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "「Trinitarian Rhapsody」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 2400)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 20)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 1200)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 20
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 20
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 60
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT		
+ENDSELECT
+
+@EXIST_SpellCard8
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+@SpellCard8(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+SELECTCASE ARG
+CASE 1
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Migrating Spirit 「Dream Seal -Marred-」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"(whispering) They kinda look like squids.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 1600)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 15)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 400)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 450
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 80
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 5
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 1
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 54
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Earth Sign 「Lazy Trilithon High Level」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Very similar to \"Lazy Trilithon\", but the bullets are much faster")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 650)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 7)
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 300)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 8
+		CALLF MAKE_INT(V_NAME, LOCAL)
+	CASE "Burst"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)
+	CASE "Pellets"
+		LOCAL = 140
+		CALLF MAKE_INT(V_NAME, LOCAL)
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)
+	CASE "Multi Hit"
+		LOCAL = 100
+		CALLF MAKE_INT(V_NAME, LOCAL)
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 62
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Impossible Request 「Swallow's Cowrie Shell -Everlasting Life-」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"One of the impossible requests that Kaguya presented. Said to be rarely found in swallow's nests, which are considered luxury food. This particular type is edible and delicious, which is uncommon for most such shells.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 1000)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 11)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 400)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 15
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 30
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT	
+CASE 113
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "「First and Last Nameless Danmaku」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 4000)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 30)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 600)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 20
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 200
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 100
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Last Spell"
+		LOCAL = 1
+		CALLF MAKE_INT(V_NAME, LOCAL)					
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+ENDSELECT
+
+@EXIST_SpellCard9
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+@SpellCard9(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+SELECTCASE ARG
+CASE 1
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Boundary 「Duplex Danmaku Barrier」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"An attack that you can't dodge without taking advantage of the barriers. This would be undodgeable if she simply didn't put the barrier there, but...")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 800)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 12)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 100)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 200
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 2
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 4
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 54
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Fire Sign 「Agni Radiance」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Behaves very similarly to \"Agni Shine High Level\", with the addition of Patchouli shooting large red bullets from herself in random directions.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 800)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 11)
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 450)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 18
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 60
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 8
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 62
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Impossible Request 「Bullet Branch of Hourai -Rainbow Danmaku-」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"One of the impossible requests that Kaguya presented...? Rumors say that there's a mountain called Hourai in the eastern ocean, and there's a tree that grows danmaku there. Hourai awaits, SHMUPers!")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 1000)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 11)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 400)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 60
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 9
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 2
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT	
+ENDSELECT
+
+@EXIST_SpellCard10
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+@SpellCard10(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+SELECTCASE ARG
+CASE 1
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, @"Great Barrier 「%nameArray:ARG:na_LastName% Danmaku Barrier」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"It's hardly possible to tell what's going on any more. If you look closely, the barriers turn the background inside-out too.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 2000)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 15)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 150)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 300
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 54
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Water Sign 「Bury In Lake」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Visually similar to \"Princess Undine\", Patchouli shoots thin lasers that close in on the player, as she produces circles of blue aimed bullets around her. When she finishes, she moves to the side while shooting lanes of large bullets around the player, then quickly returns to the middle.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 800)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 11)
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 450)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 25
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 40
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 8
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 62
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Divine Treasure 「Jeweled Branch of Hourai -Dreamlike Paradise-」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"It's hard for modern people to understand why a regular old \"orb\" (玉) is so coveted. This jewel outranks even gold and silver. Oh, I'm talking about shogi, by the way. Gold general, silver general, jeweled general.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 1100)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 16)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 600)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 20
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 60
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 12
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 5
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+ENDSELECT
+
+@EXIST_SpellCard11
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+@SpellCard11(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+SELECTCASE ARG
+CASE 1
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, @"Divine Spirit 「Dream Seal -Blink-」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"The world as %CALLNAME:ARG% sees it is quite different from the player's perspective. It feels like the player has been sealed in the %CALLNAME:ARG% Dimension.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 4000)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 18)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 300)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 12
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 200
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 7
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 100
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Last Spell"
+		LOCAL = 1
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 54
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Wood Sign 「Green Storm」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Very similar to \"Silphy Horn\", but both sides of the screen shoot bullets towards the opposite side.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 800)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 11)
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 450)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 16
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 5
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 150
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 62
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, @"End of Imperishable Night 「Matsuyoi」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Kaguya's night starts here. The time on the clock advances at a tremendous speed. Ah, I forgot to mention this, but \"time\" and \"the time on a clock\" are two completely different things.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 2000)
+	CASE "TSP"
+		CALLF MAKE_INT(V_NAME, 1000)		
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 18)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 300)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 30
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 200
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 9
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 100
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Last Spell"
+		LOCAL = 1
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+ENDSELECT
+
+@EXIST_SpellCard12
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+@SpellCard12(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+SELECTCASE ARG
+CASE 1
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, @"「Innate Dream」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"A secret technique which is extreme in many ways. With Reimu's ability to float, she floats away from all sorts of things and cannot to be attacked. If it wasn't just for play (with time limit), no one could beat her using any method.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 4000)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 30)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 300)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 12
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 150
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 35
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 100
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Last Spell"
+		LOCAL = 1
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 54
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Earth Sign 「Trilithon Shake」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Very similar to \"Lazy Trilithon High Level\", with the bullets being slower, and the addition of fast, large, yellow bullets aimed at the player's position.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 800)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 11)
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 450)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 16
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 7
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 80
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 62
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, @"End of Imperishable Night 「Half Past Midnight」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"The difficulty differs greatly with a difference of 30 minutes. In fact it skips a whole 2 hours in a matter of 20 seconds. What a waste.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 2500)
+	CASE "TSP"
+		CALLF MAKE_INT(V_NAME, 2000)		
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 18)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 300)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 200
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 28
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 100
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Last Spell"
+		LOCAL = 1
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+ENDSELECT
+
+@EXIST_SpellCard13
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+@SpellCard13(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+SELECTCASE ARG
+CASE 54
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Metal Sign 「Silver Dragon」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Patchouli makes three-layered circles of medium sized silver bullets. The circle as a whole is aimed at the player, and the bullets pile up as they spawn quickly.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 800)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 11)
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 450)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 20
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 4
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 200
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 4
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 62
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, @"End of Imperishable Night 「Half Past 2」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"The time right after when the gate to the Netherworld has opened. So, what did %CALLNAME:81% and %CALLNAME:82% see, at all?")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 2000)
+	CASE "TSP"
+		CALLF MAKE_INT(V_NAME, 1000)		
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 18)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 300)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 60
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 20
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 5
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 100
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Last Spell"
+		LOCAL = 1
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+ENDSELECT
+
+@EXIST_SpellCard14
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+@SpellCard14(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+SELECTCASE ARG
+CASE 54
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Wood & Fire Sign 「Forest Blaze」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Behaves similarly to \"Silphy Horn\", but the bullets Patchouli spawns are replaced by fireballs, which have bigger hitboxes than the shards.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 1100)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 14)
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 450)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 14
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 50
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 4
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 62
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, @"End of Imperishable Night 「Half Past 4」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"At this time, the sky begins to brighten. If you see an old man running around in this time, he is undoubtedly a youkai.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 2000)
+	CASE "TSP"
+		CALLF MAKE_INT(V_NAME, 1000)		
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 18)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 300)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 30
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 45
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 25
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 100
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Last Spell"
+		LOCAL = 1
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+ENDSELECT
+
+@EXIST_SpellCard15
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+@SpellCard15(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+SELECTCASE ARG
+CASE 54
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Water & Wood Sign 「Water Elf」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Patchouli shoots aimed, crescent shaped patterns of large yellow bullets, and aimed circles of medium sized green and blue bullets, as she quickly flies all over the screen.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 1100)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 14)
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 450)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 18
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 40
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 15
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 4
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 62
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, @"End of Imperishable Night 「Rising World」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"It looks like fun. These girls have power, so their playing is similarly big too. Well, every other inhabitant of Gensokyo was annoyed by this endless night, though.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 4000)
+	CASE "TSP"
+		CALLF MAKE_INT(V_NAME, 2000)		
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 20)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 500)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 20
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 300
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 100
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Last Spell"
+		LOCAL = 1
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+ENDSELECT
+
+@EXIST_SpellCard16
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+@SpellCard16(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+SELECTCASE ARG
+CASE 54
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Metal & Water Sign 「Mercury Poison」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Patchouli shoots rings of brown and blue bullets from herself in multiple waves. Brown bullets go left and blue bullets go right, as she stays still during a wave and moves to start another.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 1100)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 14)
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 450)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 18
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 20
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 80
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 4
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+CASE 62
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, @"「Tree-Ocean of Hourai」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"The ocean of trees that is famous for its turning trap, making compasses inoperative. If you're thinking of going there after you're done with this game, think twice.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 4000)
+	CASE "TSP"
+		CALLF MAKE_INT(V_NAME, 4000)		
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 30)			
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 500)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 30
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 300
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 15
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 10
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 100
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Last Spell"
+		LOCAL = 1
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+ENDSELECT
+
+
+@EXIST_SpellCard17
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+@SpellCard17(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+SELECTCASE ARG
+CASE 54
+	SELECTCASE O_DATA
+	CASE "名前"
+		CALLF MAKE_STR(V_NAME, "Earth & Metal Sign 「Emerald Megalith」")
+	CASE "Description"
+		CALLF MAKE_STR(V_NAME, @"Patchouli flies around the screen, as large green bubbles appear anywhere on the screen, producing a burst of medium sized green bullets, and then fall down slowly.")		
+	CASE "ESP"
+		CALLF MAKE_INT(V_NAME, 1100)
+	CASE "Grade"
+		CALLF MAKE_INT(V_NAME, 14)
+	CASE "Damage"
+		CALLF MAKE_INT(V_NAME, 450)
+	CASE "Accuracy"
+	;	chance to HIT, 0-100%
+		LOCAL = 18
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Burst"
+		LOCAL = 4
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Pellets"
+		LOCAL = 150
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Range"
+		LOCAL = 3
+		CALLF MAKE_INT(V_NAME, LOCAL)	
+	CASE "Penetration"
+		LOCAL = 6
+		CALLF MAKE_INT(V_NAME, LOCAL)	   	
+	CASE "Multi Hit"
+		LOCAL = 4
+		CALLF MAKE_INT(V_NAME, LOCAL)			
+	CASE "装備部位"
+		CALLF MAKE_STR(V_NAME, "「SpellCard」")
+	ENDSELECT
+ENDSELECT
+
+
+;=============================================================================================================
+; Danmaku Skills
+;=============================================================================================================
+@DanmakuSkillName(ARG)
+#FUNCTIONS
+VARSET LOCALS
+SELECTCASE ARG
+CASE 0
+	LOCALS '= @"Spell It All Out"
+CASE 1
+	LOCALS '= @"Lukewarm Sincerity"
+CASE 2
+	LOCALS '= @"High-Spirited"
+CASE 3
+	LOCALS '= @"Open-minded"
+CASE 4
+	LOCALS '= @"Anomalies, Strength, Disorder, and Spirits"
+CASE 5
+	LOCALS '= @"Deep Knowledge Of Life"
+CASE 6
+	LOCALS '= @"Merciless"
+CASE 7
+	LOCALS '= @"All-In"
+CASE 8
+	LOCALS '= @"Stubborn"
+CASE 9
+	LOCALS '= @"Melancholic"
+CASE 10
+	LOCALS '= @"Charge"
+CASE 11
+	LOCALS '= @"Rumor Spread"
+CASE 12
+	LOCALS '= @"Total War"
+CASE 13
+	LOCALS '= @"Delaying Action"
+CASE 14
+	LOCALS '= @"Adversity"
+CASE 15
+	LOCALS '= @"Deception"
+CASE 16
+	LOCALS '= @"Defensive Tactics"
+CASE 17
+	LOCALS '= @"Guerrilla Tactics"
+CASE 18
+	LOCALS '= @"Secure Logistics"
+CASE 19
+	LOCALS '= @"Flame Barrage"
+CASE 20
+	LOCALS '= @"Supernatural Border"
+CASE 21
+	LOCALS '= @"Stratagem"
+CASE 22
+	LOCALS '= @"Spirit World Trance"
+CASE 270 TO 280
+LOCALS '= @"%GET_TALENTNAME_TR(ARG,1)%"
+CASE 300 TO 307
+LOCALS '= @"%BUFF_NAMES(ARG-300)%"
+CASE 310
+	LOCALS '= @"Concentrate"
+ENDSELECT
+
+RETURNF LOCALS

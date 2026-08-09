@@ -1,0 +1,1624 @@
+;露店を開く
+@NAS_SALES
+#DIM CHARA
+#DIM LinesToErase
+
+;売却アイテムの種類を増やすときは、★  を検索してください
+;管理者がはっきりしている人の敷地での無断での商売はしない
+IF STALL_PERMISSION(CFLAG:MASTER:現在位置)
+	;DRAWLINE
+	;PRINTFORML It's a bit difficult operating without permission... Might be best to get closer to the local boss.
+	;RETURN -1
+	PRINTFORML You can open a stall here, but %CALLNAME:(STALL_PERMISSION(CFLAG:MASTER:現在位置))% won't be too happy about it...
+	PRINTFORML Might be best to get closer to the local boss.
+ENDIF
+;NAS_SALES = 来客数
+;商人パワー = 0
+NAS_SALES:1 = 0
+;商人パワーM = 0
+NAS_SALES:2 = 0
+;商人パワーT = 0
+NAS_SALES:3 = 0
+;売却値 = 0
+NAS_SALES:4 = 0
+;合計売却値 = 0
+NAS_SALES:5 = 0
+;Lineup = 0
+NAS_SALES:6 = 0
+VARSET LOCAL
+
+;0 = item ID
+;1 = quantity
+;2 = sold
+VARSET PlayerItemsSelling
+DRAWLINE
+PRINTL 
+CALL QoL_Stall("SetUp", CHARA, NAS_SALES:1) ;qol custom code
+;来客数を算出し、にぎわいを可視化
+NAS_SALES = STALL_SHOPPER(STALL_SPOT(CFLAG:MASTER:現在位置)) + IN_ROOM_NUMBER(CFLAG:MASTER:現在位置)
+;PRINTFORML {来客数}人
+IF AT_HOME()
+	PRINTFORML %CAPITALIZE(NAME_FROM_PLACE(CFLAG:MASTER:現在位置))%.
+ELSE
+	PRINTFORML %CAPITALIZE(DATENAME_SPOT())%.
+ENDIF
+SELECTCASE NAS_SALES
+	CASE IS <= 0 ;qol custom code, failsafe
+		PRINTFORML It's completely deserted...
+	CASE 1 TO 5
+		PRINTFORML It's mostly quiet...
+	CASE 6 TO 10
+		PRINTFORML There's not too much traffic.
+	CASE 11 TO 20
+		PRINTFORML There are signs of prosperity.
+	CASE 21 TO 30
+		PRINTFORML It's very crowded!
+	CASEELSE
+		PRINTFORML It's packed full!
+ENDSELECT
+CALL QoL_Stall("Place", CHARA, NAS_SALES:1) ;qol custom code
+
+PRINTL 
+PRINTFORML Now then, what to sell...
+CALL QoL_Stall("Estimate", CHARA, NAS_SALES:1) ;qol custom code
+DRAWLINE
+
+;１個目のアイテムからスタート
+NAS_SALES:6 = 1
+;custom code
+LinesToErase = LINECOUNT
+REDRAW 0
+DO
+;LinesToErase は消去行数の計算に利用
+SIF LINECOUNT - LinesToErase > 0
+	CLEARLINE LINECOUNT - LinesToErase
+	CALL NAS_SALES_CONFIG(CHARA)
+	SELECTCASE RESULT
+		CASE 9998
+			CALL NAS_SALE(CHARA)
+			RETURN RESULT
+		CASE 9999
+			RETURN 1
+	ENDSELECT
+
+LOOP 1
+
+@NAS_SALES_CONFIG(CHARA)
+#DIM     PAGE       ;表示中のページ
+;#DIMS CONST DISP_NAME = "ITEMS", "WEAPONS", "BIONICS", "ORGANS", "WORN_UNDERWEAR", "CLOTHES"
+#DIMS CONST DISP_NAME = "ITEMS", "WEAPONS", "BIONICS", "ORGANS", "CLOTHES"
+;#DIMS CONST DISP_NAME = "ITEMS", "WEAPONS"
+#DIM CREDRAW
+#DIM FIRST_LINE
+#DIM CHARA
+#DIM clothingPage
+;clothingPage = 1
+FIRST_LINE = LINECOUNT
+$REPRINT
+CLEARLINE LINECOUNT - FIRST_LINE
+CREDRAW = CURRENTREDRAW()
+REDRAW 0
+RESETCOLOR
+DRAWLINE
+;IF PAGE == 5
+IF PAGE == 4
+TRYCALLFORM NAS_SALES_%DISP_NAME:PAGE%(CHARA,clothingPage)
+ELSE
+TRYCALLFORM NAS_SALES_%DISP_NAME:PAGE%(CHARA)
+ENDIF
+DRAWLINE
+FOR LOCAL, 0, VARSIZE("DISP_NAME")
+	SIF PAGE == LOCAL
+		SETCOLOR 0x00FFFF
+	PRINTBUTTON CAP_PROCESS(TOLOWER(REPLACE(DISP_NAME:LOCAL,"_"," ")),5), LOCAL + 8002
+	RESETCOLOR
+	PRINTFORM 　　
+NEXT
+PRINTFORML
+
+DRAWLINE
+PRINTL 　　[9999] Stop setting up a stall
+;LinesToErase += 3
+IF NAS_SALES:6 > 1
+	PRINTL 　　[9998] Set up a stall with this product
+	DRAWLINE
+	FOR LOCAL:6,1,100
+		SIF !PlayerItemsSelling:(LOCAL:6):0
+			CONTINUE
+		IF PlayerItemsSelling:(LOCAL:6):0 > 600000000000000000
+			LOCALS '= PrintWeaponName(,PlayerItemsSelling:(LOCAL:6):0,1)
+		ELSEIF PlayerItemsSelling:(LOCAL:6):0 > 100000
+			LOCALS = %CLOTHNAME(((PlayerItemsSelling:(LOCAL:6):0-100000)/1000), (PlayerItemsSelling:(LOCAL:6):0)-(PlayerItemsSelling:(LOCAL:6):0/1000*1000))%
+		ELSEIF PlayerItemsSelling:(LOCAL:6):0 > 5000
+			LOCALS = %GET_STR(MASTER, "Hediff", PlayerItemsSelling:(LOCAL:6):0-5000, "名前")%
+		ELSEIF PlayerItemsSelling:(LOCAL:6):0 > 4000
+			LOCALS = %BDY_PART_NAME(PlayerItemsSelling:(LOCAL:6):0-4000)%
+		ELSE
+			LOCALS = %ITEMNAME_TR(PlayerItemsSelling:(LOCAL:6):0)%
+		ENDIF
+		PRINTFORML Item №{LOCAL:6}: %LOCALS%×{PlayerItemsSelling:(LOCAL:6):1}
+	NEXT
+	DRAWLINE
+	;LinesToErase += 3 + (Lineup - 1)
+ENDIF
+PRINTL
+PRINTFORML Please select item No.{NAS_SALES:6} to sell.
+DO
+	INPUT
+	SELECTCASE RESULT
+	CASE 8002 TO VARSIZE("DISP_NAME")+8002
+		PAGE = RESULT-8002
+	CASE 8030 TO VARSIZE("表示ラベル")+8030
+		clothingPage = RESULT-8030
+	CASE 9998
+		RETURN 9998
+	CASE 9999 ;custom code
+		RETURN 9999
+	CASEELSE
+		$RETRY
+		TRYCALLFORM NAS_SALES_INPUT(RESULT)
+	ENDSELECT
+	BREAK
+LOOP 1
+
+@NAS_SALES_HasItem(ARG)
+#FUNCTION
+FOR LOCAL, 1, 100
+	SIF ARG == PlayerItemsSelling:LOCAL:0
+		RETURNF 1
+NEXT
+RETURNF 0
+
+@NAS_SALES_SoldOut()
+#FUNCTION
+#DIM DYNAMIC sellOut
+VARSET sellOut
+FOR LOCAL, 1, 100
+	SIF !PlayerItemsSelling:LOCAL:0
+		BREAK
+	SIF PlayerItemsSelling:LOCAL:1 == PlayerItemsSelling:LOCAL:2
+		sellOut ++
+NEXT
+DEBUGPRINTFORML Items Sold Out: {sellOut}/{NAS_SALES:6-1}
+SIF sellOut >= NAS_SALES:6-1
+	RETURNF 1
+RETURNF 0
+
+
+@NAS_SALES_ITEMS(CHARA)
+#DIM CHARA
+LOCAL:10 = 0
+FOR LOCAL, 0, VARSIZE("ITEM")
+	SELECTCASE LOCAL
+	;★売れるアイテムを下のCASEに追加
+		;CASE 351 TO 398, 500 TO 512, 600, 611, 616, 626 TO 629, 700 TO 708, 497 ;addition custom code 497 - Hina Doll
+		;CASE 0 TO 999
+		;some items were never meant to be sold
+		CASE 141
+		CASE IS < 2000
+		;GoodsIDに売りに出すアイテムの番号を流し込む
+			;NAS custom code: handle blank items
+			SIF !STRLENS(ITEMNAME_TR(LOCAL))
+				CONTINUE
+
+			IF ITEM:(LOCAL) > 0 || (STALL_SPOT(CFLAG:MASTER:現在位置) == 5 && INRANGE(LOCAL, 501, 515) && ITEM:(LOCAL) > 0) ;bug fix
+				IF ABL:MASTER:話術技能 + ABL:MASTER:教養 > 20
+				LOCALS:1 '= @" (%PALAM_NUM_NAS(STALL_PRICE_SET(NAS_SALES:1, LOCAL, 1, 2), , 1)%)"
+				ELSE
+				LOCALS:1 '= ""
+				ENDIF
+				;Custom code, formatting printing
+				IF STRLENS(ITEMNAME_TR(LOCAL)) > 30
+					IF LOCAL:10 % 3 == 0 && LOCAL:10 % 3 != 0
+						LOCAL:10 ++
+						PRINTL
+					ENDIF
+					LOCALS = %ITEMNAME_TR(LOCAL), STRLENS(ITEMNAME_TR(LOCAL)), LEFT%
+					;SIF LOCAL:10 % 4 != 0
+						LOCAL:10 ++
+				ELSE
+					LOCALS = %ITEMNAME_TR(LOCAL), 40, LEFT%
+				ENDIF
+				LOCALS += LOCALS:1
+				LOCALS += @"×{ITEM:(LOCAL), 3}"
+				IF NAS_SALES_HasItem(LOCAL)
+					SETCOLOR 0x666666
+					PRINTPLAINFORM 　　%LOCALS% 
+				ELSE
+					CALL QoL_Stall("Guess",CHARA,NAS_SALES:1,LOCAL) ;qol custom code
+					PRINTBUTTON @"　　%LOCALS% ", LOCAL
+				ENDIF
+				RESETCOLOR
+				SIF (++LOCAL:10) % 3 == 0
+					PRINTFORML 
+			ENDIF
+		CASEELSE
+			CONTINUE
+	ENDSELECT
+NEXT
+SIF LOCAL:10 % 5
+	PRINTFORML 
+PRINTL 
+;LinesToErase += 2
+
+
+
+@NAS_SALES_WEAPONS(CHARA)
+#DIM CHARA
+#DIM NSW
+#DIM NSW_COUNT
+;所持しているアイテムの売却可能物・個数をリスト化
+LOCAL:10 = 0
+FOR LOCAL,0,DT_ROW_LENGTH("WeaponInventory")
+	;NAS custom code: weapons
+	NSW = DT_CELL_GET("WeaponInventory",LOCAL,"id")
+    NSW_COUNT = WeaponStackCount(0,NSW)
+    IF (VARSIZE("WeapPartStack")-1)-LOCAL == FINDELEMENT(WeapPartStack, 90)
+	ELSE
+		CONTINUE
+    ENDIF
+
+	IF ABL:MASTER:話術技能 + ABL:MASTER:教養 > 20
+	LOCALS:1 '= @" (%PALAM_NUM_NAS(STALL_PRICE_SET(NAS_SALES:1, NSW, 1, 2), , 1)%)"
+	ELSE
+	LOCALS:1 '= ""
+	ENDIF
+	;Custom code, formatting printing
+	IF STRLENS(PrintWeaponName(0,NSW,1)) > 25
+		IF LOCAL:10 % 3 == 0 && LOCAL:10 % 4 != 0
+			LOCAL:10 ++
+			PRINTL
+		ENDIF
+		LOCALS '= WeaponInventoryName(,NSW,-2,1)
+		;SIF LOCAL:10 % 4 != 0
+			LOCAL:10 ++
+	ELSE
+		LOCALS '= WeaponInventoryName(,NSW,-1,1)
+	ENDIF
+	LOCALS += LOCALS:1
+	IF NAS_SALES_HasItem(NSW)
+		SETCOLOR 0x666666
+		PRINTPLAINFORM 　　%LOCALS% 
+	ELSE
+		CALL QoL_Stall("Guess",CHARA,NAS_SALES:1,NSW) ;qol custom code
+		PRINTBUTTON @"　　%LOCALS% ", NSW
+	ENDIF
+	RESETCOLOR
+	SIF (++LOCAL:10) % 4 == 0
+		PRINTFORML 
+NEXT
+SIF LOCAL:10 % 5
+	PRINTFORML 
+PRINTL 
+
+@NAS_SALES_BIONICS(CHARA)
+#DIM CHARA
+;所持しているアイテムの売却可能物・個数をリスト化
+LOCAL:10 = 0
+FOR LOCAL, 5000, 6000
+	;NAS custom code: weapons
+			;GoodsIDに売りに出すアイテムの番号を流し込む
+	LOCAL:20 = LOCAL-5000+100
+	;NAS custom code: handle blank items
+	SIF !STRLENS(GET_STR(MASTER, "Hediff", LOCAL:20, "名前"))
+		CONTINUE
+
+	IF HasBionic:(LOCAL:20) > 0 ;bug fix
+		IF ABL:MASTER:話術技能 + ABL:MASTER:教養 > 20
+		LOCALS:1 '= @" (%PALAM_NUM_NAS(STALL_PRICE_SET(NAS_SALES:1, LOCAL, 1, 2), , 1)%)"
+		ELSE
+		LOCALS:1 '= ""
+		ENDIF
+		;Custom code, formatting printing
+		IF STRLENS(GET_STR(MASTER, "Hediff", LOCAL:20, "名前")) > 30
+			IF LOCAL:10 % 3 == 0 && LOCAL:10 % 4 != 0
+				LOCAL:10 ++
+				PRINTL
+			ENDIF
+			LOCALS = %GET_STR(MASTER, "Hediff", LOCAL:20, "名前"), 55, LEFT%
+			;SIF LOCAL:10 % 4 != 0
+				LOCAL:10 ++
+		ELSE
+			LOCALS = %GET_STR(MASTER, "Hediff", LOCAL:20, "名前"), 30, LEFT%
+		ENDIF
+		LOCALS += LOCALS:1
+		LOCALS += @"×{HasBionic:(LOCAL:20), 3}"
+		IF NAS_SALES_HasItem(LOCAL)
+			SETCOLOR 0x666666
+			PRINTPLAINFORM 　　%LOCALS% 
+		ELSE
+			CALL QoL_Stall("Guess",CHARA,NAS_SALES:1,LOCAL) ;qol custom code
+			PRINTBUTTON @"　　%LOCALS% ", LOCAL
+		ENDIF
+		RESETCOLOR
+		SIF (++LOCAL:10) % 4 == 0
+			PRINTFORML 
+	ENDIF
+NEXT
+SIF LOCAL:10 % 5
+	PRINTFORML 
+PRINTL 
+
+@NAS_SALES_ORGANS(CHARA)
+#DIM CHARA
+;所持しているアイテムの売却可能物・個数をリスト化
+LOCAL:10 = 0
+FOR LOCAL, 4000, 4100
+	;NAS custom code: weapons
+			;GoodsIDに売りに出すアイテムの番号を流し込む
+	LOCAL:20 = LOCAL-4000
+	;NAS custom code: handle blank items
+	SIF STRLENS(BDY_PART_NAME(LOCAL:20)) < 2
+		CONTINUE
+
+	IF HasNaturalPart:(LOCAL:20) > 0 ;bug fix
+		IF ABL:MASTER:話術技能 + ABL:MASTER:教養 > 20
+		LOCALS:1 '= @" (%PALAM_NUM_NAS(STALL_PRICE_SET(NAS_SALES:1, LOCAL, 1, 2), , 1)%)"
+		ELSE
+		LOCALS:1 '= ""
+		ENDIF
+
+		;Custom code, formatting printing
+		IF STRLENS(BDY_PART_NAME(LOCAL:20)) > 30
+			IF LOCAL:10 % 3 == 0 && LOCAL:10 % 4 != 0
+				LOCAL:10 ++
+				PRINTL
+			ENDIF
+			LOCALS = %BDY_PART_NAME(LOCAL:20), 55, LEFT%
+			;SIF LOCAL:10 % 4 != 0
+				LOCAL:10 ++
+		ELSE
+			LOCALS = %BDY_PART_NAME(LOCAL:20), 30, LEFT%
+		ENDIF
+		LOCALS += LOCALS:1
+		LOCALS += @"×{HasNaturalPart:(LOCAL:20), 3}"
+		IF NAS_SALES_HasItem(LOCAL)
+			SETCOLOR 0x666666
+			PRINTPLAINFORM 　　%LOCALS% 
+		ELSE
+			CALL QoL_Stall("Guess",CHARA,NAS_SALES:1,LOCAL) ;qol custom code
+			PRINTBUTTON @"　　%LOCALS% ", LOCAL
+		ENDIF
+		RESETCOLOR
+		SIF (++LOCAL:10) % 4 == 0
+			PRINTFORML 
+	ENDIF
+NEXT
+SIF LOCAL:10 % 5
+	PRINTFORML 
+PRINTL 
+
+
+@NAS_SALES_CLOTHES(CHARA, clothingPage)
+#DIM CHARA
+#DIM 買うもの
+;購入条件設定
+#DIM     clothingPage       ;表示中のページ
+#DIM CREDRAW
+#DIM FL_LINE
+FL_LINE = LINECOUNT
+clothingPage = MAX(clothingPage,1)
+CLEARLINE LINECOUNT - FL_LINE
+CREDRAW = CURRENTREDRAW()
+REDRAW 0
+TRYCALLFORM NAS_SALES_CLOTHES_LISTING(FINDELEMENT(EQUIPNAME, 表示部位:clothingPage), EquipIDSTR:clothingPage, CHARA)
+FOR LOCAL, 0, VARSIZE("表示ラベル")
+	SIF GROUPMATCH(LOCAL, 10, 19,20,24)
+		CONTINUE
+	[IF_NDEBUG]
+	SIF LOCAL == VARSIZE("表示ラベル")
+		CONTINUE
+	[ENDIF]
+	SIF clothingPage == LOCAL
+		SETCOLOR 0x00FFFF
+	;exception for player character
+	PRINTBUTTON 表示ラベル:LOCAL, LOCAL + 8030
+	RESETCOLOR
+	PRINTFORM 　　
+NEXT
+PRINTFORML 
+
+@NAS_SALES_CLOTHES_LISTING(nGroup, ARGS, CHARA)
+#DIM nGroup
+#DIM DYNAMIC 表示数
+#DIM DYNAMIC 表示行
+#DIM DYNAMIC nPrice
+#DIM CHARA
+#DIM ABRIV
+;DRAWLINE
+;CALL LIST_ITEM("野菜")
+;DRAWLINE
+FOR LOCAL,0,1000
+	SIF CLOTHNAME(nGroup, LOCAL) == ""
+		CONTINUE
+
+	IF BoughtClothing:nGroup:(LOCAL) > 0 ;bug fix
+		ABRIV = 100000+(nGroup*1000)+LOCAL
+		IF ABL:MASTER:話術技能 + ABL:MASTER:教養 > 20
+		LOCALS:1 '= @" (%PALAM_NUM_NAS(STALL_PRICE_SET(NAS_SALES:1, ABRIV, 1, 2), , 1)%)"
+		ELSE
+		LOCALS:1 '= ""
+		ENDIF
+		;Custom code, formatting printing
+		IF STRLENS(CLOTHNAME(nGroup, LOCAL)) > 30
+			IF LOCAL:10 % 3 == 0 && LOCAL:10 % 3 != 0
+				LOCAL:10 ++
+				PRINTL
+			ENDIF
+			LOCALS = %CLOTHNAME(nGroup, LOCAL), STRLENS(CLOTHNAME(nGroup, LOCAL)), LEFT%
+			;SIF LOCAL:10 % 4 != 0
+				LOCAL:10 ++
+		ELSE
+			LOCALS = %CLOTHNAME(nGroup, LOCAL), 40, LEFT%
+		ENDIF
+		LOCALS += LOCALS:1
+		LOCALS += @"×{BoughtClothing:nGroup:(LOCAL), 3}"
+		;LOCALS += @" ({ABRIV})"
+		IF NAS_SALES_HasItem(ABRIV)
+			SETCOLOR 0x666666
+			PRINTPLAINFORM 　　%LOCALS% 
+		ELSE
+			CALL QoL_Stall("Guess",CHARA,NAS_SALES:1, ABRIV) ;qol custom code
+			PRINTBUTTON @"　　%LOCALS% ", ABRIV
+		ENDIF
+		RESETCOLOR
+		SIF (++LOCAL:10) % 3 == 0
+			PRINTFORML 
+	ENDIF
+NEXT
+PRINTL
+
+
+
+@NAS_SALES_INPUT(nInput)
+#DIM nInput
+#DIM 候補個数
+
+SELECTCASE nInput
+	CASE 999
+		RETURN -1
+	CASE 1000
+		IF (NAS_SALES:6) > 1
+			CLEARLINE 2
+			;GOTO SET_SALE
+		ELSE
+			CLEARLINE 1
+			RETURN
+		ENDIF
+	;★売れるアイテムを下のCASEに追加
+	;CASE 351 TO 398, 500 TO 512, 600, 611, 616, 626 TO 629, 700 TO 708, 497 ;addition custom code 497 - Hina Doll
+	CASE IS < 2000
+		;GoodsIDに売りに出すアイテムの番号を流し込む
+		PlayerItemsSelling:(NAS_SALES:6):0 = RESULT
+		;アイテム名が無名の場合、アイテムを所持してない場合、永遠亭での薬品販売はやり直し
+		IF ITEMNAME:(PlayerItemsSelling:(NAS_SALES:6):0) == "" || ITEM:(PlayerItemsSelling:(NAS_SALES:6):0) <= 0  || (STALL_SPOT(CFLAG:MASTER:現在位置) == 5 && INRANGE(LOCAL, 501, 516))
+			CLEARLINE 1
+			PlayerItemsSelling:(NAS_SALES:6):0 = 0
+			RETURN
+		ENDIF
+		;重複選択防止
+		IF (NAS_SALES:6) > 1
+			FOR LOCAL, 1, (NAS_SALES:6)
+				IF PlayerItemsSelling:(NAS_SALES:6):0 == PlayerItemsSelling:LOCAL:0
+					CLEARLINE 1
+					PlayerItemsSelling:(NAS_SALES:6):0 = 0
+					RETURN
+				ENDIF
+			NEXT
+		ENDIF
+		候補個数 = ITEM:(PlayerItemsSelling:(NAS_SALES:6):0)
+		SETCOLOR 0x777777
+		PRINTFORML 　Select how many %ITEMNAME_TR(PlayerItemsSelling:(NAS_SALES:6):0)% to sell. (Enter 1～{候補個数}, 0 to cancel.)
+		RESETCOLOR
+		PRINTL   
+		PRINTBUTTON "[0] Stop", 0
+		PRINT     
+		PRINTBUTTON "[1] 1", 1
+		PRINT     
+		IF 候補個数 >= 5
+			PRINTBUTTON "[5] 5", 5
+			PRINT     
+		ENDIF
+		IF 候補個数 >= 10
+			PRINTBUTTON "[10] 10", 10
+			PRINT    
+		ENDIF
+		IF 候補個数 >= 20
+			PRINTBUTTON "[20] 20", 20
+			PRINT    
+		ENDIF
+		IF 候補個数 >= 50
+			PRINTBUTTON "[50] 50", 50
+			PRINT    
+		ENDIF
+		IF 候補個数 >= 99
+			PRINTBUTTON "[99] 99", 99
+			PRINT    
+		ENDIF
+		IF 候補個数 > 1
+			PRINTBUTTON @" [{候補個数}] All in stock", 候補個数
+		ENDIF
+		;LinesToErase += 3
+		$INPUT_LOOP02
+		INPUT
+		SELECTCASE RESULT
+			CASE 0
+				;CLEARLINE 3
+				;LinesToErase -= 3
+				PlayerItemsSelling:(NAS_SALES:6):0 = 0
+				RETURN -1
+			CASE 1 TO 候補個数
+				;CLEARLINE (LinesToErase + 1)
+				;GoodsQtyに売りに出す個数を流し込む
+				PlayerItemsSelling:(NAS_SALES:6):1 = RESULT
+			CASEELSE
+				CLEARLINE 1
+				GOTO INPUT_LOOP02
+		ENDSELECT
+	CASE IS >= 600000000000000000
+		;NAS custom code: weapons
+		;GoodsIDに売りに出すアイテムの番号を流し込む
+		PlayerItemsSelling:(NAS_SALES:6):0 = RESULT
+		;アイテム名が無名の場合、アイテムを所持してない場合、永遠亭での薬品販売はやり直し
+		IF DT_CELL_GET(@"WeaponInventory",PlayerItemsSelling:(NAS_SALES:6):0, "def", 1) == 0
+			CLEARLINE 1
+			PlayerItemsSelling:(NAS_SALES:6):0 = 0
+			RETURN
+		ENDIF
+		;重複選択防止
+		IF (NAS_SALES:6) > 1
+			FOR LOCAL, 1, (NAS_SALES:6)
+				IF PlayerItemsSelling:(NAS_SALES:6):0 == PlayerItemsSelling:LOCAL:0
+					CLEARLINE 1
+					PlayerItemsSelling:(NAS_SALES:6):0 = 0
+					RETURN
+				ENDIF
+			NEXT
+		ENDIF
+		候補個数 = WeaponStackCount(0,PlayerItemsSelling:(NAS_SALES:6):0)
+		SETCOLOR 0x777777
+		PRINTFORML 　Select how many %PrintWeaponName(,PlayerItemsSelling:(NAS_SALES:6):0,1)% to sell. (Enter 1～{候補個数}, 0 to cancel.)
+		RESETCOLOR
+		PRINTL   
+		PRINTBUTTON "[0] Stop", 0
+		PRINT     
+		PRINTBUTTON "[1] 1", 1
+		PRINT     
+		IF 候補個数 >= 5
+			PRINTBUTTON "[5] 5", 5
+			PRINT     
+		ENDIF
+		IF 候補個数 >= 10
+			PRINTBUTTON "[10] 10", 10
+			PRINT    
+		ENDIF
+		IF 候補個数 >= 20
+			PRINTBUTTON "[20] 20", 20
+			PRINT    
+		ENDIF
+		IF 候補個数 >= 50
+			PRINTBUTTON "[50] 50", 50
+			PRINT    
+		ENDIF
+		IF 候補個数 >= 99
+			PRINTBUTTON "[99] 99", 99
+			PRINT    
+		ENDIF
+		IF 候補個数 > 1
+			PRINTBUTTON @" [{候補個数}] All in stock", 候補個数
+		ENDIF
+		$INPUT_LOOP02_WEAP
+		INPUT
+		SELECTCASE RESULT
+			CASE 0
+				;CLEARLINE 3
+				;LinesToErase -= 3
+				PlayerItemsSelling:(NAS_SALES:6):0 = 0
+				PlayerItemsSelling:(NAS_SALES:6):1 = 0
+				RETURN -1
+			CASE 1 TO 候補個数
+				;CLEARLINE (LinesToErase + 1)
+				;GoodsQtyに売りに出す個数を流し込む
+				PlayerItemsSelling:(NAS_SALES:6):1 = RESULT
+			CASEELSE
+				CLEARLINE 1
+				GOTO INPUT_LOOP02_WEAP
+		ENDSELECT
+	CASE IS > 100000
+	;CLOTHES_PARTS_TO_CATEGORY(EQUIPNAME:((ARG:1-100000)/1000)), (ARG:1)-(ARG:1/1000*1000), MASTER
+	;NAS custom code: clothes
+		;GoodsIDに売りに出すアイテムの番号を流し込む
+		PlayerItemsSelling:(NAS_SALES:6):0 = RESULT
+		;アイテム名が無名の場合、アイテムを所持してない場合、永遠亭での薬品販売はやり直し
+		IF !STRLENS(GET_STR(MASTER, CLOTHES_PARTS_TO_CATEGORY(EQUIPNAME:((PlayerItemsSelling:(NAS_SALES:6):0-100000)/1000)), (PlayerItemsSelling:(NAS_SALES:6):0)-(PlayerItemsSelling:(NAS_SALES:6):0/1000*1000), "名前")) || BoughtClothing:((PlayerItemsSelling:(NAS_SALES:6):0-100000)/1000):((PlayerItemsSelling:(NAS_SALES:6):0)-(PlayerItemsSelling:(NAS_SALES:6):0/1000*1000)) <= 0
+			CLEARLINE 1
+			PlayerItemsSelling:(NAS_SALES:6):0 = 0
+			RETURN
+		ENDIF
+		;重複選択防止
+		IF (NAS_SALES:6) > 1
+			FOR LOCAL, 1, (NAS_SALES:6)
+				IF PlayerItemsSelling:(NAS_SALES:6):0 == PlayerItemsSelling:LOCAL:0
+					CLEARLINE 1
+					PlayerItemsSelling:(NAS_SALES:6):0 = 0
+					RETURN
+				ENDIF
+			NEXT
+		ENDIF
+		候補個数 = BoughtClothing:((PlayerItemsSelling:(NAS_SALES:6):0-100000)/1000):((PlayerItemsSelling:(NAS_SALES:6):0)-(PlayerItemsSelling:(NAS_SALES:6):0/1000*1000))
+		SETCOLOR 0x777777
+		PRINTFORML 　Select how many %CLOTHNAME(((PlayerItemsSelling:(NAS_SALES:6):0-100000)/1000), (PlayerItemsSelling:(NAS_SALES:6):0)-(PlayerItemsSelling:(NAS_SALES:6):0/1000*1000))% to sell. (Enter 1～{候補個数}, 0 to cancel.)
+		RESETCOLOR
+		PRINTL   
+		PRINTBUTTON "[0] Stop", 0
+		PRINT     
+		PRINTBUTTON "[1] 1", 1
+		PRINT     
+		IF 候補個数 >= 5
+			PRINTBUTTON "[5] 5", 5
+			PRINT     
+		ENDIF
+		IF 候補個数 >= 10
+			PRINTBUTTON "[10] 10", 10
+			PRINT    
+		ENDIF
+		IF 候補個数 >= 20
+			PRINTBUTTON "[20] 20", 20
+			PRINT    
+		ENDIF
+		IF 候補個数 >= 50
+			PRINTBUTTON "[50] 50", 50
+			PRINT    
+		ENDIF
+		IF 候補個数 >= 99
+			PRINTBUTTON "[99] 99", 99
+			PRINT    
+		ENDIF
+		IF 候補個数 > 1
+			PRINTBUTTON @" [{候補個数}] All in stock", 候補個数
+		ENDIF
+		;LinesToErase += 3
+		$INPUT_LOOP02_CLOTHES
+		INPUT
+		SELECTCASE RESULT
+			CASE 0
+				;CLEARLINE 3
+				;LinesToErase -= 3
+				PlayerItemsSelling:(NAS_SALES:6):1 = 0
+				RETURN -1
+			CASE 1 TO 候補個数
+				;CLEARLINE (LinesToErase + 1)
+				;GoodsQtyに売りに出す個数を流し込む
+				PlayerItemsSelling:(NAS_SALES:6):1 = RESULT
+			CASEELSE
+				CLEARLINE 1
+				GOTO INPUT_LOOP02_CLOTHES
+		ENDSELECT
+	CASE IS > 5000
+		;NAS: bionic parts
+			;GoodsIDに売りに出すアイテムの番号を流し込む
+		PlayerItemsSelling:(NAS_SALES:6):0 = RESULT
+		;アイテム名が無名の場合、アイテムを所持してない場合、永遠亭での薬品販売はやり直し
+		IF !STRLENS(GET_STR(MASTER, "Hediff", PlayerItemsSelling:(NAS_SALES:6):0-5000, "名前")) || HasBionic:(PlayerItemsSelling:(NAS_SALES:6):0-5000) <= 0
+			CLEARLINE 1
+			PlayerItemsSelling:(NAS_SALES:6):0 = 0
+			RETURN
+		ENDIF
+		;重複選択防止
+		IF (NAS_SALES:6) > 1
+			FOR LOCAL, 1, (NAS_SALES:6)
+				IF PlayerItemsSelling:(NAS_SALES:6):0 == PlayerItemsSelling:LOCAL:0
+					CLEARLINE 1
+					PlayerItemsSelling:(NAS_SALES:6):0 = 0
+					RETURN
+				ENDIF
+			NEXT
+		ENDIF
+		候補個数 = HasBionic:(PlayerItemsSelling:(NAS_SALES:6):0-5000)
+		SETCOLOR 0x777777
+		PRINTFORML 　Select how many %GET_STR(MASTER, "Hediff", PlayerItemsSelling:(NAS_SALES:6):0-5000, "名前")% to sell. (Enter 1～{候補個数}, 0 to cancel.)
+		RESETCOLOR
+		PRINTL   
+		PRINTBUTTON "[0] Stop", 0
+		PRINT     
+		PRINTBUTTON "[1] 1", 1
+		PRINT     
+		IF 候補個数 >= 5
+			PRINTBUTTON "[5] 5", 5
+			PRINT     
+		ENDIF
+		IF 候補個数 >= 10
+			PRINTBUTTON "[10] 10", 10
+			PRINT    
+		ENDIF
+		IF 候補個数 >= 20
+			PRINTBUTTON "[20] 20", 20
+			PRINT    
+		ENDIF
+		IF 候補個数 >= 50
+			PRINTBUTTON "[50] 50", 50
+			PRINT    
+		ENDIF
+		IF 候補個数 >= 99
+			PRINTBUTTON "[99] 99", 99
+			PRINT    
+		ENDIF
+		IF 候補個数 > 1
+			PRINTBUTTON @" [{候補個数}] All in stock", 候補個数
+		ENDIF
+		;LinesToErase += 3
+		$INPUT_LOOP02_BIONIC
+		INPUT
+		SELECTCASE RESULT
+			CASE 0
+				;CLEARLINE 3
+				;LinesToErase -= 3
+				PlayerItemsSelling:(NAS_SALES:6):1 = 0
+				RETURN -1
+			CASE 1 TO 候補個数
+				;CLEARLINE (LinesToErase + 1)
+				;GoodsQtyに売りに出す個数を流し込む
+				PlayerItemsSelling:(NAS_SALES:6):1 = RESULT
+			CASEELSE
+				CLEARLINE 1
+				GOTO INPUT_LOOP02_BIONIC
+		ENDSELECT
+	CASE IS > 4000
+		;NAS: body parts
+		;GoodsIDに売りに出すアイテムの番号を流し込む
+		PlayerItemsSelling:(NAS_SALES:6):0 = RESULT
+		;アイテム名が無名の場合、アイテムを所持してない場合、永遠亭での薬品販売はやり直し
+		IF !STRLENS(BDY_PART_NAME(PlayerItemsSelling:(NAS_SALES:6):0-4000)) || HasNaturalPart:(PlayerItemsSelling:(NAS_SALES:6):0-4000) <= 0
+			CLEARLINE 1
+			PlayerItemsSelling:(NAS_SALES:6):0 = 0
+			RETURN
+		ENDIF
+		;重複選択防止
+		IF (NAS_SALES:6) > 1
+			FOR LOCAL, 1, (NAS_SALES:6)
+				IF PlayerItemsSelling:(NAS_SALES:6):0 == PlayerItemsSelling:LOCAL:0
+					CLEARLINE 1
+					PlayerItemsSelling:(NAS_SALES:6):0 = 0
+					RETURN
+				ENDIF
+			NEXT
+		ENDIF
+		候補個数 = HasNaturalPart:(PlayerItemsSelling:(NAS_SALES:6):0-4000)
+		SETCOLOR 0x777777
+		PRINTFORML 　Select how many %BDY_PART_NAME(PlayerItemsSelling:(NAS_SALES:6):0-4000)% to sell. (Enter 1～{候補個数}, 0 to cancel.)
+		RESETCOLOR
+		PRINTL   
+		PRINTBUTTON "[0] Stop", 0
+		PRINT     
+		PRINTBUTTON "[1] 1", 1
+		PRINT     
+		IF 候補個数 >= 5
+			PRINTBUTTON "[5] 5", 5
+			PRINT     
+		ENDIF
+		IF 候補個数 >= 10
+			PRINTBUTTON "[10] 10", 10
+			PRINT    
+		ENDIF
+		IF 候補個数 >= 20
+			PRINTBUTTON "[20] 20", 20
+			PRINT    
+		ENDIF
+		IF 候補個数 >= 50
+			PRINTBUTTON "[50] 50", 50
+			PRINT    
+		ENDIF
+		IF 候補個数 >= 99
+			PRINTBUTTON "[99] 99", 99
+			PRINT    
+		ENDIF
+		IF 候補個数 > 1
+			PRINTBUTTON @" [{候補個数}] All in stock", 候補個数
+		ENDIF
+		;LinesToErase += 3
+		$INPUT_LOOP02_ORGAN
+		INPUT
+		SELECTCASE RESULT
+			CASE 0
+				;CLEARLINE 3
+				;LinesToErase -= 3
+				PlayerItemsSelling:(NAS_SALES:6):1 = 0
+				RETURN -1
+			CASE 1 TO 候補個数
+				;CLEARLINE (LinesToErase + 1)
+				;GoodsQtyに売りに出す個数を流し込む
+				PlayerItemsSelling:(NAS_SALES:6):1 = RESULT
+			CASEELSE
+				CLEARLINE 1
+				GOTO INPUT_LOOP02_ORGAN
+		ENDSELECT
+	CASEELSE
+		CLEARLINE 1
+		RETURN
+ENDSELECT
+
+IF (NAS_SALES:6) < 1000
+	NAS_SALES:6 ++
+	RETURN
+ELSE
+	FOR LOCAL:6,1,NAS_SALES:6
+		SIF !PlayerItemsSelling:(LOCAL:6):0
+			CONTINUE
+		IF PlayerItemsSelling:(LOCAL:6):0 > 3000
+			LOCALS = %GET_STR(MASTER, "Weapon", PlayerItemsSelling:(LOCAL:6):0-3000, "名前")%
+		ELSE
+			LOCALS = %ITEMNAME_TR(PlayerItemsSelling:(LOCAL:6):0)%
+		ENDIF
+		PRINTFORML Item №{LOCAL:6}: %LOCALS%×{PlayerItemsSelling:(LOCAL:6):1}
+	NEXT
+	PRINTL 
+	PRINTFORML Open the stall with these items?
+	CALL ASK_YN
+	IF !RESULT
+		CLEARLINE 1
+	ELSE
+		RETURN -1
+	ENDIF
+ENDIF
+
+;商品選択を終え、能力算定へ移る
+@NAS_SALE(CHARA)
+#DIM 合計売却値
+#DIM CHARA
+#DIM 候補個数
+#DIM nEnemy
+
+VARSET 合計売却値
+VARSET 候補個数
+
+DRAWLINE
+PRINTFORML Open!
+PRINTL 
+
+FOR COUNT, 0, NAS_SALES
+
+	SELECTCASE RAND:6
+		CASE 0
+			REUSELASTLINE Haggling\@ CHARA ? %" "%together with %CALLNAME:CHARA% #  \@...
+		CASE 1
+			REUSELASTLINE Welcomeー
+		CASE 2
+			REUSELASTLINE Feel free to take a lookー
+		CASE 3
+			REUSELASTLINE 【Don't mind the tags - we accept haggling】
+		CASE 4
+			REUSELASTLINE A customer is scoping you out.
+		CASEELSE
+			REUSELASTLINE Young lady over there, I'll make it extra cheap, just for youー
+	ENDSELECT
+	TWAIT 750, 1
+
+	$SARCH_START
+	LOCAL = RAND(NAS_SALES:6+1)
+
+	;owner calls you out selling
+	IF STALL_PERMISSION(CFLAG:MASTER:現在位置) && SHIRAHU(STALL_PERMISSION(CFLAG:MASTER:現在位置)) && CFLAG:MASTER:300/100 == CFLAG:(STALL_PERMISSION(CFLAG:MASTER:現在位置)):300/100 && !RAND:3
+		SETCOLOR C_L_GRAY
+		PRINTFORML 　%CALLNAME:(STALL_PERMISSION(CFLAG:MASTER:現在位置))% tells you to stop selling on %HIS_HER(STALL_PERMISSION(CFLAG:MASTER:現在位置))% property...
+		RESETCOLOR
+		CALLF TP(STALL_PERMISSION(CFLAG:MASTER:現在位置))
+		TARGET = STALL_PERMISSION(CFLAG:MASTER:現在位置)
+		CALL GET_ANGRY(STALL_PERMISSION(CFLAG:MASTER:現在位置),1)
+		BREAK
+	ENDIF
+
+	;robbery event
+	; I was thinking of a rare event where a robber can go to your store and rob you at gunpoint.
+	; You can fight back but he will often get the first shot.
+	; If you give the robber the money you lose what you have currently made and ends your stall run.
+	IF !RAND:100 && nRyona
+		SETCOLOR C_L_GRAY
+		P = 1000
+		CALL FactionEnemySpawn(12,P,0)
+
+		PRINTFORML A robber comes to your stall and points a %GET_STR(FREE_MOB_SLOT(1), "Weapon", EQUIP:(FREE_MOB_SLOT(1)):Weapon, "名前")% at you. %HE_SHE(FREE_MOB_SLOT(1),1)% demands that you forfeit your earnings and give it to %HIM_HER(FREE_MOB_SLOT(1))%...
+		RESETCOLOR
+		PRINTFORML Do you want to fight back, or do you want to give the money?
+		CALL ASK_YN("Resist", "Give Money")
+		SELECTCASE RESULT
+		CASE 0
+			CALL KNIFE_FIGHT(FREE_MOB_SLOT(1),MASTER,1,1)
+			PRINTL
+			IF !SHIRAHU(MASTER)
+				PRINTFORML The robber takes your earnings and leaves you to die...
+				合計売却値 = 0
+				BREAK
+			ENDIF
+		CASE 1
+			PRINTFORML You give the money to the robber...
+			合計売却値 = 0
+			BREAK
+		ENDSELECT
+	ENDIF
+
+	IF LOCAL == 0
+		SETCOLOR C_L_GRAY
+		PRINTDATAL
+			DATAFORM 　「Can't you lower it a bit more?」... They keep saying.
+			DATAFORM 　A young kid looks enviously at the wares, before their parent pulls them away...
+			DATAFORM 　A customer casts a sidelong glance at your wares, but when you call out they get frightened and run away.
+			DATAFORM 　One customer is very talkative, but ends up doing nothing but talk...
+			DATAFORM 　A customer examines all your wares closely one by one, but despite looking troubled they leave...
+			DATAFORM 　A haggling broke down...
+			DATAFORM 　Several people pass by...
+			DATAFORM 　A customer glances at the wares, before departing...
+			DATAFORM 　A customer plays with the wares for a bit...
+		ENDDATA
+		RESETCOLOR
+		GOTO SARCH_END
+	;在庫ゼロの場合は、再度選択
+	ELSEIF PlayerItemsSelling:LOCAL:1 ==  PlayerItemsSelling:LOCAL:2
+		GOTO SARCH_START
+	ENDIF
+
+	;売る個数を設定
+	候補個数 = MAX(RAND:(5 + ABL:MASTER:話術技能) + RAND:5, 1)
+	;売る個数が商品の在庫より多い場合の処理
+	SIF (候補個数 + PlayerItemsSelling:LOCAL:2) > PlayerItemsSelling:LOCAL:1
+		候補個数 = PlayerItemsSelling:LOCAL:1 - PlayerItemsSelling:LOCAL:2
+
+	SETCOLOR C_YELLOW
+	PRINTFORM You sell {候補個数} 
+	
+	SELECTCASE PlayerItemsSelling:LOCAL:0
+	CASE IS > 600000000000000000
+		PRINTFORM %PLURALIZER(PrintWeaponName(,PlayerItemsSelling:LOCAL:0,1), 候補個数)%
+	CASE IS > 100000
+		PRINTFORM %PLURALIZER(CLOTHNAME(((PlayerItemsSelling:LOCAL:0-100000)/1000), (PlayerItemsSelling:LOCAL:0)-(PlayerItemsSelling:LOCAL:0/1000*1000)), 候補個数)%
+	CASE IS > 5000
+		;NAS: Bionics
+		PRINTFORM %PLURALIZER(GET_STR(MASTER, "Hediff", PlayerItemsSelling:(LOCAL):0-5000, "名前"), 候補個数)%
+	CASE IS > 4000
+		;NAS: body parts
+		PRINTFORM %PLURALIZER(BDY_PART_NAME(PlayerItemsSelling:(LOCAL):0-4000),候補個数)%
+	CASEELSE
+		PRINTFORM %PLURALIZER(ITEMNAME_TR(PlayerItemsSelling:LOCAL:0), 候補個数)%
+	ENDSELECT
+	PRINTFORM  for
+	;売却値を設定
+	NAS_SALES:4 = STALL_PRICE_SET(NAS_SALES:1, PlayerItemsSelling:LOCAL:0, 候補個数)
+	PRINTFORML  %金額表示(NAS_SALES:4)%!
+	RESETCOLOR
+
+;	利率判定に応じてテキスト
+	;qol custom code
+	SELECTCASE RESULT:1 ;STALL_PRICE_SET(商人パワー, GoodsID:LOCAL, 候補個数, 1)
+		CASE 0 TO 50
+			PRINTFORM They drove a hard bargain...
+		CASE 51 TO 80
+			PRINTFORM They haggled a bargain...
+		CASE 81 TO 100
+			PRINTFORM Sold at market price...
+		CASE 101 TO 150
+			PRINTFORM Sold it at a slightly higher price...
+		CASE 151 TO 200
+			PRINTFORM You were able to negotiate a good deal and raise the selling price considerably...
+		CASE 201 TO 300
+			PRINTFORM Sold at double market price...
+		CASE 301 TO 400
+			PRINTFORM Sold at triple market price...
+		CASE 401 TO 500
+			PRINTFORM Sold at quadruple market price...
+		CASEELSE
+			PRINTFORM You were able to pull the rug from your buyer...
+	ENDSELECT
+	PRINTFORML  (sold for {RESULT:1}\%)
+
+	;GoodsSoldに売れた個数を流し込む
+	PlayerItemsSelling:LOCAL:2 += 候補個数
+	合計売却値 += NAS_SALES:4
+
+	$SARCH_END
+	TWAIT 300, 1
+	LOCAL:3 ++
+	;すべての商品を売りつくしたら抜ける
+	IF NAS_SALES_SoldOut()
+		PRINTL
+		PRINTFORML Sold out completely!
+		;Custom code, I can't help myself.
+		SIF !RAND:10
+			PRINTFORML Capitalism, ho!
+		BREAK
+	ENDIF
+NEXT
+
+LOCAL:3 = MAX((25 - LOCAL:3), 5)
+
+IF !NAS_SALES_SoldOut()
+	PRINTL 
+	REPEAT LOCAL:3
+		REUSELASTLINE  .%"." * COUNT%
+		TWAIT 150, 1
+	REND
+ENDIF
+PRINTFORMW It's about time to close up.
+DRAWLINE
+PRINTFORMW Today's results...
+
+SETCOLOR 0x00FF00
+;売れた個数を列挙、同時にアイテムを減らす
+FOR LOCAL, 1, NAS_SALES:6
+	IF PlayerItemsSelling:LOCAL:1
+		IF PlayerItemsSelling:LOCAL:2
+			PRINTFORM 　Sold {PlayerItemsSelling:LOCAL:2} 
+			$PluralText
+			SELECTCASE PlayerItemsSelling:LOCAL:0
+				CASE 611, 629 ;custom code
+					PRINTFORMW %PLURALIZER("bundle",PlayerItemsSelling:LOCAL:2)% of %ITEMNAME_TR(PlayerItemsSelling:LOCAL:0)%.
+					ITEM:(PlayerItemsSelling:LOCAL:0) -= PlayerItemsSelling:LOCAL:2
+				CASE 627
+					PRINTFORMW %PLURALIZER("bottle",PlayerItemsSelling:LOCAL:2)% of %ITEMNAME_TR(PlayerItemsSelling:LOCAL:0)%.
+					ITEM:(PlayerItemsSelling:LOCAL:0) -= PlayerItemsSelling:LOCAL:2
+				CASE IS > 600000000000000000
+					;NAS: weapons
+					PRINTFORMW %PLURALIZER(PrintWeaponName(,PlayerItemsSelling:LOCAL:0,1,1), MAX(1,PlayerItemsSelling:LOCAL:2))%.
+					DT_SELECT "WeaponInventory", weapDTSelSTR(PlayerItemsSelling:LOCAL:0)
+					FOR LOCAL:3, 1, PlayerItemsSelling:LOCAL:2+1
+						DT_ROW_REMOVE "WeaponInventory", RESULT:(LOCAL:3)
+					NEXT
+				CASE IS > 100000
+					;NAS: clothing
+					PRINTFORMW %PLURALIZER(CLOTHNAME(((PlayerItemsSelling:LOCAL:0-100000)/1000), (PlayerItemsSelling:LOCAL:0)-(PlayerItemsSelling:LOCAL:0/1000*1000)), MAX(1,PlayerItemsSelling:LOCAL:2))%
+					BoughtClothing:((PlayerItemsSelling:LOCAL:0-100000)/1000):((PlayerItemsSelling:LOCAL:0)-(PlayerItemsSelling:LOCAL:0/1000*1000)) -= PlayerItemsSelling:LOCAL:2
+				CASE IS > 5000
+					;NAS: bionic parts
+					PRINTFORMW %PLURALIZER(GET_STR(MASTER, "Hediff", PlayerItemsSelling:(LOCAL):0-5000, "FullName"), MAX(1,PlayerItemsSelling:LOCAL:2))%.
+					HasBionic:(PlayerItemsSelling:LOCAL:0-5000) -= PlayerItemsSelling:LOCAL:2
+				CASE IS > 4000
+					;NAS: body parts
+					PRINTFORMW %PLURALIZER(BDY_PART_NAME(PlayerItemsSelling:(LOCAL):0-4000), MAX(1,PlayerItemsSelling:LOCAL:2))%.
+					HasNaturalPart:(PlayerItemsSelling:LOCAL:0-4000) -= PlayerItemsSelling:LOCAL:2
+				CASEELSE
+					;normal items
+					PRINTFORMW %PLURALIZER(ITEMNAME_TR(PlayerItemsSelling:LOCAL:0), MAX(1,PlayerItemsSelling:LOCAL:2))%.
+					ITEM:(PlayerItemsSelling:LOCAL:0) -= PlayerItemsSelling:LOCAL:2
+			ENDSELECT
+		ELSE
+			PRINTFORM 　Didn't sell a single 
+			GOTO PluralText
+		ENDIF
+		
+	ENDIF
+NEXT
+RESETCOLOR
+PRINTL 
+;合計売却値の表記、同時に売上分の金を増やす
+IF 合計売却値
+	PRINTFORM In total, the profit came to 
+	SETCOLOR 0x00FF00
+	PRINTFORM %金額表示(合計売却値)%
+	RESETCOLOR
+	PRINTFORMW !
+	MONEY += 合計売却値
+	TFLAG:193 = 1
+	TFLAG:194 = 合計売却値
+ELSE
+	PRINTFORMW You didn't make any money at all...
+	TFLAG:193 = 0
+ENDIF
+
+SIF 合計売却値 >= 10000000
+	CALL AL_NOTIFY_ACHIEVEMENT_COMPLETION("sell10M")
+
+;基本の経験
+EXP:MASTER:会話経験 += NAS_SALES
+SIF CHARA
+	EXP:CHARA:会話経験 += NAS_SALES
+
+SIF ABL:MASTER:教養 <= UniversalRank("B")
+	EXP:MASTER:学習経験 ++
+
+;能力差で教えてもらう・教えてあげる
+IF ABL:MASTER:教養 >=  ABL:CHARA:教養 && CHARA
+	EXP:CHARA:学習経験 ++
+ELSEIF CHARA
+	EXP:MASTER:学習経験 ++
+ENDIF
+
+;デート経験
+IF CHK_DATENOW(CFLAG:CHARA:デート中) && CHARA > 0
+	EXP:MASTER:デート経験 ++
+	EXP:CHARA:デート経験 ++
+ENDIF
+
+;時間経過
+TIME += 120
+;体力・気力減少は来客数によって増減
+DOWNBASE:MASTER:体力 = MAX(15 * NAS_SALES, 150)
+DOWNBASE:MASTER:気力 = MAX(20 * NAS_SALES, 200)
+
+;参加者のソース,同一コマンド制限を受けないので控えめに,売れないと激減
+IF CHARA != MASTER
+	;固定で獲得するソース
+	SOURCE:CHARA:歓楽 = 300
+	SOURCE:CHARA:情愛 = 50
+	
+	;ABL:従順をみる
+	IF ABL:従順 <= 1
+		SOURCE:CHARA:歓楽 += (ABL:従順 * 30)
+		SOURCE:CHARA:情愛 += (ABL:親密 * 15)
+	ELSEIF ABL:従順 <= 3
+		SOURCE:CHARA:歓楽 += 200 + (ABL:従順 * 20)
+		SOURCE:CHARA:情愛 += 50 + (ABL:親密 * 15)
+	ELSEIF ABL:従順 <= 5
+		SOURCE:CHARA:歓楽 += 500 + (ABL:従順 * 20)
+		SOURCE:CHARA:情愛 += 200 + (ABL:親密 * 15)
+	ELSEIF ABL:従順 <= 8
+		SOURCE:CHARA:歓楽 += 750 + (ABL:従順 * 30)
+		SOURCE:CHARA:情愛 += 300 + (ABL:親密 * 20)
+	ELSEIF ABL:従順 <= 11
+		SOURCE:CHARA:歓楽 += 1000 + (ABL:従順 * 30)
+		SOURCE:CHARA:情愛 += 600 + (ABL:親密 * 20)
+	ELSE
+		SOURCE:CHARA:歓楽 += 1600 + (ABL:従順 * 15)
+		SOURCE:CHARA:情愛 += 1000 + (ABL:親密 * 10)
+	ENDIF
+	SIF CHARA != FLAG:デート相手 
+		SOURCE:CHARA:情愛 = 0
+	
+	;好感度はみない
+	
+	SOURCE:CHARA:受動 = 200 + 100 * ABL:従順
+	SOURCE:CHARA:征服 = 200 + 100 * ABL:サドっ気
+	
+	;売却成果をみる、合計売却値に応じてとりあえず設定
+	IF 合計売却値
+		SELECTCASE 合計売却値
+			CASE 1 TO 2000
+				TIMES SOURCE:CHARA:歓楽 , 1.00
+				TIMES SOURCE:CHARA:受動 , 1.00
+				TIMES SOURCE:CHARA:征服 , 1.00
+				SOURCE:CHARA:達成 = 80
+			CASE 2001 TO 4000
+				TIMES SOURCE:CHARA:歓楽 , 1.10
+				TIMES SOURCE:CHARA:受動 , 1.10
+				TIMES SOURCE:CHARA:征服 , 1.10
+				SOURCE:CHARA:達成 = 115
+			CASE 4001 TO 7000
+				TIMES SOURCE:CHARA:歓楽 , 1.25
+				TIMES SOURCE:CHARA:受動 , 1.25
+				TIMES SOURCE:CHARA:征服 , 1.15
+				SOURCE:CHARA:達成 = 125
+			CASE 7001 TO 10000
+				TIMES SOURCE:CHARA:歓楽 , 1.50
+				TIMES SOURCE:CHARA:受動 , 1.50
+				TIMES SOURCE:CHARA:征服 , 1.25
+				SOURCE:CHARA:達成 = 150
+			CASE 10001 TO 20000
+				TIMES SOURCE:CHARA:歓楽 , 1.75
+				TIMES SOURCE:CHARA:受動 , 1.75
+				TIMES SOURCE:CHARA:征服 , 1.50
+				SOURCE:CHARA:達成 = 200
+			CASE 20001 TO 40000
+				TIMES SOURCE:CHARA:歓楽 , 2.00
+				TIMES SOURCE:CHARA:受動 , 2.00
+				TIMES SOURCE:CHARA:征服 , 1.75
+				SOURCE:CHARA:達成 = 300
+			CASEELSE
+				TIMES SOURCE:CHARA:歓楽 , 2.25
+				TIMES SOURCE:CHARA:受動 , 2.25
+				TIMES SOURCE:CHARA:征服 , 2.00
+				SOURCE:CHARA:達成 = 350
+		ENDSELECT
+	;売れなかった
+	ELSE
+		TIMES SOURCE:CHARA:歓楽 , 0.20
+		TIMES SOURCE:CHARA:受動 , 0.20
+		TIMES SOURCE:CHARA:征服 , 0.20
+	ENDIF
+ENDIF
+RETURN 1
+
+;-----------------------------------------------------------
+;現在位置が露店を開ける場所か判定する
+;ARG		現在位置
+;RETURN		0 該当なし	1～各露店地点を返す
+;COMMENT	場所を追加した場合、CASEを変更の事
+;-----------------------------------------------------------
+@STALL_SPOT_NAS(ARG)
+#FUNCTION
+
+IF !IN_HOME(ARG)
+;サブマップなどでの判定
+	SELECTCASE ARG
+		CASE 20				;神社境内（博麗神社）
+			RETURNF 1
+		CASE 130			;命蓮寺境内
+			RETURNF 2
+		CASE 210			;広場（人里）
+			RETURNF 3
+		CASE 310			;霧の湖
+			RETURNF 4
+		CASE 450			;永遠亭
+			RETURNF 5
+		CASE 510			;森の入り口
+			RETURNF 6
+		CASE 610			;中有の道
+			RETURNF 7
+		CASE 720			;玄武の沢
+			RETURNF 8
+		CASE 820			;絶景の丘
+			RETURNF 9
+		CASE 840			;守矢神社境内
+			RETURNF 10
+		CASE 890			;天界
+			RETURNF 11
+		CASE 930			;旧地獄街道
+			RETURNF 12
+		CASE 1050			;月の都
+			RETURNF 13
+	ENDSELECT
+ELSE
+	;メインマップでの判定
+	SELECTCASE MAIN_MAP
+		CASE 0
+			;博麗神社：境内
+			SIF ARG == 2
+				RETURNF 1
+		CASE 1
+			;命蓮寺：境内
+			SIF ARG == 102
+				RETURNF 2
+		CASE 2
+			;人里：中央広場
+			SIF ARG == 202
+				RETURNF 3
+		CASE 3
+			;紅魔館：湖畔
+			SIF ARG == 343
+				RETURNF 4
+		CASE 4
+			;永遠亭：永遠亭入り口
+			SIF ARG == 401
+				RETURNF 5
+		CASE 5
+			;魔法の森：魔法の広場
+			SIF ARG == 508
+				RETURNF 6
+		CASE 6
+			;冥界：中有の道
+			SIF ARG == 601
+				RETURNF 7
+		CASE 7
+			;妖怪の山山麓：玄武の沢
+			SIF ARG == 703
+				RETURNF 8
+		CASE 8
+			;妖怪の山山頂：頂上、守矢神社・境内、有頂天街
+			SELECTCASE ARG
+				CASE 805
+					RETURNF 9
+				CASE 811
+					RETURNF 10
+				CASE 832
+					RETURNF 11
+			ENDSELECT
+		CASE 9
+			;地底：大通り
+			SIF ARG == 931
+				RETURNF 12
+		CASE PlayerLandID
+			SIF GETBIT(HOME_CUSTOM_ROOM(ARG),1)
+				RETURNF 12
+	ENDSELECT
+ENDIF
+RETURNF 0
+
+;-----------------------------------------------------------
+;現在位置で露店を開く際のざっくりした来客数を割り出す
+;祝祭日、天気、時間でも補正をかける
+;ARG		STALL_SPOTのRETURN値
+;RETURN		来客数
+;COMMENT	場所を追加した場合、CASEを変更の事
+;-----------------------------------------------------------
+@STALL_SHOPPER_NAS(ARG)
+#FUNCTION
+
+RANDOMIZE (DAY:0 + TIME:0)
+
+SELECTCASE ARG
+	CASE 1	;博麗神社  ケの来客は少なそう  祭日はドンと増える
+		LOCAL:0 = RAND:5
+		SIF FESTIVAL() == "例大祭"
+			LOCAL:0 += MAX(RAND:50, 35)
+		SIF GROUPMATCH(FESTIVAL(), "元日", "雛祭り", "七夕", "お盆", "風神「二百十日」", "十五夜", "収穫祭", "節分", "大晦日")
+			LOCAL:0 += MAX(RAND:40, 25)
+	CASE 2	;命蓮寺  人里に近いので
+		LOCAL:0 = MAX(RAND:12, 2)
+		SIF GROUPMATCH(FESTIVAL(), "元日", "お盆", "収穫祭", "大晦日")
+			LOCAL:0 += MAX(RAND:35, 15)
+	CASE 3	;人里  鉄板
+		LOCAL:0 = MAX(RAND:35, 10)
+		SIF IS_WEEKEND(DAY)
+			LOCAL:0 += RAND:15
+		SIF GROUPMATCH(FESTIVAL(), "元日", "ホワイトデー", "収穫祭", "バレンタインデー", "クリスマスイヴ", "クリスマス")
+			LOCAL:0 += RAND:15
+	CASE 4	;霧の湖湖畔  あんまり人通りは…
+		LOCAL:0 = RAND:5
+		SIF GROUPMATCH(FESTIVAL(), "ホワイトデー", "収穫祭", "ハロウィン", "バレンタインデー", "クリスマスイヴ", "クリスマス")
+			LOCAL:0 += MAX(RAND:30, 15)
+	CASE 5	;永遠亭入り口  医院なのでそれなりに
+		LOCAL:0 = MAX(RAND:14, 3)
+	CASE 6	;魔法の森  客は来るのか…？
+		LOCAL:0 = RAND:5
+		SIF GROUPMATCH(FESTIVAL(), "元日", "七夕", "お盆", "十五夜", "収穫祭", "大晦日")
+			LOCAL:0 += MAX(RAND:30, 20)
+	CASE 7	;中有の道  他にも露店が出てる設定なので
+		LOCAL:0 = MAX(RAND:30, 7)
+		SIF GROUPMATCH(FESTIVAL(), "お盆")
+			LOCAL:0 += MAX(RAND:30, 20)
+	CASE 8	;玄武の沢  商売人の河童たちの経済圏
+		LOCAL:0 = MAX(RAND:25, 15)
+		SIF IS_WEEKEND(DAY)
+			LOCAL:0 += RAND:15
+		SIF GROUPMATCH(FESTIVAL(), "元日", "収穫祭")
+			LOCAL:0 += RAND:15
+	CASE 9	;妖怪の山頂上  天狗の縄張り
+		LOCAL:0 = MAX(RAND:20, 5)
+		SIF IS_WEEKEND(DAY)
+			LOCAL:0 += RAND:15
+		SIF GROUPMATCH(FESTIVAL(), "元日", "風神「二百十日」", "収穫祭")
+			LOCAL:0 += RAND:15
+	CASE 10	;守矢神社  索道のおかげで少しマシになった？
+		LOCAL:0 = MAX(RAND:10, 4)
+		SIF GROUPMATCH(FESTIVAL(), "元日", "例大祭", "雛祭り", "七夕", "お盆", "風神「二百十日」", "十五夜", "収穫祭", "節分", "大晦日")
+			LOCAL:0 += MAX(RAND:30, 20)
+	CASE 11	;有頂天街  天人も買い物はするのか…
+		LOCAL:0 = MAX(RAND:20, 2)
+		SIF IS_WEEKEND(DAY)
+			LOCAL:0 += RAND:15
+		SIF GROUPMATCH(FESTIVAL(), "元日", "七夕", "十五夜", "収穫祭", "節分", "大晦日")
+			LOCAL:0 += RAND:15
+	CASE 12	;地底大通り  妖怪たちの吹き溜まり
+		LOCAL:0 = MAX(RAND:35, 15)
+		SIF GROUPMATCH(FESTIVAL(), "元日", "収穫祭")
+			LOCAL:0 += RAND:15
+	CASE 13	;月の都  月人の興味があるものって…
+		LOCAL:0 = MAX(RAND:25, 2)
+ENDSELECT
+;時間補正　地底大通りと月の都は時間・天候補正をかけない
+IF !GROUPMATCH(ARG, 12, 13)
+	;時間補正
+	SELECTCASE TIME:2
+		CASE 1
+			TIMES LOCAL:0, 0.3
+		CASE 2
+			TIMES LOCAL:0, 0.8
+		CASE 3 TO 4
+			;補正なし
+		CASE 5
+			TIMES LOCAL:0, 0.8
+		CASE 6
+			TIMES LOCAL:0, 0.5
+		CASEELSE
+			TIMES LOCAL:0, 0.2
+	ENDSELECT
+	;天候補正
+	SELECTCASE TIME:5
+		CASE 0 TO 3
+			;補正なし
+		CASE 4, 6, 7
+			TIMES LOCAL:0, 0.4
+		CASEELSE
+			TIMES LOCAL:0, 0.1
+	ENDSELECT
+ENDIF
+
+RETURNF LOCAL:0
+
+;-----------------------------------------------------------
+;現在位置で露店を開く際の親密許可判定をする
+;ARG		現在位置
+;RETURN		0 許可	1 不許可
+;COMMENT	場所を追加した場合、CASEを変更の事
+;-----------------------------------------------------------
+@STALL_PERMISSION_NAS(ARG)
+#FUNCTION
+SIF !QOL_PERMISSION(ARG, "stall")
+	RETURNF 1
+
+IF !AT_HOME(MASTER)
+;サブマップなどでの判定
+	SELECTCASE ARG
+		CASE 20				;神社境内（博麗神社）
+			SIF ABL:[[霊夢]]:親密 < 5
+				RETURNF [[霊夢]]
+		CASE 130			;命蓮寺境内
+			SIF ABL:[[白蓮]]:親密 < 5
+				RETURNF [[白蓮]]
+		CASE 450			;永遠亭
+			SIF ABL:[[永琳]]:親密 < 5 && ABL:[[輝夜]]:親密 < 5
+				RETURNF [[永琳]]
+		CASE 720			;玄武の沢
+			SIF ABL:[[にとり]]:親密 < 5
+				RETURNF [[にとり]]
+		CASE 820			;絶景の丘
+			SIF ABL:[[文]]:親密 < 5 && ABL:[[はたて]]:親密 < 5
+				RETURNF [[文]]
+		CASE 840			;守矢神社境内
+			SIF ABL:[[早苗]]:親密 < 5 && ABL:[[神奈子]]:親密 < 5 && ABL:[[諏訪子]]:親密 < 5
+				RETURNF [[神奈子]]
+		CASE 890			;天界
+			SIF ABL:[[天子]]:親密 < 5
+				RETURNF [[天子]]
+	ENDSELECT
+ELSE
+	;メインマップでの判定
+	SELECTCASE MAIN_MAP
+		CASE 0
+			;博霊神社：境内
+			SIF ARG == 2 && ABL:[[霊夢]]:親密 < 5
+				RETURNF [[霊夢]]
+		CASE 1
+			;命蓮寺：境内
+			SIF ARG == 102 && ABL:[[白蓮]]:親密 < 5
+				RETURNF [[白蓮]]
+		CASE 4
+			;永遠亭：永遠亭入り口
+			SIF ARG == 401 && (ABL:[[永琳]]:親密 < 5 && ABL:[[輝夜]]:親密 < 5)
+				RETURNF [[永琳]]
+		CASE 7
+			;妖怪の山山麓：玄武の沢
+			SIF ARG == 703 && ABL:[[にとり]]:親密 < 5
+				RETURNF [[にとり]]
+		CASE 8
+			;妖怪の山山頂：頂上、守矢神社・境内、有頂天街
+			SELECTCASE ARG
+				CASE 805
+					SIF ABL:[[文]]:親密 < 5 && ABL:[[はたて]]:親密 < 5
+						RETURNF [[文]]
+				CASE 811
+					SIF ABL:[[早苗]]:親密 < 5 && ABL:[[神奈子]]:親密 < 5 && ABL:[[諏訪子]]:親密 < 5
+						RETURNF [[神奈子]]
+				CASE 832
+					SIF ABL:[[天子]]:親密 < 5
+						RETURNF [[天子]]
+			ENDSELECT
+	ENDSELECT
+ENDIF
+RETURNF 0
+
+;-----------------------------------------------------------
+;露店で１人の来客がいくらで買ったかを算出
+;ARG:0		商人パワー
+;ARG:1		売るアイテム番号
+;ARG:2		売れた個数
+;ARG:3		0 = 購入額を返す, 1=利率を返す　省略は0
+;RETURN		購入額
+;-----------------------------------------------------------
+@STALL_PRICE_NAS(ARG:0, ARG:1, ARG:2, ARG:3 = 0)
+#FUNCTION
+#DIM 利率
+#DIM 購入額
+#DIM 補正価格
+
+IF ARG:0 <= 0
+	ARG:0 = 1
+ENDIF
+;利率をアイテム価格の（商人パワーの半分～商人パワー）％に設定
+利率 = MAX(RAND:(ARG:0), (ARG:0 / 2))
+;qol custom code, nonrand
+SIF ARG:3 == 2
+	利率 = ARG:0
+
+;NAS Custom code
+;weapons are nerfed to only sell for 1/10th it's research cost
+IF ARG:1 > 600000000000000000
+	補正価格 = weaponPrice(ARG:1,10)
+ELSEIF ARG:1 > 100000
+	補正価格 = ClothPrice(CLOTHES_PARTS_TO_CATEGORY(EQUIPNAME:((ARG:1-100000)/1000)), (ARG:1)-(ARG:1/1000*1000), MASTER)
+ELSEIF ARG:1 > 4000
+	補正価格 = organPrice(ARG:1-4000)
+ELSE
+	補正価格 = ITEMPRICE:(ARG:1) / 2
+
+	;com custom code - double the price for low price items
+	SIF ITEMPRICE:(ARG:1) < 1000
+		補正価格 = ITEMPRICE:(ARG:1)*2
+ENDIF
+
+;補正価格の決定
+SELECTCASE ARG:1
+	;野菜たちは旬から遠いと価値が上がる
+	CASE 351 TO 361
+		SIF DAY:2 == 3
+			TIMES 補正価格, 1.5
+	CASE 362 TO 374
+		SIF DAY:2 == 4
+			TIMES 補正価格, 1.5
+	CASE 375 TO 386
+		SIF DAY:2 == 1
+			TIMES 補正価格, 1.5
+	CASE 387 TO 398
+		SIF DAY:2 == 2
+			TIMES 補正価格, 1.5
+	;価格調整
+	CASE 500
+		補正価格 += 150
+	CASE 600
+		補正価格 += 350 ;com custom code
+	CASE 611
+		補正価格 += 245 ;com custom code
+	CASE 616
+		補正価格 += 200
+	CASE 626
+		補正価格 += 225 ;com custom code
+	CASE 627
+		補正価格 += 200
+	CASE 628
+		補正価格 += 50
+	CASE 707
+		補正価格 += 250
+	CASE 708
+		補正価格 += 350
+		
+	;addition custom code, bonus for Hina Doll during Hinamatsuri
+	CASE 497
+		SIF GROUPMATCH(FESTIVAL(), "雛祭り")
+			TIMES 補正価格, 2
+ENDSELECT
+
+SIF FESTIVAL() != ""
+	TIMES 補正価格, 1.5
+
+;露店の場所による補正
+SELECTCASE STALL_SPOT(CFLAG:MASTER:現在位置)
+	CASE 1	;博麗神社
+
+	CASE 2	;命蓮寺
+
+	CASE 3	;人里  山の幸系統に補正
+		SIF GROUPMATCH(ARG:1, 600, 611, 616, 626, 627, 628, 629, 707, 708)
+			TIMES 補正価格, 1.3
+			
+		;addition custom code, bonus for Hina Doll at the village
+		SIF GROUPMATCH(ARG:1, 497)
+			TIMES 補正価格, 1.5
+	CASE 4	;霧の湖湖畔
+
+	CASE 5	;永遠亭入り口  にんじん
+		SIF GROUPMATCH(ARG:1, 382) ;bug fix
+			TIMES 補正価格, 2.0
+	CASE 6	;魔法の森  
+
+	CASE 7	;中有の道  
+
+	CASE 8	;玄武の沢  きゅうり↑  おさかな↓
+		SIF GROUPMATCH(ARG:1, 361) ;bug fix
+			TIMES 補正価格, 2.5
+		SIF GROUPMATCH(ARG:1, 707, 708)
+			TIMES 補正価格, 0.5
+	CASE 9	;妖怪の山頂上  おさかな
+		SIF GROUPMATCH(ARG:1, 707, 708)
+			TIMES 補正価格, 1.5
+	CASE 10	;守矢神社  
+		
+		
+		;addition custom code, bonus for Hina Doll at the Moriya shrine
+		SIF GROUPMATCH(ARG:1, 497)
+			TIMES 補正価格, 1.5
+	CASE 11	;有頂天街  山の幸系統
+		SIF GROUPMATCH(ARG:1, 600, 611, 616, 626, 627, 628, 629, 707, 708)
+			TIMES 補正価格, 1.3
+	CASE 12	;地底大通り  野菜
+		SIF INRANGE(ARG:1, 351, 398)
+			TIMES 補正価格, 1.5
+	CASE 13	;月の都  山の幸系統
+		SIF GROUPMATCH(ARG:1, 600, 611, 616, 626, 627, 628, 629, 707, 708)
+			TIMES 補正価格, 1.3
+ENDSELECT
+
+購入額 = 補正価格 * ARG:2 * 利率 / 100
+;qol custom code
+RESULT:1 = 利率
+IF ARG:3 == 0 || ARG:3 == 2
+	RETURNF 購入額
+ELSE
+	RETURNF 利率
+ENDIF
+

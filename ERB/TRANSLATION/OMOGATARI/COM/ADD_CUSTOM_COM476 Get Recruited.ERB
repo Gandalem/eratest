@@ -1,0 +1,97 @@
+@ADD_CUSTOM_COM476
+PRINTFORML You ask %CALLNAME:TARGET% about your faction relations.
+CALL FACTION_RECRUITING((TALENT:TARGET:Recruiter-1))
+
+@FACTION_RECRUITING(ARG,nRecruiter = -1)
+#DIM nRecruiter
+;no recruiter
+IF nRecruiter == -1
+	nRecruiter = FACTION_RECRUITER(ARG)
+ENDIF
+
+IF !FactionRank:MASTER:(ARG)
+	; CALL FACTION_UIARG
+	CALL SINGLE_LIST_FACTION_STATE(MASTER, ARG, (!FactionRank:MASTER:ARG ? "「Confirmation」" # "「Faction Status」"))
+	IF RESULT && !FactionRank:MASTER:ARG
+		TRYCCALLFORM FACTION_APPLYING_{ARG}
+		CATCH
+			PRINTFORMW You fill out the application form and send it to %CALLNAME:nRecruiter%.
+		ENDCATCH
+		PRINTFORMW ・
+		PRINTFORMW ・・
+		PRINTFORMW ・・・
+		IF FACTION_JOIN_ELEGIBLE(MASTER,ARG)
+				;accepted
+				CALL JoinFaction(MASTER,ARG,0)
+			TRYCCALLFORM FACTION_APPLYING_{ARG}_ACCEPT
+			CATCH
+				PRINTFORML You have been accepted into the %FactionName(ARG)% as a %FACTION_RANK_STRING(MASTER,ARG)%!
+				PRINTFORML Your starting daily pay is %金額表示(FACTION_SALARY(ARG,FactionRank:MASTER:ARG))% a day.
+				WAIT
+			ENDCATCH
+		ELSE
+			;denied
+			TRYCCALLFORM FACTION_APPLYING_{ARG}_DENY
+			CATCH
+				PRINTFORMW Unfortunately, your application was denied.
+			ENDCATCH
+		ENDIF
+	ENDIF
+	RETURN
+ENDIF
+
+;joined
+CALL SINGLE_LIST_FACTION_STATE(MASTER, ARG, "「Faction Status」")
+
+
+
+@ADD_CUSTOM_COM_PRINT476
+#DIM CONST COM_ID = 476
+SIF !TALENT:TARGET:Recruiter
+	RETURN 0
+
+IF !FactionRank:MASTER:(TALENT:TARGET:Recruiter-1)
+    PRINTFORMC Apply for %FactionAbriv((TALENT:TARGET:Recruiter-1))%[{Add_Custom_COM_To_Number(COM_ID),3}]
+ELSE
+    PRINTFORMC %FactionAbriv((TALENT:TARGET:Recruiter-1))% Status[{Add_Custom_COM_To_Number(COM_ID),3}]
+ENDIF
+RESETCOLOR
+RETURN 1
+
+@FactionRankLevelingUp(ARG,nFaction,ignoreAsso=0)
+#DIM nFaction
+#DIM ignoreAsso
+SIF !FactionRank:ARG:nFaction
+	RETURN
+WHILE FactionExperience:ARG:nFaction >= EXP_DEMAND_FACTION_RANK(FactionRank:ARG:nFaction+1)
+	SIF FactionRank:ARG:nFaction >= 6
+		BREAK
+
+	SIF !ignoreAsso
+	CALLF StoreFactionTitles(ARG,nFaction)
+	FactionRank:ARG:nFaction ++
+	PRINTFORML %PARSE("You have",,,ARG)% been promoted to %FACTION_RANK_STRING(ARG,nFaction)% in the %FactionName(nFaction)%
+	PRINTFORMW Your daily pay is now %金額表示(FACTION_SALARY(nFaction,FactionRank:MASTER:nFaction))% a day!
+	SIF !ignoreAsso
+	CALL CheckForFacitonTitleChanges(ARG,@"%PARSE("your",,,ARG)% promotion into a higher position of the %FactionAbriv(nFaction)%")
+WEND
+
+
+
+
+@ADD_CUSTOM_COM_ABLE476
+;押し倒す実行判定
+SIF !TFLAG:100
+	RETURN 0
+SIF SaveIsEZB
+	RETURN 0
+SIF !TALENT:TARGET:Recruiter
+	RETURN 0
+SIF !SHIRAHU(TARGET)
+	RETURN 0
+SIF CFLAG:TARGET:うふふ
+	RETURN 0
+SIF !nFactions
+	RETURN 0
+
+RETURN 1

@@ -1,0 +1,156 @@
+@UPDATE_PAGE_3(NASP3_PAGE)
+#DIM NASP3_PAGE
+#DIMS NASP3_OPTION
+#DIMS NASP3_DESC
+VARSET NASP3_OPTION
+VARSET NASP3_DESC
+
+NASP3_OPTION '= @"[300] Reset all factions"
+NASP3_DESC '= @"※Resets all factions back to their defaults. Does not affect character affinities with factions\n"
+NASP3_DESC += @"※Generally no need to, unless you're resetting factions or starting a new game."
+HTML_PRINT HTML_PRINT_NAS(NASP3_OPTION,NASP3_DESC,,,,300)
+
+NASP3_OPTION '= @"[301] Reset all faction units"
+NASP3_DESC '= @"※Resets all faction units back to default."
+HTML_PRINT HTML_PRINT_NAS(NASP3_OPTION,NASP3_DESC,,,,301)
+
+NASP3_OPTION '= @"[302] Reset a faction "
+NASP3_DESC '= @"※Resets a factions back to their defaults. Does not affect character affinities with factions\n"
+NASP3_DESC += @"※Generally no need to, unless you're resetting factions or starting a new game."
+HTML_PRINT HTML_PRINT_NAS(NASP3_OPTION,NASP3_DESC,,,,302)
+
+@UPDATE_INPUT_3(nInput, SelectionMode, Update_Selected)
+#DIM nInput
+#DIM C_ID
+#DIM REF SelectionMode
+#DIM REF Update_Selected
+#DIM UNAS_ABL_NO
+#DIM UNAS_ABL
+
+SELECTCASE nInput
+CASE 300
+    PRINTFORML Are you sure?
+    PRINTFORML This wll reset all factions back to their defaults!
+    PRINTFORML All progress in all factions will be lost, and their units and research will be reset to default.
+    CALL ASK_YN
+    SELECTCASE RESULT
+    CASE 0
+        CALL CLEAR_ALL_FACTION_DATA
+        CALL INIT_FACTIONS
+        PRINTFORMW Factions have been reset
+    ENDSELECT
+CASE 301
+    PRINTFORML Are you sure?
+    PRINTFORML This will reset all faction units back to their default.
+    CALL ASK_YN
+    SELECTCASE RESULT
+    CASE 0
+        FOR LOCAL,0,MaxFactions
+            CALL CLEAR_FACTION_UNITS(LOCAL)
+            CALL ADDFACTION_INIT_UNITS(LOCAL)
+        NEXT
+        PRINTFORMW Faction units have been reset
+    ENDSELECT
+CASE 302
+    PRINTFORML Pick what faction should be reset. 
+    FOR LOCAL,0,MaxFactions
+        SIF !STRLENS(FactionName(LOCAL))
+            CONTINUE
+        PRINTFORML [{LOCAL,3}] - %FactionName(LOCAL)%
+    NEXT
+    INPUT
+    PRINTL
+    PRINTFORML [999] - Cancel
+    LOCAL = RESULT
+    SELECTCASE RESULT
+    CASE 0 TO MaxFactions
+        PRINTFORML Are you sure you want to reset (ID {LOCAL})
+    ENDSELECT
+ENDSELECT
+
+@CLEAR_ALL_FACTION_DATA
+DT_RELEASE "FactionUnits"
+FOR LOCAL,0,MaxFactions
+    IF LOCAL == 99
+        PRINTFORML Do you want to wipe the player's faction as well?
+        CALL ASK_YN()
+        SIF RESULT
+            CONTINUE
+    ENDIF
+
+    CALL CLEAR_FACTION_DATA(LOCAL)
+NEXT
+VARSET FacionPropagandaSign, -1
+
+@CLEAR_FACTION_DATA(nFaction)
+#DIM nFaction
+#DIM nFOneMore
+
+nFOneMore = nFaction+1
+
+VARSET FactionNames          ,"",nFaction,nFOneMore
+VARSET FactionAbbreviation   ,"",nFaction,nFOneMore
+VARSET FactionMemberName     ,"",nFaction,nFOneMore
+VARSET FactionReligion       ,0 ,nFaction,nFOneMore
+
+VARSET FactionDisabled       ,0 ,nFaction,nFOneMore
+VARSET FactionWealth         ,0 ,nFaction,nFOneMore
+;can't use VARSET for these
+FOR LOCAL,0,VARSIZE("FactionUnits",1)
+    FactionUnits:nFaction:LOCAL = 0
+NEXT
+FOR LOCAL,0,VARSIZE("FactionTeamFame",1)
+    FactionTeamFame:nFaction:LOCAL = 0
+NEXT
+FOR LOCAL,0,VARSIZE("FactionTeamInfamy",1)
+    FactionTeamInfamy:nFaction:LOCAL = 0
+NEXT
+FOR LOCAL,0,VARSIZE("FactionWarring",1)
+    FactionWarring:nFaction:LOCAL = 0
+NEXT
+FOR LOCAL,0,VARSIZE("FactionWarringAreas",1)
+    FactionWarringAreas:nFaction:LOCAL = 0
+NEXT
+FOR LOCAL,0,VARSIZE("FactionAreaControl",1)
+    FactionAreaControl:nFaction:LOCAL = 0
+NEXT
+VARSET FactionNonMemberFame  ,0 ,nFaction,nFOneMore
+VARSET FactionNonMemberInfamy,0 ,nFaction,nFOneMore
+VARSET FactionPatrolArea     ,0 ,nFaction,nFOneMore
+VARSET FactionTech           ,0 ,nFaction,nFOneMore
+FOR LOCAL,0,VARSIZE("FactionMainArea")
+    SIF FactionMainArea:LOCAL == nFaction
+        FactionMainArea:LOCAL = -1
+NEXT
+
+CALL CLEAR_FACTION_UNITS(nFaction)
+CALL CLEAR_FACTION_RESEARCH(nFaction)
+
+@CLEAR_ALL_FACTION_UNITS
+FOR LOCAL,0,MaxFactions
+    CALL CLEAR_FACTION_UNITS(LOCAL)
+NEXT
+
+@CLEAR_FACTION_UNITS(nFaction)
+#DIM nFaction
+#DIM CFD_TOTAL
+#DIM CFD_ARRAY, 100
+;units
+CFD_TOTAL = DT_SELECT("FactionUnits", @"faction = {nFaction}", "", CFD_ARRAY)
+FOR LOCAL,0,CFD_TOTAL
+    SIF DT_CELL_GET("FactionUnits", CFD_ARRAY:LOCAL, "faction",1) == nFaction
+        DT_ROW_REMOVE "FactionUnits", CFD_ARRAY:LOCAL
+NEXT
+
+@CLEAR_FACTION_RESEARCH(nFaction)
+#DIM nFaction
+;units
+$LOOP
+FOR LOCAL,0,DT_ROW_LENGTH("ResearchProgress")
+    IF DT_CELL_GET("ResearchProgress", LOCAL, "faction") == nFaction
+        DT_ROW_REMOVE "ResearchProgress", DT_CELL_GET("ResearchProgress", LOCAL, "id") 
+        ; go back to the start of the loop
+        ; we don't want to go to a null pointer.
+        GOTO LOOP
+    ENDIF
+NEXT

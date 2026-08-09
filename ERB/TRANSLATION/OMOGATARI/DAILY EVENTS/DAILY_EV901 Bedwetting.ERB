@@ -1,0 +1,1621 @@
+; custom code, adds a random bedwetting event if you have the peeing habit trait. Also can appear randomdly at a 1% chance
+; guarantted if your peeing habit level is 2 or higher
+; when i add the pee bar i'll also make it dependent on it as well (more pee before going to bed = higher chance of bedwetting)
+;hardcore content toggle, <urine: wetting> <scat: messing>
+; - Mr Pops Alot
+
+@DAILY_INFO_EV901
+#FUNCTION
+DAILY_INFO_NAME '= @"Bedwetting"
+DAILY_INFO_DESC '= @"You have an accident while sleeping."
+DAILY_INFO_TYPE '= @"Trivial"
+
+@DAILY_CONDITION_EV901
+#DIM HasPiss
+#DIM HasScat
+#DIM UnwareWetting
+#DIM LucidDream
+#DIM FormerStats,2
+VARSET LOCAL
+LucidDream = 0
+HasPiss = 0
+HasScat = 0
+UnwareWetting = 0
+SIF !GETBIT(nPee, 1) && !GETBIT(nScat, 2)
+	RETURN -1
+
+IF GETBIT(nPee, 1)
+	IF RAND:1000 > BedWetThreshold(MASTER, 1, 1)
+		HasPiss = 1
+		UnwareWetting = 1
+	ELSEIF RAND:1000 > BedWetThreshold(MASTER, 1, 0)
+		HasPiss = 1 
+		;BASE:MASTER:尿意 = MAXBASE:MASTER:尿意
+	ENDIF
+ENDIF
+IF GETBIT(nScat, 2)
+	IF RAND:1000 > BedWetThreshold(MASTER, 2, 1)
+		HasScat = 1
+		UnwareWetting = 1
+	ELSEIF RAND:1000 > BedWetThreshold(MASTER, 2, 0)
+		HasScat = 1 
+		;BASE:MASTER:Poo = MAXBASE:MASTER:Poo
+	ENDIF
+ENDIF	
+
+IF (CFLAG:MASTER:溜まってる度 >= 650 || RAND:1000 > BedWetDreamAddict(MASTER, HasPiss, HasScat) || K102_SweetDreamsTonight || DreamDropTaken == 1) && !DAILY_Lucid_Stats
+LucidDream = 1
+ENDIF
+
+SIF DreamDropTaken == -1
+	LucidDream = 0
+DreamDropTaken = 0
+
+D = 0
+
+[IF_DEBUG]
+D = 1
+D:5 = LINECOUNT
+VARSET LOCAL
+DO
+CLEARLINE LINECOUNT-D:5
+SIF !TCVAR:MASTER:906
+	BREAK
+
+SIF PeeBarStage(MASTER) < 5 && PooBarStage(MASTER) < 5
+	UnwareWetting = 0
+
+IF LucidDream && (HasPiss || HasScat)
+	LOCALS = Lucid Dream - %LucidDreamNames(DAILY_Lucid_Stats:3)%
+ELSEIF UnwareWetting
+	LOCALS = Unaware Accident
+ELSEIF HasPiss || HasScat
+	LOCALS = Desperation
+ELSE
+	LOCALS = Sound Sleep
+ENDIF
+
+CALL EasyImage(@"EV901","OMOGATARI/Menus/EV901.png")
+CUSTOMDRAWLINE ━
+DEBUG_Target = MASTER
+FormerStats:0 = BASE:MASTER:4
+FormerStats:1 = BASE:MASTER:Poo
+PRINTFORM -%LOCALS% (
+IF HasPiss
+	SETCOLOR PEECOLOR_C(MASTER)
+	PRINTFORM Wet 
+	RESETCOLOR
+ENDIF
+IF HasScat
+	SETCOLOR 0x6b4737
+	PRINTFORM Messy
+	RESETCOLOR
+ENDIF
+PRINTFORML )-
+CALL INFO_SHOW_NYOUI(MASTER)
+PRINTFORM %" - "%
+CALL INFO_SHOW_BENI(MASTER)
+PRINTFORML
+SETCOLOR C_GRAY
+CUSTOMDRAWLINE ━
+RESETCOLOR
+CALL Com_DiaperCheck(MASTER)
+SETCOLOR C_GRAY
+CUSTOMDRAWLINE ━
+RESETCOLOR
+PRINTFORML Bladder EPL: {EffectivePottyLevel(MASTER, 1, 1)} - Bowel EPL: {EffectivePottyLevel(MASTER, 2, 1)}
+FOR LOCAL:6,0,6
+CALLF PeeMe(MASTER,LOCAL:6)
+CALLF PooMe(MASTER,LOCAL:6)
+W = MAX(1000-BedWetThreshold(MASTER, 1, 1),0)
+X = MAX(1000-BedWetThreshold(MASTER, 1, 0),0)
+M = MAX(1000-BedWetThreshold(MASTER, 2, 1),0)
+N = MAX(1000-BedWetThreshold(MASTER, 2, 0),0)
+PRINTFORM Stage {LOCAL:6}: 
+PRINTFORM Wet: 
+PRINTFORM %DecimalPlace(W)%\% (%DecimalPlace(X)%\% wake up)
+PRINTFORM  - 
+PRINTFORM Mess: %DecimalPlace(M)%\% (%DecimalPlace(N)%\% wake up)
+PRINTL
+NEXT
+BASE:MASTER:4 = FormerStats:0
+BASE:MASTER:Poo = FormerStats:1
+SETCOLOR C_GRAY
+CUSTOMDRAWLINE ━
+RESETCOLOR
+PRINTFORML [  0] - Change Bladder State ({BASE:MASTER:尿意}/{MAXBASE:MASTER:尿意})
+PRINTFORML [  1] - Change Bowel State ({BASE:MASTER:Poo}/{MAXBASE:MASTER:Poo})
+PRINTFORML [  2] - Change your %PantiesType:MASTER:0%
+PRINTFORML [  3] - Set Lucid Dream
+PRINTFORML [  4] - Sleep event or wake up event: \@ TCVAR:MASTER:906 ? Sleep # Waking Up \@
+CUSTOMDRAWLINE ━
+PRINTFORML [999] - Start!
+INPUT
+SELECTCASE RESULT
+	CASE 0
+		CALL COM_DEBUG_VISUAL_PEEME
+		IF PeeBarStage(MASTER) >= 5
+			HasPiss = 1
+			UnwareWetting = 1
+		ELSEIF PeeBarStage(MASTER) >= 3
+			HasPiss = 1
+		ELSE
+			HasPiss = 0
+		ENDIF
+	CASE 1
+		CALL COM_DEBUG_VISUAL_POOME
+		IF PooBarStage(MASTER) >= 5
+			HasScat = 1
+			UnwareWetting = 1
+		ELSEIF PooBarStage(MASTER) >= 3
+			HasScat = 1
+		ELSE
+			HasScat = 0
+		ENDIF
+	CASE 2
+		CALL Com_Debug_PantsGet
+	CASE 3
+		DAILY_Lucid_Stats:14 = 1
+		CALL LucidDreamRecollection
+		IF RESULT == 0
+			DAILY_Lucid_Stats:3 = 0
+			LucidDream = 0
+		ELSEIF RESULT == -1
+			DAILY_Lucid_Stats:3 = 0
+			LucidDream = 1
+		ELSE
+			LucidDream = 1
+		ENDIF
+	CASE 4
+		TCVAR:MASTER:906 = !TCVAR:MASTER:906
+	CASE 999
+		BREAK
+ENDSELECT		
+LOOP 1
+[ENDIF]
+
+IF LucidDream && (HasPiss || HasScat) && (TCVAR:MASTER:906)
+	;lucid dreams are fucky as fuck
+	CALL LucidDream(D ? "" # "Pee",HasPiss,HasScat,DAILY_Lucid_Stats:3)
+	;CALL BEDWETTING(HasPiss,HasScat)
+	RETURN 1
+ELSEIF UnwareWetting
+	CALL BEDWETTING(HasPiss,HasScat)
+	RETURN 1
+ELSEIF (HasPiss || HasScat) && TCVAR:MASTER:906
+	CALL DAILY_EV_901(HasPiss,HasScat)
+	RETURN 1
+ELSE
+	RETURN -1
+ENDIF
+
+@DAILY_EV_901(HasPiss=0,HasScat=0)
+#DIM HasPiss
+#DIM HasScat
+#DIM CHARA
+#DIM 変動値
+#DIM 行動番号
+#DIM ReactionTime
+
+IF HasPiss && HasScat
+	ReactionTime = (2500 + (500*PeeHold:MASTER:0)) + (2500 + (500*PooHold:MASTER:0))
+ELSEIF HasScat
+	ReactionTime = 5000 + (1000*PooHold:MASTER:0)
+ELSE
+	ReactionTime = 5000 + (1000*PeeHold:MASTER:0)
+ENDIF
+
+CALL FISHER_YATES_SHAFFLE(CHARANUM)
+VARSET LOCAL
+FOR LOCAL, 1, CHARANUM
+	CHARA = SHAFFLE_ARRAY:LOCAL
+	;対象があなた
+	SIF CHARA == MASTER
+		CONTINUE
+	;でてこない
+	SIF CFLAG:CHARA:出禁
+		CONTINUE
+	;拠点キャラではない
+	SIF !CFLAG:CHARA:神社在住
+		CONTINUE
+	LOCAL:1 = CHARA
+	BREAK
+NEXT
+SIF LOCAL:1 <= 0
+	RETURN
+
+PRINTFORML You feel \@HasPiss?a twitch in your bladder#\@\@HasPiss && HasScat?%" "%and%" "%#\@\@HasScat?pain in your stomach#\@ while you're sleeping...
+SELECTCASE BedProtectSettings:4
+CASE 0
+	FORCEWAIT
+	PRINTFORML [  0] - Wake up and go to the bathroom.
+	PRINTFORML [  1] - Try to hold it in.
+	PRINTFORML [  2] - Time to water the plants.
+	SIF nOmutsu && !IsPadded(MASTER)
+		PRINTFORML [  3] - Use a diaper.
+	CALL YoujutsuMagicCanDo(MASTER,18,28)
+	SIF RESULT
+		PRINTFORML [4] - Aphedron!
+	PRINTFORML [999] - Let it out...
+	TINPUT ReactionTime, -1, 1
+	PRINTFORML
+CASE 1
+	RESULT = 0
+CASE 2
+	RESULT = 1
+CASE 3
+	RESULT = 999
+CASE 4
+	RESULT = 4
+ENDSELECT
+SELECTCASE RESULT
+	CASE 0
+		PRINTFORMW You jump out of your %BED_FUTON()% and rush to the toilet, holding yourself with your hands.
+		PRINTFORM You try to pull the door handle. 
+		IF !RAND:2
+			PRINTFORML It opens!
+			PRINTFORMW You barely have enough time to take off your %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))% and sit on the toilet before \@ HasPiss ? %FSYN("pee:n")% #\@\@ HasPiss && HasScat ?%" "%and%" "%#\@\@ HasScat ? %FSYN("poo:n")% #\@ rushes though you.			
+			IF RAND(100) <= 50			
+				PRINTFORMW The lid is closed!
+				PRINTFORML [  0] - LIFT IT
+				TINPUT 1000, -1, 1		
+				SELECTCASE RESULT					
+				CASE 0
+				PRINTFORMW With all your might, you lift up the seat lid and sit on it.
+				GOTO ToiletSuccess
+				CASEELSE
+					SIF HasPiss
+						CALL PEESOUNDS("loc")
+					SIF HasScat
+						CALL POOSOUNDS("loc")
+					PRINTFORMW You moan in relief, being surprised you made it.
+					PRINTFORMW Turns out you got the short end of the stick and start \@ HasPiss ? %FSYN("pee:ing")% #\@\@ HasPiss && HasScat ?%" "%and%" "%#\@\@ HasScat ? %FSYN("poo:ing")% #\@ on your %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))%...
+    				CALL WetFeelings(MASTER)
+					PRINTFORMW Your %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))% are absolutely \@ HasPiss ? %FSYN("wet")% #\@\@ HasPiss && HasScat ?%" "%and%" "%#\@\@ HasScat ? caked #\@ in your \@ HasPiss ? %FSYN("pee:n")% #\@\@ HasPiss && HasScat ?%" "%and%" "%#\@\@ HasScat ? %FSYN("poo:n")% #\@ as it drips off the toilet lid.
+					PRINTFORMW You put your hands on your face in despair...
+					SIF HasPiss
+						CALL PEESOUNDS("v")
+					SIF HasScat
+						CALL POOSOUNDS("v")			
+					$AlmostMadeIt
+					PRINTFORMW You almost made it...
+					PRINTFORMW Just, almost...			
+					SIF HasPiss
+						CALL PEESOUNDS("v")
+					SIF HasScat
+						CALL POOSOUNDS("v")	
+					PRINTFORMW So close... but so far...
+					IF HasPiss
+						CALL COLORMESSAGE(@"Times Peed Self ＋1",C_PINK,1)
+						CALL COLORMESSAGE(@"Urination Exp +{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+						CALL COLORMESSAGE(@"Pee Holding Exp +{15}",C_PINK,1)	
+						BASE:MASTER:尿意 = 0				
+						PeeHoldExp:MASTER:0 += 15
+						EXP:MASTER:放尿経験 += MAXBASE:MASTER:尿意/100
+	EXP:MASTER:GeneralPeeExp += MAXBASE:MASTER:尿意*3/2/100						
+						Qol_Info_Count_Array:MASTER:Qol_Count_Wetting += 1	
+						CALL QoL_Info_Write(MASTER, Qol_Dates_Wetting) 			
+					ENDIF
+					IF HasScat
+						CALL COLORMESSAGE(@"Times Pooed Self ＋1",C_PINK,1)		
+						CALL COLORMESSAGE(@"Defecation Exp ＋{MAXBASE:MASTER:Poo/100}",C_PINK,1)	
+						CALL COLORMESSAGE(@"Poo Holding Exp +{15}",C_PINK,1)		
+						BASE:MASTER:Poo = 0	
+						PooHoldExp:MASTER:0 -= 15
+						EXP:MASTER:PooExp += MAXBASE:MASTER:Poo/100				
+						Qol_Info_Count_Array:MASTER:Qol_Count_Messing += 1	
+	EXP:MASTER:GeneralPoopExp += MAXBASE:MASTER:Poo*3/2/100										
+						CALL QoL_Info_Write(MASTER, Qol_Dates_Messing)			
+					ENDIF																															
+					CALL KOJO_MESSAGE_SEND("DAILY", 901, LOCAL:1)	
+				ENDSELECT	
+			ELSE		
+				$ToiletSuccess		
+					SIF HasPiss
+						CALL PEESOUNDS("v")
+					SIF HasScat
+						CALL POOSOUNDS("v")	
+				PRINTFORMW You moan in relief, being surprised you made it.
+				IF !RAND:2
+					PRINTFORMW While you're \@ HasPiss ? %FSYN("pee:ing")% #\@\@ HasPiss && HasScat ?%" "%and%" "%#\@\@ HasScat ? %FSYN("poo:ing")% #\@, you hear %CALLNAME:(LOCAL:1)% banging on the door.
+					PRINTFORML [  0] - Stop what you're doing and open the door.
+					PRINTFORML [999] - 「How about no.」
+					TINPUT 5000, -1, 1
+					SELECTCASE RESULT
+					CASE 0
+					PRINTFORMW You stop \@ HasPiss ? peeing #\@\@ HasPiss && HasScat ?%" "%and%" "%#\@\@ HasScat ? pooing #\@ and immediately clean up as fast as you can, even forgetting to fush the toilet.					
+					PRINTFORMW %CALLNAME:(LOCAL:1)% gives a heart-felt thanks as she takes off her damp %CLOTHES_TR(PANTSNAME(EQUIP:(LOCAL:1):下半身下着２, LOCAL:1))% and starts %FSYN("pee:ing")% hard.
+					CALL PEESOUNDS("loc")
+					PRINTFORMW She moans in deep relief.
+					PRINTFORMW While you managed to empty out much of your \@ HasPiss ? bladder #\@\@ HasPiss && HasScat ?%" "%and%" "%#\@\@ HasScat ? bowels #\@, you can still feel some \@ HasPiss ? pee #\@\@ HasPiss && HasScat ?%" "%and%" "%#\@\@ HasScat ? poo #\@ in there.
+					PRINTFORMW You return to your room and sleep.				
+					IF HasPiss
+						CALL COLORMESSAGE(@"Urination Exp +{MAXBASE:MASTER:尿意*3/5/100}",C_PINK,1)
+						CALL COLORMESSAGE(@"Pee Holding Exp +{10}",C_PINK,1)		
+						BASE:MASTER:尿意 = MAXBASE:MASTER:尿意*2/5														
+						EXP:MASTER:放尿経験 += MAXBASE:MASTER:尿意*3/5/100	
+						PeeHoldExp:MASTER:0 += 10					
+					ENDIF
+					IF HasScat
+						CALL COLORMESSAGE(@"Defecation Exp ＋{MAXBASE:MASTER:Poo*3/5/100}",C_PINK,1)		
+						CALL COLORMESSAGE(@"Poo Holding Exp +{10}",C_PINK,1)			
+						BASE:MASTER:Poo = MAXBASE:MASTER:Poo*2/5
+						PooHoldExp:MASTER:0 += 10   	
+						EXP:MASTER:PooExp += MAXBASE:MASTER:Poo*3/5/100
+	EXP:MASTER:GeneralPoopExp += MAXBASE:MASTER:Poo*3/5/100						
+					ENDIF									
+					CASEELSE
+					IF !RAND:2
+						CALL OSHIKKO_OMORASHI(LOCAL:1)
+						PRINTFORMW You managed to empty your \@ HasPiss ? bladder #\@\@ HasPiss && HasScat ?%" "%and%" "%#\@\@ HasScat ? bowels #\@ fully, but at what cost...
+						PRINTFORMW You open the door only to see the humiliating state she is in.
+						PRINTFORMW You fall in pitty for her.					
+					ELSE
+						PRINTFORMW %CALLNAME:(LOCAL:1)% waits patiently as you empty yourself.
+						PRINTFORMW You clean up and open the door when you're done.
+						PRINTFORMW %CALLNAME:(LOCAL:1)% gives a heart-felt thanks as she takes off her damp %CLOTHES_TR(PANTSNAME(EQUIP:(LOCAL:1):下半身下着２, LOCAL:1))% and starts %FSYN("pee:ing")% hard.
+						CALL PEESOUNDS("loc")
+						PRINTFORMW She moans in deep relief.	
+						CALL COLORMESSAGE(@"%CALLNAME:(LOCAL:1)% Urination Exp +{MAXBASE:(LOCAL:1):尿意/100}",C_PINK,1)
+						CALL COLORMESSAGE(@"%CALLNAME:(LOCAL:1)% Pee Holding Exp +{10}",C_PINK,1)		
+						BASE:(LOCAL:1):尿意 = 0														
+						EXP:(LOCAL:1):放尿経験 += MAXBASE:(LOCAL:1):尿意/100	
+	EXP:(LOCAL:1):GeneralPeeExp += MAXBASE:(LOCAL:1):尿意/100						
+						PeeHoldExp:(LOCAL:1):0 += 10																								
+					ENDIF
+					$ToiletVoid					
+					PRINTFORMW You return to your room with a clear mind\@HasPiss && HasScat?, empty bladder, and a clean %FSYN("anus")%#\@\@HasPiss && !HasScat?%" "%and a empty bladder#\@\@!HasPiss && HasScat?%" "%and a clean %FSYN("anus")%#\@.
+					CALL COLORMESSAGE("Maximum TSP and energy have temporarily increased",C_YELLOW,2,1)
+					変動値 = MIN(MAXBASE:MASTER:気力 / 10, 300)
+					CALL BUFF_BASE(MASTER,BASE_気力,変動値)
+					変動値 = MIN(MAXBASE:MASTER:TSP / 2, 500)
+					CALL BUFF_BASE(MASTER,BASE_TSP,変動値)	
+					IF HasPiss
+						CALL COLORMESSAGE(@"Urination Exp +{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+						CALL COLORMESSAGE(@"Pee Holding Exp +{10}",C_PINK,1)		
+						BASE:MASTER:尿意 = 0														
+						EXP:MASTER:放尿経験 += MAXBASE:MASTER:尿意/100	
+	EXP:MASTER:GeneralPeeExp += MAXBASE:MASTER:尿意/100						
+						PeeHoldExp:MASTER:0 += 10					
+					ENDIF
+					IF HasScat
+						CALL COLORMESSAGE(@"Defecation Exp ＋{MAXBASE:MASTER:Poo/100}",C_PINK,1)		
+						CALL COLORMESSAGE(@"Poo Holding Exp +{10}",C_PINK,1)			
+						BASE:MASTER:Poo = 0										
+						PooHoldExp:MASTER:0 += 10   	
+						EXP:MASTER:PooExp += MAXBASE:MASTER:Poo/100			
+	EXP:MASTER:GeneralPoopExp += MAXBASE:MASTER:Poo/100						
+					ENDIF												
+					ENDSELECT
+				ELSE
+					GOTO ToiletVoid			
+				ENDIF
+			ENDIF			 		
+		ELSE
+			PRINTFORML It's locked.
+			$LockedDoor
+			PRINTFORML [  0] - Bang on the door.
+			PRINTFORML [  1] - Go outside.
+			SIF !HasScat
+				PRINTFORML [  2] - Use a bottle.
+			PRINTFORML [  3] - Get to the bath.
+			PRINTFORML [999] - \@HasPiss?Pee#\@\@HasPiss && HasScat?%" "%and%" "%#\@\@HasScat?Poo#\@ yourself.
+			TINPUT ReactionTime, -1, 1
+			SELECTCASE RESULT
+			CASE 0
+				PRINTFORMW You bang on the toilet door and scream your demands.
+				PRINTFORMW You're doing a complete pee dance, as all of your focus is on keeping it together.
+				IF !RAND:2
+					PRINTFORMW %CALLNAME:(LOCAL:1)% stops what they were doing in the toilet and opens up the door.
+					PRINTFORMW She sees you in such a sorry state and sees if you'll make it.
+					IF RAND(100) <= 70 + (15*PeeHold:MASTER:0)
+						SIF HasPiss
+							CALL PEESOUNDS("s")
+						SIF HasScat
+							CALL POOSOUNDS("f")	
+						PRINTFORMW You \@ HasPiss ? %FSYN("leak")% out a bit of %FSYN("pee:n")% #\@\@ HasPiss && HasScat ?%" "%and%" "%#\@\@ HasScat ? fart #\@ in your %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))% but manage to pull them down and sit on the toilet.
+						SIF HasPiss
+							CALL PEESOUNDS("loc")
+						SIF HasScat
+							CALL POOSOUNDS("loc")	
+						PRINTFORMW You hear a drumming noise of an intensity you never thought was possible.						
+						PRINTFORMW You moan and have an orgasm in relief, being surprised you made it.
+						PRINTFORMW ... Though you forgot to close the door.
+						PRINTFORMW You blush, but %CALLNAME:(LOCAL:1)% closes the door for you.
+						PRINTFORMW When you're done \@ HasPiss ? %FSYN("pee:ing")% #\@\@ HasPiss && HasScat ?%" "%and%" "%#\@\@ HasScat ? %FSYN("poo:ing")% #\@, you return to your room and change out for another pair of %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))%, before falling back to sleep.
+						CALL COLORMESSAGE("Maximum TSP and energy have temporarily increased",C_YELLOW,2,1)
+						IF HasPiss
+							CALL COLORMESSAGE(@"Urination Exp +{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+							CALL COLORMESSAGE(@"Pee Holding Exp +{30}",C_PINK,1)		
+							BASE:MASTER:尿意 = 0														
+							EXP:MASTER:放尿経験 += MAXBASE:MASTER:尿意/100	
+	EXP:MASTER:GeneralPeeExp += MAXBASE:MASTER:尿意/100							
+							PeeHoldExp:MASTER:0 += 30					
+						ENDIF
+						IF HasScat
+							CALL COLORMESSAGE(@"Defecation Exp ＋{MAXBASE:MASTER:Poo/100}",C_PINK,1)		
+							CALL COLORMESSAGE(@"Poo Holding Exp +{30}",C_PINK,1)			
+							BASE:MASTER:Poo = 0										
+							PooHoldExp:MASTER:0 += 30   	
+							EXP:MASTER:PooExp += MAXBASE:MASTER:Poo/100			
+	EXP:MASTER:GeneralPoopExp += MAXBASE:MASTER:Poo/100							
+						ENDIF	
+						変動値 = MIN(MAXBASE:MASTER:気力 / 10, 300)
+						CALL BUFF_BASE(MASTER,BASE_気力,変動値)
+						変動値 = MIN(MAXBASE:MASTER:TSP / 2, 500)
+						CALL BUFF_BASE(MASTER,BASE_TSP,変動値)				
+						EXP:MASTER:絶頂経験 ++
+					ELSE
+						PRINTFORMW Unfortunately...
+						PRINTFORMW Just seeing the toilet makes you stop and release your \@ HasPiss ? bladder #\@\@ HasPiss && HasScat ?%" "%and%" "%#\@\@ HasScat ? bowel #\@ muscles...
+						SIF HasPiss
+							CALL PEESOUNDS("loc")
+						SIF HasScat
+							CALL POOSOUNDS("loc")
+						PRINTFORMW You cup your hands on your %FSYN("crotch")%...
+						PRINTFORMW ... The flow doesn't stop...
+   						CALL WetFeelings(MASTER)
+						SIF HasPiss
+							PRINTFORMW Your %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))% are absolutely soaked in your %FSYN("pee:n")% as you form a big puddle on your feet.
+						SIF HasScat
+							PRINTFORMW Your %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))% are soiled beyond belief as you %FSYN("poo")% out everything into it.
+						SIF HasPiss
+							PRINTFORMW Your bladder stops pushing pee out.
+						SIF HasScat
+							PRINTFORMW Your bowels stop moving.
+						PRINTFORMW You feel a sigh of relief, followed by deep embarrassment when you look back and see %CALLNAME:(LOCAL:1)%.
+						SIF HasPiss
+							CALL PEESOUNDS("v")
+						SIF HasScat
+							CALL POOSOUNDS("v")
+						PRINTFORMW You start \@ HasPiss ? %FSYN("pee:ing")% #\@\@ HasPiss && HasScat ?%" "%and%" "%#\@\@ HasScat ? %FSYN("poo:ing")% #\@ yourself again, with not even enough time in between to try getting to the toilet right in front of you.
+						PRINTFORMW Your face goes scarlet as you think you wouldn't be in this situation if you woke up 5 minutes earlier.
+						GOTO AlmostMadeIt					
+						CALL KOJO_MESSAGE_SEND("DAILY", 901, LOCAL:1)		
+					ENDIF
+				ELSE
+					PRINTFORMW %CALLNAME:(LOCAL:1)% won't open the door, they're currently busy with something...
+					IF RAND(100) > 50 + (10*PeeHold:MASTER:0)		
+					PRINTFORMW You lose all hope of making it...
+					IF HasScat
+					CALL UNCHI_OMORASHI(MASTER,HasPiss)
+					ELSE
+					CALL OSHIKKO_OMORASHI(MASTER)
+					ENDIF
+					PRINTFORMW %CALLNAME:(LOCAL:1)% opens the door only to see the humiliating state you are in.
+					PRINTFORMW She falls in pity for you.
+					IF HasPiss
+						CALL COLORMESSAGE(@"Times Peed Self ＋1",C_PINK,1)
+						CALL COLORMESSAGE(@"Urination Exp +{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+						CALL COLORMESSAGE(@"Pee Holding Exp +{10}",C_PINK,1)							
+						PeeHoldExp:MASTER:0 += 10    						
+					ENDIF
+					IF HasScat
+						CALL COLORMESSAGE(@"Times Pooed Self ＋1",C_PINK,1)		
+						CALL COLORMESSAGE(@"Defecation Exp ＋{MAXBASE:MASTER:Poo/100}",C_PINK,1)		
+						CALL COLORMESSAGE(@"Poo Holding Exp +{10}",C_PINK,1)											
+						PooHoldExp:MASTER:0 += 10   								
+					ENDIF								
+					CALL KOJO_MESSAGE_SEND("DAILY", 901, LOCAL:1)	
+					ELSE
+					PRINTFORMW You could try banging on the door again or...
+					GOTO LockedDoor
+					ENDIF			
+				ENDIF
+			CASE 1
+				$TouchGrass
+				PRINTFORMW You go outside to \@ HasPiss ? pee #\@\@ HasPiss && HasScat ?%" "%and%" "%#\@\@ HasScat ? poo #\@ into one of your garden plots.
+				IF HasPiss
+					CALL PEESOUNDS("s")						
+					PRINTFORMW Your bladder starts leaking profusely.
+					CALL PEESOUNDS("s")
+					PRINTFORMW Your bladder desperately calls for relief...					
+					CALL PEESOUNDS("hs")	
+				ENDIF
+				IF HasScat
+					CALL POOSOUNDS("s")						
+					PRINTFORMW Your stomach starts aching profusely.
+					CALL POOSOUNDS("hs")
+					PRINTFORMW Your intestines desperately calls for relief...					
+					CALL POOSOUNDS("hf")	
+				ENDIF			
+					PRINTFORMW You need to find a place where you can relieve yourself in, or else...					
+				IF RAND(100) <= 10
+				PRINTFORMW It's raining!
+				PRINTFORMW The sound of water and the droplets hitting you are enough to bring you over the edge...
+			IF HasScat
+			CALL UNCHI_OMORASHI(MASTER,HasPiss)
+			ELSE
+			CALL OSHIKKO_OMORASHI(MASTER)
+			ENDIF
+				IF HasPiss
+					CALL COLORMESSAGE(@"Times Peed Self ＋1",C_PINK,1)
+					CALL COLORMESSAGE(@"Urination Exp +{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+					CALL COLORMESSAGE(@"Pee Holding Exp +{10}",C_PINK,1)							
+					PeeHoldExp:MASTER:0 += 10    						
+				ENDIF
+				IF HasScat
+					CALL COLORMESSAGE(@"Times Pooed Self ＋1",C_PINK,1)		
+					CALL COLORMESSAGE(@"Defecation Exp ＋{MAXBASE:MASTER:Poo/100}",C_PINK,1)		
+					CALL COLORMESSAGE(@"Poo Holding Exp +{10}",C_PINK,1)											
+					PooHoldExp:MASTER:0 += 10   								
+				ENDIF						
+				CALL KOJO_MESSAGE_SEND("DAILY", 901, LOCAL:1)				
+				ELSEIF RAND(100) <= 40 + (8*PeeHold:MASTER:0)		
+					CALL DesperateGardening				
+					PRINTFORMW When you're done \@ HasPiss ? %FSYN("pee:ing")% #\@\@ HasPiss && HasScat ?%" "%and%" "%#\@\@ HasScat ? %FSYN("poo:ing")% #\@, you return to your room and change out for another pair of %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))%, before falling back to sleep.
+					CALL COLORMESSAGE("Maximum TSP and energy have temporarily increased",C_YELLOW,2,1)
+					変動値 = MIN(MAXBASE:MASTER:気力 / 10, 300)
+					CALL BUFF_BASE(MASTER,BASE_気力,変動値)
+					変動値 = MIN(MAXBASE:MASTER:TSP / 2, 500)
+					CALL BUFF_BASE(MASTER,BASE_TSP,変動値)		
+					IF HasPiss
+						CALL COLORMESSAGE(@"Urination Exp +{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+						CALL COLORMESSAGE(@"Pee Holding Exp +{30}",C_PINK,1)								
+						EXP:MASTER:放尿経験 += MAXBASE:MASTER:尿意/100
+						EXP:MASTER:GeneralPeeExp += MAXBASE:MASTER:尿意/100	
+						PeeHoldExp:MASTER:0 += 30					
+					ENDIF
+					IF HasScat
+						CALL COLORMESSAGE(@"Defecation Exp ＋{MAXBASE:MASTER:Poo/100}",C_PINK,1)		
+						CALL COLORMESSAGE(@"Poo Holding Exp +{30}",C_PINK,1)											
+						PooHoldExp:MASTER:0 += 30   	
+						EXP:MASTER:PooExp += MAXBASE:MASTER:Poo/100			
+						EXP:MASTER:GeneralPoopExp += MAXBASE:MASTER:Poo/100
+					ENDIF						
+				ELSE
+					PRINTFORMW You feel a sharp pain from your \@HasPiss?bladder#\@\@HasPiss && HasScat ?%" "%and%" "%#\@\@HasScat?anal spincher#\@...	
+					IF HasScat
+					CALL UNCHI_OMORASHI(MASTER,HasPiss)
+					ELSE
+					CALL OSHIKKO_OMORASHI(MASTER)
+					ENDIF
+					IF HasPiss
+						CALL COLORMESSAGE(@"Times Peed Self ＋1",C_PINK,1)
+						CALL COLORMESSAGE(@"Urination Exp +{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+						CALL COLORMESSAGE(@"Pee Holding Exp +{15}",C_PINK,1)							
+						PeeHoldExp:MASTER:0 += 15    						
+					ENDIF
+					IF HasScat
+						CALL COLORMESSAGE(@"Times Pooed Self ＋1",C_PINK,1)		
+						CALL COLORMESSAGE(@"Defecation Exp ＋{MAXBASE:MASTER:Poo/100}",C_PINK,1)		
+						CALL COLORMESSAGE(@"Poo Holding Exp +{15}",C_PINK,1)											
+						PooHoldExp:MASTER:0 += 15   								
+					ENDIF						
+					CALL KOJO_MESSAGE_SEND("DAILY", 901, LOCAL:1)	
+				ENDIF
+			CASE 2
+				PRINTFORMW You desperately try to find a bottle
+				CALL PEESOUNDS("s")						
+				PRINTFORMW Your bladder starts leaking profusely.
+				CALL PEESOUNDS("s")
+				PRINTFORMW Your bladder desperately calls for relief...					
+				CALL PEESOUNDS("hs")	
+				PRINTFORMW You need to find something you can pee in, or else...				
+				IF RAND(100) <= 50
+					PRINTFORMW You find a nearby bottle 
+					PRINTFORMW You take off your %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))% and hold the bottle up to your %FSYN("crotch")%. 
+					CALL PEESOUNDS("loc")					
+					PRINTFORMW You moan and have an orgasm in relief, being surprised you made it.					
+					PRINTFORMW When you're done %FSYN("pee:ing")%, you return to your room and change out for another pair of %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))%, before storing your bonus and falling back to sleep.
+					CALL COLORMESSAGE("Maximum TSP and energy have temporarily increased",C_YELLOW,2,1)
+					変動値 = MIN(MAXBASE:MASTER:気力 / 10, 300)
+					CALL BUFF_BASE(MASTER,BASE_気力,変動値)
+					変動値 = MIN(MAXBASE:MASTER:TSP / 2, 500)
+					CALL BUFF_BASE(MASTER,BASE_TSP,変動値)			
+					IF HasPiss
+						CALL COLORMESSAGE(@"Urination Exp +{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+						CALL COLORMESSAGE(@"Pee Holding Exp +{20}",C_PINK,1)					
+						BASE:MASTER:尿意 = 0								
+						EXP:MASTER:放尿経験 += MAXBASE:MASTER:尿意/100	
+						PeeHoldExp:MASTER:0 += 20     							
+					ENDIF						
+					EXP:MASTER:絶頂経験 ++					
+				ELSE
+					PRINTFORMW You can't find a bottle!
+					PRINTFORMW It's too late to do anything else but to give up...			
+					IF HasScat
+					CALL UNCHI_OMORASHI(MASTER,HasPiss)
+					ELSE
+					CALL OSHIKKO_OMORASHI(MASTER)
+					ENDIF
+					IF HasPiss
+						CALL COLORMESSAGE(@"Times Peed Self ＋1",C_PINK,1)
+						CALL COLORMESSAGE(@"Urination Exp +{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+						CALL COLORMESSAGE(@"Pee Holding Exp +{10}",C_PINK,1)							
+						PeeHoldExp:MASTER:0 += 10    						
+					ENDIF					
+					CALL KOJO_MESSAGE_SEND("DAILY", 901, LOCAL:1)		
+				ENDIF
+			CASE 3
+				IF HasPiss
+					CALL PEESOUNDS("s")						
+					PRINTFORMW Your bladder starts leaking profusely.
+					CALL PEESOUNDS("s")
+					PRINTFORMW Your bladder desperately calls for relief...					
+					CALL PEESOUNDS("hs")	
+				ENDIF
+				IF HasScat
+					CALL POOSOUNDS("s")						
+					PRINTFORMW Your stomach starts aching profusely.
+					CALL POOSOUNDS("hs")
+					PRINTFORMW Your intestines desperately calls for relief...					
+					CALL POOSOUNDS("hf")	
+				ENDIF			   
+				PRINTFORMW The cold floor tiles push you to your limit...
+				PRINTFORMW You need to find a place where you can relieve yourself in, or else...		
+				IF RAND(100) <= 30 + (6*PeeHold:MASTER:0)
+					PRINTFORMW You NEED to find a place to pee, NOW!!
+					PRINTFORML [  0] - BATH.
+					PRINTFORML [999] - FUCK IT...
+					TINPUT (ReactionTime*2/5), -1, 1
+					SELECTCASE RESULT			
+					CASE 0	
+						PRINTFORMW You waddle to the bathtub
+						PRINTFORMW Any wrong step and you'll lose everything...
+						PRINTFORMW You try to get on the bathtub
+						IF RAND(100) <= 20 + (4*PeeHold:MASTER:0)			
+							PRINTFORMW By some miracle you manage to shift your %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))% when you start %FSYN("pee:ing")%.
+							SIF HasPiss
+								CALL PEESOUNDS("loc")
+							SIF HasScat
+								CALL POOSOUNDS("loc")				
+							PRINTFORMW You moan and have an orgasm in relief, being surprised you made it.			
+							PRINTFORMW Your golden shower is falling down the drain...						
+							PRINTFORMW When you're done \@ HasPiss ? %FSYN("pee:ing")% #\@\@ HasPiss && HasScat ?%" "%and%" "%#\@\@ HasScat ? %FSYN("poo:ing")% #\@, you return to your room and change out for another pair of %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))%, before falling back to sleep.
+							CALL COLORMESSAGE("Maximum TSP and energy have temporarily increased",C_YELLOW,2,1)
+							IF HasPiss
+								CALL COLORMESSAGE(@"Urination Exp +{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+								CALL COLORMESSAGE(@"Pee Holding Exp +{50}",C_PINK,1)								
+								EXP:MASTER:放尿経験 += MAXBASE:MASTER:尿意/100	
+								PeeHoldExp:MASTER:0 += 50					
+							ENDIF
+							IF HasScat
+								CALL COLORMESSAGE(@"Defecation Exp ＋{MAXBASE:MASTER:Poo/100}",C_PINK,1)		
+								CALL COLORMESSAGE(@"Poo Holding Exp +{50}",C_PINK,1)											
+								PooHoldExp:MASTER:0 += 50   	
+								EXP:MASTER:PooExp += MAXBASE:MASTER:Poo/100			
+							ENDIF								
+							変動値 = MIN(MAXBASE:MASTER:気力 / 10, 300)
+							CALL BUFF_BASE(MASTER,BASE_気力,変動値)
+							変動値 = MIN(MAXBASE:MASTER:TSP / 2, 500)
+							CALL BUFF_BASE(MASTER,BASE_TSP,変動値)				
+							EXP:MASTER:絶頂経験 ++
+						ELSEIF RAND(100) <= 50								
+							$FallDown
+							PRINTFORMW You slip and fall on your ass...
+							PRINTFORMW Hurdz...						
+							CALL PEESOUNDS("loc") 
+							PRINTFORMW There's no way you're stopping this...
+    						CALL WetFeelings(MASTER)
+							PRINTFORMW %CAPITALIZE(FSYN("pee:n"))% goes through your %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))% as it forms a beautiful arc into another just as marvelous pool.
+							GOTO AlmostMadeIt	
+						ELSE
+							PRINTFORMW In a natural spot you always pee in, your bladder breaks before you have a chance of shifting your %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))%.
+							IF HasPiss
+							CALL OSHIKKO_OMORASHI(MASTER,HasScat)
+							ELSE
+							CALL UNCHI_OMORASHI(MASTER)
+							ENDIF
+							PRINTFORMW The %FSYN("pee:n")% that doesn't get absorbed by your %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))% is falling down the drain...
+							PRINTFORMW Much like your sanity...		
+							PRINTFORMW You almost made it...
+							PRINTFORMW Just, almost...			
+							CALL PEESOUNDS("v")	
+							PRINTFORMW So close... but so far...	
+							IF HasPiss
+								CALL COLORMESSAGE(@"Times Peed Self ＋1",C_PINK,1)
+								CALL COLORMESSAGE(@"Urination Exp +{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+								CALL COLORMESSAGE(@"Pee Holding Exp +{15}",C_PINK,1)							
+								PeeHoldExp:MASTER:0 += 15    						
+							ENDIF
+							IF HasScat
+								CALL COLORMESSAGE(@"Times Pooed Self ＋1",C_PINK,1)		
+								CALL COLORMESSAGE(@"Defecation Exp ＋{MAXBASE:MASTER:Poo/100}",C_PINK,1)		
+								CALL COLORMESSAGE(@"Poo Holding Exp +{15}",C_PINK,1)											
+								PooHoldExp:MASTER:0 += 15   								
+							ENDIF	
+							CALL KOJO_MESSAGE_SEND("DAILY", 901, LOCAL:1)											
+						ENDIF				
+					CASEELSE													
+					PRINTFORMW You shift your damp %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))% as you squat and fall into bliss.
+					SIF HasPiss
+						CALL PEESOUNDS("loc")
+					SIF HasScat
+						CALL POOSOUNDS("loc")		
+					PRINTFORMW You moan and have an orgasm in relief, being surprised you made it.			
+					PRINTFORMW Though you left a mess on the floor, you leave it for someone else to clean up.	
+					PRINTFORMW When you're done \@ HasPiss ? %FSYN("pee:ing")% #\@\@ HasPiss && HasScat ?%" "%and%" "%#\@\@ HasScat ? %FSYN("poo:ing")% #\@, you return to your room and change out for another pair of %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))%, before falling back to sleep.
+					CALL COLORMESSAGE("Maximum TSP and energy have temporarily increased",C_YELLOW,2,1)					
+					IF HasPiss
+						CALL COLORMESSAGE(@"Urination Exp +{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+						CALL COLORMESSAGE(@"Pee Holding Exp +{30}",C_PINK,1)					
+						BASE:MASTER:尿意 = 0								
+						EXP:MASTER:放尿経験 += MAXBASE:MASTER:尿意/100	
+						EXP:MASTER:GeneralPeeExp += MAXBASE:MASTER:尿意/100	
+						PeeHoldExp:MASTER:0 += 30     							
+					ENDIF
+					IF HasScat
+						CALL COLORMESSAGE(@"Defecation Exp ＋{MAXBASE:MASTER:Poo/100}",C_PINK,1)	
+						CALL COLORMESSAGE(@"Poo Holding Exp +{30}",C_PINK,1)			
+						BASE:MASTER:Poo = 0					
+						EXP:MASTER:PooExp += MAXBASE:MASTER:Poo/100	
+						EXP:MASTER:GeneralPoopExp += MAXBASE:MASTER:Poo/100					
+						PooHoldExp:MASTER:0 += 30     										
+					ENDIF							
+					変動値 = MIN(MAXBASE:MASTER:気力 / 10, 300)
+					CALL BUFF_BASE(MASTER,BASE_気力,変動値)
+					変動値 = MIN(MAXBASE:MASTER:TSP / 2, 500)
+					CALL BUFF_BASE(MASTER,BASE_TSP,変動値)				
+					EXP:MASTER:絶頂経験 ++
+					ENDSELECT									
+				ELSE
+				PRINTFORMW You hear the sound of running water...
+				PRINTFORMW Your bladder %FSYN("pee")%s in sync...							
+			IF HasScat
+			CALL UNCHI_OMORASHI(MASTER,HasPiss)
+			ELSE
+			CALL OSHIKKO_OMORASHI(MASTER)
+			ENDIF
+				IF HasPiss
+					CALL COLORMESSAGE(@"Times Peed Self ＋1",C_PINK,1)
+					CALL COLORMESSAGE(@"Urination Exp +{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+					CALL COLORMESSAGE(@"Pee Holding Exp +{15}",C_PINK,1)							
+					PeeHoldExp:MASTER:0 += 15    						
+				ENDIF
+				IF HasScat
+					CALL COLORMESSAGE(@"Times Pooed Self ＋1",C_PINK,1)		
+					CALL COLORMESSAGE(@"Defecation Exp ＋{MAXBASE:MASTER:Poo/100}",C_PINK,1)		
+					CALL COLORMESSAGE(@"Poo Holding Exp +{15}",C_PINK,1)											
+					PooHoldExp:MASTER:0 += 15   								
+				ENDIF					
+				CALL KOJO_MESSAGE_SEND("DAILY", 901, LOCAL:1)		
+				ENDIF
+; this is dumb as fuck so i removed it.
+			CASEELSE
+			IF HasScat
+			CALL UNCHI_OMORASHI(MASTER,HasPiss)
+			ELSE
+			CALL OSHIKKO_OMORASHI(MASTER)
+			ENDIF
+				PRINTFORMW %CALLNAME:(LOCAL:1)% opens the door only to see the humiliating state you are in.
+				PRINTFORMW She falls in pity for you.
+				IF HasPiss
+					CALL COLORMESSAGE(@"Times Peed Self ＋1",C_PINK,1)
+					CALL COLORMESSAGE(@"Urination Exp +{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+					CALL COLORMESSAGE(@"Pee Holding Exp +{15}",C_PINK,1)							
+					PeeHoldExp:MASTER:0 += 15    						
+				ENDIF
+				IF HasScat
+					CALL COLORMESSAGE(@"Times Pooed Self ＋1",C_PINK,1)		
+					CALL COLORMESSAGE(@"Defecation Exp ＋{MAXBASE:MASTER:Poo/100}",C_PINK,1)		
+					CALL COLORMESSAGE(@"Poo Holding Exp +{15}",C_PINK,1)											
+					PooHoldExp:MASTER:0 += 15   								
+				ENDIF						
+				CALL KOJO_MESSAGE_SEND("DAILY", 901, LOCAL:1)			
+			ENDSELECT
+		ENDIF
+	CASE 1
+		PRINTFORMW You try to hold it in...
+		IF RAND(100) <= 25 + (5*PeeHold:MASTER:0)
+			PRINTFORMW You managed to successfully hold it in.
+			PRINTFORMW Though all you did was to delay this into tomorrow's problem...
+		ELSE
+			PRINTFORMW Unfortunately...
+			PRINTFORMW You could only last for a few hours before your bladder gave up...		
+			CALL BEDWETTING(HasPiss,HasScat)
+		ENDIF
+	CASE 2
+		GOTO TouchGrass
+	CASE 3
+		VARSET LOCAL
+			LOCAL:1 += MAXBASE:MASTER:尿意
+			LOCAL:2 += MAXBASE:MASTER:Poo
+		PRINTFORMW You decide to rely on a diaper as the place your pee will go.
+		IF DiapeCharges:MASTER:0 >= LOCAL:1 && DiapePooCharges:MASTER:0 >= LOCAL:2
+			PRINTFORMW You wake up, and immediately answer the call nature gives you...
+		IF HasScat
+		CALL UNCHI_OMORASHI(MASTER,HasPiss)
+		ELSE
+		CALL OSHIKKO_OMORASHI(MASTER)
+		ENDIF
+		ELSE
+			PRINTFORMW You don't think your %PeeProtectType(MASTER)% is enough however..
+			PRINTFORMW You hastily take off your %PeeProtectType(MASTER)%, grabbed a crinkly diaper, opened it, and placed the padded side against your %FSYN("crotch")%.
+			IF HasPiss
+				CALL PEESOUNDS("loc")
+				BASE:MASTER:尿意 = 0
+				EXP:MASTER:放尿経験 += MAXBASE:MASTER:尿意/100			
+				EXP:MASTER:GeneralPeeExp += MAXBASE:MASTER:尿意/100		
+			ENDIF	
+			IF HasScat
+				CALL POOSOUNDS("loc")	
+				BASE:MASTER:Poo = 0
+				EXP:MASTER:PooExp += MAXBASE:MASTER:Poo/100			
+				EXP:MASTER:GeneralPoopExp += MAXBASE:MASTER:Poo/100				
+			ENDIF
+			PRINTFORMW You were in the middle of putting it on as \@ HasPiss ? %FSYN("pee:n")% #\@\@ HasPiss && HasScat ?%" "%and%" "%#\@\@ HasScat ? %FSYN("poo:n")% #\@ started to come out.	
+			PRINTFORMW Pleasure takes over your body as you \@ HasPiss ? pee #\@\@ HasPiss && HasScat ?%" "%and%" "%#\@\@ HasScat ? poo #\@ out everything like a baby.			
+		ENDIF
+			PRINTFORMW You keep the diaper on as it would be a waste to dispose of it now.	
+			PRINTFORMW You sleep soundly as your protection works as intended.
+			PRINTFORMW Being able to relieve yourself anywhere, at any time, is certainly addicting...
+			CFLAG:MASTER:指定パンツ = 102
+			CALL SET_PANTS(MASTER)
+			CALL SET_PANTS(MASTER,"今日のパジャマ")
+			CFLAG:MASTER:指定パンツ = 0		
+			CALLF MessUndies(MASTER, "liquid", 0, LOCAL:1)
+		CALL COLORMESSAGE("Maximum TSP and energy have temporarily increased",C_YELLOW,2,1)
+		IF HasPiss
+			CALL COLORMESSAGE(@"Times Peed Self ＋1",C_PINK,1)
+			CALL COLORMESSAGE(@"Urination Exp +{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+			CALL COLORMESSAGE(@"Pee Holding Exp -{MAXBASE:MASTER:尿意/100}",C_PINK,1)	
+			BASE:MASTER:尿意 = 0
+			PeeHoldExp:MASTER:0 -= MAXBASE:MASTER:尿意/100
+			Qol_Info_Count_Array:MASTER:Qol_Count_Wetting += 1
+			CALL QoL_Info_Write(MASTER, Qol_Dates_Wetting)
+		ENDIF
+		IF HasScat
+			CALL COLORMESSAGE(@"Times Pooed Self ＋1",C_PINK,1)		
+			CALL COLORMESSAGE(@"Defecation Exp ＋{MAXBASE:MASTER:Poo/100}",C_PINK,1)	
+			CALL COLORMESSAGE(@"Poo Holding Exp -{MAXBASE:MASTER:Poo/100}",C_PINK,1)		
+			BASE:MASTER:Poo = 0	
+			PooHoldExp:MASTER:0 -= MAXBASE:MASTER:Poo/100				
+			Qol_Info_Count_Array:MASTER:Qol_Count_Messing += 1					
+			CALL QoL_Info_Write(MASTER, Qol_Dates_Messing)			
+		ENDIF		
+		変動値 = MIN(MAXBASE:MASTER:気力 / 10, 300)
+		CALL BUFF_BASE(MASTER,BASE_気力,変動値)
+		変動値 = MIN(MAXBASE:MASTER:TSP / 2, 500)
+		CALL BUFF_BASE(MASTER,BASE_TSP,変動値)		
+	CASE 4
+		CALL PROCESS_YOUJUTSU_COMMAND(MASTER,MASTER,18,28)
+		IF RESULT != 9530
+			PRINTFORMW You feel much better now.
+			PRINTFORMW Another day where magic saves the day.
+		ELSE
+			PRINTFORMW Oh no... it's not working!
+			PRINTFORMW And it's too late to do anything... it's coming out!
+			PRINTL
+			CALL BEDWETTING(HasPiss,HasScat,1,1)
+		ENDIF
+	CASEELSE
+		CALL BEDWETTING(HasPiss,HasScat,1,1)
+ENDSELECT
+
+@BEDWETTING(HasPiss=0,HasScat=0,IsAware=0,nBypass=0)
+#DIM HasPiss
+#DIM HasScat
+#DIM IsAware
+#DIM nBypass
+#DIM 変動値
+VARSET LOCAL
+
+SIF HasPiss && !GETBIT(nPee,1)
+	HasPiss = 0
+SIF HasScat && !GETBIT(nScat,2)
+	HasScat = 0
+
+;no piss or poo
+SIF !HasPiss && !HasScat
+	RETURN
+
+IF !IsAware && !nBypass
+	CALL BEDWETTING_ALARM(HasPiss,HasScat)
+	IF RESULT == 1
+		RETURN 1
+	ELSEIF RESULT == 2
+		IsAware = 1
+	ENDIF
+ELSEIF IsAware
+	CALL INTENTIONAL_ACCIDENT(MASTER,HasPiss, HasScat, 0, 1)
+ENDIF
+
+;diary
+VARSET LOCALS
+
+;piss
+IF HasPiss
+	LOCALS += "Bladder、"
+	LOCALS:1 += @"Peed {BASE:MASTER:4}ml、"
+ENDIF
+IF HasScat
+	LOCALS += "Bowel、"
+	LOCALS:1 += @"Pooped {BASE:MASTER:17}g、"
+ENDIF
+
+IF IsAware
+BladderDiary += @"%時刻表示(TIME)%: Nighttime Accident (%LIST_IN_STRING(LOCALS:1)%)\n"
+ELSE
+BladderDiary += @"%時刻表示(TIME)%: Unaware Nighttime Accident (%LIST_IN_STRING(LOCALS:1)%)\n"
+ENDIF
+
+
+IF HasPiss
+	CALL PEESOUNDS("loc")
+        IF IsPadded(MASTER)
+            PLAYSOUND "peestuffs/pee/おむつおねしょ1.m4a"
+        ELSE
+            PLAYSOUND "peestuffs/pee/おねしょ1.m4a"
+        ENDIF	
+	IF TCVAR:MASTER:906
+		BASE:MASTER:尿意 = MAXBASE:MASTER:尿意*3/2
+	ENDIF
+
+	CALLF MessUndies(MASTER, "liquid", 0, BASE:MASTER:尿意, 1)
+    CALLF ChangeEndurance(MASTER,"peehold",-BASE:MASTER:尿意/100)
+	CALL COLORMESSAGE(@"Times Peed Self ＋1",C_PINK,1)		
+	CALL EVENT_Get_EXP(MASTER, 13, BASE:MASTER:尿意/100)
+	CALL EVENT_Get_EXP(MASTER, 88, BASE:MASTER:尿意/100)			
+    Qol_Info_Count_Array:MASTER:Qol_Count_Pee += BASE:MASTER:尿意	
+	BASE:MASTER:尿意 = 0
+	Qol_Info_Count_Array:MASTER:Qol_Count_Wetting += 1	
+    ;potty chart
+    SETBIT PottyChartNightStatus:MASTER:(DAY % 7), 0
+    PottyChartAccident:MASTER:(DAY % 7) ++
+ENDIF	
+IF HasScat
+	CALL POOSOUNDS("loc")
+	IF PantiesType:MASTER:0 != "Naked"
+		PLAYSOUND "peestuffs/poo/messy2.wav"
+	ELSE
+		PLAYSOUND "peestuffs/poo/messy1.wav"
+	ENDIF	
+	IF TCVAR:MASTER:906
+		BASE:MASTER:Poo = MAXBASE:MASTER:Poo*3/2
+	ENDIF
+	CALLF MessUndies(MASTER, "solid", 0, BASE:MASTER:Poo, 1)
+    CALLF ChangeEndurance(MASTER,"poohold",-BASE:MASTER:Poo/100)
+	CALL COLORMESSAGE(@"Times Pooped Self ＋1",C_PINK,1)
+	CALL EVENT_Get_EXP(MASTER, 48, BASE:MASTER:Poo/100)
+	CALL EVENT_Get_EXP(MASTER, 89, BASE:MASTER:Poo/100)	
+    Qol_Info_Count_Array:MASTER:Qol_Count_Poo += BASE:MASTER:Poo
+	BASE:MASTER:Poo = 0	
+	Qol_Info_Count_Array:MASTER:Qol_Count_Messing += 1	
+    ;potty chart
+    SETBIT PottyChartNightStatus:MASTER:(DAY % 7), 1
+    PottyChartAccident:MASTER:(DAY % 7) ++
+ENDIF	
+IF IsPadded(MASTER)
+	IF !IsAware
+	PRINTFORMW Your %PeeProtectType(MASTER)% fills up with your nightly %PeeAndPoo(HasPiss,HasScat, "pee", "poo")%.
+	IF (ABL:MASTER:PeeAddict >= 5 && HasPiss) || (ABL:MASTER:PooAddict >= 5 && HasScat)
+	PRINTFORMW You have a orgasm unconsciously as the feeling of \@ HasPiss ? %FSYN("pee:ing")% #\@\@ HasPiss && HasScat ?%" "%and%" "%#\@\@ HasScat ? %FSYN("poo:ing")% #\@ yourself overwhelms you.
+	EXP:MASTER:絶頂経験 ++
+	ENDIF
+	ENDIF
+
+	IF HasPiss
+		Qol_Info_Count_Array:MASTER:Qol_Count_DiapeWetting += 1	
+		Qol_Info_Count_Array:MASTER:Qol_Count_DiapeBedWetting += 1
+	ENDIF
+	IF HasScat
+		Qol_Info_Count_Array:MASTER:Qol_Count_DiapeMessing += 1	
+		Qol_Info_Count_Array:MASTER:Qol_Count_DiapeBedMessing += 1
+	ENDIF
+	IF DiapeCharges:MASTER:0 >= 0 && DiapePooCharges:MASTER:0 >= 0
+		IF TCVAR:MASTER:906
+		PRINTFORMW You sleep soundly as your protection works as intended.	
+		CALL COLORMESSAGE("Maximum TSP and energy have temporarily increased",C_YELLOW,2,1)
+		変動値 = MIN(MAXBASE:MASTER:気力 / 10, 300)
+		CALL BUFF_BASE(MASTER,BASE_気力,変動値)
+		変動値 = MIN(MAXBASE:MASTER:TSP / 2, 500)
+		CALL BUFF_BASE(MASTER,BASE_TSP,変動値)	
+		ELSE
+			[SKIPSTART]
+			PRINTFORMW You wake up refreshed with a dry bed and a \@ HasPiss ? soggy #\@\@ HasPiss && HasScat ? %" and "% #\@\@ HasScat ? messy #\@ %PeeProtectType(MASTER,1)%. 
+			PRINTFORML
+			SELECTCASE ABL:MASTER:DiaperAttraction
+				CASE 0
+				PRINTFORMW At least the bed is dry, but at what cost?...
+				PRINTFORMW If anyone finds out, you'll be mortified...
+				CASE 1
+				PRINTFORMW Okay, the bed is dry, but shouldn't it be the kids wearing %PLNOUN(PeeProtectType(MASTER,1), 2)%?		
+				CASE 2
+				PRINTFORMW I guess it's better than wetting the bed... 
+				PRINTFORMW But you wish you hadn't wet yourself to begin with.
+				CASE 3
+				PRINTFORMW You used your %PeeProtectType(MASTER,1)% in your sleep...
+				PRINTFORMW You give a sigh to reward your preparation...
+				CASEELSE
+				IF GETBIT(TALENT:MASTER:OmoGuardian, 1)
+				PRINTFORMW What a nice surprise! Your %PeeProtectType(MASTER,1)% is \@ HasPiss ? soaked #\@\@ HasPiss && HasScat ? %" and "% #\@\@ HasScat ? full #\@!
+				ELSE
+				PRINTFORML It's a nice feeling... 
+				ENDIF			
+			ENDSELECT
+			[SKIPEND]
+		ENDIF
+	ELSE
+
+		SIF (HasScat && GETBIT(nScat,5)) || hasPiss
+		PRINTFORMW Your %PeeProtectType(MASTER,1)% can't hold all of the %PeeAndPoo(HasPiss,HasScat && GETBIT(nScat,5))% as it starts %FSYN("leak:ing")% on the %BED_FUTON()%...
+		PRINTFORML
+		SIF nBypass == 2
+			RETURN
+		CALL BEDWETTING_AFTER(HasPiss,HasScat)
+	ENDIF
+ELSE
+	IF !IsAware
+	PRINTFORMW In your sleep, you unconsciously \@ HasPiss ? %FSYN("pee")% #\@\@ HasPiss && HasScat ?%" "%and%" "%#\@\@ HasScat ? %FSYN("poo")% #\@ \@ EQUIP:MASTER:下半身下着２ ? your %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))% # %PARSE("yourself")% \@ and make a considerable stain on the %BED_FUTON()%.
+		IF (ABL:MASTER:PeeAddict >= 5 && HasPiss) || (ABL:MASTER:PooAddict >= 5 && HasScat)
+		PRINTFORMW You have a orgasm unconsciously as the feeling of \@ HasPiss ? %FSYN("pee:ing")% #\@\@ HasPiss && HasScat ?%" "%and%" "%#\@\@ HasScat ? %FSYN("poo:ing")% #\@ yourself overwhelms you.
+		EXP:MASTER:絶頂経験 ++
+		ENDIF
+	ENDIF
+	SIF nBypass == 2
+		RETURN
+	PRINTFORML
+	CALL BEDWETTING_AFTER(HasPiss,HasScat)
+ENDIF
+
+@BEDWETTING_AFTER(HasPiss=0,HasScat=0)
+#DIM HasPiss
+#DIM HasScat
+#DIM CHARA
+#DIM PeeAmount
+#DIM PooAmount
+
+PeeAmount = DiapeCharges:MASTER:0
+PooAmount = DiapePooCharges:MASTER:0
+
+IF BedProtectSettings:1
+	IF ITEM:(BedWetterPadID:(BedProtectSettings:1)) && CFLAG:MASTER:300 == CFLAG:MASTER:311
+		;play mat holds 650ml of pee and poop
+		CALLF BED_PAD_TYPES(BedWetterPadType:(BedProtectSettings:1))
+		PeeAmount += UNDERWEAR_PAD_TYPES_LIQUID
+		PooAmount += UNDERWEAR_PAD_TYPES_SOLID
+	ENDIF
+ENDIF
+IF SaveAchievementClaimed("wetBedPee5000")
+	GOTO BedWettingAdd
+ENDIF
+
+PRINTFORML %PARSE("You wake")% up \@ TCVAR:MASTER:906 ? %"in the middle of the night "% # \@from a pleasurable feeling.
+PRINTFORMW %PARSE("Your",1)% crotch feels rather warm...
+PRINTFORMW %PARSE("You",)% smell the scent of %PeeAndPoo(HasPiss,HasScat, "urine", "fecal matter")%...
+PRINTFORML !!!! %PARSE("You",1)% %PeeAndPoo(HasPiss,HasScat, "wet", "messed")% \@ CFLAG:MASTER:300 == CFLAG:MASTER:311 ? the %BED_FUTON()% # during your sleep\@!
+;PRINTFORMW %PARSE("You")% deeply %PARSE("regret")% not going to the bathroom beforehand...
+PRINTL 
+;qol custom code. the stats are already increased from the code above.
+$BedWettingAdd
+IF HasPiss
+	CALL COLORMESSAGE(@"Times Peed Self ＋1",C_PINK,1)
+	CALL COLORMESSAGE(@"Bedwettings ＋1",C_PINK,1)
+	CALL QoL_Info_Write(MASTER, Qol_Dates_Wetting)
+	Qol_Info_Count_Array:MASTER:Qol_Count_BedWetting += 1
+	SIF (PeeAmount < 0) && CFLAG:MASTER:300 == CFLAG:MASTER:311
+	WetBed += ABS(PeeAmount)
+	LastAccident:MASTER:0 = DAY
+	SIF !TCVAR:MASTER:906
+		SoiledSelf:MASTER:0 = 1
+	CALL CharacterSinned(MASTER,"Incontinence",@"wet the bed", -3,-1)
+ENDIF
+IF HasScat
+	CALL COLORMESSAGE(@"Times Pooed Self ＋1",C_PINK,1)
+	IF GETBIT(nScat,5)
+		CALL COLORMESSAGE(@"Bedmessings ＋1",C_PINK,1)
+		CALL QoL_Info_Write(MASTER, Qol_Dates_Messing)
+		Qol_Info_Count_Array:MASTER:Qol_Count_BedMessing += 1
+		SIF (PooAmount < 0) && CFLAG:MASTER:300 == CFLAG:MASTER:311
+		MessyBed += ABS(PooAmount)
+	ENDIF
+	LastPooAccident:MASTER:0 = DAY
+	SIF !TCVAR:MASTER:906
+		SoiledSelf:MASTER:1 = 1	
+	CALL CharacterSinned(MASTER,"Incontinence",@"shat the bed", -3,-1)
+ENDIF
+
+IF SaveAchievementClaimed("wetBedPee5000")
+	PRINTFORMW It feels warm and pleasurable...
+	PRINTFORMW You close your eyes and fall asleep in the warm mess you have created.
+	IF TCVAR:MASTER:906
+		CALL COLORMESSAGE("Maximum TSP and energy have temporarily increased",C_YELLOW,2,1)
+		LOCAL = MIN(MAXBASE:MASTER:気力 / 10, 300)
+		CALL BUFF_BASE(MASTER,BASE_気力,LOCAL)
+		LOCAL = MIN(MAXBASE:MASTER:TSP / 2, 500)
+		CALL BUFF_BASE(MASTER,BASE_TSP,LOCAL)
+	ENDIF
+	RETURN
+ENDIF
+
+IF RAND:10 == 0 && ITEM:ミラダの石 == 0
+	PRINTFORML %BREAKENG(@"Because of the miraculous combination of temperature, wind direction, humidity, air pressure, day of the week, lunar days, planetary alignment etc. something impossible has occurred.")%
+	FONTBOLD
+	PRINTFORM %PARSE("Your")% \@HasPiss?urine#\@\@HasPiss && HasScat?%" "%and%" "%#\@\@HasScat?fecal matter#\@ crystallizes, and forms a 
+	CALL COLORMESSAGE("Stone of Mirada that Monopolizes Lust", C_D_PINK, 0, 1)
+	PRINTFORMW !
+	FONTREGULAR
+	CALL GET_ITEM("ミラダの石", 1, 1)
+	CALLF PANTY_REWORK_CHANGE(MASTER,EQUIP:MASTER:下半身下着２)
+	RETURN 1
+ELSEIF BedProtectSettings:1 && PeeAmount > 0 && PooAmount > 0 && CFLAG:MASTER:300 == CFLAG:MASTER:311
+	PRINTFORML However... the %BedWetterPadSyn:(BedProtectSettings:1)% managed to catch your %PeeAndPoo(HasPiss,HasScat && GETBIT(nScat,5), "pee", "poop")%.
+	PRINTFORML You wipe yourself off with a wet wipe before changing yourself and grabbing a new %BedWetterPadSyn:(BedProtectSettings:1)%.
+	SIF !UNDERWEAR_PAD_TYPES_REUSEABLE
+		CALL LOST_ITEM(ITEMNAME:(BedWetterPadID:(BedProtectSettings:1)), 1, 2)
+	CALLF PANTY_REWORK_CHANGE(MASTER,EQUIP:MASTER:下半身下着２)
+	RETURN 1
+	;PRINTFORMW You still have to take a bath however...
+ENDIF
+CALL FISHER_YATES_SHAFFLE(CHARANUM)
+VARSET LOCAL
+FOR LOCAL, 1, CHARANUM
+	CHARA = SHAFFLE_ARRAY:LOCAL
+	;対象があなた
+	SIF CHARA == MASTER
+		CONTINUE
+	;でてこない
+	SIF CFLAG:CHARA:出禁
+		CONTINUE
+	;拠点キャラではない
+	SIF !CFLAG:CHARA:神社在住
+		CONTINUE
+	;同じエリア内に住んでいない
+	; SIF MAP_AREASELECT(MAIN_MAP, CFLAG:MASTER:初期位置) != MAP_AREASELECT(MAIN_MAP, CFLAG:CHARA:初期位置)
+	; 	CONTINUE
+	LOCAL:1 = CHARA
+	BREAK
+NEXT
+SIF LOCAL:1 <= 0
+	RETURN
+TRYCCALLFORM DEFAULT_OWNER_{MAIN_MAP}
+	LOCAL:2 = 拠点_大家
+CATCH
+ENDCATCH
+
+SELECTCASE MAX(Qol_Info_Count_Array:MASTER:Qol_Count_BedWetting,Qol_Info_Count_Array:MASTER:Qol_Count_BedMessing)
+	CASE 1
+	PRINTFORMW Oops, how did that happen?
+	PRINTFORML You're all wet, and the %BED_FUTON()%, too!
+	PRINTFORMW You better keep that a secret. If \@ LOCAL:2 == MASTER ? anyone else # %CALLNAME:(LOCAL:2)% \@ finds out, it will be hell...
+	CASE 2
+	PRINTFORMW Again...
+	PRINTFORMW You're surprised that it happened twice...
+	CASE 3
+	PRINTFORMW First time's a fluke, second time's a coincidence, third time is a habit...
+	CASE 4
+	PRINTFORMW It happened again, You can't believe it! 
+	PRINTFORMW You better clean the sheets and take a bath before \@ LOCAL:2 == MASTER ? anyone # %CALLNAME:(LOCAL:2)% \@ notices.
+	CASE 5
+	PRINTFORMW Wet %BED_FUTON()%? 
+	PRINTFORMW Again?? 
+	PRINTFORMW That's more laundry and another bath in the middle of the night.
+	PRINTFORMW You hope you won't get caught...	
+	CASE 6
+	PRINTFORMW Another wet %BED_FUTON()%? 
+	PRINTFORMW And this time you didn't drink that much.
+	PRINTFORMW You're so embarrassed...	
+	CASE IS < 10
+	PRINTFORMW The thought of wearing diapers to %BED_FUTON()% crosses your mind
+	PRINTFORMW Diapers?!? 
+	PRINTFORMW You don't need diapers! That's not fair!
+	CASE IS < 20
+	PRINTFORMW You start to think that diapers are your only way out of waking up to wet %BED_FUTON()%s...
+	PRINTFORMW You can't be serious...
+	PRINTFORMW Diapers!
+	FONTBOLD
+	PRINTFORMW DIAPERS???
+	FONTREGULAR 
+	PRINTFORMW You're not a baby anymore...
+	CASE IS < 30
+	PRINTFORMW You feel like a baby... 
+	PRINTFORMW You'll gonna have to start wearing diapers again...
+	CASEELSE
+	IF GETBIT(TALENT:MASTER:OmoGuardian, 0)
+	PRINTFORMW What a nice surprise! Your %BED_FUTON()% is soaking wet!
+	ELSE
+	PRINTFORML It's a nice feeling... 
+	PRINTFORMW But you should change the sheets before someone finds out.	
+	ENDIF
+ENDSELECT
+
+
+; IF !TCVAR:MASTER:906
+; ELSE
+CALL KOJO_MESSAGE_SEND("DAILY", 901, LOCAL:1)
+;ENDIF
+
+@DAILY_MESSAGE_901(ARG, ARG:1, ARG:2, ARG:3, ARGS:1, ARGS:2, ARGS:3)
+#DIM 変動値
+PRINTFORML
+IF ITEM:WashingMachine
+	PRINTFORMW You get out of %BED_FUTON()% and remove your soiled clothes and %PeeProtectType(MASTER,2)% and place them on a pile.
+	SIF SoiledDiaper(MASTER,2)
+		PRINTFORMW Using multiple wet wipes, you scrape out all %SCAT(MASTER)% from your crotch and throw the used wipes away.
+	PRINTFORMW Then, you remove the blankets and fouled sheets from the %BED_FUTON()% and place the sheets on the pile.
+	PRINTFORMW Opening the washing machine, you place the soiled clothes and sheets into the machine, add detergent, and turn it on.
+	PRINTFORMW After drying the wet %BED_FUTON()% with a towel, you replace the linens with clean ones and put the blankets where they were.
+	IF BedProtectSettings:1
+		CALLF BED_PAD_TYPES(BedWetterPadType:(BedProtectSettings:1))
+		PRINTFORML After changing the sheets, you place a dry %BedWetterPadSyn:(BedProtectSettings:1)% on the %BED_FUTON()% around where your crotch would be.
+	ENDIF
+	PRINTFORMW Changing into a new %PeeProtectType(MASTER,2)%, you head back to sleep.
+	CALLF PANTY_REWORK_CHANGE(MASTER,EQUIP:MASTER:6)
+	SIF BedProtectSettings:1 && !UNDERWEAR_PAD_TYPES_REUSEABLE
+		CALL LOST_ITEM(ITEMNAME:(BedWetterPadID:(BedProtectSettings:1)), 1, 2)
+	RETURN 1
+ENDIF
+
+IF nPantyPunish && CharaDiaperChecker(ARG)
+	RESETCOLOR
+	PRINTFORMW As you try to head to the bath, %CALLNAME:ARG% intervenes and asks what happened...
+	IF SoiledDiaper(MASTER,2)
+		PRINTFORMDW But the smell of %FSYN("poo:n")% immediately outs you.
+		GOTO BedwettingCheckStart
+	ELSE
+	{
+	CALL ASK_M(
+		@"Tell the truth",1,
+		@"Act ignorant", 1,
+		@"Lie", 1
+	)
+	}
+	ENDIF
+	SELECTCASE RESULT
+	CASE 0
+		PRINTFORMDW You swallow your pride and tell %HIM_HER(ARG)% that you %PeeAndPoo(SoiledDiaper(MASTER,1),SoiledDiaper(MASTER,2),"wet","pooped")% your bed
+		$BedwettingCheckStart
+		CALL RandomUnderwearCheck(ARG,1,MASTER)
+		PRINTFORMDW Having changed into a new %PeeProtectType(MASTER,2)%, you hold %CALLNAME:ARG%'s hand as %HE_SHE(ARG)% leads you to your room.
+		IF RAND(100) <= BEDWETTER_FIND_OUT_CHANCE()
+		PRINTFORMDW When you and %CALLNAME:ARG% enter the room, the smell as well as the stained %BED_FUTON()% indicate that you had an accident.
+		TRYCALL SET_REP(ARG,6,1,1)
+		PRINTFORMDW %CALLNAME:ARG% displaces the pillows and blankets from your %BED_FUTON()% into a neat pile before taking out the sheets.
+		PRINTFORMDW %HE_SHE(ARG,1)% then uses a tower and vinegar solution to clean up the stains and dry the %BED_FUTON()%.
+		PRINTFORMDW %HE_SHE(ARG,1)% leaves the room to grab new clean sheets for your %BED_FUTON()%.
+		PRINTFORMDW When %HE_SHE(ARG)% comes back, %HE_SHE(ARG)% replaces the sheets, blankets, and pillows back to where they were before.
+		WetBed = 0
+		MessyBed = 0
+		ELSE
+		PRINTFORMDW When you and %CALLNAME:ARG% enter the room, %HE_SHE(ARG)%'s surprised that the %BED_FUTON()% is actually clean. 
+		ENDIF
+		PRINTFORMDW %CALLNAME:ARG% tells you a good night, before leaving the room.
+		PRINTFORMDW The lost time from having to clean up and the baggage from soiling \@ EQUIP:MASTER:下半身下着２? %PARSE("your",1)% %PeeProtectType(MASTER,1)% # %PARSE("yourself")% \@ is certainly one that'll ruin %PARSE("your")% sleep...
+		RETURN 1
+	CASE 1
+		PRINTFORMDW You deny that you had an accident.
+		PRINTFORMDW Unconvinced, %CALLNAME:ARG% decides to check your undies, before discovering that you had %PeeAndPoo(SoiledDiaper(MASTER,1),SoiledDiaper(MASTER,2),"peed","pooped")% your pants.
+		GOTO BedwettingCheckStart
+	CASE 2
+		TARGET = ARG
+		PRINTFORMDW You lie to %CALLNAME:ARG% and say it was some rain that splashed. 
+		IF RAND(100) < GET_SUCCESS_RATE()
+		PRINTFORMDW %HE_SHE(ARG,1)% falls for the lie, walking away like nothing happened.
+
+		ELSE
+		PRINTFORMDW Not convinced by your lie, %CALLNAME:ARG% says that's not water splashed on you.
+		GOTO BedwettingCheckStart
+		ENDIF
+	ENDSELECT
+ENDIF
+
+
+IF DiapeCharges:MASTER:0 > 0 && DiapePooCharges:MASTER:0 > 0
+PRINTFORMDW Despite you not being able to make it, you still leave out a sigh of relief.
+PRINTFORMDW Everything that you tried to hold in is now inside your %PeeProtectType(MASTER)%...
+PRINTFORMDW And that makes you happy.
+PRINTFORML
+PRINTFORMDL You dispose of the used %PeeProtectType(MASTER,1)% before you return to your room, clean up the best you can, and change out for another %PeeProtectType(MASTER,1)%.
+PRINTFORMDW You fall asleep relieved, as you imagine what would've happened if you weren't padded.
+CALL COLORMESSAGE("Maximum TSP and energy have temporarily increased",C_YELLOW,2,1)
+変動値 = MIN(MAXBASE:MASTER:気力 / 10, 300)
+CALL BUFF_BASE(MASTER,BASE_気力,変動値)
+変動値 = MIN(MAXBASE:MASTER:TSP / 2, 500)
+CALL BUFF_BASE(MASTER,BASE_TSP,変動値)	
+CALLF PANTY_REWORK_CHANGE(MASTER,EQUIP:MASTER:下半身下着２)
+ELSE
+PRINTFORMDL Despite this being just another accident, you feel like you've could've done better...
+PRINTFORMDL You expelled everything into your %PeeProtectType(MASTER,1)%. You'll definitely need a bath after this...
+PRINTFORMDW You shamefully walk to the bath as drops of your waste fall to the ground...
+PRINTFORML
+PRINTFORMDL You turn on the water as you take off your ruined %PeeProtectType(MASTER,1)% and put it to the side.
+PRINTFORMDW You close your eyes and relax in the bath as you think about what could've gone better at this moment...
+PRINTFORML
+IF EQUIP:MASTER:下半身下着２
+PRINTFORMDL As %PARSE("you are")% taking your bath, %CALLNAME:ARG% stealthily takes %PARSE("your",1)% soiled %PeeProtectType(MASTER,1)%!
+PRINTFORMDW You only notice this when you try to \@ IsPadded(MASTER) ? throw out # wash \@ your %PeeProtectType(MASTER,2)%, but it's nowhere to be seen...
+PRINTFORMDW %HE_SHE(ARG,1)% furiously masturbates while smelling the excretions that went into it...
+JUEL:ARG:11 += 5000
+EXP:ARG:自慰経験 += ABL:ARG:自慰中毒 * 2 + 1 
+CALL COLORMESSAGE(@"%CALLNAME:ARG% Desire Gems +{5000}",C_PINK,1)
+CALL COLORMESSAGE(@"%CALLNAME:ARG% Masturbation Exp +{(ABL:ARG:自慰中毒 * 2 + 1)}",C_PINK,1)
+PRINTFORML
+ENDIF
+PRINTFORMDW The lost time from having to clean up and the baggage from soiling \@ EQUIP:MASTER:下半身下着２? %PARSE("your",1)% %PeeProtectType(MASTER,1)% # %PARSE("yourself")% \@ is certainly one that'll ruin %PARSE("your")% sleep...
+PRINTL
+CALLF PANTY_REWORK_CHANGE(MASTER,EQUIP:MASTER:下半身下着２)
+CALL SET_REP(ARG,6,,1)
+ENDIF
+RETURN 1
+
+
+;Bedwetting alarms (requires the bedwetting alarm)
+;Automatically triggers when you start leaking
+@BEDWETTING_ALARM(HasPiss,HasScat)
+#DIM HasPiss
+#DIM HasScat
+#DIM BA_REASON
+SIF HasPiss
+SETBIT BA_REASON,0
+SIF GETBIT(NAS_BEDWETALARM,0) && HasScat
+SETBIT BA_REASON,1
+
+
+SIF !ITEM:BedwettingAlarm
+	RETURN
+SIF BedProtectSettings:3 == 1
+	RETURN
+SIF !BA_REASON && !NAS_BedWetAlarm_Timer
+	RETURN
+SIF !EQUIP:MASTER:下半身下着２
+	RETURN
+SIF nOmutsu >= 4
+	RETURN
+
+IF GETBIT(BA_REASON,1)
+PRINTFORMW Your body attempted to poop into your %PeeProtectType(MASTER)%, causing the alarm to go off.
+ELSEIF GETBIT(BA_REASON,0)
+PRINTFORMW You leak some pee into your %PeeProtectType(MASTER)%, casuing the alarm to go off.
+ELSE
+PRINTFORMW The alarm goes off on it's own due to it's {NAS_BedWetAlarm_Timer} minute timer.
+ENDIF
+
+SELECTCASE RAND:4
+CASE 0
+SIF GETBIT(NAS_BEDWETALARM,2)
+	GOTO WAKE
+PRINTFORML You sleep through the alarm...
+PRINTFORMW
+RETURN
+CASEELSE
+	$WAKE
+	SELECTCASE MAX(PeeBarStage(MASTER),PooBarStage(MASTER))
+	CASE IS >= 7
+	PRINTFORMW But it's too late...
+	PRINTFORMW Despite being awake, you can't stop the flow as you %PeeAndPoo(HasPiss,HasScat,"flood","fill")% your %PeeProtectType(MASTER)% while in bed...
+	RETURN 2
+	CASE IS >= 5
+	PRINTFORML You wake up with a bursting %PeeAndPoo(HasPiss,HasScat,"bladder","colon")%, about to %PeeAndPoo(HasPiss,HasScat,FSYN("pee"),FSYN("poo"))% yourself if you take one wrong step.
+	PRINTFORMW
+	IF TCVAR:MASTER:906
+		CALL DAILY_EV_901(HasPiss,HasScat)
+	ELSE
+		CALL MasterGoToilet(HasPiss,HasScat)
+	ENDIF
+	RETURN 1
+	CASE IS < 2
+	PRINTFORML Waking up, you realize you don't need to go.
+	PRINTFORMW You dismiss the alarm and go back to sleep.
+	RETURN 1
+	CASEELSE
+	PRINTFORML Waking up, you realize your %PeeAndPoo(HasPiss,HasScat,"bladder","colon")% wasn't that full.
+	PRINTFORML You head to the toilet, showing little sign of desperation.
+	PRINTFORMW
+	CALL MasterGoToilet(HasPiss,HasScat)
+	RETURN 1
+	ENDSELECT
+
+ENDSELECT
+
+
+;Continent MCs won't wet the bed but instead get up
+@BEDWETTING_GETUP
+#DIM DYNAMIC HasPiss
+#DIM DYNAMIC HasScat
+#DIM DYNAMIC nChance
+#DIM DYNAMIC AutoUseDip
+#DIM DYNAMIC BiggestDesp
+
+
+SIF PeeBarStage(MASTER) >= 3
+	HasPiss = 1
+SIF PooBarStage(MASTER) >= 3
+	HasScat = 1
+
+nChance = GETUP_FORMULA(MASTER)
+
+SIF !nChance
+	RETURN
+
+AutoUseDip = nOmutsu >= 4 || (GET_INT(MASTER, "Religion", TALENT:MASTER:Religion, "Incontinence") >= 1 && IsPadded(MASTER)) || (GET_INT(MASTER, "Religion", TALENT:MASTER:Religion, "Incontinence") >= 2)
+BiggestDesp = MAX(HasPiss ? PeeBarStage(MASTER) # 0, HasScat ? PooBarStage(MASTER) # 0)
+
+IF (AutoUseDip || BiggestDesp >= 7) && InTrain == 1
+	IF HasPiss
+		EV901_BED_ACCIDENT:0 += BASE:MASTER:4
+		BASE:MASTER:4 = 0
+	ENDIF
+	IF HasScat
+		EV901_BED_ACCIDENT:1 += BASE:MASTER:Poo
+		BASE:MASTER:Poo = 0
+	ENDIF
+	RETURN 0
+ENDIF
+
+[IF_DEBUG]
+SETCOLOR C_GRAY
+PRINTFORML Chance of getting up: {nChance}\%
+PRINTFORML Bladder State: {PeeBarStage(MASTER)} ({BASE:MASTER:尿意}/{MAXBASE:MASTER:尿意})
+PRINTFORML Bowel State: {PooBarStage(MASTER)} ({BASE:MASTER:Poo}/{MAXBASE:MASTER:Poo})
+RESETCOLOR
+[ENDIF]
+
+IF RAND(100) <= nChance
+	PRINTFORML You feel \@HasPiss?a twitch in your bladder#\@\@HasPiss && HasScat?%" "%and%" "%#\@\@HasScat?pain in your stomach#\@ while you're sleeping...
+	IF AutoUseDip 
+		PRINTFORMW You begin to use your %PeeProtectType(MASTER,2)%.
+		CALL BEDWETTING(HasPiss,HasScat, 1)
+	ELSE
+		SELECTCASE BiggestDesp
+		CASE IS >= 7
+		PRINTFORMW But it's too late...
+		PRINTFORMW Despite being awake, you can't stop the flow as you %PeeAndPoo(HasPiss,HasScat,"flood","fill")% your %PeeProtectType(MASTER)% while in bed...
+		CALL BEDWETTING(HasPiss,HasScat, 1)
+		RETURN 2
+		CASE IS >= 5
+		PRINTFORML You wake up with a bursting bladder, about to %FSYN("pee")% yourself if you take one wrong step.
+		PRINTFORMW
+		CALL MasterGoToilet(HasPiss,HasScat)
+		RETURN 1	
+		CASEELSE
+		PRINTFORML You head to the toilet, showing little sign of desperation.
+		PRINTFORMW
+		CALL MasterGoToilet(HasPiss,HasScat)
+		RETURN 1
+		ENDSELECT
+	ENDIF
+	IF SoiledDiaper(MASTER)
+		PRINTFORMW As you think your %PeeProtectType(MASTER,2)% is soiled, you change your %PeeProtectType(MASTER,2)%.
+		CALLF PANTY_REWORK_CHANGE(MASTER,EQUIP:MASTER:6)
+	ENDIF
+ENDIF
+
+@GETUP_FORMULA(ARG)
+#FUNCTION
+#DIM DYNAMIC HasPiss
+#DIM DYNAMIC HasScat
+#DIM DYNAMIC nChance
+
+nChance = 40
+
+
+SIF PeeBarStage(ARG) >= 3
+	HasPiss = 1
+SIF PooBarStage(ARG) >= 3
+	HasScat = 1
+
+SIF !HasPiss && !HasScat
+	RETURNF 0
+
+SIF HasPiss
+nChance = nChance - -(PeeHold:ARG:2*15)
+SIF HasScat
+nChance = nChance - -(PooHold:ARG:2*15)	
+
+RETURNF nChance
+
+
+;Threshold in 0 to 1000 to wet the bed
+@BedWetThreshold(ARG, nExcrete = 1, nUnaware = 1)
+#FUNCTION
+#DIM nExcrete
+#DIM nUnaware
+#DIM nThresh
+
+SELECTCASE nExcrete
+CASE 1
+	SIF PeeHold:ARG:0 >= 6
+		RETURNF 100000
+	; SELECTCASE EffectivePottyLevel(MASTER,1, 1)
+	; CASE IS >= 0 
+	; 	nThresh = 1667 + (200*PeeHold:ARG:2)
+	; CASE -1
+	; 	nThresh = 1000
+	; CASE -2
+	; 	nThresh = 500
+	; CASE -3
+	; 	nThresh = 250
+	; CASE -4
+	; 	nThresh = 100
+	; CASE IS <= -5
+	; 	nThresh = 0
+	; ENDSELECT
+	nThresh = 1667 + (EffectivePottyLevel(ARG,1, 1) > 0 ? 200*EffectivePottyLevel(ARG,1, 1) # 400*EffectivePottyLevel(ARG,1, 1))
+
+	SELECTCASE PeeBarStage(ARG)
+	CASE IS >= 5
+		;wetting
+		TIMES nThresh, 0.05
+	CASE 4
+		TIMES nThresh, 0.2
+	CASE 3
+		TIMES nThresh, 0.5
+	CASE 2
+		TIMES nThresh, 0.75
+	CASE 1
+		TIMES nThresh, 0.9
+	ENDSELECT
+CASE 2
+	SIF PooHold:ARG:0 >= 6
+		RETURNF 100000
+	; SELECTCASE EffectivePottyLevel(MASTER,2, 1)
+	; CASE IS >= 0 
+	; 	nThresh = 1667 + (200*PooHold:ARG:2)
+	; CASE -1
+	; 	nThresh = 1000
+	; CASE -2
+	; 	nThresh = 500
+	; CASE -3
+	; 	nThresh = 250
+	; CASE -4
+	; 	nThresh = 100
+	; CASE IS <= -5
+	; 	nThresh = 0
+	; ENDSELECT
+
+	nThresh = 1667 + (EffectivePottyLevel(ARG,2, 1) > 0 ? 200*EffectivePottyLevel(ARG,2, 1) # 400*EffectivePottyLevel(ARG,2, 1))
+
+	SELECTCASE PooBarStage(ARG)
+	CASE IS >= 5
+		;messing
+		TIMES nThresh, 0.05
+	CASE 4
+		TIMES nThresh, 0.2
+	CASE 3
+		TIMES nThresh, 0.5
+	CASE 2
+		TIMES nThresh, 0.75
+	CASE 1
+		TIMES nThresh, 0.9
+	ENDSELECT
+ENDSELECT
+
+SIF !nUnaware
+	TIMES nThresh, 0.6
+RETURNF MAX(nThresh,0)
+
+@BedWetDreamAddict(ARG, HasPiss, HasScat)
+#FUNCTION
+#DIM HasPiss
+#DIM HasScat
+#DIM nThresh
+#DIM nAdding
+nThresh = 1600
+IF HasPiss
+	nAdding = (200*ABL:ARG:PeeAddict)
+	SELECTCASE PeeBarStage(ARG)
+	CASE IS >= 5
+		;wetting
+		TIMES nAdding, 20
+	CASE 4
+		TIMES nAdding, 5
+	CASE 3
+		TIMES nAdding, 2
+	CASE 2
+		TIMES nAdding, 1.25
+	CASE 1
+		TIMES nAdding, 1.1
+	ENDSELECT
+	nThresh -= nAdding
+ENDIF
+
+IF HasScat
+	nAdding = (200*ABL:ARG:PooAddict)
+
+	SELECTCASE PooBarStage(ARG)
+	CASE IS >= 5
+		;messing
+		TIMES nAdding, 20
+	CASE 4
+		TIMES nAdding, 5
+	CASE 3
+		TIMES nAdding, 2
+	CASE 2
+		TIMES nAdding, 1.25
+	CASE 1
+		TIMES nAdding, 1.1
+	ENDSELECT
+	nThresh -= nAdding
+ENDIF
+RETURNF MAX(nThresh,0)

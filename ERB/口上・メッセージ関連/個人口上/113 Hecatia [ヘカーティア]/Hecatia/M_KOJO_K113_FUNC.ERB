@@ -1,0 +1,186 @@
+@K113_Color
+RESULT = [[ヘカーティア]]
+TRYCALL Add_Get_Duplicate_Id([[ヘカーティア]])
+LOCAL = RESULT
+
+SETCOLOR K113_BODYCOLOR(K113_BODY(LOCAL))
+
+@K113_BODYCOLOR(ARG)
+#FUNCTION
+SELECTCASE ARG
+	CASE 1
+		RETURNF 0xD93739
+	CASE 2
+		RETURNF 0xFDF0A7
+	CASE 3
+		RETURNF 0x6A87E3
+ENDSELECT
+RETURNF 0xD93739
+
+@K113_Hecatia_Duplicate
+#DIM NEWCHARA
+;not in TS, only during initial push down
+SIF FLAG:70 || TFLAG:194
+	RETURN
+SIF TFLAG:102 == 3 || CFLAG:うふふ == 2
+	RETURN
+SIF INRANGE(TCVAR:11:抱き寄せ初回, 6, 8)
+	RETURN
+
+;CFLAG:ACTIVE_BODY sets her portrait to a specific color
+IF TALENT:[[ヘカーティア]]:恋慕 || TALENT:[[ヘカーティア]]:愛欲
+	IF GET_TARGETNUM() == 1
+		PRINTFORML 「So what are we going with? Just the two of us?」
+		PRINTFORML 「Or should I call in my other two selves and make it a nice foursome?」
+	ELSE
+		PRINTFORML 「It's a little crowded already, but do you want me to summon my other two selves as well?」
+	ENDIF
+	CALL ASK_YN("The more the merrier, right?", GET_TARGETNUM() == 1 ? "Let's focus all our attentions on just each other" # @"%NUM_COUNT(GET_TARGETNUM(), "num",1)% people at once are plenty")
+
+	SIF RESULT
+		RETURN
+
+	;check for the current Hecatia
+	VARSET LOCALS
+	VARSET LOCAL
+
+	SELECTCASE K113_BODY([[ヘカーティア]])
+		CASE 1
+			LOCAL:0 = 2
+			LOCALS:0 = Moon
+			LOCAL:1 = 3
+			LOCALS:1 = Earth
+		CASE 2
+			LOCAL:0 = 3
+			LOCALS:0 = Earth
+			LOCAL:1 = 1
+			LOCALS:1 = Otherworld
+		CASE 3
+			LOCAL:0 = 1
+			LOCALS:0 = Otherworld
+			LOCAL:1 = 2
+			LOCALS:1 = Moon
+	ENDSELECT
+
+	FOR LOCAL:10, 0, 2
+		RESULT = -1
+		TRYCALL Add_Duplicate_Character([[ヘカーティア]], @"%NAME:[[ヘカーティア]]% (%LOCALS:(LOCAL:10)%)", @"%CALLNAME:[[ヘカーティア]]% (%LOCALS:(LOCAL:10)%)")
+		IF RESULT < 0 ;cannot create duplicate
+			BREAK
+		ELSE
+			NEWCHARA = RESULT
+			;override color
+			CFLAG:NEWCHARA:ACTIVE_BODY = LOCAL:(LOCAL:10)
+			CFLAG:NEWCHARA:好感度 -= (LOCAL:10) + 1;lower Favor to keep them nicely in order, at least at the start
+			;set affinity for other hecatias
+			RELATION:NEWCHARA:[[ヘカーティア]] = 500
+			RELATION:[[ヘカーティア]]:NEWCHARA = 500
+			IF LOCAL:10 == 1;set to other one as well
+				RELATION:NEWCHARA:(LOCAL:11) = 500
+				RELATION:(LOCAL:11):NEWCHARA = 500
+			ENDIF
+			SIF CFLAG:NEWCHARA:衣装一時変更 == 55 ;no bunny girl outfits for alternate Hecatias
+				CFLAG:NEWCHARA:衣装一時変更 = 0
+
+			PRINTFORMDL %CALLNAME:NEWCHARA% arrives.
+			LOCAL:(11+LOCAL:10) = NEWCHARA ;save newly created ids
+
+			;give them different panties
+			CFLAG:NEWCHARA:205 = 0
+			CFLAG:NEWCHARA:206 = 0
+			CFLAG:NEWCHARA:207 = 0
+			CFLAG:NEWCHARA:208 = 0
+			CALL SET_UNDERWEAR(NEWCHARA, "今日の衣装")
+			EQUIP:NEWCHARA:下半身下着２ = CFLAG:NEWCHARA:きょうのぱんつ
+			CALL K113_SET_TITLES(NEWCHARA, LOCAL:(LOCAL:10))
+		ENDIF
+		;CALL K113_SET_TITLES([[ヘカーティア]], K113_BODY([[ヘカーティア]]))
+	NEXT
+
+	CALL SET_KOJO_COLOR()
+	IF RESULT < 0
+		;error message
+		DEBUGPRINTFORML Error while trying to create duplicates.
+		PRINTFORML 「Whoops, looks like it's not working right now.」
+		PRINTFORML 「You'll just have to settle for doing it normally today.」
+	ELSE
+		PRINTFORML 「With all three of me here, this will be sure to become an experience you can never forget.」
+		CALL CHARA_TEXT(LOCAL:11, "「Even if you beg us to stop, we won't let you go until we're all satisfied.」")
+		CALL CHARA_TEXT(LOCAL:12, "「Now, prepare yourself for the ultimate pleasures of the goddess of Hell!」")
+	ENDIF
+ENDIF
+@K113_SET_TITLES(CHARA, BODY)
+#DIM CHARA
+#DIM BODY
+SELECTCASE BODY
+	CASE 1
+		CUSTOM_TITLE:CHARA:CT_TITLES = Red Hecatia:Hell Goddess of the Otherworlds:Heca-chan
+		CUSTOM_TITLE:CHARA:CT_EXCLUDED_THE = ^Red Hecatia$|^Heca-chan$
+	CASE 2
+		CUSTOM_TITLE:CHARA:CT_TITLES = Yellow Hecatia:Hell Goddess of the Moon:Heca:The Blonde One
+		CUSTOM_TITLE:CHARA:CT_EXCLUDED_THE = ^Yellow Hecatia$|^Heca$|^The Blonde One$
+	CASE 3
+		CUSTOM_TITLE:CHARA:CT_TITLES = Blue Hecatia:Hell Goddess of the Earth:Heca-tan
+		CUSTOM_TITLE:CHARA:CT_EXCLUDED_THE = ^Blue Hecatia$|^Heca-tan$
+ENDSELECT
+
+@K113_HECA_COUNT
+#FUNCTION
+LOCAL:1 = 0
+
+FOR LOCAL, 1, GET_TARGETNUM()+1
+	SIF NO:(TARGET:LOCAL) == [[ヘカーティア]]
+		LOCAL:1++
+NEXT
+
+RETURNF LOCAL:1
+
+@K113_GREET(HECA)
+#FUNCTIONS
+#DIM HECA
+SIF !HECA
+	HECA = TARGET
+
+SELECTCASE K113_BODY(HECA)
+	CASE 1
+		RETURNF "yo"
+	CASE 2
+		RETURNF "hey"
+	CASE 3
+		RETURNF "oi"
+ENDSELECT
+
+@K113_NICKNAME(CHARA, HECA = 0)
+#FUNCTIONS
+#DIM HECA
+#DIM CHARA
+SIF !HECA
+	HECA = TARGET
+
+SELECTCASE CHARA
+	CASE [[クラウンピース]]
+		RETURNF "Piece"
+	CASE [[純狐]]
+		RETURNF "Junko"
+	CASE [[依姫]], [[豊姫]], [[サグメ]]
+		RETURNF CALLNAME:CHARA
+	CASEELSE
+		SELECTCASE K113_BODY(HECA)
+			CASE 1
+				RETURNF @"%CALLNAME:CHARA%-chan"
+			CASE 2
+				RETURNF @"%CALLNAME:CHARA%"
+			CASE 3
+				SELECTCASE CHARA
+					CASE [[映姫]]
+						RETURNF "Eikiki"
+					CASE [[小町]]
+						RETURNF "Machi"
+					CASE [[久侘歌]]
+						RETURNF "Niwa-chan"
+					CASEELSE
+						RETURNF @"%CALLNAME:CHARA%-chan"
+				ENDSELECT
+		ENDSELECT
+ENDSELECT
+RETURNF CALLNAME:CHARA

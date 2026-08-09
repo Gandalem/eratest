@@ -1,0 +1,1378 @@
+;FileName_USERCOM.ERB ------------------------------ Rev1.00
+;コマンド表示処理
+;CALL		SYSTEM
+;ARG		VOID
+;RETURN		VOID
+;COMMENT	
+;-----------------------------------------------------------
+@SHOW_USERCOM_NEW_COM
+#DIM DYNAMIC printKojoCom
+#DIMS DYNAMIC dangerComs, 1000
+#DIMS DYNAMIC dangerComList, 5
+#DIM DYNAMIC dangerComPage
+#DIM DYNAMIC currentDangerCom
+VARSET dangerComList
+
+IF TARGET != MASTER && (GET_TARGETNUM() > FLAG:画像表示)
+;ターゲット切替ボタンの設置＆同行者とお持ち帰りの表示
+CALL INFO_TARGET_BUTTON
+ENDIF
+
+CALL フィルタ表示
+
+;Filter commands based on danger level
+FOR LOCAL,0,800
+	SIF QOL_BLOCKED_COM_HIDDEN_SEX(LOCAL) ;qol custom code
+		CONTINUE
+	;qol custom code
+	IF TARGET != MASTER
+		CALL KOJO_CHECK(TARGET, "COM_BLOCKED",,LOCAL)
+		SIF RESULT
+			CONTINUE
+	ENDIF
+
+	SIF LOCAL == 355 && (!FLAG:70 || CFLAG:TARGET:344 == 1)
+		CONTINUE
+    IF NEW_COM_COMMAND_PAGE == VARSIZE("NEW_COM_ABR")
+        SIF LOCAL == 200 && TFLAG:102 == 2
+            PRINTL
+        SIF LOCAL == 300 && printKojoCom
+            PRINTL
+        SIF LOCAL == 350 && TFLAG:102 != 2
+            PRINTL
+        SIF LOCAL == 400 && TFLAG:102 != 2
+            PRINTL
+    ENDIF
+	SIF GLOBAL_COMABLE2(LOCAL)
+		CONTINUE
+	SIF GROUPMATCH(LOCAL,400,405,604,490)
+		CONTINUE
+	SIF TRAINNAME:LOCAL == "" && !IS_COM_KOJO(LOCAL) ;bug fix, hide actions that have no train.csv entry but still have com files (they're unusable anyway)
+		CONTINUE
+	SIF LOCAL == ADD_CUSTOM_COM ;addition custom code, don't display general custom com command, handled elsewhere
+		CONTINUE
+	SIF inTrain == 3 && !GROUPMATCH(LOCAL, ADD_CUSTOM_COM) && !LucidDreamNormalCommand(DAILY_Lucid_Stats:3) ;NAS: In a lucid dream which does not allow for general commands.
+		CONTINUE
+    SIF NEW_COM_COMMAND_PAGE
+	RESULT = 0
+	;現状で対象コマンドが使用可能かどうか判定
+	TRYCALLFORM COM_ABLE{LOCAL}
+	IF RESULT   
+        IF nPagedCommandMenu
+            SIF !NAS_FILTER_CANDO(NEW_COM_ABR:NEW_COM_COMMAND_PAGE,LOCAL)
+                CONTINUE
+        ELSE
+            SIF !Quickfilter(LOCAL)
+                CONTINUE
+        ENDIF
+        
+        ;test: ALL 0
+        ; 　V.........................100 　Orgasm.....................20 　Semen.......................5 　Masturbation...............50 　Love.....................1.0k 
+        ; 　Abnormal....................1 　Bondage....................10 　Cleaning...................51 　Speech....................201 　Danmaku..................1.0k 
+        ; 　Education.................501 　Cooking...................201 　Singing....................21 　Fishing.....................7 　Foraging...................51 
+        ; 　Mixing.....................51 　Logging.....................7 　Urine.......................6 　Melee.......................1 
+        ; □ Endurance □-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+        ;             Sanity◣                 █          ◢ 2010 Steel Mind                   Pee Holding◣                █           ◢  275 Strong Bladder      
+        ;         Poo Holding◣                █           ◢  250 Strong Bowels          Alcohol Addiction◣             █              ◢ -110 Weak Drinker        
+        ;     Drug Addiction◣             █              ◢ -110 Drug Weakness                     Trauma█                            ◢    0 Stable           
+        IF nSpoilerMode
+            LOCAL:3 = COMMAND_IS_HARMFUL(TARGET, LOCAL)
+            IF (NAS_FILTER_CANDO("FP",LOCAL) || NAS_FILTER_CANDO("INS",LOCAL) || NAS_FILTER_CANDO("TOY",LOCAL) || NAS_FILTER_CANDO("SM",LOCAL) && !INRANGE(LOCAL,700,799))
+                CALL SEX_COMMAND_SIMULATE_RISK(TARGET,LOCAL)
+                LOCAL:3 = RESULT
+            ENDIF
+        ELSE
+            LOCAL:3 = 0
+        ENDIF
+
+        dangerComList:(LOCAL:3) += @"{LOCAL}/"
+    ENDIF
+NEXT
+FOR LOCAL,0,ADD_CUSTOM_MAX_COM + 1
+    SIF STRCOUNT(SAVESTR:0,@"{ADD_CUSTOM_COM}") ;custom commands disabled
+        BREAK
+	;NAS: Lucid Dream
+	SIF inTrain == 3 && !LucidDreamNormalCommand(DAILY_Lucid_Stats:3) && !GROUPMATCH(LOCAL,357) && !INRANGE(LOCAL,930,939)
+		CONTINUE
+	;PRINTFORML Able to execute {LOCAL} %Add_Custom_COM_Name(LOCAL)%
+	RESULT = 0
+	TRYCALLFORM ADD_CUSTOM_COM_ABLE{LOCAL}
+	IF RESULT
+        IF nPagedCommandMenu
+            SIF !NAS_FILTER_CANDO(NEW_COM_ABR:NEW_COM_COMMAND_PAGE,LOCAL+9000)
+                CONTINUE
+        ELSE
+            SIF !Quickfilter_Custom(LOCAL-9000)
+                CONTINUE
+        ENDIF
+        ; TRYCCALLFORM ADD_CUSTOM_COM_PRINT{LOCAL}
+        ; CATCH
+        ;     CALL MAKE_HARMFUL_COMMAND_COLOR(TARGET,LOCAL+9000)
+        ; 	PRINTFORMC %Add_Custom_COM_Name(LOCAL)%[{Add_Custom_COM_To_Number(LOCAL)}]
+        ;     RESETCOLOR
+        ; ENDCATCH
+        IF nSpoilerMode
+            LOCAL:3 = COMMAND_IS_HARMFUL(TARGET, LOCAL+9000)
+            IF NAS_FILTER_CANDO("FP",LOCAL+9000) || NAS_FILTER_CANDO("INS",LOCAL+9000) || NAS_FILTER_CANDO("TOY",LOCAL+9000) || NAS_FILTER_CANDO("SM",LOCAL+9000)
+                CALL SEX_COMMAND_SIMULATE_RISK(TARGET,LOCAL+9000)
+                LOCAL:3 = RESULT
+            ENDIF
+        ELSE
+            LOCAL:3 = 0
+        ENDIF
+        dangerComList:(LOCAL:3) += @"{LOCAL+9000}/"
+	ENDIF
+NEXT
+
+FOR dangerComPage,0,VARSIZE("dangerComList")
+    IF dangerComPage
+        IF STRLENS(dangerComList:dangerComPage)
+            IF STRLENS(dangerComList:(dangerComPage-1))
+                PRINTL
+            ELSEIF dangerComPage >= 2
+                IF STRLENS(dangerComList:(dangerComPage-2))
+                    PRINTL
+                ELSEIF dangerComPage >= 3
+                    SIF STRLENS(dangerComList:(dangerComPage-3))
+                        PRINTL
+                ENDIF
+            ENDIF
+        ENDIF
+    ENDIF
+    SPLIT dangerComList:dangerComPage, "/", dangerComs
+    FOR LOCAL,0,1000
+        SIF !STRLENS(dangerComs:LOCAL)
+            BREAK
+        currentDangerCom = TOINT(dangerComs:LOCAL)
+        SIF dangerComPage
+        SETCOLOR DANGER_COMMAND_COLOR_LIST(dangerComPage)
+		IF (currentDangerCom == 42 && TEQUIP:11) || (currentDangerCom == 43 && TEQUIP:12) || (currentDangerCom == 44 && TEQUIP:13) || (currentDangerCom == 45 && TEQUIP:14) || (currentDangerCom == 46 && TEQUIP:15) || (currentDangerCom == 47 && TEQUIP:16) || (currentDangerCom == 48 && TEQUIP:17) || (currentDangerCom == 163 && TEQUIP:24)
+			;Custom code
+			PRINTFORMC Release %TRAINNAME_TR(currentDangerCom)%[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 3 && PREVCOM == 3 && MASTER_POSE(SET_V, SET_YUBI) == TARGET ;bugfix custom code, only if inserted
+			PRINTFORMC G Spot Stimulation[{currentDangerCom,3}]
+		ELSEIF (currentDangerCom == 164 && TEQUIP:83) || (currentDangerCom == 165 && TEQUIP:84) || (currentDangerCom == 167 && TEQUIP:85) || (currentDangerCom == 168 && TEQUIP:86) || (currentDangerCom == 169 && TEQUIP:87) || (currentDangerCom == 166 && TEQUIP:アナル電極)
+			PRINTFORMC Remove %TRAINNAME_TR(currentDangerCom)%[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 3 && TEQUIP:バイブ
+			PRINTFORMC Vibrator Fuck[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 15
+			IF CFLAG:MASTER:イタズラ
+				PRINTFORMC V Caress[{currentDangerCom,3}]
+			ELSE
+				PRINTFORMC Clit Caress[{currentDangerCom,3}]
+			ENDIF
+			
+		;custom code
+		ELSEIF currentDangerCom == 19 && TEQUIP:継続キス
+			PRINTFORMC Stop Kissing[{currentDangerCom,3}]
+		ELSEIF (currentDangerCom == 80 && TFLAG:103 == TARGET && TEQUIP:乳首吸い) || (TEQUIP:指接触部位 == 1 && TFLAG:103 == TARGET && currentDangerCom == 11 && PREVCOM != 11)
+			PRINTFORMC Nursing Handjob[{currentDangerCom,3}]
+		;--
+		
+		;com custom code
+		ELSEIF currentDangerCom == 312 && PREVCOM == 309 && !FLAG:70
+			PRINTFORMC Forehead Kiss[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 312 && PREVCOM == 312 && !TFLAG:151 && !(REJECT_CHECK(SELECTCOM) && !CFLAG:睡眠)
+			PRINTFORMC Continue Kissing[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 50 && (TEQUIP:PLAYER:コンドーム || TEQUIP:コンドーム)
+			PRINTFORMC Take Off Condom[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 302 && PREVCOM == 305
+			PRINTFORMC Get Earpicking[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 311 && CFLAG:MASTER:添い寝中
+			PRINTFORMC Body Pillow[{currentDangerCom,3}]
+		;--
+
+
+		;custom code: hole tightness
+		ELSEIF GROUPMATCH(currentDangerCom, 60, 61, 65, 67, 68, 320, 322)
+			SIF Add_Size_Check("strict") || Add_Size_Check("reg") ;com custom code
+				SETCOLOR C_GRAY
+			PRINTFORMC %TRAINNAME_TR(currentDangerCom)%[{currentDangerCom,3}]
+			RESETCOLOR
+		ELSEIF GROUPMATCH(currentDangerCom, 62, 63, 66, 69, 70, 323)
+			SIF Add_Size_Check("strictA") || Add_Size_Check("regA") ;com custom code
+				SETCOLOR C_GRAY
+			PRINTFORMC %TRAINNAME_TR(currentDangerCom)%[{currentDangerCom,3}]
+			RESETCOLOR
+		ELSEIF currentDangerCom == 71
+			SIF Add_Size_Check("strict") || Add_Size_Check("reg") || Add_Size_Check("strictA") || Add_Size_Check("regA") ;com custom code
+				SETCOLOR C_GRAY
+			PRINTFORMC %TRAINNAME_TR(currentDangerCom)%[{currentDangerCom,3}]
+			RESETCOLOR
+		ELSEIF GROUPMATCH(currentDangerCom, 130, 131, 132, 133)
+			SIF Add_Size_Check("strict", MASTER, TARGET) || Add_Size_Check("reg", MASTER, TARGET) ;com custom code
+				SETCOLOR C_GRAY
+			PRINTFORMC %TRAINNAME_TR(currentDangerCom)%[{currentDangerCom,3}]
+			RESETCOLOR
+		ELSEIF GROUPMATCH(currentDangerCom, 92, 93, 94)
+			SIF Add_Size_Check("strictA", MASTER, TARGET) || Add_Size_Check("regA", MASTER, TARGET) ;com custom code
+				SETCOLOR C_GRAY
+			PRINTFORMC %TRAINNAME_TR(currentDangerCom)%[{currentDangerCom,3}]
+			RESETCOLOR
+		;--
+
+		
+		ELSEIF currentDangerCom == 81 && LOCAL:1
+			PRINTFORMC Cleaning Fellatio[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 82 && (TALENT:105 == -2 || TALENT:105 == -1)
+			PRINTFORMC Naizuri[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 60 && (!BEDROOM(CFLAG:PLAYER:現在位置) && !(BATHROOM() && ITEM:20))
+			PRINTFORMC Standing Missionary[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 61 && (!INROOM(CFLAG:PLAYER:現在位置) && !(BATHROOM() && ITEM:20))
+			PRINTFORMC Fuck From Behind[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 62 && (!BEDROOM(CFLAG:PLAYER:現在位置) && !(BATHROOM() && ITEM:20))
+			PRINTFORMC Standing A Missionary[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 63 && (!INROOM(CFLAG:PLAYER:現在位置) && !(BATHROOM() && ITEM:20))
+			PRINTFORMC Anal From Behind[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 73 && TCVAR:PLAYER:イきそう
+			IF TEQUIP:TARGET:体位 == 1 && (BEDROOM(CFLAG:PLAYER:現在位置) || (BATHROOM() && ITEM:20))
+				PRINTFORMC Mating Press[{currentDangerCom,3}]
+			ELSEIF TEQUIP:TARGET:体位 == 2
+				IF CFLAG:TARGET:生理周期 == 7
+					PRINTFORMC Beastly Insemination[{currentDangerCom,3}]
+				ELSE
+					PRINTFORMC Beastly Mating[{currentDangerCom,3}]
+				ENDIF
+			ELSE
+				;Custom code
+				PRINTFORMC %TRAINNAME_TR(currentDangerCom)%[{currentDangerCom,3}]
+			ENDIF
+		ELSEIF currentDangerCom == 92 && (!BEDROOM(CFLAG:PLAYER:現在位置) && !(BATHROOM() && ITEM:20))
+			PRINTFORMC Catch St. A Missionary[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 93 && (!INROOM(CFLAG:PLAYER:現在位置) && !(BATHROOM() && ITEM:20))
+			PRINTFORMC Catch St. A From Behind[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 100 && TALENT:TARGET:幼稚
+			PRINTFORMC Butt Spanking[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 124 && TEQUIP:TARGET:オナホール ;com custom code
+			PRINTFORMC Give Onaholejob[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 130 && (!BEDROOM(CFLAG:PLAYER:現在位置) && !(BATHROOM() && ITEM:20))
+			PRINTFORMC Catch St. Missionary[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 131 && (!INROOM(CFLAG:PLAYER:現在位置) && !(BATHROOM() && ITEM:20))
+			PRINTFORMC Catch St. From Behind[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 300 && TCVAR:302 && !TALENT:恋慕 && ((ABL:MASTER:教養 >= UniversalRank("B") && ABL:MASTER:話術技能 >= UniversalRank("B")) || ABL:MASTER:話術技能 >= UniversalRank("A"));qol custom code, gray out conversation button when you have nothing to say, tie to ability for now
+			SETCOLOR C_GRAY
+			PRINTFORMC Conversation[{currentDangerCom,3}]
+			RESETCOLOR
+		ELSEIF currentDangerCom == 301 && CFLAG:TARGET:行動 == 5
+			PRINTFORMC Offer Refreshments[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 301 && GETBIT(TCVAR:MASTER:特別なお茶, 0)
+			PRINTFORMC Serve Black Tea[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 301 && IS_BABY(TARGET)
+			;NAS: Children
+			PRINTFORMC Give Bottle[{currentDangerCom,3}]
+		;addition custom code, new banquet stuff
+		ELSEIF currentDangerCom == 334 && (CFLAG:TARGET:350 == 49 || TARGET == FLAG:デート相手) && (TALENT:TARGET:酒耐性 == -2 || CFLAG:TARGET:妊娠自覚状態 == 1)
+			PRINTFORMC Serve Dish[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 304 && CFLAG:TARGET:350 == 46
+			PRINTFORMC Participate In Play[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 315
+			IF GETBIT(TALENT:TARGET:性別,1)
+				PRINTFORMC Penis Caress[{currentDangerCom,3}]
+			ELSEIF CFLAG:MASTER:イタズラ
+				PRINTFORMC Pussy Caress[{currentDangerCom,3}]
+			ELSE
+				PRINTFORMC Clit Caress[{currentDangerCom,3}]
+			ENDIF
+		ELSEIF currentDangerCom == 330 ;custom code
+			PRINTFORMC Flip %HIS_HER(TARGET,1)% Skirt[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 350
+			IF FLAG:70 == 1 && CFLAG:TARGET:344 == 0 && !MAXBASE:TARGET:TSP
+				LOCALS = Start Mischief
+			ELSEIF (CFLAG:現在位置 == 連れ込み宿 || CFLAG:現在位置 == ラブホ)&& !CFLAG:うふふ
+				LOCALS = Draw Closer
+			ELSEIF CFLAG:現在位置 == 寺子屋
+				LOCALS = Start A Special Lesson
+			ELSEIF CFLAG:現在位置 == OMANEKIBEYA() && TARGET == 43
+				LOCALS = Practice Lovemaking
+			;ベッドがない
+			;室外
+			ELSEIF !INROOM(CFLAG:PLAYER:現在位置) && !nRapeAnywhere
+				LOCALS = Draw Closer
+			ELSEIF (HITOKE() || !INROOM(CFLAG:PLAYER:現在位置)) && nRapeAnywhere && EYEWITNESS() == 1
+				LOCALS = Push Down (Public)
+			ELSEIF (HITOKE() || !INROOM(CFLAG:PLAYER:現在位置)) && nRapeAnywhere
+				LOCALS = Push Down (Outside)
+			ELSE
+				LOCALS = Push Down
+			ENDIF
+			SIF GET_TARGETNUM() > 1
+				LOCALS = %LOCALS% With All
+			PRINTFORMC %LOCALS%[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 491
+			SETCOLOR 255, 179, 167
+			PRINTFORMC %TRAINNAME_TR(currentDangerCom)%[{currentDangerCom,3}]
+			RESETCOLOR
+		ELSEIF currentDangerCom == 360 && BASE:MASTER:気力 <= 0
+			PRINTFORMC Be At Mercy[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 366 && GROUPMATCH(IRAI_CHARA_TO_PROGRESS(TARGET), "依頼達成", "依頼失敗")
+			SETCOLOR C_GREEN
+			PRINTFORMC Complete Request[{currentDangerCom,3}]
+			RESETCOLOR
+		ELSEIF currentDangerCom == 366 && GROUPMATCH(IRAI_CHARA_TO_PROGRESS(TARGET), "依頼未受託")
+			SETCOLOR C_GREEN
+			PRINTFORMC Listen To Request[{currentDangerCom,3}]
+			RESETCOLOR
+		ELSEIF currentDangerCom == 367
+			SETCOLOR C_GREEN
+			PRINTFORMC %NAME_IRAI_ACT()%[{currentDangerCom,3}]
+			RESETCOLOR
+		ELSEIF currentDangerCom == 368
+			PRINTFORMC %JOIN_IN_TR(FreeAct_Name(TARGET))%[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 337
+			;qol custom code
+			IF QOL_INTERACTABLE_CHILDREN() == 1
+			PRINTFORMC %CHILD_INTERACT_TR(子供ふれあい名称(nChildrenPresent:0), nChildrenPresent:0)%[{currentDangerCom,3}]
+			ELSE
+				PRINTFORMC %TRAINNAME_TR(currentDangerCom)%[{currentDangerCom,3}]
+			ENDIF
+		ELSEIF currentDangerCom == 338 && TFLAG:PublicToyPlay > 0
+			PRINTFORMC Stop Teasing %CALLNAME:TARGET%[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 417 && TIME >= 660 && TIME <= 900
+			PRINTFORMC Take A Nap[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 417
+			PRINTFORMC Doze Off[{currentDangerCom,3}]
+		;NAS
+		ELSEIF currentDangerCom == 418
+		;==================
+			RESETCOLOR
+			SIF !ITEM:150
+				SETCOLOR C_GRAY
+			PRINTFORMC %TRAINNAME_TR(currentDangerCom)%[{currentDangerCom,3}]
+			RESETCOLOR
+		ELSEIF currentDangerCom == 420
+			SELECTCASE MAIN_MAP
+				CASE 0
+					LOCALS = Ruukoto
+				CASE 3
+					LOCALS = Fairy Maid
+				CASE 9
+					LOCALS = Zombie Fairy
+			ENDSELECT
+			PRINTFORMC Speak With %LOCALS%[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 799 ;funky font spacing happened
+			PRINTFORMC %TRAINNAME_TR(currentDangerCom)%[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 421
+			PRINTFORMC Pray To %TOSTR_Religion(TALENT:MASTER:Religion,3)%[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 422
+			PRINTFORMC Listen To %TOSTR_Religion(TALENT:MASTER:Religion,3)%[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 431 && (CFLAG:MASTER:現在位置 == 24 || CFLAG:MASTER:現在位置 == 441)
+			PRINTFORMC Relax In Hot Spring[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 431 && (CFLAG:MASTER:現在位置 == 大衆浴場 || CFLAG:MASTER:現在位置 == 940)
+			PRINTFORMC Take A Bath[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 431 && OPENPLACE(CFLAG:MASTER:現在位置) && ITEM:簡易プール && !BATHCHECK(CFLAG:MASTER:現在位置)
+			PRINTFORMC Relax In The Pool[{currentDangerCom,3}]
+;		ELSEIF currentDangerCom == 405 && CFLAG:TARGET:同行 && TARGET
+;			PRINTFORMC Date[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 410 && OUTROOF(CFLAG:MASTER:現在位置) && DAY:2 == 4
+			PRINTFORMC Snow Shoveling[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 415 && TIME >= 300 && TIME <= 540 && (CFLAG:MASTER:現在位置 == 9 || CFLAG:MASTER:現在位置 == OMANEKIBEYA()) && !FLAG:70 ;com custom code
+			PRINTFORMC Serve Breakfast[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 415 && TIME >= 660 && TIME <= 900 && (CFLAG:MASTER:現在位置 == 9 || CFLAG:MASTER:現在位置 == OMANEKIBEYA()) && !FLAG:70 ;com custom code
+			PRINTFORMC Serve Lunch[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 415 && TIME >= 1020 && TIME <= 1200 && (CFLAG:MASTER:現在位置 == 9 || CFLAG:MASTER:現在位置 == OMANEKIBEYA()) && !FLAG:70 ;com custom code
+			PRINTFORMC Serve Dinner[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 415 && TIME >= 1200 && TIME <= 1440 && (CFLAG:MASTER:現在位置 == 9 || CFLAG:MASTER:現在位置 == OMANEKIBEYA()) && !FLAG:70 ;com custom code
+			PRINTFORMC Serve Supper[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 415 && TIME >= 0 && TIME <= 180 && (CFLAG:MASTER:現在位置 == 9 || CFLAG:MASTER:現在位置 == OMANEKIBEYA()) && !FLAG:70 ;com custom code
+			PRINTFORMC Serve A Night Meal[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 415 && CFLAG:TARGET:行動 == 5 && !FLAG:70 ;com custom code
+			PRINTFORMC Meal Break[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 443
+			;custom code to translate unique coms
+			PRINTFORMC %UNIQUE_COM_TR(NAME_UNIQUE_COM(TARGET))%[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 448
+			IF HUNTING_SPOT(CFLAG:MASTER:現在位置) && MUSHITORI_SPOT(CFLAG:MASTER:現在位置)
+				IF GET_MUSHIDATA(MUSHI_TRAP, "場所") && GROUPMATCH(GET_MUSHIDATA(MUSHI_TRAP, "場所"), TRAP_POINT:1, TRAP_POINT:2, TRAP_POINT:3)
+					PRINTFORMC Check Trap[{currentDangerCom,3}]
+				ELSE
+					PRINTFORMC %TRAINNAME_TR(currentDangerCom)%[{currentDangerCom,3}]
+				ENDIF
+			ELSEIF GROUPMATCH(CFLAG:MASTER:現在位置, TRAP_POINT:1, TRAP_POINT:2, TRAP_POINT:3)
+				PRINTFORMC Check Trap[{currentDangerCom,3}]
+			ELSEIF GROUPMATCH(CFLAG:MASTER:現在位置, GET_MUSHIDATA(MUSHI_TRAP, "場所"))
+				PRINTFORMC Check Bug Trap[{currentDangerCom,3}]
+			ELSEIF MUSHITORI_SPOT(CFLAG:MASTER:現在位置)
+				PRINTFORMC Set Bug Trap[{currentDangerCom,3}]
+			ELSE
+				PRINTFORMC %TRAINNAME_TR(currentDangerCom)%[{currentDangerCom,3}]
+			ENDIF
+		ELSEIF currentDangerCom == 452
+			IF FISHING_SPOT(CFLAG:MASTER:現在位置) || CFLAG:TARGET:現在位置 == CFLAG:MASTER:初期位置
+				PRINTFORMC Dump Body[{currentDangerCom,3}]
+			ELSE
+				PRINTFORMC Dig Hole[{currentDangerCom,3}]
+			ENDIF
+		ELSEIF currentDangerCom == 464
+			SELECTCASE CFLAG:MASTER:現在位置
+				CASE 210
+					IF MAIN_MAP == 8
+						PRINTFORMC To Cableway[{currentDangerCom,3}]
+					ELSE
+						PRINTFORMC To Scenic Hill[{currentDangerCom,3}]
+					ENDIF
+				CASE 820
+					IF MAIN_MAP == 2
+						PRINTFORMC To North Street[{currentDangerCom,3}]
+					ELSE
+						PRINTFORMC To Plaza[{currentDangerCom,3}]
+					ENDIF
+				CASE 570
+					PRINTFORMC To Road of Liminality[{currentDangerCom,3}]
+				CASE 712,760 ;custom code, too long
+					PRINTFORMC To Remains of Blzng Hell[{currentDangerCom,3}]
+				CASE 928,970 ;custom code, too long
+					PRINTFORMC To Undrgnd Geyser Center[{currentDangerCom,3}]
+				CASE 732, 770 ;addition custom code
+					PRINTFORMC To Mountaintop[{currentDangerCom,3}]
+				CASE 801, 810 ;addition custom code
+					PRINTFORMC To Mountain Foot[{currentDangerCom,3}]
+				CASEELSE
+					;Custom code
+					LOCALS = %STR_TR(6000 + SPECIAL_AREAMOVE() / 10)%
+					PRINTFORMC To %LOCALS%[{currentDangerCom,3}]
+			ENDSELECT
+		ELSEIF currentDangerCom == 482
+			PRINTFORMC Follow %CALLNAME:STALKED%[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 626
+			SIF FLAG:市場の神 == 10 ;qol custom code, highlight during market day
+				SETCOLOR 100, 250, 140
+			PRINTFORMC %GIFTSHOP_NAME_TR(GIFTSHOP_NAME(CFLAG:MASTER:デート中, 1))%[{currentDangerCom,3}]
+			RESETCOLOR
+		ELSEIF currentDangerCom == 603 && PREVCOM == 603
+			PRINTFORMC Lead By Hand[{currentDangerCom,3}]
+		ELSEIF currentDangerCom == 698
+			PRINTFORMC Go To %OMANEKI_PLACE()%[{currentDangerCom,3}]
+		;kojo com
+		ELSEIF currentDangerCom >= 270 && currentDangerCom < 300
+			CALL KOJO_MESSAGE_SEND("COM", 0, TARGET, currentDangerCom - 270)
+			PRINTFORMC %RESULTS%[{currentDangerCom,3}]
+			printKojoCom = 1
+		ELSEIF currentDangerCom == 606 ;addition custom code
+			LOCAL:1 = 0
+			FOR LOCAL:2,0,1000
+				RESULT = 0
+				TRYCALLFORM TSC_ABLE{LOCAL:2}()
+				IF LOCAL:1 > 1
+					LOCALS = %TRAINNAME_TR(606)%[{606,3}]
+					BREAK
+				ELSEIF RESULT == 2
+					CALLFORM TSC_NAME{LOCAL:2}
+					LOCALS = %RESULTS%[{606,3}]
+					LOCAL:1 ++
+				ENDIF
+			NEXT
+			PRINTFORMC %LOCALS%
+        ELSEIF currentDangerCom >= 9000
+			TRYCCALLFORM ADD_CUSTOM_COM_PRINT{currentDangerCom-9000}
+			CATCH
+                CALL MAKE_HARMFUL_COMMAND_COLOR(TARGET,currentDangerCom)
+				PRINTFORMC %Add_Custom_COM_Name(currentDangerCom-9000)%[{currentDangerCom}]
+                RESETCOLOR
+            ENDCATCH
+        ELSEIF EXISTFUNCTION(@"COM_PRINT{currentDangerCom}")
+            TRYCALLFORM COM_PRINT{currentDangerCom}
+		;Custom code
+		ELSEIF STRLENS(TRAINNAME_TR(currentDangerCom))
+			;custom code
+			SIF currentDangerCom == 401 ;highlight collection
+				SETCOLOR 100, 250, 140
+			PRINTFORMC %TRAINNAME_TR(currentDangerCom)%[{currentDangerCom,3}]
+			RESETCOLOR
+		ENDIF
+        RESETCOLOR
+    NEXT
+NEXT
+RESULT = 0
+;自動実行中なら下記表示をスキップ
+SIF !TFLAG:100
+	GOTO SKIP
+PRINTL
+;com custom code
+;ATW: Bug-fix
+CALL PRINTBUTTON_EX(TFLAG:USERCOM非表示 ? "▽[＋][Commands]" # "▼[－][Commands]", 3002, TFLAG:USERCOM非表示)
+SETCOLOR C_GRAY
+PRINTPLAIN  ━
+RESETCOLOR
+CALL PRINTBUTTON_EX("[Config]",809)
+;custom code: MaxWidth()
+;custom code, automatically scale line for resolution
+HTML_POPPRINTINGSTR
+HTML_PRINT RESULTS + @"<font color='#%TO_HEX(C_GRAY)%'>%"━" * MAX((MAXWIDTH() - HTML_STRINGLEN(RESULTS))/2, 0)%</font>"
+;--------------------
+SIF TFLAG:USERCOM非表示
+	GOTO SKIP
+;NAS: Lucid Dream
+SIF inTrain == 3 && !LucidDreamNormalCommand(DAILY_Lucid_Stats:3) ;NAS: In a lucid dream which does not allow for general commands.
+	GOTO SKIP
+;SIF !GETBIT (FLAG:USERCOMフィルタ, 12)
+;	PRINTC 履歴表示[800]
+IF GETBIT(FLAG:瞬間移動, 1) && !CFLAG:MASTER:同行
+	SETCOLOR 0x5090FF
+ELSE
+	SETCOLOR C_GREEN
+ENDIF
+RESULT = 0
+CALL COM_ABLE400
+SIF RESULT
+	PRINTC Move[400]
+RESULT = 0
+RESETCOLOR
+CALL COM_ABLE405
+IF RESULT
+	IF CFLAG:TARGET:同行 && TARGET
+		PRINTC Date[405]
+	ELSE 
+		PRINTC Go Out[405]
+	ENDIF
+ENDIF
+RESULT = 0
+
+IF GETBIT(FLAG:瞬間移動, 0) && !FLAG:デート相手
+	SETCOLOR 0x5090FF
+ELSE
+	SETCOLOR C_GREEN
+ENDIF
+RESULT = 0
+CALL COM_ABLE604
+SIF RESULT
+	PRINTC Explore[604]
+RESETCOLOR
+SIF !GETBIT (FLAG:USERCOMフィルタ, 0)
+	PRINTC Dirtiness[801]
+SIF !CFLAG:添い寝中 && GET_TARGETNUM() > 1 && !GETBIT (FLAG:USERCOMフィルタ, 1)
+	PRINTC Change Partner[802]
+SIF !GETBIT (FLAG:USERCOMフィルタ, 2)
+	PRINTC Abilities[803]
+SIF !GETBIT (FLAG:USERCOMフィルタ, 3)
+	PRINTC Abilities (Master)[804]
+PRINTC Items[490]
+SIF !GETBIT (FLAG:USERCOMフィルタ, 4)
+	PRINTC Item Config[805]
+;SIF !GETBIT(FLAG:USERCOMフィルタ, 11) ;com custom code, moved above
+;	PRINTC Command Filter[809]
+SIF FLAG:1005
+	PRINTC Config[810]
+SIF TALENT:MASTER:居場所察知 && (GETBIT(TALENT:MASTER:居場所察知, 1) || !(CFLAG:うふふ || CFLAG:イタズラ || CFLAG:添い寝中)) ;qol custom code, at_home check removed
+	PRINTC Whereabouts Sense[811]
+SIF TALENT:MASTER:汚部屋察知 && AT_HOME(MASTER) && !(CFLAG:うふふ || CFLAG:イタズラ || CFLAG:添い寝中)
+	PRINTC Cleanliness Sense[812]
+SIF GETBIT(TALENT:MASTER:劣情察知, 1) && !CFLAG:うふふ && !CFLAG:添い寝中 && !CFLAG:MASTER:イタズラ ;bug fix
+	PRINTC Lust Detector[813]
+SIF TALENT:MASTER:パンティーセンス && !CFLAG:うふふ && !CFLAG:添い寝中 && !CFLAG:MASTER:イタズラ ;addition custom code
+	PRINTC Panty Sense[814]
+IF CFLAG:TARGET:344 == 0 && (CFLAG:TARGET:睡眠 || FLAG:70 || TALENT:MASTER:100 > TALENT:TARGET:100) && TARGET != MASTER && !CFLAG:うふふ
+	IF TFLAG:運搬 != MASTER
+	PRINTFORMC Drop %CALLNAME:(TFLAG:運搬)%[815]
+	ELSE
+	PRINTFORMC Carry %CALLNAME:TARGET%[815]
+	ENDIF
+ENDIF
+SIF FLAG:70 && TALENT:MASTER:集合 && AT_HOME(MASTER) == 1 && !CFLAG:うふふ
+	PRINTC Gather[817]
+SIF GATHERING_SPOT(CFLAG:MASTER:現在位置) != 0
+	PRINTC Foraging List[818]
+	
+;custom code
+SIF FISHING_SPOT(CFLAG:MASTER:現在位置) != 0 && ABL:MASTER:教養 >= 3
+	PRINTC Fishing List[890]
+
+;addition custom code
+IF PLACE_SENTO(CFLAG:MASTER:現在位置) == 9 && CFLAG:64:現在位置 != CFLAG:MASTER:現在位置 && !FIRSTTIME("YuugiBath", 1, 64)
+	SETCOLOR 100, 250, 140
+	PRINTC Call Yuugi[891]
+	RESETCOLOR
+ENDIF
+
+SIF TALENT:MASTER:UrgencySense && !CFLAG:うふふ && !CFLAG:添い寝中 && !CFLAG:MASTER:イタズラ ;addition custom code
+	PRINTC Urgency Sense[985]
+SIF IS_TOILET(CFLAG:MASTER:現在位置,MASTER) && (GETBIT(nPee,1) || GETBIT(nScat,2)) && FLAG:PottyChart
+	PRINTC Potty Chart[986]
+PRINTC Mid Day Save[987]
+PRINTC Doctor[988]
+SIF WEAPONS_ENABLED()
+	PRINTC Holster[989]
+;addition custom code, from KR version
+IF (ITEM:LockableDoor && CFLAG:MASTER:初期位置 == CFLAG:MASTER:現在位置) || (CFLAG:MASTER:現在位置 == CFLAG:TARGET:初期位置 && (IS_FALLEN(TARGET) || !SHIRAHU(TARGET)))
+	IF !FLAG:自室施錠
+		PRINTC Lock The Door[991]
+	ELSE
+		SETCOLOR 100, 250, 140
+		PRINTC Unlock The Door[991]
+	ENDIF
+	RESETCOLOR
+ENDIF
+	
+SIF CAN_DATE(TARGET)
+	PRINTC Invite On A Date[992]
+SIF CFLAG:MASTER:現在位置 == CFLAG:MASTER:初期位置
+	PRINTC Calendar[993]
+SIF FLAG:パンツ輸送
+	PRINTC Check Pilfered Panties[994]
+IF AT_HOME(MASTER) && GETBIT(FLAG:瞬間移動, 1)
+	SETCOLOR 0x5090FF
+ELSEIF !AT_HOME(MASTER) && GETBIT(FLAG:瞬間移動, 0)
+	SETCOLOR 0x5090FF
+ENDIF
+SIF !GETBIT(FLAG:USERCOMフィルタ, 13)
+	PRINTC Auto-TSP Movement[995]
+RESETCOLOR
+
+;自動掃除
+IF AT_HOME(MASTER) && GETBIT(FLAG:自動掃除, 1)
+	SETCOLOR 0x5090FF
+ELSEIF !AT_HOME(MASTER) && GETBIT(FLAG:自動掃除, 0)
+	SETCOLOR 0x5090FF
+ENDIF
+SIF !GETBIT(FLAG:USERCOMフィルタ, 14) & AT_HOME(MASTER) && !CFLAG:うふふ && !CFLAG:添い寝中 && !CFLAG:MASTER:イタズラ ;bug fix
+	PRINTC Auto-Clean[996]
+RESETCOLOR
+
+PRINTL
+;custom, moved to its own line due to length
+IF CAN_DATE(TARGET)
+	LOCAL = QOL_RETURN_HOME_TIME_REQUIRED() ;qol custom code
+	LOCALS = ({LOCAL}min)
+	SIF LOCAL < 10
+		SETCOLOR 100, 250, 140
+	;ugly but this gets super long otherwise. perhaps move it to its own dedicated line instead?
+	;PRINTFORMC %SUBSTRING(@"Invite To %GET_MAPNAME(MAIN_MAP)%", 0, GETCONFIG("PRINTCの文字数") - (5 + STRLENS(LOCALS)) )%%LOCALS%[990]
+	PRINTFORMC %BL(6)%Invite To %GET_MAPNAME(MAIN_MAP)%%LOCALS%[990]
+	RESETCOLOR
+	PRINTL
+ENDIF
+
+IF FLAG:70 == 1 && CFLAG:TARGET:344 == 0
+	SIF EQUIP:0 && TARGET && CFLAG:うふふ
+		PRINTC Remove Clothes[820]
+	IF EQUIP:0 && TARGET != MASTER && EQUIP:TARGET:下半身下着２ != 0
+		IF !PANTS_ALREADY_COLLECTED()
+			FONTBOLD
+			SETCOLOR COLOR("PINK")
+			PRINT  
+		ENDIF
+			;NAS: panties are no more
+			SIF !GETBIT (FLAG:USERCOMフィルタ, 60) ;com custom code
+				PRINTFORMC Pilfer %Capitalize(PeeProtectType(TARGET,4))%[821]
+			RESETCOLOR
+			FONTREGULAR
+	ENDIF
+	IF (TEQUIP:5 == 0 || EQUIP:TARGET:上半身下着１) && CFLAG:うふふ
+		SIF EQUIP:0 && TARGET && EQUIP:TARGET:上半身下着１ != 0 && (EQUIP:TARGET:着物 != 0 || EQUIP:TARGET:上半身上着２ != 0 || EQUIP:TARGET:ボディースーツ == 3)
+			PRINTC Remove Top & Bottom[822]
+	ENDIF
+	IF TEQUIP:5 == 0 && CFLAG:うふふ
+		SIF EQUIP:0 && TARGET && (EQUIP:TARGET:上半身下着１ || EQUIP:TARGET:上半身下着２ || EQUIP:TARGET:下半身下着１ || EQUIP:TARGET:下半身下着２ || EQUIP:TARGET:レオタード || EQUIP:TARGET:ボディースーツ) && (EQUIP:TARGET:上半身上着１ || EQUIP:TARGET:上半身上着２ || EQUIP:TARGET:ワンピース || EQUIP:TARGET:着物 || EQUIP:TARGET:外衣)
+			PRINTC Strip To Underwear[823]
+	ENDIF
+	IF (MEASUREMENTCHECK(CFLAG:TARGET:現在位置) || MEASURE_DEBUG) ;custom code
+		IF CFLAG:TARGET:身体測定 != 2
+			PRINTC Measure Body[824]
+		ELSE
+			PRINTC Finish Body Measuring[824]
+		ENDIF
+	ENDIF
+	SIF TFLAG:パンツ収奪 && !GETBIT (FLAG:USERCOMフィルタ, 61) ;com custom code
+		PRINTC Take Panties[825]
+	IF TARGET != MASTER && !CFLAG:Hypno_Orgasm_Denial ;custom code
+		IF TEQUIP:焦らしモード
+			PRINTC End Denial[826]
+		ELSE
+			PRINTC Denial Mode[826]
+		ENDIF
+	ENDIF
+	IF CFLAG:うふふ
+		PRINTC Stop Mischief[999]
+	ELSE
+		PRINTC Resume Time[999]
+	ENDIF
+ELSEIF FLAG:70 == 1 && CFLAG:TARGET:344 == 1
+		PRINTC Resume Time[999]
+	IF CFLAG:うふふ
+		SIF EQUIP:0 && TARGET != MASTER
+			PRINTC Strip Clothes[820]
+
+		IF CFLAG:うふふ == 2
+			IF TFLAG:抱きつきモード
+				PRINTC Shake Off[850]
+			ELSE
+				PRINTC Slip Out[850]
+			ENDIF
+			IF TEQUIP:焦らしモード && !CFLAG:Hypno_Orgasm_Denial ;custom code
+				PRINTC End Denial[826]
+			ELSE
+				PRINTC Denial Mode[826]
+			ENDIF
+		ELSE
+			PRINTC End Session[999]
+		ENDIF
+	ENDIF
+ELSEIF (CFLAG:うふふ && !CFLAG:イタズラ) || FREE_USE_ACTIVE() ;custom code, enable stripping clothes when in Free Use mode
+	SIF EQUIP:0 && TARGET && (!(TFLAG:102 == 3 && TFLAG:抱きつきモード) || FREE_USE_ACTIVE()) ;custom code, enable stripping clothes when in Free Use mode
+		PRINTC Strip Clothes[820]
+		;addition custom code
+		SIF CFLAG:うふふ
+			PRINTC Undress[892]
+		IF (TARGET != MASTER || CFLAG:MASTER:今忙しくて手が離せない) && !CFLAG:Hypno_Orgasm_Denial ;custom code
+			IF TEQUIP:焦らしモード && !CFLAG:Hypno_Orgasm_Denial ;custom code
+				PRINTC End Denial[826]
+			ELSE
+				PRINTC Denial Mode[826]
+			ENDIF
+		ENDIF
+	IF FLAG:70 == 1 && CFLAG:TARGET:344 == 0
+		PRINTC Resume Time[999]
+	ELSEIF CFLAG:うふふ == 2
+		IF TFLAG:抱きつきモード
+			PRINTC Shake Off[850]
+		ELSE
+			PRINTC Slip Out[850]
+		ENDIF
+	ELSEIF CFLAG:うふふ == 1
+		PRINTC End Session[999]
+	ENDIF
+ELSEIF CFLAG:MASTER:今忙しくて手が離せない
+	SIF EQUIP:MASTER:0
+	PRINTC Strip Clothes[820]
+	IF TEQUIP:焦らしモード
+		PRINTC End Denial[826]
+	ELSE
+		PRINTC Denial Mode[826]
+	ENDIF
+ENDIF
+
+IF CFLAG:イタズラ
+	IF CFLAG:イタズラ < 2 && (EXP:TARGET:睡眠姦経験 > 100 || TCVAR:睡眠薬強度 || TCVAR:睡眠深度 > 2000 || IsDead:TARGET:0)
+		IF !EQUIP:TARGET:0
+		PRINTC Start Mischief[830]
+		ELSE
+		PRINTC Unbutton Clothes[830]
+		ENDIF
+	ENDIF
+	IF CFLAG:イタズラ < 2
+		PRINTC Stop Mischief[999]
+		IF EQUIP:0 && TARGET && EQUIP:TARGET:下半身下着２ != 0 ;bug fix
+			IF !PANTS_ALREADY_COLLECTED()
+				FONTBOLD
+				SETCOLOR COLOR("PINK")
+				PRINT  
+			ENDIF
+			SIF !GETBIT (FLAG:USERCOMフィルタ, 60) ;com custom code
+				PRINTFORMC Pilfer %Capitalize(PeeProtectType(TARGET,4))%[821]
+			RESETCOLOR
+			FONTREGULAR
+		ENDIF
+	ENDIF
+	IF CFLAG:イタズラ > 1
+		IF IsDead:TARGET:0
+		PRINTC Stop Corpse Rape[999]
+		ELSE 
+		PRINTC Stop Sleep Rape[999]
+		ENDIF
+	ENDIF
+ENDIF
+IF CFLAG:添い寝中
+	PRINTC Stop Sleeping Together[999]
+ENDIF
+IF (CHK_DATENOW(CFLAG:MASTER:デート中) && (!FLAG:70 || CFLAG:TARGET:344 == 1) && !CFLAG:MASTER:うふふ && CFLAG:MASTER:現在位置 != OMANEKIBEYA() && TFLAG:妄想中 != 1 && inTrain != 3) || (SaveIsEZB && LoG_TutorialProgress >= 81)
+	IF SaveIsEZB
+		SETCOLOR 100, 250, 140
+		;custom code
+		PRINTFORMC Return Home[999]
+		RESETCOLOR
+	ELSEIF FLAG:デート相手 == MASTER && GETBIT(FLAG:瞬間移動, AT_HOME(MASTER)) && QOL_RETURN_HOME_TIME_REQUIRED() * 3 < BASE:MASTER:TSP
+			SETCOLOR 0x5090FF
+		PRINTFORMC Return Home({QOL_RETURN_HOME_TIME_REQUIRED() * 3}TSP)[999]
+		RESETCOLOR
+	ELSE
+		SIF QOL_RETURN_HOME_TIME_REQUIRED() < 10
+			SETCOLOR 100, 250, 140
+		;custom code
+		PRINTFORMC \@ FLAG:デート相手 != MASTER ? Finish Date # Return Home \@({QOL_RETURN_HOME_TIME_REQUIRED()}min)[999]
+		RESETCOLOR
+	ENDIF
+ENDIF
+$SKIP
+IF PREVCOM >= 0
+	IF TFLAG:151
+		STR:0 = %STR_TR(1500 + TFLAG:151)%
+	ELSE
+		STR:0 = %TRAINNAME_TR(PREVCOM)%
+	ENDIF
+	;addition custom code, custom commands
+	IF TFLAG:151 == ADD_CUSTOM_SCOM
+		STR:0 '= Add_Custom_SCOM_Name(ADD_PREV_SELECTED_SCOM)
+	ELSEIF PREVCOM == ADD_CUSTOM_COM
+		STR:0 '= Add_Custom_COM_Name(ADD_PREVCUSTOMCOM)
+	ENDIF
+ENDIF
+SIF PREVCOM == 304 && CFLAG:TARGET:350 == 49 && TALENT:TARGET:酒耐性 > -5
+	STR:0 = Share Drink
+SIF PREVCOM == 304 && CFLAG:TARGET:350 == 49 && (TALENT:TARGET:酒耐性 == -5 || CFLAG:TARGET:妊娠自覚状態 == 1)
+	STR:0 = Serve Dish
+SIF PREVCOM == 304 && CFLAG:TARGET:350 == 51
+	STR:0 = Look After
+;kojo com
+IF INRANGE(PREVCOM, 270, 299)
+	CALL KOJO_MESSAGE_SEND("COM", 0, TARGET, PREVCOM - 270)
+	STR:0 '= RESULTS
+ENDIF
+IF !TFLAG:USERCOM非表示
+	IF PREVCOM >= 0 && PREVCOM < 300
+		PRINTL 
+		PRINT <Last Training Command: 
+		PRINTS STR_TR(0)
+		SIF TFLAG:150
+			PRINT (Assistant)
+		PRINTL >
+	ELSE
+		PRINTL 
+		PRINTFORM <Last Command: %STR:0%>
+	ENDIF
+ENDIF
+
+
+;NAS benchmark
+IF benchMarkStart
+	SELECTCASE benchMarkStage
+	CASE 3
+		PRINTL
+		CALL BENCHMARK_START_STAGE
+		CALL WannaBeInMyGang(1033)
+		CALL BENCHMARK_ADVANCE_STAGE
+	ENDSELECT
+	CALL OYASUMI
+	LOOP_BREAK = 1
+	;DOTRAIN 999
+ENDIF
+
+@COM_PRINT351
+#DIM COM_ID
+COM_ID = TOINT(SUBSTRING(GETDOINGFUNCTION(),9))
+
+IF CFLAG:TARGET:同行
+ELSEIF COM_351_CONDITION(TARGET) == 1
+    SETCOLOR 100, 100, 100
+ELSEIF CAN_IRAI_CHARA_GO_TOGATHER(TARGET)
+    SETCOLOR C_GREEN
+ELSE
+    SETCOLOR C_AQUA
+ENDIF
+;Custom code
+IF IsDead:TARGET:0 || CFLAG:TARGET:睡眠
+PRINTFORMC Drag Body[{COM_ID,3}]
+ELSEIF IS_BABY(TARGET)
+PRINTFORMC Carry Around[{COM_ID,3}]
+ELSEIF CapacityStats:TARGET:3 < 75 && ITEM:Wheelchair
+PRINTFORMC Wheelchair Around[{COM_ID,3}]
+ELSE
+PRINTFORMC Lead Around[{COM_ID,3}]
+ENDIF
+RESETCOLOR
+RETURN 1
+
+@COM_FILTER_NEW_COM
+
+;Act_COMのラインと合体
+SELECTCASE CFLAG:オート喘ぎ
+	CASE 0
+		LOCALS = Auto-moan: No
+	CASE 1
+		LOCALS = Auto-moan: Yes
+	CASE 2
+		LOCALS = Auto-moan: Yes (Ahegao)
+ENDSELECT
+SETCOLOR C_GRAY
+PRINTFORM %"━" * 3%
+RESETCOLOR
+PRINTFORM  Actions
+SETCOLOR C_GRAY
+PRINTFORM  ━
+SIF STALKED == TARGET && STALKED
+	SETCOLOR C_YELLOW
+PRINTBUTTON "【★】", TARGET + 4000
+RESETCOLOR
+FOR LOCAL,0,VARSIZE("NEW_COM_NAMES")
+    SELECTCASE LOCAL
+    CASE 0 TO 2
+        SIF !charaKnowsSex(MASTER)
+            CONTINUE
+    ENDSELECT
+    CALL PRINTBUTTON_EX(@"[%NEW_COM_NAMES:LOCAL%]",-55500+LOCAL,NEW_COM_COMMAND_PAGE != LOCAL)
+    CALL STRAIGHT_BAR(1,C_GRAY,"-")
+NEXT
+CALL PRINTBUTTON_EX("[Pushdown Guard]", -9200, !FLAG:押し倒し)
+CALL STRAIGHT_BAR(1,C_GRAY,"-")
+IF charaKnowsSex(MASTER)
+;NAS sex knowledge tests
+CALL PRINTBUTTON_EX("[Auto. Condom]",838,!CFLAG:自動ゴム)
+CALL STRAIGHT_BAR(1,C_GRAY,"-")
+ENDIF
+IF TARGET != MASTER
+	CALL PRINTBUTTON_EX(@"[%LOCALS%]",4000,!CFLAG:オート喘ぎ)
+ENDIF
+;custom code, automatically scale line for resolution
+HTML_POPPRINTINGSTR
+HTML_PRINT RESULTS + @"<font color='#%TO_HEX(C_GRAY)%'>%"━" * MAX((MAXWIDTH() - HTML_STRINGLEN(RESULTS))/2, 0)%</font>"
+
+@NAS_FILTER_CANDO(nPageName,nCommand)
+#FUNCTION
+#DIMS nPageName
+#DIM nCommand
+SELECTCASE nPageName
+CASE "FP"
+    SELECTCASE nCommand
+    CASE 0, 5, 6, 15, 20, 22, 80, 81, 85, 902, 7, 3, 11, 12, 308, 310, 312,330,460
+        RETURNF 1
+    CASE 120, 145,91,9228,140, 90, 121, 126, 125
+        RETURNF 1
+    CASE 451, 700 TO 755
+        RETURNF 1
+    ENDSELECT
+CASE "INS"
+    SELECTCASE nCommand
+    CASE 92 TO 94, 130 TO 133, 60 TO 70
+        RETURNF 1
+    ENDSELECT
+CASE "TOY"
+    SELECTCASE nCommand
+    CASE 41, 99, 104, 105, 107,183,146,147, 40, 42, 44, 45, 46, 47, 48, 127
+        RETURNF 1
+    CASE 9339
+        RETURNF 1
+    CASE 9163 TO 9169
+        RETURNF 1
+    ENDSELECT
+CASE "SM"
+    SELECTCASE nCommand
+    CASE 64,100 TO 110, 140 TO 144, 182
+        RETURNF 1
+    CASE 150, 184, 186
+        RETURNF 1
+    CASE 9170, 9193, 9151
+        RETURNF 1
+    ENDSELECT
+CASE "DAY"
+    SELECTCASE nCommand
+    CASE 300, 301, 302, 332, 352,9357,9489
+        RETURNF 1
+    ENDSELECT
+CASE "CTXT"
+    SELECTCASE nCommand
+    CASE 460
+    CASE 400 TO 499
+    CASE 9452,9780,9480,9479,410
+        RETURNF 1
+    ENDSELECT
+CASE "HOST"
+    SELECTCASE nCommand
+    CASE 9797, 9350, 9340, 9481
+        RETURNF 1
+    CASE 9339
+        SIF !CFLAG:MASTER:うふふ
+            RETURNF 1
+    ENDSELECT
+CASE "DIAL"
+    SELECTCASE nCommand
+    CASE 433
+        RETURNF 1
+    CASE 270 TO 299
+        RETURNF 1
+    ENDSELECT
+CASE "CUST"
+    SIF nCommand >= 9000
+        RETURNF 1
+CASE "OTR"
+    FOR LOCAL,0,VARSIZE("NEW_COM_ABR")
+        SIF NEW_COM_ABR:LOCAL == "OTR"
+            CONTINUE
+        SIF NEW_COM_ABR:LOCAL == "ALL"
+            CONTINUE
+        SIF NAS_FILTER_CANDO(NEW_COM_ABR:LOCAL,nCommand)
+            RETURNF 0
+    NEXT
+    RETURNF 1
+CASEELSE
+    RETURNF 1
+ENDSELECT
+RETURNF 0
+
+@COMMAND_IS_HARMFUL(ARG, nCommand)
+#FUNCTION
+#DIM nCommand
+VARSET NEW_COM_HARM_CAN_BP
+SELECTCASE nCommand
+CASE 9299
+;Execute
+    NEW_COM_HARM_CAN_BP = 1
+    RETURNF 4
+CASE 9298
+;Brand as slave
+    NEW_COM_HARM_CAN_BP = 1
+    RETURNF 3
+CASE 9481
+;Fire weapon
+    SIF TARGET == MASTER
+        RETURNF 1
+    NEW_COM_HARM_CAN_BP = 1
+    LOCAL = charaWeaponInts:(MASTER):Damage*MAX(1,charaWeaponInts:(MASTER):Pellets)
+    IF LOCAL > BodyPartHealth:ARG:40:1*2
+        RETURNF 4
+    ELSEIF LOCAL > BodyPartHealth:ARG:1:1*2
+        RETURNF 3
+    ELSEIF LOCAL > BodyPartHealth:ARG:1:1/2
+        RETURNF 2
+    ENDIF
+    RETURNF 1
+CASE 9797
+;Attack
+    NEW_COM_HARM_CAN_BP = 1
+    RETURNF 3
+CASE 9350
+;Rape
+    NEW_COM_HARM_CAN_BP = 1
+    RETURNF 2
+CASE 9340
+;Kick Stomach
+    RETURNF 2
+CASE 350
+;Push down
+    IF FLAG:70 && !MAXBASE:TARGET:TSP
+        RETURNF 2
+    ELSEIF CFLAG:睡眠
+        RETURNF 2
+    ENDIF
+CASE 310, 330
+	SIF (TCVAR:MASTER:馴れ合い < 2) && !CFLAG:睡眠
+		RETURNF 2
+CASE 310, 330
+	SIF (TCVAR:MASTER:馴れ合い < 1) && !CFLAG:睡眠
+		RETURNF 1
+CASE 416
+    SIF TARGET == MASTER
+        RETURNF 0
+    RETURNF 1
+ENDSELECT
+
+@MAKE_HARMFUL_COMMAND_COLOR(ARG,nCommand)
+#DIM nCommand
+
+LOCAL = COMMAND_IS_HARMFUL(ARG, nCommand)
+SELECTCASE LOCAL
+CASE 0
+CASEELSE
+SETCOLOR DANGER_COMMAND_COLOR_LIST(LOCAL)
+ENDSELECT
+
+@DANGER_COMMAND_COLOR_LIST(ARG)
+#FUNCTION
+SELECTCASE ARG
+CASE 1
+RETURNF C_YELLOW
+CASE 2
+RETURNF C_ORANGE
+CASE 3
+RETURNF C_RED
+CASE 4
+RETURNF C_D_RED
+ENDSELECT
+
+
+@HARMFUL_COMMAND_WARNING(ARG,nCommand)
+#DIM nCommand
+IF nCommand == ADD_CUSTOM_SCOM
+    LOCALS '= Add_Custom_SCOM_Name(ADD_SELECTED_SCOM)
+ELSEIF nCommand >= 9000
+    LOCALS '= Add_Custom_COM_Name(nCommand-9000)
+ELSEIF TFLAG:151 > -1
+    LOCALS = %STR_TR(1500 + nCommand)%
+ELSE
+    LOCALS = %TRAINNAME_TR(nCommand)%
+ENDIF
+
+
+SELECTCASE COMMAND_IS_HARMFUL(ARG, nCommand)
+CASE 4
+    FONTITALIC
+    SETCOLOR C_D_RED
+    PRINTFORML 【%LOCALS%】is a command that will certainly be the end for %CALLNAME:ARG%.
+    RESETCOLOR
+    FONTREGULAR
+    IF !NEW_COM_HARM_CAN_BP
+        PRINTFORML Do you want to continue?
+        CALL ASK_YN()
+        SIF RESULT
+            RETURN -1
+    ENDIF
+CASE 3
+    FONTITALIC
+    SETCOLOR C_RED
+    PRINTFORML 【%LOCALS%】will certainly cause severe physical or relational harm to %CALLNAME:ARG% and may kill %HIM_HER(ARG)%.
+    RESETCOLOR
+    FONTREGULAR
+    IF !NEW_COM_HARM_CAN_BP
+        PRINTFORML Do you want to continue?
+        CALL ASK_YN()
+        SIF RESULT
+            RETURN -1
+    ENDIF
+CASE 2
+    FONTITALIC
+    SETCOLOR C_ORANGE
+    PRINTFORML 【%LOCALS%】will certainly cause physical or relationship harm to %CALLNAME:ARG%.
+    RESETCOLOR
+    FONTREGULAR
+    IF !NEW_COM_HARM_CAN_BP
+        PRINTFORML Do you want to continue?
+        CALL ASK_YN()
+        SIF RESULT
+            RETURN -1
+    ENDIF
+CASE 1
+    FONTITALIC
+    SETCOLOR C_YELLOW
+    PRINTFORML 【%LOCALS%】may cause physical or relationship harm to you or %CALLNAME:ARG%.
+    RESETCOLOR
+    FONTREGULAR
+ENDSELECT
+RETURN 1
+
+@SEX_COMMAND_SIMULATE_RISK(ARG,nCommand)
+#DIM nCommand
+#DIM enduranceSave, 10
+#DIM enduranceSaveMaster, 10
+#DIM baseSave, VARSIZE("BASE")
+#DIM baseSaveMaster, VARSIZE("BASE")
+#DIM expSave, VARSIZE("EXP")
+#DIM expSaveMaster, VARSIZE("EXP")
+#DIM tequipSave, VARSIZE("TEQUIP")
+#DIM tequipSaveMaster, VARSIZE("TEQUIP")
+#DIM tcvarSave, VARSIZE("TCVAR")
+#DIM tcvarSaveMaster, VARSIZE("TCVAR")
+#DIM palamSave, VARSIZE("TCVAR")
+#DIM palamSaveMaster, VARSIZE("TCVAR")
+#DIM qolDateSave, VARSIZE("Qol_Info_Dates_Array")
+#DIM qolDateSaveMaster, VARSIZE("Qol_Info_Dates_Array")
+#DIM qolCountSave, VARSIZE("Qol_Info_Count_Array")
+#DIM qolCountSaveMaster, VARSIZE("Qol_Info_Count_Array")
+#DIM drugStatsSave, VARSIZE("DrugStats")
+#DIM drugStatsSaveMaster, VARSIZE("DrugStats")
+#DIM stainSave, VARSIZE("STAIN")
+#DIM stainSaveMaster, VARSIZE("STAIN")
+#DIM tflagSave, VARSIZE("TFLAG")
+#DIM commandAfter
+#DIM timeSave
+#DIMS strSave, 10
+#DIMS cstr10Save
+#DIMS cstr10SaveMaster
+#DIM TF102Save
+#DIM TF100Save
+#DIM TF230Save
+TF100Save = TFLAG:100
+TF102Save = TFLAG:102
+TF230Save = TFLAG:230
+
+TFLAG:103 = 0
+TFLAG:97 = 0
+TFLAG:98 = 0
+TFLAG:99 = 0
+timeSave = TIME
+;back up stats
+FOR LOCAL, 0, VARSIZE("TCVAR")
+    SELECTCASE LOCAL
+    CASE 0 TO 6
+        ;doesn't exist
+        SIF !EnduranceDB(TOSTR(LOCAL))
+            GOTO BypassEndure
+        enduranceSave:LOCAL       = GETVAR(@"%EC_EXP_VAR%:{ARG}:0")
+        enduranceSaveMaster:LOCAL = GETVAR(@"%EC_EXP_VAR%:{MASTER}:0")
+    ENDSELECT
+    $BypassEndure
+
+    ;Saved strings
+    SELECTCASE LOCAL
+    CASE 0 TO VARSIZE("strSave")-1
+        strSave:LOCAL '= STR:LOCAL
+    ENDSELECT
+
+    ;EXP
+    SELECTCASE LOCAL
+    CASE 0 TO VARSIZE("EXP")-1
+        expSave:LOCAL       = EXP:ARG:LOCAL
+        expSaveMaster:LOCAL = EXP:MASTER:LOCAL
+    ENDSELECT
+
+    ;BASE
+    SELECTCASE LOCAL
+    CASE 0 TO VARSIZE("BASE")-1
+        baseSave:LOCAL      = BASE:ARG:LOCAL
+        baseSaveMaster:LOCAL = BASE:MASTER:LOCAL
+    ENDSELECT
+
+    ;PALAM
+    SELECTCASE LOCAL
+    CASE 0 TO VARSIZE("PALAM")-1
+        palamSave:LOCAL = PALAM:ARG:LOCAL
+        palamSaveMaster:LOCAL = PALAM:MASTER:LOCAL
+    ENDSELECT
+
+    ;QOL
+    SELECTCASE LOCAL
+    CASE 0 TO VARSIZE("Qol_Info_Dates_Array")-1
+        qolDateSave:LOCAL = Qol_Info_Dates_Array:ARG:LOCAL
+        qolDateSaveMaster:LOCAL = Qol_Info_Dates_Array:MASTER:LOCAL
+    ENDSELECT
+    SELECTCASE LOCAL
+    CASE 0 TO VARSIZE("Qol_Info_Count_Array")-1
+        qolCountSave:LOCAL = Qol_Info_Count_Array:ARG:LOCAL
+        qolCountSaveMaster:LOCAL = Qol_Info_Count_Array:MASTER:LOCAL
+    ENDSELECT
+
+    ;STAIN
+    SELECTCASE LOCAL
+    CASE 0 TO VARSIZE("STAIN")-1
+        stainSave:LOCAL = STAIN:ARG:LOCAL
+        stainSaveMaster:LOCAL = STAIN:MASTER:LOCAL
+    ENDSELECT
+
+    ;DrugStats
+    SELECTCASE LOCAL
+    CASE 0 TO VARSIZE("DrugStats")-1
+        drugStatsSave:LOCAL = DrugStats:ARG:LOCAL
+        drugStatsSaveMaster:LOCAL = DrugStats:MASTER:LOCAL
+    ENDSELECT
+
+    tequipSave:LOCAL       = TEQUIP:ARG:LOCAL
+    tequipSaveMaster:LOCAL = TEQUIP:MASTER:LOCAL
+    tcvarSave:LOCAL       = TCVAR:ARG:LOCAL
+    tcvarSaveMaster:LOCAL = TCVAR:MASTER:LOCAL
+    tflagSave:LOCAL       = TFLAG:LOCAL
+NEXT
+cstr10Save '= CSTR:ARG:10
+cstr10SaveMaster '= CSTR:MASTER:10
+
+SKIPDISP 1
+SELECTCASE nCommand
+CASE IS >= 9000
+TRYCALLFORM ADD_CUSTOM_COM{nCommand-9000}
+CASEELSE
+TRYCALLFORM COM{nCommand}
+ENDSELECT
+SKIPDISP 0
+
+SOURCE:ARG:(33) = SOURCE:ARG:(33) *  MASTER_FAVOR_CHECK(ARG,33) * TECHNIQUE_CHECK(ARG,33) / 10000
+SOURCE:ARG:(33) = SOURCE:ARG:(33) *  MOOD_CHECK(ARG,33) * REASON_CHECK(ARG,33) / 10000
+CALL SOURCE_逸脱(ARG)
+CALL SOURCE_反感(ARG)
+CALL SOURCE_EXTRA(ARG)
+
+;;#;DEBUGPRINTFORML %CALLNAME:ARG% hostility CUP for command {nCommand}: {CUP:ARG:反感}
+SELECTCASE CUP:ARG:反感+CUP:ARG:不快
+CASE IS >= HateMarkThreshold:5
+commandAfter = 4
+CASE IS >= HateMarkThreshold:2
+commandAfter = 3
+CASE IS >= HateMarkThreshold:1
+commandAfter = 2
+CASEELSE
+commandAfter = 0
+ENDSELECT
+
+;revert
+FOR LOCAL, 0, VARSIZE("TCVAR")
+    SELECTCASE LOCAL
+    CASE 0 TO 6
+        ;doesn't exist
+        SIF !EnduranceDB(TOSTR(LOCAL))
+            GOTO BypassEndureRev
+        enduranceSave:LOCAL = GETVAR(@"%EC_EXP_VAR%:{ARG}:0")
+        enduranceSaveMaster:LOCAL = GETVAR(@"%EC_EXP_VAR%:{MASTER}:0")
+    ENDSELECT
+    $BypassEndureRev
+
+    ;Saved strings
+    SELECTCASE LOCAL
+    CASE 0 TO VARSIZE("strSave")-1
+        STR:LOCAL '= strSave:LOCAL
+    ENDSELECT
+
+    ;EXP
+    SELECTCASE LOCAL
+    CASE 0 TO VARSIZE("EXP")-1
+        EXP:ARG:LOCAL = expSave:LOCAL
+        EXP:MASTER:LOCAL = expSaveMaster:LOCAL
+    ENDSELECT
+
+    ;BASE
+    SELECTCASE LOCAL
+    CASE 0 TO VARSIZE("BASE")-1
+        BASE:ARG:LOCAL    = baseSave:LOCAL
+        BASE:MASTER:LOCAL = baseSaveMaster:LOCAL
+        DOWNBASE:ARG:LOCAL    = 0
+        DOWNBASE:MASTER:LOCAL = 0
+    ENDSELECT
+
+    ;PALAM
+    SELECTCASE LOCAL
+    CASE 0 TO VARSIZE("PALAM")-1
+        PALAM:ARG:LOCAL = palamSave:LOCAL
+        PALAM:MASTER:LOCAL = palamSaveMaster:LOCAL
+    ENDSELECT
+
+    ;QOL
+    SELECTCASE LOCAL
+    CASE 0 TO VARSIZE("Qol_Info_Dates_Array")-1
+        Qol_Info_Dates_Array:ARG:LOCAL = qolDateSave:LOCAL
+        Qol_Info_Dates_Array:MASTER:LOCAL = qolDateSaveMaster:LOCAL
+    ENDSELECT
+    SELECTCASE LOCAL
+    CASE 0 TO VARSIZE("Qol_Info_Count_Array")-1
+        Qol_Info_Count_Array:ARG:LOCAL = qolCountSave:LOCAL
+        Qol_Info_Count_Array:MASTER:LOCAL = qolCountSaveMaster:LOCAL
+    ENDSELECT
+
+    ;STAIN
+    SELECTCASE LOCAL
+    CASE 0 TO VARSIZE("STAIN")-1
+        STAIN:ARG:LOCAL = stainSave:LOCAL
+        STAIN:MASTER:LOCAL = stainSaveMaster:LOCAL
+    ENDSELECT
+
+    ;DrugStats
+    SELECTCASE LOCAL
+    CASE 0 TO VARSIZE("DrugStats")-1
+        DrugStats:ARG:LOCAL = drugStatsSave:LOCAL
+        DrugStats:MASTER:LOCAL = drugStatsSaveMaster:LOCAL
+    ENDSELECT
+
+    ;CUP/CDOWN
+    SELECTCASE LOCAL
+    CASE 0 TO VARSIZE("CUP")-1
+        CUP:ARG:LOCAL = 0
+        CUP:MASTER:LOCAL = 0
+        CDOWN:ARG:LOCAL = 0
+        CDOWN:MASTER:LOCAL = 0
+    ENDSELECT
+
+    ;SOURCE
+    SELECTCASE LOCAL
+    CASE 0 TO VARSIZE("SOURCE")-1
+        SOURCE:ARG:LOCAL = 0
+        SOURCE:MASTER:LOCAL = 0
+    ENDSELECT
+
+
+    TEQUIP:ARG:LOCAL = tequipSave:LOCAL
+    TEQUIP:MASTER:LOCAL = tequipSaveMaster:LOCAL
+    TCVAR:ARG:LOCAL = tcvarSave:LOCAL
+    TCVAR:MASTER:LOCAL = tcvarSaveMaster:LOCAL
+    TFLAG:LOCAL = tflagSave:LOCAL
+NEXT
+CSTR:ARG:10 '= cstr10Save
+CSTR:MASTER:10 '= cstr10SaveMaster
+TIME = timeSave
+TFLAG:102 = TF102Save
+TFLAG:100 = TF100Save
+TFLAG:230 = TF230Save
+
+
+RETURN commandAfter

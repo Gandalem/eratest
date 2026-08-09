@@ -1,0 +1,492 @@
+;-----------------------------------------------------------
+;拠点内でキャラの挙動を処理する関数
+;             ARG   判定するキャラ
+;        留まり率   現在位置に対する移動率,高いほど留まる,マイナスになると移動しやすくなる
+;          移動先   移動判定を行う地点ID
+;        移動決定   実際に移動する地点ID
+;      無差別移動   移動先が侵入可能ならとりあえず移動する
+;        強制移動   移動先に何がなんでも移動する（無差別移動でどこにも移動できないと発動）
+;             END   終了フラグ
+;            N_ID   ARGの現在位置
+;         G_POINT   一時的な引力点
+;          引力点   徐々に移動していく目的地
+;なるべく動かない   1ターンだけ持続する無差別移動にならないかぎり移動しない状態,移動直後や特定の行動を取った際になる
+;-----------------------------------------------------------
+@キャラ移動処理(ARG)
+#DIM 留まり率
+#DIM 移動先
+#DIM 移動決定
+#DIM 無差別移動
+#DIM 強制移動
+#DIM END
+#DIM N_ID
+#DIM G_POINT
+#DIM MoveFrom
+#DIM StepMoveTo
+#DIM MoveTo
+#DIM MoveTime
+VARSET LOCAL
+END = 0
+StepMoveTo = CFLAG:ARG:現在位置
+
+;addition custom code, player duplication
+SIF ARG < CHARANUM && NO:ARG == MASTER
+	RETURN
+
+;あなたの拠点物件にいるキャラのみが対象
+SIF !AT_HOME(ARG)
+	END = 1
+;行動不能
+;NAS: is dead or has a current movement path.
+SIF FLAG:時間停止 || CFLAG:ARG:衰弱 || CFLAG:ARG:お招き || CFLAG:ARG:睡眠 || IsDead:ARG:0 || DT_EXIST(@"Movement_{ARG}") || PottyLinePosition(ARG) > -1
+	END = 1
+;仕事、ディレイ、添い寝、うふふ、同行中は移動処理リセット
+SIF CFLAG:ARG:行動 == 5 || CFLAG:ARG:ディレイ || CFLAG:ARG:添い寝中 || CFLAG:ARG:うふふ || CFLAG:ARG:同行
+	END = 1
+;addition custom code
+SIF ADD_BANQUET_PREVENT_MOVEMENT(ARG)
+	END = 1
+;NAS: can't move with no moving
+SIF !CapacityStats:ARG:3
+	END = 1
+SIF LS_RESTRICTION("Character movement",ARG) ;Custom code, restrict character movement during Lunatic Survival.
+	END = 1
+
+;終了処置
+IF END
+	TCVAR:ARG:なるべく動かない = 0
+	TCVAR:ARG:INITIAL_VISITATION_POINT = 0 ;addition custom code
+	RETURN
+ENDIF
+
+N_ID = CFLAG:ARG:現在位置
+
+;まずその場に留まり率を設定
+;addition custom code, for custom charadata movement
+RESULT:1 = 0
+CALL KOJO_CHECK(ARG, "CHARADATA", "MOVE", 4, N_ID)
+IF RESULT
+	RESULT = RESULT:1
+ELSE
+;addition custom code, duplicated characters
+TRYCALLFORM CHARAMOVE_DATA_{NO:ARG}(4, N_ID)
+ENDIF 
+留まり率 = RESULT
+;待機場所は固定
+IF N_ID == MAXROOM
+	留まり率 = -10
+	;qol custom code
+	IF !TCVAR:ARG:MAXROOM_WAITING_TIME
+		TCVAR:ARG:MAXROOM_WAITING_TIME = 1
+	ELSE
+		TCVAR:ARG:MAXROOM_WAITING_TIME += TIME_PROGRESS(TIME:1)
+		留まり率 -= (TCVAR:ARG:MAXROOM_WAITING_TIME - 1)
+	ENDIF
+;引力点も固定
+ELSEIF N_ID == TCVAR:ARG:引力点
+	留まり率 = 5
+ELSEIF (TCVAR:ARG:INITIAL_VISITATION_POINT < 0 && N_ID == CFLAG:(TCVAR:ARG:INITIAL_VISITATION_POINT * -1):現在位置) || N_ID == TCVAR:ARG:INITIAL_VISITATION_POINT ;qol custom code
+	TCVAR:ARG:INITIAL_VISITATION_POINT = 0
+ELSE
+	;留まりにくい場所
+	SIF N_ID == GET_ENTRANCE(MAIN_MAP) || ROOMDATA:(N_ID % 100) & 場所_留まらない
+		留まり率 += -5
+	;あなたと同室だったら態度で留まる
+	SIF N_ID == CFLAG:MASTER:現在位置
+		留まり率 += CFLAG:ARG:態度 * 2
+ENDIF
+
+無差別移動 = 0
+強制移動 = 0
+;お風呂にいる
+IF BATHROOM(N_ID)
+	;お風呂なう
+	IF CFLAG:ARG:風呂
+		TCVAR:ARG:なるべく動かない = 0
+		RETURN
+	;あがる
+	ELSE
+		無差別移動 = 1
+	ENDIF
+ENDIF
+;トイレは10分経過したら出てくる,利尿剤が効いてると出てこない
+IF IN_TOILET(N_ID) && TIME_PROGRESS(TIME:1) >= 10 && !TCVAR:ARG:利尿剤
+	IF TCVAR:ARG:利尿剤
+		TCVAR:ARG:なるべく動かない = 1
+	ELSEIF TIME_PROGRESS(TIME:1) >= 10 && !TCVAR:ARG:利尿剤
+		無差別移動 = 1
+	ENDIF
+ENDIF
+;天候ダメージが痛い
+SIF 天候による影響(ARG, N_ID) <= -3
+	無差別移動 = 1
+;現在位置の移動率を判定して、本来入らない場所（なおかつあなたが居ない）ならG_POINTを付けて無差別移動
+CALL キャラ移動率(ARG, N_ID)
+IF TCVAR:ARG:INITIAL_VISITATION_POINT && IN_HOME(N_ID) == 1 ;qol custom code
+	IF TCVAR:ARG:引力点
+		TCVAR:ARG:INITIAL_VISITATION_POINT = 0
+		G_POINT = 0
+	ELSEIF TCVAR:ARG:INITIAL_VISITATION_POINT < 0
+		IF !AT_HOME(TCVAR:ARG:INITIAL_VISITATION_POINT * -1)
+			TCVAR:ARG:INITIAL_VISITATION_POINT = 0
+		ELSE
+			G_POINT = CFLAG:(TCVAR:ARG:INITIAL_VISITATION_POINT * -1):現在位置
+		ENDIF
+	ELSE
+		G_POINT = TCVAR:ARG:INITIAL_VISITATION_POINT
+	ENDIF
+	IF G_POINT
+		TCVAR:ARG:なるべく動かない = 0
+	ENDIF
+ELSEIF RESULT <= 0 && N_ID != CFLAG:MASTER:現在位置
+	無差別移動 = 1
+	;qol custom code
+	CALL MOVEMENT_NEAREST_VALID(ARG)
+	LOCAL:10 = RESULT
+
+	;引力点が未設定ならとりあえず外に出ようとする
+	SIF !TCVAR:ARG:引力点
+		G_POINT = LOCAL:10 ;qol custom code
+ELSE
+	G_POINT = 0
+ENDIF
+;なるべく動かないなら終了
+IF TCVAR:ARG:なるべく動かない && !無差別移動
+	TCVAR:ARG:なるべく動かない = 0
+	RETURN
+ENDIF
+
+;CALL FISHER_YATES_SHAFFLE(MAXROOM - MINROOM()) ;custom code, reworked
+移動決定 = 0
+WHILE 1
+	;引力点の設定を行う
+	TCVAR:ARG:引力点 = 0
+	;addition custom code, for custom charadata movement
+	CALL KOJO_CHECK(ARG, "CHARADATA", "MOVE", 8)
+	IF !RESULT 
+	;addition custom code, duplicated characters
+	TRYCALLFORM CHARAMOVE_DATA_{NO:ARG}(8)
+	ENDIF 
+	CALL LS_GRAVITY(ARG) ;Custom code, gravity point modification during Lunatic Survival.
+	CALL KOJO_MESSAGE_SEND("GRAVITY", 1, ARG)
+	;引力点または脱出用のG_POINTがある場合は引力点に向かって移動する,G_POINTは条件無し
+	IF 引力点発動可(ARG) || G_POINT
+		;引力点かG_POINTを目指す
+		移動先 = TCVAR:ARG:引力点 ? TCVAR:ARG:引力点 # G_POINT
+		;スキップムーブでルート検索
+		;custom code, reworked
+		; WHILE !(CAN_MOVE(N_ID, 移動先) & 1)
+		; 	TRYCALLFORM SKIP_MOVE_{MAIN_MAP}(移動先, N_ID)
+		; 	移動先 = RESULT
+		; WEND
+		移動先 = MOVEMENT_NEXT_LOCATIONS(N_ID, 移動先)
+		IF 移動先 < 0 ;custom code
+			PRINTFORMDL %CALLNAME:ARG%'s ({ARG}) could not find a route from {N_ID} to {(TCVAR:ARG:引力点 ? TCVAR:ARG:引力点 # G_POINT)}. Teleporting.
+			CFLAG:ARG:現在位置 = TCVAR:ARG:引力点 ? TCVAR:ARG:引力点 # G_POINT
+			RETURN
+		ENDIF
+		;移動先があなた私室であり、そのキャラの私室でなく、そこであなたがウフフ中の場合は入ってこれない
+		;addition custom code, only prevent entry if door is locked
+		IF 移動先 != CFLAG:ARG:初期位置 && 移動先 == CFLAG:MASTER:現在位置 && CFLAG:MASTER:うふふ && FLAG:自室施錠
+		;結界発動中
+		ELSEIF TEQUIP:MASTER:結界発動 && 移動先 == CFLAG:MASTER:現在位置
+		ELSE
+			;留まり率に補正をかけて動きやすくする（要調整,-100だとほぼ動く）
+			CALL キャラ移動率(ARG, 移動先, 留まり率 - 100)
+			;移動判定
+			IF RESULT * TIME_PROGRESS(TIME:1) > RAND:1000
+				移動決定 = 移動先
+			;無差別移動時はなるべく移動,強制移動時は無条件に移動
+			ELSEIF (RESULT && 無差別移動) || 強制移動
+				移動決定 = 移動先
+			ENDIF
+		ENDIF
+	;通常の移動
+	ELSE
+		;custom code, reworked
+		CALL FISHER_YATES_SHAFFLE(GRAPH_NEIGHBORS_MOVE_INDEX:(N_ID % 100))
+		FOR LOCAL, 0, GRAPH_NEIGHBORS_MOVE_INDEX:(N_ID % 100)
+			移動先 = GRAPH_NEIGHBORS_MOVE:(N_ID % 100):(SHAFFLE_ARRAY:LOCAL)
+			;現在位置
+			SIF 移動先 == N_ID
+				CONTINUE
+			;移動できない
+			SIF !(CAN_MOVE(N_ID, 移動先) & 1)
+				CONTINUE
+			;移動できない２,ワンルーム制限等、移動に制限がある場所
+			SIF !MAP_CAN_MOVE(移動先, ARG)
+				CONTINUE
+			;移動先があなた私室であり、そのキャラの私室でなく、そこであなたがウフフ中の場合は入ってこれない
+			;addition custom code, only prevent entry if door is locked
+			SIF 移動先 != CFLAG:ARG:初期位置 && 移動先 == CFLAG:MASTER:現在位置 && CFLAG:MASTER:うふふ && FLAG:自室施錠
+				CONTINUE
+			;強制移動時は以下の条件はパスする
+			IF !強制移動
+				;天候が今いる場所より痛い
+				SIF 天候による影響(ARG, 移動先) <= -3 && N_ID != MAXROOM && 天候による影響(ARG, N_ID) >= -2
+					CONTINUE
+				;追い出された先
+				SIF 移動先 == TCVAR:ARG:追い出され地点
+					CONTINUE
+				;結界発動中
+				SIF TEQUIP:MASTER:結界発動 && 移動先 == CFLAG:MASTER:現在位置
+					CONTINUE
+				;qol custom code, don't enter rooms with sleeping people, Kana has special exception to allow her to move through Reimu's room, everyone can move out of Kana's room
+				SIF QOL_ROOM_HAS_SLEEPER(移動先) && !(移動先 == P15霊夢私室 && ARG == [[カナ]]) && N_ID != P18押入れ
+					CONTINUE
+			ENDIF
+			;最初にヒットした移動先で判定してBREAKする（分岐が多いほど移動確率が上がらないようにするため）
+			CALL キャラ移動率(ARG, 移動先, 留まり率)
+			;通常の移動判定
+			IF RESULT * TIME_PROGRESS(TIME:1) > RAND:1000
+				移動決定 = 移動先
+			;無差別移動時はなるべく移動,強制移動時は無条件に移動
+			ELSEIF (RESULT && 無差別移動) || 強制移動
+				移動決定 = 移動先
+			;移動率が0%じゃないなら判定終了（マイナスでも終了）
+			ELSEIF RESULT
+				;ただし無差別移動時は強制移動を付けて再判定
+				IF 無差別移動 && !強制移動
+					強制移動 = 1
+				ELSE
+					TCVAR:ARG:なるべく動かない = 0
+					RETURN
+				ENDIF
+			;0%なら再判定
+			ELSE
+				CONTINUE
+			ENDIF
+			BREAK
+		NEXT
+	ENDIF
+	;強制移動時は移動決定するまでループ
+	IF 強制移動 && !移動決定
+		CONTINUE
+	ELSEIF 移動決定
+		CALL キャラ移動処理２(ARG, 移動先, N_ID)
+		TCVAR:ARG:MAXROOM_WAITING_TIME = 0 ;qol custom code
+		RETURN
+	ELSE
+		TCVAR:ARG:なるべく動かない = 0
+		RETURN
+	ENDIF
+WEND
+
+;-----------------------------------------------------------
+;移動が決定したあとの処理
+;ARG     移動するキャラ
+;移動先  移動する地点ID
+;N_ID    ARGの現在位置
+;-----------------------------------------------------------
+@キャラ移動処理２(ARG, 移動先, N_ID)
+#DIM 移動先
+#DIM N_ID
+#DIM 移動メッセージ
+#DIM ワンルーム人数カウント
+#DIM SKIP
+移動メッセージ = 0
+SKIP = 0
+SETCOLOR C_YELLOW
+IF CAN_SEE(ARG) && !CFLAG:MASTER:睡眠
+	;custom code: raped touhous will always try to move away
+	IF RAPED_2HU_MOVE(ARG)
+	PRINTFORML %CALLNAME:ARG% gets away from you in a hurry...
+	ENDIF
+	;===============================
+
+	IF N_ID == MAXROOM
+		;custom code
+		PRINTFORML %CALLNAME:ARG% came over to%LOC_THE(移動先, 0, 1)%【%NAME_FROM_PLACE(移動先)%】
+	ELSE
+		;custom code
+		PRINTFORML %CALLNAME:ARG% moves from%LOC_THE(N_ID, 0, 1)%【%NAME_FROM_PLACE(N_ID)%】to%LOC_THE(移動先, 0, 1)%【%NAME_FROM_PLACE(移動先)%】
+	ENDIF
+	移動メッセージ = 1
+ENDIF	
+
+;wet bed rep
+IF CFLAG:MASTER:初期位置 == 移動先
+	CALL BEDWETTER_FIND_OUT(ARG)
+	CALL PANTY_REWORK_DIRTY_FIND_OUT(ARG) ; dirty undies in collection
+ENDIF
+;=======================================
+
+;ワンルーム処理
+IF ROOMDATA:(N_ID % 100) & 場所_ワンルーム
+	;ワンルーム家主が外出する場合、相性が良くないキャラは一緒に外に出される
+	IF N_ID == CFLAG:ARG:初期位置
+		ワンルーム人数カウント = 0
+		FOR LOCAL, 1, CHARANUM
+			IF CFLAG:LOCAL:現在位置 == N_ID && LOCAL != ARG
+				;別の同居しているキャラがまだいる場合は追い出しが発生しない
+				IF CFLAG:LOCAL:現在位置 == CFLAG:LOCAL:初期位置
+					SKIP = 1
+					BREAK
+				;相性の良いキャラは居ても良い
+				ELSEIF RELATION:ARG:LOCAL <= 100
+					ワンルーム人数カウント ++
+					CFLAG:LOCAL:現在位置 = 移動先
+					TCVAR:LOCAL:なるべく動かない = 1
+				ENDIF
+			ENDIF
+		NEXT
+		;あなたは恋慕ならオッケー,あなた＋相性のいいキャラが留守番、他のキャラが締め出しだとちょっと地の文と齟齬があるのは仕様
+		IF 移動メッセージ && !SKIP
+			IF !TALENT:ARG:恋慕
+				;custom code
+				PRINTFORML %CALLNAME:ARG% urges you%COND_STR(@" and the others", ワンルーム人数カウント)% to move from%LOC_THE(N_ID, 0, 1)%【%NAME_FROM_PLACE(N_ID)%】to%LOC_THE(移動先, 0, 1)%【%NAME_FROM_PLACE(移動先)%】
+				CFLAG:MASTER:現在位置 = 移動先
+			ELSEIF ワンルーム人数カウント
+				;custom code
+				PRINTFORML %CALLNAME:ARG% urges everyone but you to move from%LOC_THE(N_ID, 0, 1)%【%NAME_FROM_PLACE(N_ID)%】to%LOC_THE(移動先, 0, 1)%【%NAME_FROM_PLACE(移動先)%】
+			ELSE
+				PRINTFORML %CALLNAME:ARG% asks you to watch the house before leaving.
+			ENDIF
+		ENDIF
+	ENDIF
+ENDIF
+RESETCOLOR
+SIF 移動メッセージ
+	WAIT
+;移動処理
+CFLAG:ARG:現在位置 = 移動先
+TCVAR:ARG:なるべく動かない = 1
+
+;--------------------------------------------------------
+;キャラ(ARG)が地点(移動先)へ移動する確率／分
+;留まり率はマイナス補正
+;実数値は10倍したもの
+;式中関数にしたかったが…
+;--------------------------------------------------------
+@キャラ移動率(ARG, 移動先, 留まり率)
+#DIM 移動率
+#DIM 留まり率
+#DIM 移動先
+#DIM N_ID
+#DIM お風呂入りたい
+#DIM GoToilet
+#DIM 部屋主
+;お風呂入りたい度を設定
+
+IF TALENT:ARG:氷精
+	お風呂入りたい = 2000
+;お風呂が嫌いなキャラ(虎は泳げるけど)
+ELSEIF GROUPMATCH(ARG, [[橙]], [[星]], [[正邪]], [[お燐]], [[ミケ]])
+	お風呂入りたい = 2000
+ELSEIF TALENT:ARG:汚臭耐性 == -2
+	お風呂入りたい = 600
+ELSEIF TALENT:ARG:汚臭耐性 == -1
+	お風呂入りたい = 800
+ELSEIF TALENT:ARG:汚臭耐性 == 0
+	お風呂入りたい = 1000
+ELSEIF TALENT:ARG:汚臭耐性 == 1
+	お風呂入りたい = 1500
+ELSEIF TALENT:ARG:汚臭耐性 == 2
+	お風呂入りたい = 2000
+ENDIF
+
+N_ID = CFLAG:ARG:現在位置
+
+
+;check moving
+C = CapacityStats:ARG:3
+SIF C <= 0
+	RETURN 0
+
+;基本移動率,1.5% / 分 = 45.0% / 30分
+移動率 = (15 + CFLAG:ARG:移動率補正) * MIN(C,100)/100
+;あなたが見えていたら態度でアップ
+SIF CFLAG:MASTER:現在位置 == 移動先 && CAN_MOVE(N_ID, 移動先) == 3
+	移動率 += CFLAG:ARG:態度 * 2
+;掃除係は掃除中汚れに影響される
+SIF TALENT:ARG:掃除係 && CFLAG:ARG:神社在住 && BETWEENTIME(720, 1080)
+	移動率 += YOGORE:移動先 / 300
+;キャラごとの移動率設定
+;addition custom code, for custom charadata movement
+RESULT:1 = 0
+CALL KOJO_CHECK(ARG, "CHARADATA", "MOVE", 4, 移動先)
+IF RESULT
+	RESULT = RESULT:1
+ELSE
+;addition custom code, duplicated characters
+TRYCALLFORM CHARAMOVE_DATA_{NO:ARG}(4, 移動先)
+ENDIF 
+移動率 = 移動率 + RESULT
+
+;お風呂に入りたい時は入りに行く
+IF BATHCHECK(移動先) & 場所_風呂
+	IF CFLAG:ARG:風呂 >= お風呂入りたい
+		移動率 = 移動率 * 10
+	ELSE
+		移動率 = 0
+	ENDIF
+ENDIF
+;引きこもり対策として、天候ダメージがない状況で屋内にいる場合屋外へ行きたがるように
+SIF INROOM(N_ID) && !INROOM(移動先) && 天候による影響(ARG, 移動先) >= 0 
+	移動率 += 15
+
+;－－－－－－－－－－－－－－－
+;移動節度によって行かない場所を設定
+;MAP住人のプライベート箇所は個別に設定してください
+ ;0以上 =プライベートな場所には入らない
+;     1 =倉庫や路地裏、地下室等の過疎地点には移動しない
+;    -1 =プライベートな場所でもあまり気にせず移動する
+;    -2 =ありとあらゆるところに移動する
+;－－－－－－－－－－－－－－－
+部屋主 = PRIVATEROOM:(移動先 % 100)
+IF 移動先 != CFLAG:ARG:初期位置 && N_ID != MAXROOM
+	IF CFLAG:ARG:移動節度 >= 1
+		SIF ROOMDATA:(移動先 % 100) & 場所_過疎
+			移動率 = 0
+	ENDIF
+	IF CFLAG:ARG:移動節度 >= 0 && !CFLAG:ARG:神社在住
+		SIF ROOMDATA:(移動先 % 100) & 場所_プライベート && RELATION:部屋主:ARG <= 100
+			移動率 = 0
+	ENDIF
+	IF CFLAG:ARG:移動節度 >= -1
+		SIF 寝てる子がいる(移動先)
+			移動率 = 移動率 * 1 / 3
+		SIF ROOMDATA:(移動先 % 100) & 場所_プライベート && !CFLAG:ARG:神社在住 && RELATION:部屋主:ARG <= 100
+			移動率 = 移動率 * 2 / 3
+		SIF 天候による影響(ARG, 移動先) <= -1
+			移動率 = 移動率 * 1 / 3
+		SIF ROOMDATA:(移動先 % 100) & 場所_過疎
+			移動率 = 移動率 * 1 / 3
+	ENDIF
+ENDIF
+;custom code: raped touhous will always try to move away
+IF RAPED_2HU_MOVE(ARG) && 移動率 > 0
+	移動率 += 10000
+ENDIF
+;======================
+
+;留まり率を差し引く
+移動率 = MAX(移動率 - 留まり率, 0)
+RETURN 移動率
+
+@寝てる子がいる(ARG)
+#FUNCTION
+FOR LOCAL, 1, CHARANUM
+	SIF CFLAG:LOCAL:現在位置 == ARG && CFLAG:LOCAL:睡眠
+		RETURNF 1
+NEXT
+
+;ARG  判定キャラ
+@引力点発動可(ARG)
+#FUNCTION
+;引力点が無い
+SIF !TCVAR:ARG:引力点
+	RETURNF 0
+;現在位置と同じ
+SIF CFLAG:ARG:現在位置 == TCVAR:ARG:引力点
+	RETURNF 0
+;引力点が拠点の外
+SIF IN_HOME(TCVAR:ARG:引力点) != 1
+	RETURNF 0
+;現在位置が拠点の外
+SIF IN_HOME(CFLAG:ARG:現在位置) != 1
+	RETURNF 0
+;天候ダメージが痛い
+SIF 天候による影響(ARG, TCVAR:ARG:引力点) < 0
+	RETURNF 0
+RETURNF 1

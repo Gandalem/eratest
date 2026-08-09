@@ -1,0 +1,328 @@
+@M_KOJO_IRAI_K26(ROLE, SCENE, IRAI_ID)
+#DIMS ROLE     ;キャラの立場、依頼者かそうでないか
+#DIMS SCENE    ;セリフの表示されるタイミング
+#DIM  IRAI_ID  ;依頼自体のID
+#DIM  CLIENT_ID;依頼者IDだけ抜き出したもの
+#DIM  CHK_ID   ;依頼IDだけ抜き出したもの
+#DIMS IRAI_NAME;依頼名
+CHK_ID    = IRAI_ID % 1000
+CLIENT_ID = IRAI_ID_TO_CLIENT(IRAI_ID)
+;custom code, individual requests
+IRAI_NAME = %STR_DATA_IRAI(IRAI_ID, "依頼名", CLIENT_ID)%
+RESULT = 0
+IF CHK_ID > 100
+	TRYCALLFORM M_KOJO_IRAI_%IRAI_NAME%_K26(ROLE, SCENE, CLIENT_ID)
+ELSE
+	TRYCALLFORM M_KOJO_IRAI_{CHK_ID}_K26(ROLE, SCENE, CLIENT_ID)
+ENDIF
+SIF RESULT
+	RETURN 1
+SELECTCASE ROLE
+CASE "CLIENT"
+	;一般依頼
+	IF IS_COMMON_IRAI(IRAI_ID)
+		SELECTCASE STR_DATA_IRAI(IRAI_ID, "依頼名", CLIENT_ID)
+		CASE "一般依頼名"
+			SELECTCASE SCENE
+			CASE "依頼提示時"
+			;依頼を持ちかけられる時
+			CASE "依頼非受託時"
+			;内容だけ見て受託しなかった時
+			CASE "依頼受託時"
+			;依頼を受託した時
+			CASE "依頼確認時"
+			;[366]で依頼内容を依頼人に確認した時
+			CASE "依頼破棄時"
+			;受託した依頼を破棄する時
+			CASE "依頼実行直前"
+			;[367]で依頼を実行する時、実行処理の前に呼び出される
+			CASE "依頼実行直後"
+			;[367]で依頼を実行する時、実行処理の後に呼び出される
+			CASE "成功報告時"
+			;報告時（成功）
+			CASE "失敗報告時"
+			;報告時（失敗）
+			;この他、報告忘れや期限切れで失敗扱いになり後日依頼人に遭遇した際にも表示
+			ENDSELECT
+		ENDSELECT
+		RETURN
+	ENDIF
+	
+	;固有依頼
+	SELECTCASE STR_DATA_IRAI(IRAI_ID, "依頼名", CLIENT_ID)
+	;個々の依頼名で分岐
+	;SCENEのWAITに関する仕様
+	;WAIT無しでよい　　　　："依頼提示時", "依頼非受託時", "依頼確認時", "依頼破棄時", "成功報告時", "失敗報告時"
+	;
+	;以下の2つは実際にはCARRYOUTでの地の文処理との比較検討が必要
+	;WAITを入れたほうが適切："依頼実行直前", "依頼実行直後"
+	CASE "固有依頼名"
+		SELECTCASE SCENE
+		CASE "依頼提示時"
+		;依頼を持ちかけられる時
+		CASE "依頼非受託時"
+		;内容だけ見て受託しなかった時
+		CASE "依頼受託時"
+		;依頼を受託した時
+		CASE "依頼確認時"
+		;[366]で依頼内容を依頼人に確認した時
+		CASE "依頼破棄時"
+		;受託した依頼を破棄する時
+		CASE "依頼実行直前"
+		;[367]で依頼を実行する時、実行処理の前に呼び出される
+		CASE "依頼実行直後"
+		;[367]で依頼を実行する時、実行処理の後に呼び出される
+		CASE "成功報告時"
+		;報告時（成功）
+		CASE "失敗報告時"
+		;報告時（失敗）
+		;この他、報告忘れや期限切れで失敗扱いになり後日依頼人に遭遇した際にも表示
+		ENDSELECT
+	ENDSELECT
+CASE "TARGET"
+	;ここで表示されるSCENEは"依頼実行直前", "依頼実行直後"だけです
+	;一般依頼
+	IF IS_COMMON_IRAI(IRAI_ID)
+		SELECTCASE STR_DATA_IRAI(IRAI_ID, "依頼名", CLIENT_ID)
+		;個々の依頼名で分岐してください
+		CASE "一般依頼名"
+		;人物が鍵になっていた・もしくは場所にたまたま居合わせた
+			SELECTCASE SCENE
+			;TARGETが呼ばれるのはこのタイミングだけ
+			CASE "依頼実行直前"
+			CASE "依頼実行直後"
+			ENDSELECT
+		ENDSELECT
+		RETURN
+	ENDIF
+	SELECTCASE CSVCALLNAME(CLIENT_ID)
+	;依頼者のCALLNAMEによる分岐（CSV準拠）
+	CASE "依頼者"
+		SELECTCASE STR_DATA_IRAI(IRAI_ID, "依頼名", CLIENT_ID)
+		CASE "固有依頼名"
+			SELECTCASE SCENE
+			CASE "依頼実行直前"
+			CASE "依頼実行直後"
+			ENDSELECT
+		ENDSELECT
+	ENDSELECT
+CASE "NO_REPORT"
+	;日数経過時、報告不要依頼を達成していた場合に呼ばれる口上
+	;ここで表示されるSCENEは"依頼報告不要"だけです
+	;SCENEが一つしか無いので分岐は不要
+	;また、必ず依頼主の口上が呼ばれます
+	;一般依頼
+	IF IS_COMMON_IRAI(IRAI_ID)
+		SELECTCASE STR_DATA_IRAI(IRAI_ID, "依頼名", CLIENT_ID)
+		;個々の依頼名で分岐してください
+		CASE "一般依頼名"
+		CASE "お花に水をあげて"
+		CASE "誰かの落とし物"
+		ENDSELECT
+		RETURN
+	ENDIF
+	SELECTCASE STR_DATA_IRAI(IRAI_ID, "依頼名", CLIENT_ID)
+	CASE "固有依頼名"
+	ENDSELECT
+ENDSELECT
+
+;==================================================
+;依頼口上・一般依頼15：あなたに抱かれたい
+;==================================================
+@M_KOJO_IRAI_15_K26(ROLE, SCENE, CLIENT_ID)
+#DIMS ROLE     ;キャラの立場、依頼者かそうでないか
+#DIMS SCENE    ;セリフの表示されるタイミング
+#DIM  CLIENT_ID;依頼者IDだけ抜き出したもの
+;--------------------------------------------------
+;RETURN 0 の部分は共通の口上が表示されます
+;依頼ごとの口上を表示する部分は RETURN 0 を RETURN 1 にしてください
+;--------------------------------------------------
+SELECTCASE SCENE
+CASE "依頼提示時"
+
+	RETURN 0
+CASE "依頼非受託時"
+
+	RETURN 0
+CASE "依頼受託時"
+
+	RETURN 0
+CASE "依頼確認時"
+
+	RETURN 0
+CASE "依頼破棄時"
+
+	RETURN 0
+CASE "依頼実行直前"
+;○この依頼は依頼主がTARGETです
+;【◆口上】
+;【※依頼処理側にある専用口上が表示されます】
+;【▼そのまま下の口上へ】
+
+	RETURN 0
+CASE "依頼実行直後"
+;○この依頼は必ず実行後達成します
+;【▲上の口上から続き】
+;【◆口上】
+;【▼そのまま下の口上へ】
+
+	RETURN 0
+CASE "成功報告時"
+;報酬：\20,000（ホ別）
+
+	RETURN 0
+CASE "失敗報告時"
+
+	RETURN 0
+;CASE "依頼報告不要"
+;＜この依頼にはありません＞
+;	RETURN 0
+CASE "UNIQUE_SCENARIO_CHANCE"
+;return the chance (1/X) to select the character's unique scenario instead of a general one
+	RESULT:100 = 100 ;yukari always uses outside world scenario
+
+	RETURN 1
+CASE "UNIQUE_SCENARIO"
+	PRINTFORMDL Yukari smiles with lustful intent as she %SPLIT_G("leads:takes")% you by the hand.
+	
+	PRINTFORMDW You are led into a dark gap that suddenly opened up.
+	PRINTFORMDL 
+	CALL TRIPLEDOT, "reverse:timed" ;custom code
+		SELECTCASE RAND:5
+		CASE 0
+			PRINTFORMDL 
+			PRINTFORMDL After leaving the gap, you arrive in a noisy city district that feels much more seedy and unsavory than where you just were in Gensokyo.
+			PRINTFORMDW The flicker of a gaudy neon sign catches your attention. Looks like you're at a love hotel in the Outside World.
+			PRINTFORMDL 
+			PRINTFORMW 「There's a certain charm to this kind of place, don't you think?」
+			PRINTFORMDL 
+			PRINTFORMDW With that said, she embraces your arm and the two of you walk into the entrance.
+			CALL 一般依頼15_AEGI_YUKARI
+			PRINTFORMDL 
+			PRINTFORMDL You can't control yourself when you see Yukari's wet body through the one-way mirror that showcases the shower.
+			PRINTFORMDW You barge into the bathroom and assail her.
+			PRINTFORMDL 
+			PRINTFORMDL "Someone couldn't wait, I see～", Yukari coos, though she doesn't seem to be complaining.
+			PRINTFORMDW Her eager, sopping %FSYN("vagina")% envelopes your throbbing %FSYN("penis")% as you thrust inside, filled with carnal desire.
+			PRINTFORMDW She cries out, her lustrous moans reverberating off the tiled walls of the bathroom.
+			PRINTFORMDL 
+			PRINTFORMDL Yukari's hands press into the wall as you slam against her womb from behind; her back arching in animalistic pleasure.
+			PRINTFORMDW Her walls continue to contract, pulsing and squeezing the length of your %FSYN("penis")%.
+			PRINTFORMDL 
+			PRINTFORMDL Until finally, you reach the limit and pull out; covering Yukari's ass completely with your %SEMEN(,1)%.
+			PRINTFORMDW Drop by drop, your %SEMEN()% overflows and spills down onto the shower floor. Yukari looks back at you with an expression full of desire.
+			PRINTFORMDL 
+			PRINTFORMW 「Next, how about releasing it inside, where it can't drip down the drain?」
+			PRINTFORMDL 
+			PRINTFORMDL Being coaxed for another round, you turn off the shower. Vitality returns to your hardening %FSYN("penis")%.
+			PRINTFORMDW You hoist the gorgeous Yukari under your arm and bring her to the bed...
+		CASE 1
+			PRINTFORMDL 
+			PRINTFORMDL After leaving the gap, you arrive in a place smelling of sulphur, accompanied by the sensation of heat & humidity.
+			PRINTFORMDW You are surrounded by trees, save for what seems to be a filled bath created by natural stone formations. Looks like you're by some hot springs.
+			PRINTFORMDL 
+			PRINTFORMW 「This is a secret hot springs in the Outside World. No one comes here, except for me of course.」
+			PRINTFORMDL 
+			PRINTFORMDW With that said, she gives you a seductive glance as she starts stripping off her clothes.
+			CALL 一般依頼15_AEGI_YUKARI
+			PRINTFORMDL 
+			PRINTFORMDL At first, you intended to enjoy the hot springs and that was it. However you're bathing right next to Yukari...
+			PRINTFORMDW You can't control yourself any longer. You embrace Yukari, and one thing leads to another until the two of you are fucking like animals.
+			PRINTFORMDL 
+			PRINTFORMDL It may have been her preferred temperature, but the hot water causes her body to heat up considerably.
+			PRINTFORMDW Sitting in a reverse position, every time you push against the entrance to her womb, her body trembles as she lets out voices filled with ecstasy.
+			PRINTFORMDL 
+			PRINTFORMDL At last, you reach your limit and ask where to finish. However, due to being overwhelmed by the heat and pleasure,
+			PRINTFORMDW Yukari isn't able to say anything; she can only moan as your %SEMEN(,1)% fills her inner depths.
+		CASE 2
+			PRINTFORMDL 
+			PRINTFORMDL After leaving the gap, you arrive in a place where the bright sun bears down on you as the sea salt wind billows about.
+			PRINTFORMDL Taking into account the white sand, the scenery, the palm trees and various other vegetation not found in Gensokyo,
+			PRINTFORMDW It seems that you're in a tropical country in the Outside World.
+			PRINTFORMDL 
+			PRINTFORMW 「This is an uninhabited island. It's nice to be somewhere so open once in a while, isn't it?」
+			PRINTFORMDL 
+			PRINTFORMDW Having said that, she starts taking off her clothes like it was nothing and takes off yours as well.
+			CALL 一般依頼15_AEGI_YUKARI
+			PRINTFORMDL 
+			PRINTFORMDW With her hands pressed against the sandy beach, you and Yukari are mating like animals.
+			PRINTFORMDL 
+			PRINTFORMDL You get swept away by the alluring sight in front of you.
+			PRINTFORMDL Her glistening, sweaty body under the blazing sun, her dazzling blonde hair fluttering in the wind.
+			PRINTFORMDW With a wild sense of liberation, you feel as if you've stepped into some sort of mythical world.
+			PRINTFORMDL 
+			PRINTFORMDL Due to this sensation, your urge to ejaculate all over this beauty in front of you increases exponentially. You start to pull out, however...
+			PRINTFORMDW Yukari glances behind her and strokes your hand grabbing at her waist.
+			PRINTFORMDL 
+			PRINTFORMW 「This is the wild——the world of animals. There's only one place on a bitch's body where the male should pour his seed. Is that not so?」
+			PRINTFORMDL 
+			PRINTFORMDW Murmuring seductively, as if she were one of the finest bitches in the world, such invitations are irresistible.
+			PRINTFORMDL 
+			PRINTFORMDL You slam your %FSYN("penis")% as deep into her as you can, and just as she asked for, you mark the inside of her womb plentifully with your %SEMEN(,1)%.
+			PRINTFORMDW Overcome by the sheer pleasure, the bitch trembles and writhes; her loud, squealing moans filled with ecstasy as she climaxes.
+		CASE 3
+			PRINTFORMDL 
+			PRINTFORMDL After leaving the gap, you arrive in a noisy city district that feels much more seedy and unsavory than where you just were in Gensokyo.
+			PRINTFORMDL Sunlight is obstructed by the tall buildings, littered all around you are empty cans and half finished cigarettes.
+			PRINTFORMDW Perhaps you're in some back alley in the Outside World?
+			PRINTFORMDL 
+			PRINTFORMW 「Even places like these have their uses. Come, shall we?」
+			PRINTFORMDL 
+			PRINTFORMDW Having said that, she firmly places her hands on a nearby wall and sticks out her ass; clearly inciting your desires as she sways it back and forth.
+			CALL 一般依頼15_AEGI_YUKARI
+			PRINTFORMDL 
+			PRINTFORMDW Yukari's loud, unladylike moans echoes throughout the alley.
+			PRINTFORMDL 
+			PRINTFORMDL The thrill of being caught in the act by anyone at any moment is turning her on.
+			PRINTFORMDW Your %FSYN("penis")% knocking at the back of her %FSYN("vagina")% causes her body to quiver.
+			PRINTFORMDL 
+			PRINTFORMDL Her moans get even more intense, increasing in volume as you lose control; slamming your hips forward as you violently plunge in and out of her.
+			PRINTFORMDW Yukari shudders in a large climax after several spurts of your %SEMEN()% shoots past the entrance to her womb.
+			PRINTFORMDL 
+			PRINTFORMDW Panting from the aftermath, Yukari kneels in front of your now deflated %FSYN("penis")%.
+			PRINTFORMDL 
+			PRINTFORMDL After she gives you a cleaning blowjob full of affection, your member regains its former hardness.
+			PRINTFORMDW The alley is once again filled with the loud moans of an erotic woman.
+		;ここまで書いといてなんだけどいまいちピンと来なかったのでコメントアウトしとく
+		;加筆してみました。イマイチだったら再度コメントアウトして、SELECTCASE:RANDの値を4にセットし直してください(2023/03/18)
+		CASE 4
+			PRINTFORMDL 
+			PRINTFORMDL What lay in front of you after you stepped out of the gap was a scene similar to, but somehow different from, the temple school in Gensokyo.
+			PRINTFORMDW Chairs and desks neatly lined up, a blackboard, a speaker in the corner, and a podium. Could this be... a "school" from the outside world?
+			PRINTFORMDL 
+			PRINTFORMW 「Fufu, is this to your liking?」
+			PRINTFORMDL 
+			PRINTFORMDL Hearing a familiar voice in a slightly higher pitch than usual, you turn around to see where it came from.
+			PRINTFORMDL There you find Yukari standing by a windowsill, dressed in a school uniform.
+			PRINTFORMDL She seems a little younger, exuding a more innocent vibe than her usual self.
+			PRINTFORMDW You're not sure, but... she also looks a little shorter as well.
+			PRINTFORMDL 
+			PRINTFORMW 「I changed my voice and my appearance to better fit the environment. It's all part of the whole image play, you see.」
+			PRINTFORMDL 
+			PRINTFORMDL With that, Yukari then points at you.
+			PRINTFORMDW You realize that you, too, are clad in a school uniform!
+			PRINTFORMDL 
+			PRINTFORMDL Giggling at your confusion, she approaches you with a seductive gait and whispers close to you as if she has just remembered something,
+			PRINTFORMDL 
+			PRINTFORMW 「Oh, and while we're at it, why don't we change the way we address each other?」
+			PRINTFORML 
+			PRINTFORMDL She looks up at you with a sultry gaze, eyes half-lidded, and whispers in your ear.
+			PRINTFORML 
+			CALL HPH_PRINT("「Now then, shall we get down to enjoying ourselves, hmm? ――Sen-paiHPH」","W")
+			CALL 一般依頼15_AEGI_YUKARI
+			PRINTFORMDL 
+			PRINTFORMDW Using two desks as a makeshift bed, her back is pressed against the cool surface as you make love.
+			PRINTFORMDW %BREAKENG(@"The only sounds echoing through the emptiness of the classroom were the ragged sounds of your breathing, the erratic creaking of a desk, and the cooing of your adorable \"junior\"...")%
+			PRINTFORML 
+			PRINTFORMDW This completely new perspective on Yukari only heightens your excitement as you pound into her with newfound vigor.
+			PRINTFORMDW %BREAKENG(@"The moans of your \"junior\" manage to keep up with the intensity, getting louder and more extreme, creating a huge contrast to her innocent looks.")%
+			PRINTFORMDW %BREAKENG(@"Then, after receiving the first huge load of many right into her womb, Yukari arches her back as far as it will go, reaching a fierce climax with a fountain-like squirting to match.")%
+			PRINTFORML 
+			CALL HPH_PRINT("「Senpai...HPH Senpai...HPH」","L")
+			PRINTFORMDL She sighs softly in ecstasy, her body trembling in the afterglow as she slowly comes down from her orgasm.
+			PRINTFORMDW %BREAKENG(@"Hearing that, your cock regains its strength almost instantly, and without hesitation, you line it up with your debauched \"junior\"'s slick little fuck hole.")%
+			PRINTFORMDW %BREAKENG(@"Heedless of her semen-stained school uniform no longer being fit for classes, Yukari's satisfied voice of pleasure resounds through the deserted classroom once again...")%
+	ENDSELECT
+
+	RETURN 1
+ENDSELECT

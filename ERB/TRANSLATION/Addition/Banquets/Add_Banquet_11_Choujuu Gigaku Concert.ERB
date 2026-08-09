@@ -1,0 +1,274 @@
+@EXIST_ADD_BANQUET11
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+@ADD_BANQUET11(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+
+SELECTCASE O_DATA
+	CASE "NAME"
+        CALLF MAKE_STR(V_NAME, "Choujuu Gigaku Live")
+    CASE "ACTIVITIES"
+        CALLF MAKE_STR(V_NAME, "Listening to music")
+    CASE "TERM"
+        CALLF MAKE_STR(V_NAME, "concert")
+    CASE "CATEGORY"
+        CALLF MAKE_STR(V_NAME, "concert")
+    CASE "PRIORITY"
+        CALLF MAKE_INT(V_NAME, 2)
+    CASE "NOTIFY_PLAYER"
+        CALLF MAKE_INT(V_NAME, 1)
+    CASE "HOST"
+        CALLF MAKE_INT(V_NAME, [[ミスティア]])
+    CASE "HOST_LIST"
+        CALLF MAKE_STR(V_NAME, @"{[[ミスティア]]}/{[[響子]]}")
+    CASE "GUEST_LIST"
+        CALLF MAKE_STR(V_NAME, @"{[[阿求]]}")
+    CASE "BANNED_LIST"
+        CALLF MAKE_STR(V_NAME, @"{[[白蓮]]}")
+    CASE "CONDITIONS"
+        SIF CFLAG:[[ミスティア]]:出禁 == 0 && CFLAG:[[響子]]:出禁 == 0 && DAY%7 == 0 && RAND:100 <= 25
+            CALLF MAKE_INT(V_NAME, 1)
+    CASE "WEATHER_DEPENDENT"
+        CALLF MAKE_INT(V_NAME, 1)
+    CASE "LISTEN_TO_MUSIC"
+        CALLF MAKE_INT(V_NAME, 1)
+    CASE "PERFORMERS"
+        CALLF MAKE_STR(V_NAME, @"{[[ミスティア]]}/{[[響子]]}")
+ENDSELECT
+
+@ADD_BANQUET_PLANNING11
+#DIM LOCATION
+#DIM SCALE
+#DIM START_TIME
+
+LOCATION = P201人里の門
+
+SCALE = 500 + RAND:5000
+START_TIME = 1260 ;21:00
+
+CALL ADD_BANQUET_CREATE(11, LOCATION, START_TIME, DAY+2, 180, SCALE)
+LOCAL = RESULT ;banquet_index
+
+SIF LOCAL < 0 ;couldn't create
+    RETURN
+
+ADD_BANQUETS_INVITED:LOCAL = ADD_BANQUET_INVITE_INVITED
+PRINTL  
+PRINTFORMW You see a flyer for an upcoming Choujuu Gigaku concert.
+PRINTFORML 
+
+PRINTFORMW %ADD_BANQUET_TIME_AND_PLACE_DESCRIPTION(LOCAL)%
+
+PRINT It seems like
+IF SCALE >= 5000
+	PRINTW  a ton of people are looking forward to it.
+ELSEIF SCALE >= 2500
+	PRINTW  it will attract a fairly large crowd.
+ELSEIF SCALE >= 1500
+	PRINTW  it will be fairly restrained this time.
+ELSE
+	PRINTW  not many people are excited for it.
+ENDIF
+
+PRINTFORMW Also, it might get canceled because of the weather...
+
+CALLF Add_SPECIAL_REQUEST_CREATION([[ミスティア]], 94, 50, 1, 1)
+CALLF Add_SPECIAL_REQUEST_CREATION([[響子]], 94, 50, 1, 1)
+
+@ADD_BANQUET_START11
+
+@ADD_BANQUET_FINISH11
+
+@ADD_BANQUET_VISIT11(PREVIOUS_STATE)
+#DIM PREVIOUS_STATE
+#DIM BANQUET_INDEX
+#DIM CURRENT_STATE
+#DIM PARTICIPANTS
+BANQUET_INDEX = ADD_BANQUET_INDEX(11)
+PARTICIPANTS = ADD_BANQUET_PARTICIPANT_COUNT(BANQUET_INDEX)
+CURRENT_STATE = ADD_BANQUETS_STATUS:BANQUET_INDEX
+
+IF CURRENT_STATE == ADD_BANQUET_STATE_IN_PROGRESS && PREVIOUS_STATE == ADD_BANQUET_STATE_PREPARING ;player was present during start
+    PRINTFORML 
+    IF PARTICIPANTS >= 15
+        PRINTW The concert starts in earnest, with the huge crowd already being excited.
+    ELSEIF PARTICIPANTS >= 5
+        PRINTW The concert starts, the crowd eagerly waiting to hear Kyouko and Mystia's singing.
+    ELSE
+        PRINTW The concert starts, but the lack of a crowd makes the mood lacking.
+    ENDIF
+    PRINTFORML 
+ELSEIF CURRENT_STATE == ADD_BANQUET_STATE_IN_PROGRESS ;joins later
+    PRINTL  
+    PRINTW The concert seems to have already started...
+    PRINTL  
+ENDIF
+
+@ADD_BANQUET_PROGRESS11(BANQUET_INDEX)
+#DIM BANQUET_INDEX
+#DIM BANQUET_ID
+#DIM PRESENT
+#DIM LAPSE
+
+BANQUET_ID = ADD_BANQUETS_UPCOMING:BANQUET_INDEX
+;if master at location
+PRESENT = CFLAG:MASTER:現在位置 == GET_MAP_REPLACEMENT(ADD_BANQUETS_LOCATION:BANQUET_INDEX)
+LAPSE = TIME_PROGRESS(TIME:1)
+
+SELECTCASE ADD_BANQUETS_STATUS:BANQUET_INDEX
+    CASE ADD_BANQUET_STATE_PREPARING
+        IF PRESENT
+            FOR LOCAL, 1, CHARANUM
+                IF CFLAG:LOCAL:BANQUET == BANQUET_ID && CFLAG:LOCAL:BANQUET_ROLE > 1
+                    IF TALENT:LOCAL:恋慕
+                        PRINTFORML %CALLNAME:LOCAL% is thinking about you while setting up for the concert.
+                    ELSE
+                        PRINTFORML %CALLNAME:LOCAL% is busily setting up for the concert.
+                    ENDIF
+                ENDIF
+            NEXT
+        ENDIF
+    CASE ADD_BANQUET_STATE_IN_PROGRESS
+        FOR LOCAL, 1, CHARANUM
+            IF CFLAG:LOCAL:BANQUET == BANQUET_ID
+                IF CFLAG:LOCAL:行動 == 5
+                    BASE:LOCAL:仕事量 = MAX(BASE:LOCAL:仕事量 - LAPSE * 10, 0)
+                    SIF CFLAG:LOCAL:BANQUET_ROLE < ADD_BANQUET_ROLE_HOST && (BASE:LOCAL:仕事量 == 0 || CFLAG:LOCAL:睡眠)
+                        CALL ADD_BANQUET_END_PARTICIPATION(LOCAL)
+                    IF PRESENT
+                        IF ADD_BANQUET_IS_PERFORMER(LOCAL, BANQUET_ID)
+                            IF TALENT:LOCAL:恋慕
+                                PRINTFORML %CALLNAME:LOCAL% occasionally glances at you while %HE_SHE(LOCAL)% performs.
+                            ELSE
+                                PRINTFORML %CALLNAME:LOCAL% continues to perform.
+                            ENDIF
+                        ELSEIF TALENT:LOCAL:恋慕
+                            PRINTFORML %CALLNAME:LOCAL% enjoys the concert while occasionally glancing at you.
+                        ELSE
+                            PRINTFORML %CALLNAME:LOCAL% enjoys the concert.
+                        ENDIF
+                    ENDIF
+                ENDIF
+            ENDIF
+        NEXT
+    CASE ADD_BANQUET_STATE_FINISHED
+ENDSELECT
+
+@ADD_BANQUET_PREPARATION_TEXT11(CHARA, LOCATION)
+#DIM CHARA
+#DIM LOCATION
+IF CFLAG:CHARA:現在位置 == CFLAG:MASTER:現在位置 && CFLAG:MASTER:現在位置 == LOCATION
+    PRINTFORML %CALLNAME:CHARA% starts preparing for the concert.
+ELSEIF CFLAG:MASTER:現在位置 == LOCATION
+    PRINTFORML %CALLNAME:CHARA% arrives at %NAME_FROM_PLACE_THE(LOCATION)% to start preparing for the concert.
+ELSEIF CFLAG:CHARA:現在位置 == CFLAG:MASTER:現在位置
+    PRINTFORML %CALLNAME:CHARA% moves over to %NAME_FROM_PLACE_THE(LOCATION)% to start preparing for the concert.
+ENDIF
+
+@ADD_BANQUET_JOIN_TEXT11(CHARA, LOCATION)
+#DIM CHARA
+#DIM LOCATION
+IF CFLAG:CHARA:現在位置 == CFLAG:MASTER:現在位置 && CFLAG:MASTER:現在位置 == LOCATION
+    PRINTFORML %CALLNAME:CHARA% joins the concert.
+ELSEIF CFLAG:MASTER:現在位置 == LOCATION
+    PRINTFORML %CALLNAME:CHARA% arrives at %NAME_FROM_PLACE_THE(LOCATION)% to attend the concert.
+ELSEIF CFLAG:CHARA:現在位置 == CFLAG:MASTER:現在位置
+    PRINTFORML %CALLNAME:CHARA% moves over to %NAME_FROM_PLACE_THE(LOCATION)% to attend the concert.
+ENDIF
+
+@ADD_BANQUET_SET_PARTICIPANTS11
+#DIM BANQUET_INDEX
+#DIM BANQUET_SCALE
+BANQUET_INDEX = ADD_BANQUET_INDEX(11)
+BANQUET_SCALE = ADD_BANQUETS_SCALE:BANQUET_INDEX
+
+CALL ADD_BANQUET_FILL_PARTICIPANTS(BANQUET_INDEX, 0, 0)
+
+@ADD_BANQUET_PARTICIPANT_JOIN_CHECK11(ARG)
+#DIM BANQUET_SCALE
+#DIM JOIN_CHANCE
+#DIM HIGH_RATE ;fairies and youkai
+#DIM NORMAL_RATE ;everyone else
+BANQUET_SCALE = ADD_BANQUETS_SCALE:ADD_BANQUET_INDEX(11)
+IF BANQUET_SCALE > 5000
+    HIGH_RATE = 40
+    NORMAL_RATE = 20
+ELSEIF BANQUET_SCALE > 3000
+    HIGH_RATE = 20
+    NORMAL_RATE = 10
+ELSEIF BANQUET_SCALE > 2000
+    HIGH_RATE = 17
+    NORMAL_RATE = 7
+ELSEIF BANQUET_SCALE > 1000
+    HIGH_RATE = 10
+    NORMAL_RATE = 5
+ELSE
+    HIGH_RATE = 8
+    NORMAL_RATE = 1
+ENDIF
+
+IF TALENT:ARG:妖精 || TALENT:ARG:妖怪
+    RETURN RAND:100 < HIGH_RATE
+ELSE
+    RETURN RAND:100 < NORMAL_RATE
+ENDIF
+
+@ADD_BANQUET_WORKLOAD_PREPARATION11(ARG)
+#DIM SCALE
+#DIM BANQUET_INDEX
+#DIM WORKLOAD
+BANQUET_INDEX = ADD_BANQUET_INDEX(11)
+SCALE = ADD_BANQUETS_SCALE:BANQUET_INDEX
+WORKLOAD = ADD_BANQUET_TIME_UNTIL(BANQUET_INDEX) * 10
+
+IF CFLAG:ARG:職種 != JOB_宴会準備
+	MAXBASE:ARG:仕事量 = MIN(WORKLOAD, 2400)
+	BASE:ARG:仕事量 = MAXBASE:ARG:仕事量
+	CFLAG:ARG:職種 = JOB_宴会準備
+    TCVAR:ARG:手伝えない = 2
+	CFLAG:ARG:行動 = 5
+ENDIF
+
+@ADD_BANQUET_WORKLOAD_PARTICIPATION11(ARG, SCALE)
+#DIM SCALE
+
+IF CFLAG:ARG:職種 != JOB_宴会参加
+	MAXBASE:ARG:仕事量 = 1800 ;stay for the full duration
+	BASE:ARG:仕事量 = MAXBASE:ARG:仕事量
+	CFLAG:ARG:職種 = JOB_宴会参加
+	CFLAG:ARG:行動 = 5
+    TCVAR:ARG:手伝えない = 1
+ENDIF
+
+@ADD_BANQUET_MESSAGE_TALK11
+#DIM BANQUET_INDEX
+#DIM PARTICIPANTS
+BANQUET_INDEX = ADD_BANQUET_INDEX(11)
+PARTICIPANTS = MAX(ADD_BANQUET_PARTICIPANT_COUNT(BANQUET_INDEX)-2, 0) ;do not include the performers themselves
+
+PRINTFORML Choujuu Gigaku is performing.
+IF PARTICIPANTS > 0
+    IF PARTICIPANTS == 1
+        PRINTFORML There's only one person listening...
+    ELSE
+        PRINTFORML There's around {PARTICIPANTS} people in the crowd.
+    ENDIF
+    IF ADD_BANQUET_TIME_UNTIL(BANQUET_INDEX) > -30
+        PRINTFORML Having just started, the concert is still relatively calm.
+    ELSEIF ADD_BANQUET_TIME_UNTIL(BANQUET_INDEX) > -120
+        IF PARTICIPANTS > 5
+            PRINTFORML The concert is in full swing, and the crowd is excitedly moving along with the beat.
+        ELSE
+            PRINTFORML The concert is in full swing. Despite the small audience, Kyouko and Mystia are screaming their lungs out as usual.
+        ENDIF
+    ELSE
+        PRINTFORML The concert is starting to wind down, as the crowd grows quieter.
+    ENDIF
+ELSE
+    PRINTFORML The crowd is already gone.
+ENDIF

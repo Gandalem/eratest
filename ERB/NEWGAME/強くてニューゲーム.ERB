@@ -1,0 +1,706 @@
+;-----------------------------------------------------------
+;強くてニューゲーム
+;-----------------------------------------------------------
+@強くてニューゲーム
+
+ゲーム引き継ぎ処理中 = 1
+FLAG:周回数 ++
+CALL Add_Handle_Duplicate_Deletion(1, 1) ;addition custom code
+CALLF KILL_ALL_MOBS() ;NAS custom, 
+CALL ADDCHARA_INIT(CSV_CHARANUM())
+CALL BUFF_RESET
+CALL BITE_THE_DUST_RESURRECT ; resurrect dead touhous
+;custom code, call before stuff is completely reset
+CALL BITE_THE_DUST_ENDING
+CALL BITE_THE_DUST_BACKUP
+CALL BITE_THE_DUST_CLEAR
+CALL BITE_THE_DUST_CLEAR_NAS_SHIT ;clear eraNAS shit
+CALL BITE_THE_DUST_RESTORE
+CALL BITE_THE_DUST_NEW
+CALL BITE_THE_DUST_SWEEP
+ゲーム引き継ぎ処理中 = 0
+CALL NEWGAME_VERUP
+CALL INIT_STARTINGLV ;custom code
+CALL Add_RedThread_Check ;addition custom code
+CALL ADD_EXTENDED_TRAITS_SET_ALL() ;addition custom code
+CALL LS_SETUP(1) ;Custom code, set up Lunatic Survival.
+RETURN 1
+
+
+;-----------------------------------------------------------
+;変数退避
+;-----------------------------------------------------------
+@BITE_THE_DUST_BACKUP
+;なりきり
+IF FLAG:なりきり
+	前回のなりきり出禁 = CFLAG:(FLAG:なりきり):出禁
+ENDIF
+;周回前の成長分を記録
+前回の体力 = MAXBASE:MASTER:体力
+前回の気力 = MAXBASE:MASTER:気力
+前回の精力 = MAXBASE:MASTER:精力
+
+;addition custom code, duplicated characters
+前回の体力増加量 = MAX(0, MAXBASE:MASTER:体力 - CSVBASE(NO:(FLAG:なりきり), GETNUM(BASE, "体力")))
+前回の気力増加量 = MAX(0, MAXBASE:MASTER:気力 - CSVBASE(NO:(FLAG:なりきり), GETNUM(BASE, "気力")))
+前回の精力増加量 = MAX(0, MAXBASE:MASTER:精力 - 1000)
+
+;リセット前のキャラ人数をLOCAL:6に控えておく。
+;前回のキャラ人数 = CHARANUM
+;set characters to the CSV max
+前回のキャラ人数 = CSV_CHARANUM()+1
+
+FOR LOCAL,1,CHARANUM
+	前回のCFLAG:LOCAL = CFLAG:LOCAL:口上用引継ぎ枠
+	IF TALENT:LOCAL:恋人 || GETBIT(CFLAG:LOCAL:引き継ぎ, 1)
+		SETBIT TFLAG:(LOCAL + 500), 1
+	ELSEIF TALENT:LOCAL:恋慕 || TALENT:LOCAL:愛欲 || GETBIT(CFLAG:LOCAL:引き継ぎ, 0)
+		SETBIT TFLAG:(LOCAL + 500), 0
+	ENDIF
+	SIF TALENT:LOCAL:自慰狂い || GETBIT(CFLAG:LOCAL:引き継ぎ, 2)
+		SETBIT TFLAG:(LOCAL + 500), 2
+	SIF TALENT:LOCAL:淫壺 || GETBIT(CFLAG:LOCAL:引き継ぎ, 3)
+		SETBIT TFLAG:(LOCAL + 500), 3
+	SIF TALENT:LOCAL:尻穴狂い || GETBIT(CFLAG:LOCAL:引き継ぎ, 4)
+		SETBIT TFLAG:(LOCAL + 500), 4
+	SIF TALENT:LOCAL:淫乳 || GETBIT(CFLAG:LOCAL:引き継ぎ, 5)
+		SETBIT TFLAG:(LOCAL + 500), 5
+	SIF TALENT:LOCAL:キス魔 || GETBIT(CFLAG:LOCAL:引き継ぎ, 6)
+		SETBIT TFLAG:(LOCAL + 500), 6
+	;eraNAS uses new pantsu collection system.
+	;don't need this since we're keeping the PantyCollection DataTable
+	; FOR LOCAL:1,0,40
+	; 	前回のパンツ:LOCAL:(LOCAL:1) = CFLAG:LOCAL:(LOCAL:1 + 100)
+	; NEXT
+NEXT
+
+;-----------------------------------------------------------
+;変数クリア
+;-----------------------------------------------------------
+@BITE_THE_DUST_CLEAR
+;addition custom code, disabled due to issues with duplicated characters, the later call to VARSET JUEL works fine
+;VARSET JUEL
+VARSET MOBGIRL_PLACE, 99
+CALL BITE_THE_DUST_CLEAR_FLAG
+CALL BITE_THE_DUST_CLEAR_GLOBAL_VARIABLE
+
+;bug fix custom code, reset requests
+CALL IRAI_RESET_PROCESS
+;addition custom code, reset banquets
+CALL ADD_BANQUET_RESET_ALL
+;貸本リセット
+VARSET ITEM, 0, 101, 110
+CFLAG:MASTER:お招き = 0
+CFLAG:MASTER:育児人数 = 0
+CFLAG:MASTER:子供人数 = 0
+;remove talismans because jap devs were too retarded
+CFLAG:MASTER:329 = 0
+;あなたの既成事実及び[恋人]をクリア
+CLEARBIT CFLAG:MASTER:既成事実, 2
+TALENT:MASTER:恋人 = 0
+;あなた以外全員リセット。
+;CHARANUMの値が変わるので注意
+TARGET = 0
+ASSI = 0
+VARSET MOBGIRL_PLACE, 99
+;NAS: moved later
+; PICKUPCHARA MASTER
+; VARSET JUEL
+;addition custom code--
+CALL QoL_TSP_INCREASE
+;----------------------
+;あなたリセット
+PRINTFORML Reset your experience, abilities, and Youjutsu?
+CALL COLORMESSAGE(@"Not recommended as those gotten by achievements will also be removed.",C_YELLOW,1)
+CALL ASK_YN
+IF !RESULT
+	FOR LOCAL,0, 100
+		ABL:MASTER:LOCAL = 0
+		EXP:MASTER:LOCAL = 0
+		;reset Youjutsu
+		TALENT:MASTER:ESP = 0
+	NEXT
+	FOR LOCAL,100, 150
+		EXP:MASTER:LOCAL = 0
+	NEXT
+	PRINTFORMW Reset complete.
+ENDIF
+;custom code, reset flags for ng+
+FOR LOCAL, 0, 10
+	TRYCALLFORM NG_CUSTOM_RESET_VAR_{LOCAL}
+NEXT
+; -- eraNAS custom code --
+;Evict all touhous when BTD
+VARSET PlayerLandGuests, -1
+VARSET PlayerLandGuestLiving
+;save character as custom character
+BTD_CHARA = MASTER
+STALKED = MASTER
+SIF BTD_CHARA != 0
+	CALL SAVE_CUSTOM_DATA(1000,MASTER)
+;we kill MASTER here
+MASTER = 0
+PICKUPCHARA MASTER
+; -- end eraNAS custom code --
+
+;-----------------------------------------------------------
+;FLAGリセット
+;-----------------------------------------------------------
+@BITE_THE_DUST_CLEAR_FLAG
+FOR LOCAL,0, VARSIZE("FLAG")
+	;範囲による指定
+	SELECTCASE LOCAL
+		;パンツと実績
+		CASE 700 TO 709
+			CONTINUE
+		;OPTION
+		CASE 4 TO 7
+			CONTINUE
+		CASE 1001 TO 1099
+			IF FLAGNAME:LOCAL != "出禁人数"
+				CONTINUE
+			ENDIF
+		CASE IS >= 1500
+			CONTINUE
+		CASEELSE
+			;名称による指定
+			SELECTCASE FLAGNAME:LOCAL
+				CASE "周回数", "なりきり"
+					CONTINUE
+				CASE "願掛け内容", "精力強化回数"
+					CONTINUE
+				CASE "重婚可能人数", "恋慕特典", "恋慕特典2", "恋人特典", "恋人特典2"
+					CONTINUE
+				;累計回数
+				CASE "掃除中毒"
+					CONTINUE
+				;OPTION
+				CASE "生理周期可視化", "察知モード", "Cスキマ自動仕様"
+					CONTINUE
+			ENDSELECT
+	ENDSELECT
+	FLAG:LOCAL = 0
+NEXT
+FLAG:6400 = 0 ;custom code, reset Insect's Foraging Service contract
+
+;-----------------------------------------------------------
+;キャラ復帰
+;-----------------------------------------------------------
+@BITE_THE_DUST_RESTORE
+;リセット前のキャラ人数でFOR文を回す
+FOR LOCAL, 1, 前回のキャラ人数
+	;CSVファイルの存在判定
+	IF !EXISTCSV(LOCAL)
+		CONTINUE
+	ENDIF
+	IF GETCHARA (LOCAL) == -1
+		IF BTD_CHARA == LOCAL && BTD_CHARA != 0
+			;load our saved character
+			CALL LOAD_CUSTOM_DATA(1000)
+			MASTER = BTD_CHARA
+			FLAG:なりきり = BTD_CHARA
+			CONTINUE
+		ELSE
+			CALL ADDCHARA_INIT(LOCAL) ;custom code
+		ENDIF
+		;試しにCALL KOJO_MULTIPLEをFOR~NEXTループの外に出す
+		;CALL KOJO_MULTIPLE(LOCAL)
+	ENDIF
+	;効率化追求のため引き継ぎフラグと同時に回す
+	;ファイルチェックはすでにしてるんだからその中で回せば済む話でした（反省）
+	FOR LOCAL:1,0,40
+		;引き継ぎフラグのセット
+		IF LOCAL:1 < 7 && GETBIT(TFLAG:(LOCAL + 500), LOCAL:1)
+			SETBIT CFLAG:LOCAL:引き継ぎ, LOCAL:1
+		ENDIF
+		;パンツコレクションの引き継ぎ
+		;eraNAS uses new pantsu collection system.
+		;don't need this since we're keeping the PantyCollection DataTable
+		;CFLAG:LOCAL:(LOCAL:1 + 100) = 前回のパンツ:LOCAL:(LOCAL:1)
+	NEXT
+	CFLAG:LOCAL:口上用引継ぎ枠 = 前回のCFLAG:LOCAL
+	;キス未経験のリセット
+	SIF EXP:LOCAL:キス経験 == 0
+		 TALENT:LOCAL:キス未経験 = 1
+
+	; - eraNAS custom code
+	TARGET = LOCAL
+	CALL CustomTraits(LOCAL) ;added
+	CALL SetOmoStats(LOCAL)
+	; -- end eraNAS custom code --
+NEXT
+;VARSET JUEL broke again lol. eraNAS-chan had to fix it
+VARSET JUEL
+CALL PREGNANCY_TYPES_NEWGAME_SET() ;custom code
+
+;上のループから引っ越し
+;custom code, disable
+	; SIF LOCAL >= CHARANUM
+	; 	CONTINUE
+; NEXT
+;custom code
+CALL SET_ALTERNATIVE_DEFAULTS
+FOR LOCAL, 1, CHARANUM
+	CALL KOJO_COUNT_CHECK(LOCAL)
+NEXT
+gDialogueUpdateInit = 1
+CALL Alternate_Dialogue_Toggles
+gDialogueUpdateInit = 0
+;---------------
+;なりきっているキャラの出禁をチェック
+IF 前回のなりきり出禁
+	CFLAG:(FLAG:なりきり):出禁 = 前回のなりきり出禁
+	FLAG:出禁人数 ++
+ENDIF
+
+;-----------------------------------------------------------
+;疑似ニューゲーム
+;-----------------------------------------------------------
+@BITE_THE_DUST_NEW
+;デフォルトオプション
+CALL DEFAULT_OPTION
+CALL SET_CHARISMA("RESET")
+PBAND = 12
+;日付１日目
+DAY = 1
+DAY:2 = 1
+DAY:3 = 1
+;FLAG:酒虫 = 1
+VAR_FERMENT = ただの水
+;(天候パッチ)冷害発生回数・風害発生回数・水害発生回数・連続降水カウンターをリセット
+IS_COLD_CROP_DAMAGE = 0
+IS_STORM_CROP_DAMAGE = 0
+IS_FLOOD_CROP_DAMAGE = 0
+CONTINUOUS_RAINFALL = 0
+;(天候パッチ)降雪・雪崩判定を解除
+CONTINUOUS_SNOWFALL = 0
+SNOW_COVERAGE = 0
+POSSIBLITY_AVALANCHE = 0
+;(天候パッチ)時間帯をリセット
+WEATHER_TIMEZOME = 0
+;(天候パッチ)長期天候傾向をリセット
+YEAR_WEATHER_CONTROL = 0
+;(天候パッチ)短期予報を行う
+CALL WEATHER_FORECAST_1TERM
+;(天候パッチ)1日予報を行う
+CALL WEATHER_FORECAST_1DAY
+STR:16 = ボロ小屋
+;MASTER起床時間セット（7時）
+VARSET TIME
+TIME:3 = 420
+;MASTER睡眠中フラグON
+CALL SET_SLEEP(1, MASTER, 0)
+CFLAG:MASTER:就寝時間 = 0
+BASE:MASTER:体力 = MAXBASE:MASTER:体力
+BASE:MASTER:気力 = MAXBASE:MASTER:気力
+BASE:MASTER:精力 = MAXBASE:MASTER:精力
+IF PLAYING_AS(0)
+	PRINTFORML Customize yourself?
+	;addition custom code
+	PRINTFORML As part of NG+ bonus, you can now set custom races!
+	PRINTFORML Note that if you unset special acquired races like Hourai or Vampire, you won't be able to set them back!
+	CALL ASK_YN
+	IF !RESULT
+		CALL CUSTOM_TERMINAL(MASTER)
+	ELSE
+		CALL CUSTOM_INIT(MASTER)
+	ENDIF
+ENDIF
+;BASEの成長値の加算処理
+LOCAL = 0
+IF 前回の体力増加量 > 0 && (MAXBASE:MASTER:体力 != 前回の体力)
+	PRINTFORML Experiences in the "Previous World" gives you power.
+	PRINTFORML ...%CALLNAME:MASTER%'s stamina increased by {前回の体力増加量}.
+	MAXBASE:MASTER:体力 += 前回の体力増加量
+	BASE:MASTER:体力 = MAXBASE:MASTER:体力
+	LOCAL ++
+ENDIF
+IF 前回の気力増加量 > 0 && (MAXBASE:MASTER:気力 != 前回の気力)
+	SIF !LOCAL
+		PRINTFORML Experiences in the "Previous World" gives you power.
+	PRINTFORML ...%CALLNAME:MASTER%'s energy increased by {前回の気力増加量}.
+	MAXBASE:MASTER:気力 += 前回の気力増加量
+	BASE:MASTER:気力 = MAXBASE:MASTER:気力
+	LOCAL ++
+ENDIF
+IF 前回の精力増加量 > 0 && (MAXBASE:MASTER:精力 != 前回の精力)
+	SIF !LOCAL
+		PRINTFORML Experiences in the "Previous World" gives you power.
+	PRINTFORML ...%CALLNAME:MASTER%'s vigor increased by {前回の精力増加量}.
+	MAXBASE:MASTER:精力 += 前回の精力増加量
+	BASE:MASTER:精力 = MAXBASE:MASTER:精力
+	LOCAL ++
+ENDIF
+SIF LOCAL
+	WAIT
+
+;NAS custom code
+IF !MASTER
+	;MC-chan
+	CALL SET_MAINHOME
+ELSE
+	;Touhou
+	CALLF RelocateMakaiIdiots(MASTER)
+	;This is for touhous WITH a home
+	IF CFLAG:MASTER:自宅位置
+		PRINTFORML Pick a different home?
+		;addition custom code
+		PRINTFORML As part of NG+ bonus, you can choose where do you want to live!
+		CALL ASK_YN
+		IF !RESULT
+			CALL SET_MAINHOME
+		ELSE
+			MAIN_MAP = CFLAG:MASTER:自宅位置/100
+			TRYCALLFORM ROOMSETTING_{CFLAG:MASTER:自宅位置/100}
+			拠点_大家 = MASTER
+			デフォルト初期位置 = CFLAG:MASTER:初期位置
+			ゲーム開始処理中 = 0
+			ゲーム引き継ぎ処理中 = 0
+			CALL MAP_DEFAULTRESIDENT(MAIN_MAP)
+		ENDIF
+	ELSE
+		;If there's no home then we call set home anyway
+		PRINTFORML %CALLNAME:MASTER% has no home set, please pick a home
+		CALL SET_MAINHOME
+	ENDIF
+	CALL RANDOM_MC(0)
+ENDIF
+;========== END NAS CUSTOM CODE
+
+
+CALL NEWGAME_OPTION
+
+;初期地点設定
+FOR LOCAL, 0, CHARANUM
+	;開始位置
+	CFLAG:LOCAL:現在位置 = CFLAG:LOCAL:初期位置
+	;服装
+	CALL SELECT_CLOTHES(LOCAL, "今日の衣装")
+	CALL CTRL_CLOTHES_SET(LOCAL, "現在衣装の変更_普段着")
+	CALL 下着確認リセット(LOCAL)
+	;これ多分問題なさそうだけど一応
+	CFLAG:LOCAL:パジャマ = 0
+	CALL CLOTHES_SETTING_TRAIN(LOCAL)
+	CVARSET BASE, GETNUM(BASE, "酒気"), 0
+NEXT
+;罠全リセット
+CALL TRAP_V_ALLRESET()
+;虫トラップリセット
+MUSHI_TRAP = 0
+
+;-----------------------------------------------------------
+;変数の掃除
+;-----------------------------------------------------------
+@BITE_THE_DUST_SWEEP
+VARSET 前回の体力
+VARSET 前回の体力増加量
+VARSET 前回の気力
+VARSET 前回の気力増加量
+VARSET 前回のキャラ人数
+VARSET 前回のなりきり出禁
+VARSET 前回のCFLAG
+VARSET 前回のパンツ
+
+
+
+
+;-----------------------------------------------------------
+;同キャラ口上複数存在判定
+;ARG=キャラナンバー
+;現在同キャラ口上は最大で四つまで想定
+;-----------------------------------------------------------
+@KOJO_MULTIPLE(C_ID, ARG) ;custom code - arg to return the amount of dialogue options
+#DIM C_ID
+#DIM DYNAMIC 口上カウント
+#DIM DYNAMIC 口上数
+#DIM DYNAMIC 口上実装数
+#DIMS DYNAMIC kojoNamesList, 4
+#DIM DYNAMIC kojoIdList, 4
+#DIM DYNAMIC vernier
+
+#DIMS DESCRIPTIONS, DESCRIPTIONS_SIZE ;custom code
+
+VARSET RESULTS
+;同キャラ口上複数確認 and record the name of kojo
+FOR 口上カウント,0,5
+	RESULT = 0
+	;addition custom code, duplicated characters
+	IF 口上カウント
+		TRYCALLFORM M_KOJO_K{NO:C_ID}_{口上カウント}
+	ELSE
+		TRYCALLFORM M_KOJO_K{NO:C_ID}
+	ENDIF
+	IF RESULT
+		;custom code dialogue descriptions
+		DESCRIPTIONS:vernier = \@RESULTS:2 != ""? %RESULTS:2% # No description available.\@
+
+		SIF RESULTS:1 == ""
+			RESULTS:1 = Default
+		kojoNamesList:vernier = %CALLNAME:C_ID% %RESULTS:1% Dialogue
+		kojoIdList:vernier = 口上カウント
+		vernier ++
+		IF !GETBIT(CFLAG:C_ID:口上実装状況,口上カウント)
+			口上数 += 1
+			口上実装数 += 1
+			SETBIT CFLAG:C_ID:口上実装状況,口上カウント
+		ELSEIF GETBIT(CFLAG:C_ID:口上実装状況,口上カウント)
+			口上数 += 1 ;bugfix custom code
+			口上実装数 += 1
+		ENDIF
+	ENDIF
+NEXT
+;custom code
+SIF ARG == 1 ;choice skip, show dialogue count
+	RETURN 口上実装数
+SIF ARG == 2 ;choice skip - keep the same
+	RETURN 1
+;-----------
+IF !口上数
+	SIF 口上実装数
+		RETURN 1
+RETURN 0
+ENDIF
+IF 口上実装数 > 1
+	;custom code, skip question when using the update menu
+	SIF Ask_SwitchDialogue
+		GOTO SKIPAHEAD
+	RESULTS:2 =
+	PRINTFORML %CALLNAME:C_ID% has several dialogues.
+	PRINTFORML Select from the list?
+	CALL ASK_YN("Yes", "Leave as is")
+	;口上選択
+	IF !RESULT
+		$SKIPAHEAD ;custom code, skip question when using the update menu
+		LOCALS:0 = Select which dialog to use. (Hover over each option for a brief description of the dialogue.)
+		;custom code dialogue descriptions
+		;CALL CHOICE("Select which dialog to use.", kojoNamesList:0, kojoNamesList:1, kojoNamesList:2, kojoNamesList:3)
+		PRINTFORML %LOCALS:0%
+		CALL ASK_CHOICES_TITLE(kojoNamesList, DESCRIPTIONS, vernier)
+		CFLAG:C_ID:口上セレクタ = kojoIdList:RESULT
+		RETURN 2
+	ELSE
+		PRINTFORML Left as is.
+		RETURN 1
+	ENDIF
+ELSE
+	RETURN 2
+ENDIF
+[SKIPSTART]
+#DIM C_ID
+#DIM DYNAMIC 口上カウント
+#DIM DYNAMIC 口上数
+#DIM DYNAMIC 口上実装数
+;custom code, a size of 6 should be fine, update this array limit when even more dialogue alts come around
+#DIMS DESCRIPTIONS, 6
+;QoL custom code, if this is not reset, then several will be able to choose "Sakuya English dialogue"
+VARSET LOCAL
+VARSET LOCALS
+;-------------
+;同キャラ口上複数確認
+FOR 口上カウント,0,5
+	IF 口上カウント
+		RESULT = 0
+		TRYCALLFORM M_KOJO_K{C_ID}_{口上カウント}
+		IF RESULT
+			IF !GETBIT(CFLAG:C_ID:口上実装状況,口上カウント)
+				口上数 += 1
+				口上実装数 += 1
+				SETBIT CFLAG:C_ID:口上実装状況,口上カウント
+			ELSEIF GETBIT(CFLAG:C_ID:口上実装状況,口上カウント)
+				口上実装数 += 1
+			ENDIF
+		ENDIF
+	ELSE
+		TRYCALLFORM M_KOJO_K{C_ID}
+		IF RESULT
+			IF !GETBIT(CFLAG:C_ID:口上実装状況,口上カウント)
+				口上数 += 1
+				口上実装数 += 1
+				SETBIT CFLAG:C_ID:口上実装状況,口上カウント
+			ELSEIF GETBIT(CFLAG:C_ID:口上実装状況,口上カウント)
+				口上実装数 += 1
+			ENDIF
+		ELSE
+			CFLAG:C_ID:口上実装状況 = 0
+		ENDIF
+	ENDIF
+	SIF !RESULT
+		BREAK
+NEXT
+
+;custom code, ARGs
+
+SIF ARG == 1 ;choice skip, no change to dialogue
+	RETURN 1
+SIF ARG == 2 ;choice skip, show dialogue count
+	RETURN 口上実装数
+;custom code by nKa, end early if the dialogue variant check is disabled
+SIF ARG == 3
+	RETURN 0
+
+
+;口上存在判定
+;QoL custom code (all below) - allow choosing dialogue for characters with each update without triggering reset for every character
+;IF 口上数
+	;新規別人口上追加
+	IF 口上実装数 > 1
+		RESULTS:1 = 
+		;custom code 
+		RESULTS:2 =
+		;口上名の保存及び実装状況の上書き
+		FOR 口上カウント,0,口上実装数 + 1
+			IF 口上カウント
+				RESULT = 0
+				TRYCALLFORM M_KOJO_K{C_ID}_{口上カウント}
+			ELSE
+				TRYCALLFORM M_KOJO_K{C_ID}
+			ENDIF
+			SIF !RESULT
+				BREAK
+			SIF RESULTS:1 == ""
+				RESULTS:1 = Default
+			IF RESULT
+				LOCALS:(口上カウント + 1) = %CALLNAME:C_ID% %RESULTS:1% Dialogue
+				;custom code, dialogue descriptions
+				DESCRIPTIONS:口上カウント = \@RESULTS:2 != ""? %RESULTS:2% # No description available.\@
+				RESULT = 0
+			ENDIF
+		NEXT
+		PRINTFORML %CALLNAME:C_ID% has several dialogues.
+		PRINTPLAINFORM Want to choose one? (Currently using [{CFLAG:C_ID:口上セレクタ}] %LOCALS:(CFLAG:C_ID:口上セレクタ + 1)%)
+		PRINTL
+		CALL ASK_YN("Yes", "Leave as is")
+		;口上選択
+		IF !RESULT
+			LOCALS:0 = Select which dialog to use (currently %LOCALS:(CFLAG:C_ID:口上セレクタ + 1)%).
+			;custom code, dialogue descriptions
+			;CALL CHOICE(LOCALS:0, LOCALS:1, LOCALS:2, LOCALS:3, LOCALS:4)
+			PRINTFORML %LOCALS:0%
+			FOR LOCAL, 0, 4
+				HTML_PRINT @"<button value='{LOCAL}' title='%HTML_ESCAPE(DESCRIPTIONS:LOCAL)%'>[{LOCAL}] - %LOCALS:(LOCAL + 1)%</button>"
+				SIF LOCALS:(LOCAL + 2) == ""
+					BREAK
+			NEXT
+			$INPUT_LOOP
+			INPUT
+			SELECTCASE RESULT
+				CASE 0 TO LOCAL - 1
+				CASEELSE
+					CLEARLINE 1
+					GOTO INPUT_LOOP
+			ENDSELECT
+			IF CFLAG:C_ID:口上セレクタ != RESULT
+				CFLAG:C_ID:口上セレクタ = RESULT
+				RETURN 2
+			ENDIF
+		ENDIF
+		PRINTFORML Dialog unchanged (%LOCALS:(CFLAG:C_ID:口上セレクタ + 1)%).
+		RETURN 1
+	ELSEIF 口上実装数 == 1
+		IF 口上数
+			;PRINTFORML %CALLNAME:C_ID% has a new default dialog.
+			RETURN 2
+		ENDIF
+		RETURN 1
+	ENDIF
+;ENDIF
+;SIF 口上実装数
+;	RETURN 1
+RETURN 0
+
+;custom code, this function lets you switch all character versions in a single menu
+@Alternate_Dialogue_Toggles
+#DIM C_ID
+#DIMS DESCRIPTIONS, 6
+REDRAW 0
+
+$INPUT_LOOP
+LINESTART = LINECOUNT
+PRINTFORML Some characters have alternative dialogue options:
+FOR C_ID,1,CHARANUM
+	IF CFLAG:C_ID:口上実装状況 > 1 && C_ID != FLAG:なりきり
+		RESULTS:1 = Default
+		TRYCALLFORM M_KOJO_K{C_ID}_{CFLAG:C_ID:口上セレクタ}
+		PRINTFORML [{C_ID, 3}] %CALLNAME:C_ID% - %RESULTS:1%
+	ENDIF
+NEXT
+PRINTFORML \n[{0, 3}] Continue
+
+INPUT
+IF RESULT && CFLAG:RESULT:口上実装状況 > 1
+	VARSET LOCALS
+	C_ID = RESULT
+	FOR LOCAL,0,3
+		RESULTS:1 = Default
+		RESULT = 0
+		RESULTS:2 = 
+		IF !LOCAL
+			TRYCALLFORM M_KOJO_K{C_ID}
+		ELSE
+			TRYCALLFORM M_KOJO_K{C_ID}_{LOCAL}
+		ENDIF
+		IF RESULT
+			LOCALS:(LOCAL + 1) = %RESULTS:1%
+			DESCRIPTIONS:LOCAL = \@RESULTS:2 != ""? %RESULTS:2% # No description\@
+		ENDIF
+	NEXT
+	LOCALS:0 = Change %CALLNAME:C_ID%'s dialogue?
+	PRINTFORML %LOCALS:0%
+	FOR LOCAL, 0, 4
+		HTML_PRINT @"<button value='{LOCAL}' title='%HTML_ESCAPE(DESCRIPTIONS:LOCAL)%'>[{LOCAL}] - %LOCALS:(LOCAL + 1)%</button>"
+		SIF LOCALS:(LOCAL + 2) == ""
+			BREAK
+	NEXT
+	$INPUT_LOOP2
+	INPUT
+	SELECTCASE RESULT
+		CASE 0 TO LOCAL - 1
+		CASEELSE
+			CLEARLINE 1
+			GOTO INPUT_LOOP2
+	ENDSELECT
+	CFLAG:C_ID:口上セレクタ = RESULT
+ELSEIF !RESULT
+	RETURN 1
+RETURN 0
+[SKIPEND]
+;-----------------------------------------------------------
+;ユーザー定義の広域変数クリア
+;-----------------------------------------------------------
+@BITE_THE_DUST_CLEAR_GLOBAL_VARIABLE
+;デイリー23
+FLAG_DAILY_EV23 = 0
+FLAG_DAILY_EV23_販売員 = 0
+;お出かけ06
+GO_OUT_FLAG_06 = 0
+;COMF432 銭湯
+VARSET SENTO_CONSUMPTION, 0
+VARSET SENTO_FLAG, 0
+旧地獄温泉_ニュープラン_完成日 = 1
+
+;-----------------------------------------------------------
+;custom code, print ending with a 2hu with the most favor, keep going until one is reached
+;harem ending can be technically handled at the dialogue side, or we can think of something later
+;-----------------------------------------------------------
+@BITE_THE_DUST_ENDING
+#DIM DYNAMIC CHARA_ARRAY, キャラクタ数上限
+#DIM CHARA_FAVOR_ARRAY, キャラクタ数上限
+
+FOR LOCAL, 0, CHARANUM
+	CHARA_ARRAY:LOCAL = LOCAL
+	CHARA_FAVOR_ARRAY:LOCAL = MAX(CFLAG:LOCAL:好感度,1)
+NEXT
+ARRAYMSORT CHARA_FAVOR_ARRAY, CHARA_ARRAY
+
+FOR LOCAL, CHARANUM-1, 0, -1
+	SIF CFLAG:(CHARA_ARRAY:LOCAL):好感度 < 1000 ;don't set higher because they'll be eligible for a fall state, but at the same time don't pick complete randos
+		CONTINUE
+	SIF CFLAG:(CHARA_ARRAY:LOCAL):好感度 <= 0
+		BREAK
+	CALL KOJO_MESSAGE_SEND("ENDING",0,CHARA_ARRAY:LOCAL,2,0)
+	IF RESULT
+		BREAK
+		PRINTL
+		DRAWLINE
+	ENDIF
+NEXT

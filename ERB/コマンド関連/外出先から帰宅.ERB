@@ -1,0 +1,271 @@
+@外出先から帰宅
+#DIM DIST_TO_HOME
+#DIM ReqTSP
+#DIM ReqMP
+#DIM CanTP
+#DIM CanTSP
+#DIM 道迷い時間
+#DIMS 低気圧位置
+
+低気圧位置 = %GET_LOCATION_LOW()%
+
+ReqTSP = QOL_RETURN_HOME_TIME_REQUIRED() * 3 ;qol custom code
+
+CALL YoujutsuMagicCanDo(MASTER,6,1) ; NAS TP Youjutsu
+ReqMP = QOL_RETURN_HOME_TIME_REQUIRED() * 6
+CanTP = RESULT
+CanTSP = MAXBASE:MASTER:TSP
+;=================
+
+IF FLAG:デート相手 != MASTER || FLAG:70 || (GETBIT(FLAG:瞬間移動, AT_HOME(MASTER)) && BASE:MASTER:TSP >= ReqTSP) ;qol custom code
+	CALL QoL_DateEndConfirm
+	SIF RESULT == -1
+		RETURN -1
+ENDIF
+
+IF SaveIsEZB
+	CALL 帰宅の時間経過
+	GOTO WARP
+ENDIF
+
+IF  FLAG:デート相手 == MASTER && GETBIT(FLAG:瞬間移動, AT_HOME(MASTER)) && BASE:MASTER:TSP >= ReqTSP
+	BASE:MASTER:TSP -= ReqTSP
+	SIF !FLAG:70 && nAllowGoOutEventsInInstantMovement ;qol custom code
+		CALL お出かけイベント
+	GOTO WARP
+ENDIF
+
+IF FLAG:デート相手 == MASTER && !FLAG:70 && !(UsingFarskip(MASTER)) && (CanTP || CanTSP) ;qol custom code
+	PRINTFORML If %PeeAndPoo(CanTSP,CanTP,"TSP","Farskip", " or")% is used, it's possible to return home without spending time.
+	PRINTFORML Use %PeeAndPoo(CanTSP,CanTP,"TSP","Farskip", " or")%?
+	{
+	CALL ASK_M("No", 1,
+	@"Use TSP (TSP {ReqTSP}/{BASE:MASTER:TSP})", BASE:MASTER:TSP >= ReqTSP,
+	@"\@ CanTP ? Cast Farskip (MP {ReqMP}/{BASE:MASTER:7}) # Farskip not learned\@", BASE:MASTER:7 >= ReqMP && CanTP,
+	"Cancel", 1) ;qol custom code
+	}
+		IF RESULT == 1
+			BASE:MASTER:TSP -= ReqTSP
+			GOTO WARP
+		ELSEIF RESULT == 2
+			BASE:MASTER:7 -= ReqMP
+			GOTO WARP
+		ENDIF
+		SIF RESULT == 3
+			RETURN -1
+ENDIF
+IF UsingFarskip(MASTER)
+	BASE:MASTER:7 -= ReqMP
+	GOTO WARP
+ELSEIF !FLAG:70
+	;FUCK DISASTERS
+	GOTO EndEvent
+	;- This message has been brought to you by NAS gang
+	;========
+	;(天候パッチ)連続降水カウンター20以上で土砂崩れに巻き込まれる可能性
+	IF CONTINUOUS_RAINFALL >= 20 && RAND:(MAX(2, (40 - CONTINUOUS_RAINFALL) / 2)) == 0
+		PRINTFORML ...On your way, you hear a strange noise coming from up the mountainside.
+		CALL COLORMESSAGE("!!! IT'S A LANDSLIDE !!!",C_RED,2,1)
+		
+		PRINTFORML 
+		PRINTFORML You get caught in the sediment but manage to climb out...
+		PRINTL 
+		CALL ASK_DIARY("Encountered a landslide!")
+		CALL RECOVER(MASTER,-(MAXBASE:MASTER:体力 * 3),"体力", "Landslide") ;qol custom code
+		
+		GOTO WARP2
+	ENDIF
+	;(天候パッチ)雪崩発生フラグが立っているとき雪崩に巻き込まれる可能性
+	IF POSSIBLITY_AVALANCHE == 1 && POWER_COLD_AIR >= 3 && RAND:((6 - POWER_COLD_AIR) * 10) == 0
+		PRINTFORML ...On your way, you spot something coming right at you from up the mountainside.
+		CALL COLORMESSAGE("!!! IT'S AN AVALANCHE !!!",C_RED,2,1)
+		
+		PRINTFORML 
+		PRINTFORML You get caught in the avalanche but manage to make your way out...
+		PRINTL 
+		
+		POSSIBLITY_AVALANCHE = 0
+		CONTINUOUS_SNOWFALL = 0
+		
+		CALL ASK_DIARY("Encountered an avalanche!")
+		CALL RECOVER(MASTER,-(MAXBASE:MASTER:体力 * 3),"体力", "Avalanche") ;qol custom code
+		
+		GOTO WARP4
+	ELSEIF POSSIBLITY_AVALANCHE == 2 && POWER_WARM_AIR >= 2 && RAND:((6 - POWER_WARM_AIR) * 10) == 0
+		PRINTFORML ...On your way, you spot something coming right at you from up the mountainside.
+		CALL COLORMESSAGE("!!! IT'S AN AVALANCHE !!!",C_RED,2,1)
+		
+		PRINTFORML 
+		PRINTFORML You get caught in the avalanche but manage to make your way out...
+		PRINTL 
+		
+		POSSIBLITY_AVALANCHE = 0
+		CONTINUOUS_SNOWFALL = 0
+		SNOW_COVERAGE = 0
+		
+		CALL ASK_DIARY("Encountered an avalanche!")
+		CALL RECOVER(MASTER,-(MAXBASE:MASTER:体力 * 3),"体力", "Avalanche") ;qol custom code
+		
+		GOTO WARP5
+	ENDIF
+	;(天候パッチ)暴風雪発生時にホワイトアウト発生の可能性 颶風時には確率上昇
+	IF TIME:5 == 9 && ((WIND_VELOCITY == 2 && RAND:3 == 0) || WIND_VELOCITY >= 3)
+		道迷い時間 = 60 + RAND:120
+		PRINTFORMW Blown by a ferocious wind, the heavy snow turns everything white before your eyes!
+		PRINTFORML 
+		PRINTFORML ...You got lost and had to spend extra %PRINT_PLUR("minute", 道迷い時間)% to get back on track.
+		TIME:0 += 道迷い時間
+		CALL RECOVER(MASTER,-(20 * 道迷い時間),"体力", "Wind") ;qol custom code
+		
+		GOTO WARP6
+	ELSEIF TIME:5 == 8 && ((WIND_VELOCITY == 2 && RAND:10 == 0) || WIND_VELOCITY >= 3)
+		道迷い時間 = 30 + RAND:60
+		PRINTFORMW Blown by a ferocious wind, the heavy snow turns everything white before your eyes!
+		PRINTFORML 
+		PRINTFORML ...You got lost and had to spend extra %PRINT_PLUR("minute", 道迷い時間)% to get back on track.
+		TIME:0 += 道迷い時間
+		CALL RECOVER(MASTER,-(15 * 道迷い時間),"体力", "Wind") ;qol custom code
+		
+		GOTO WARP7
+	ENDIF
+	$EndEvent
+	CALL お出かけイベント
+	$WARP2
+	$WARP4
+	$WARP5
+	$WARP6
+	$WARP7
+	CALL 帰宅の時間経過
+ELSEIF BASE:MASTER:TSP < ReqTSP
+	PRINTW Not enough TSP to go back home.
+	RETURN -1
+ELSE
+	BASE:MASTER:TSP -= ReqTSP
+ENDIF
+
+$WARP
+IF CFLAG:負け犬 && TALENT:行きずり == 1
+	PRINTFORML You bring %CALLNAME:TARGET% home with you.
+ELSEIF BASE:MASTER:体力 <= 0
+	PRINTFORML You use the last of your strength to return to %GET_MAPNAME(MAIN_MAP)%...
+	;custom code
+	PRINTFORML But when you get back to %NAME_FROM_PLACE_THE(ENTRANCE)%, you collapse and lose consciousness...
+	PRINTFORMW 
+ELSE
+	PRINTFORMW You return home%COND_STR(@" from the date", !(CFLAG:MASTER:デート中 != CFLAG:TARGET:デート中 || TARGET == MASTER))%.
+ENDIF
+CALL 守矢くじデート相手のリセット()
+CALL HYPNO_DATE_RESET() ;hypnosis custom code
+FOR LOCAL,0,CHARANUM
+	SIF LOCAL == MASTER
+		CONTINUE
+
+	IF CHK_DATENOW(CFLAG:LOCAL:デート中)
+		DEBUGPRINTFORML Applying DATE EVENT to {LOCAL}
+		CALL DATE_EVENT(LOCAL)
+		CALL SET_DATE(99,LOCAL)
+	ENDIF
+NEXT
+SIF CHK_DATENOW(CFLAG:MASTER:デート中)
+	CALL SET_DATE(99,MASTER)
+
+CFLAG:MASTER:現在位置 = GET_ENTRANCE(MAIN_MAP)
+
+@帰宅の時間経過
+;残り時間算出
+;qol custom code, replaced calculation method
+TIME = TIME + QOL_RETURN_HOME_TIME_REQUIRED()
+; IF TFLAG:デート道中
+; 	;道中の場合
+; 	TIME = TIME + TIME_REQUIRED(MAIN_MAP, CFLAG:MASTER:デート中) - TFLAG:デート道中
+; ELSE
+; 	;デート先到着済みの場合
+; 	TIME = TIME + TIME_REQUIRED(MAIN_MAP, CFLAG:MASTER:デート中)
+; ENDIF
+CALL 守矢くじデート相手のリセット()
+CALL HYPNO_DATE_RESET() ;hypnosis custom code
+
+@外出先から誘えるか(ARG)
+LOCAL = FLAG:デート相手
+IF CFLAG:ARG:行動 == 5
+	PRINTFORMW %CALLNAME:ARG% is working right now.
+	RETURN 0
+ENDIF
+IF !MOREDATE ;maybe still reject if they're jealous?
+	IF LOCAL != ARG && LOCAL != MASTER
+		PRINTFORM %CALLNAME:LOCAL% 
+		;気弱系
+		IF CFLAG:LOCAL:性格傾向 == 1
+			PRINTFORML grabs the hem of your shirt and shakes %HIS_HER(LOCAL)% head.
+		;強気系
+		ELSEIF CFLAG:LOCAL:性格傾向 == 2
+			PRINTFORML stares at you.
+		;素直系
+		ELSEIF CFLAG:LOCAL:性格傾向 == 3
+			PRINTFORML stares at you and says that %HE_SHE(LOCAL)% just wants you to look at %HIM_HER(LOCAL)%.
+		;真面目系
+		ELSEIF CFLAG:LOCAL:性格傾向 == 4
+			PRINTFORML interrupts you with a simple no.
+		;その他
+		ELSEIF CFLAG:LOCAL:性格傾向 == 5
+			PRINTFORML sighs and shakes %HIS_HER(LOCAL)% head.
+		ENDIF
+		PRINTFORMW You give up on asking %CALLNAME:ARG% out on a date.
+		CALL KOJO_MESSAGE_SEND("EVENT",27,LOCAL,90,0) ;addition custom code, the jealous date
+		CALL KOJO_MESSAGE_SEND("EVENT",27,ARG,91,0) ;addition custom code, the rival's response
+		RETURN 0
+	ENDIF
+ENDIF
+IF !VISIT(ARG)
+	;qol custom code
+	PRINTFORML %PARSE("You are")% told this isn't a good time.
+	PRINTFORM Time: %時刻表示(TIME)%, Active Hours: 
+	CALL 滞在時間表示(ARG)
+	WAIT
+	;---------------------------------------------------------
+	RETURN 0
+ENDIF
+IF ARG == 93 && !ITEM:簡易プール
+	PRINTFORMW You can't take %CALLNAME:ARG% along...
+	RETURN 0
+ELSEIF BASE:ARG:気力 < 500
+	PRINTFORMW %CALLNAME:ARG% is too tired to go out...
+	RETURN 0
+ELSEIF !CHARA_HOLIDAY(ARG) && BASE:ARG:仕事量 && TCVAR:ARG:仕事開始 < TIME + 180
+	PRINTFORMW %CALLNAME:ARG% has work to do.
+	RETURN 0
+ELSE
+	CFLAG:ARG:拠点来訪 = 1
+	RETURN 1
+ENDIF
+
+
+;FileName_DATE_CMN.ERB ------------------------------- Rev1.00
+;デートに誘えるか
+;-----------------------------------------------------------
+@CAN_DATE(ARG)
+#FUNCTION
+
+SIF !CHK_DATENOW(CFLAG:MASTER:デート中)
+	RETURNF 0
+SIF !SHIRAHU(ARG)
+	RETURNF 0
+SIF CFLAG:MASTER:現在位置 == OMANEKIBEYA()
+	RETURNF 0
+IF !CFLAG:ARG:負け犬
+	;custom code bugfix
+	SIF !CFLAG:ARG:態度 && ARG != RANDOM_CHARANUM
+		RETURNF 0
+	SIF CFLAG:ARG:ブチギレ
+		RETURNF 0
+ENDIF
+;潜伏モード中は不可
+SIF GETBIT(FLAG:潜伏,0)
+	RETURNF 0
+SIF CHK_DATENOW(CFLAG:ARG:デート中)
+	RETURNF 0
+;custom code bugfix
+SIF (!TALENT:ARG:思慕 && !TALENT:ARG:恋慕 && !TALENT:ARG:愛欲 && ARG != RANDOM_CHARANUM)
+	RETURNF 0
+RETURNF 1
+

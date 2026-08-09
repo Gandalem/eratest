@@ -1,0 +1,327 @@
+;determines if a request should be randomly discarded
+;instead of simply being a random 30% chance, this checks for age and doesn't start discarding it unless it's already several days old, allowing requests to accumulate 
+;CHANCE is percentage chance for discarding
+@Add_Request_Should_Discard(REQUESTORCHARA, MIN_AGE = 5, CHANCE = 25)
+#FUNCTION
+#DIM REQUESTORCHARA
+#DIM CHARA
+#DIM MIN_AGE
+#DIM CHANCE
+;generic requests use ARG for character id, but specific request instead use it for the request id. We need to cover both here.
+IF REQUESTORCHARA > 1000
+    CHARA = IRAI_ID_TO_CLIENT(REQUESTORCHARA)
+ELSE
+    CHARA = REQUESTORCHARA
+ENDIF
+
+SIF CFLAG:CHARA:依頼状況 >= 100 ;request resolved, probably won't be called here, but just in case
+    RETURNF 1
+
+SIF !CFLAG:CHARA:依頼内容 ;nothing to discard
+    RETURNF 0
+
+SIF Add_Request_Age(CHARA) < 0 ;not set somehow, set to today
+    CFLAG:CHARA:REQUEST_GENERATION_DAY = DAY
+
+SIF Add_Request_Age(CHARA) < MIN_AGE ;a value of -1 will ensure this mechanic is never triggered
+    RETURNF 0
+
+RETURNF RAND:100 < CHANCE ;a value of -1 will ensure this mechanic is never triggered
+
+@Add_Request_Age(CHARA)
+#FUNCTION
+#DIM CHARA
+SIF !CFLAG:CHARA:REQUEST_GENERATION_DAY
+    RETURNF -1
+RETURNF DAY - CFLAG:CHARA:REQUEST_GENERATION_DAY
+
+@Add_Request_Created(REQUEST)
+#DIM REQUEST
+#DIM CHARA
+CHARA = IRAI_ID_TO_CLIENT(REQUEST)
+CFLAG:CHARA:REQUEST_GENERATION_DAY = DAY
+
+@Add_Request_Finished(REQUEST, REQUEST_STATE)
+#DIM REQUEST
+#DIM REQUEST_STATE
+#DIM CHARA
+#DIM DAYS_TAKEN
+#DIM DEADLINE
+#DIM BASE_FAILURE_COST
+CHARA = IRAI_ID_TO_CLIENT(REQUEST)
+DAYS_TAKEN = Add_Request_Age(CHARA)
+DAYS_TAKEN-- ;subtract one since requests are only fully resolved the following day
+CFLAG:CHARA:REQUEST_GENERATION_DAY = 0
+DEADLINE = INT_DATA_IRAI(REQUEST, "依頼期限", CHARA)
+
+;the more helpful you are, the more demanding they get
+;fine-tune this until it reaches a nice equilibrium
+BASE_FAILURE_COST = (Add_Request_Yesterdays_Helpfulness / 50) * -1
+
+;request result states:
+;   1: not accepted
+; 103: success
+; 104: expired
+; 105: completed, forgot to report
+; 106: failed
+
+SELECTCASE REQUEST_STATE
+        CASE 1
+            ;ignoring a request until it disappears automatically
+            ;requests from locals reduce the value more harshly
+            IF DAYS_TAKEN > 1 ;exclude short-lived requests discarded for special reasons
+                IF CFLAG:CHARA:神社在住
+                    CALL Add_Request_Adjust_Helpfulness(-2 + (BASE_FAILURE_COST * 15 / 10))
+                ELSE
+                    CALL Add_Request_Adjust_Helpfulness(-1 + BASE_FAILURE_COST)
+                ENDIF
+                Add_Request_Ignored_Requests++
+            ENDIF
+        CASE 103, 105
+            CALL Add_Request_Adjust_Helpfulness(Add_Request_Calculate_Success_Points(DEADLINE, DAYS_TAKEN))
+            Add_Request_Completed_Requests++
+        CASE 104
+            CALL Add_Request_Adjust_Helpfulness(-10 + BASE_FAILURE_COST) ;neglect is worse than failure
+            Add_Request_Failed_Requests++
+        CASE 106
+            CALL Add_Request_Adjust_Helpfulness(-5 + BASE_FAILURE_COST)
+            Add_Request_Failed_Requests++
+ENDSELECT
+
+IF Add_Request_Debug_Info
+    SELECTCASE REQUEST_STATE
+        CASE 1
+            PRINT REMOVED: 
+        CASE 103, 105
+            PRINT CLEARED: 
+        CASE 104
+            Add_Request_Failed_Requests++
+            PRINT EXPIRED: 
+        CASE 106
+            Add_Request_Failed_Requests++
+            PRINT FAILED:  
+    ENDSELECT
+    SIF GROUPMATCH(REQUEST_STATE,1, 103, 104, 105, 106)
+        PRINTFORML %CALLNAME:CHARA, 20, LEFT%: (%TOSTR(REQUEST % 1000), 3, RIGHT%) ＜%REQUEST_NAMES_TR(STR_DATA_IRAI(REQUEST, "依頼名", CHARA))%＞ (Days taken: {DAYS_TAKEN})
+ENDIF
+
+@Add_Request_Calculate_Success_Points(DEADLINE, DAYS_TAKEN)
+#FUNCTION
+#DIM DEADLINE
+#DIM DAYS_TAKEN
+#DIM CONST BASE_VALUE = 25
+SIF DEADLINE == 0 ;half points for simple one-day requests
+    RETURNF BASE_VALUE / 2
+;25 points when completed quickly, -2 points for each day having passed, always gives one point minimum
+;this is calculated from the original generation date, rather than acceptance date, encouraging players to accept requests frequently and immediately
+RETURNF MAX(1, BASE_VALUE - (DAYS_TAKEN * 2))
+
+@Add_Request_Adjust_Helpfulness(ADJUSTMENT)
+#DIM ADJUSTMENT
+
+Add_Request_Helpfulness += ADJUSTMENT
+Add_Request_Helpfulness = MAX(Add_Request_Helpfulness, 0)
+SIF Add_Request_Debug_Info
+    PRINTFORML Helpfulness adjusted by {ADJUSTMENT} to {Add_Request_Helpfulness}.
+
+@Add_Request_Clear_All
+CVARSET CFLAG, GETNUM(CFLAG, "REQUEST_GENERATION_DAY"), 0
+VARSET IRAI_RESULT_SCORE1
+VARSET IRAI_RESULT_SCORE2
+
+@Add_IRAI_HAPPEN_TR
+#DIM CHARA
+#DIM REQUEST_GENERATION_COUNT
+SIF LS_RESTRICTION("Request") ;Custom code, restrict requests during Lunatic Survival.
+	RETURN
+Add_Request_Yesterdays_Helpfulness = Add_Request_Helpfulness
+[IF_DEBUG]
+    IF !Add_Request_Debug_Use_Normal_Generation
+        ;#;PRINTFORML Processing request creation (Execute for all characters, display logs in debug window)
+        SIF !benchMarkStart
+        WAIT
+        ;#;DEBUGCLEAR
+        FOR LOCAL:0, 1, キャラクタ数上限
+            SIF !CAN_MEET(LOCAL:0)
+                CONTINUE
+            SIF CFLAG:(LOCAL:0):依頼状況
+                CONTINUE
+            SIF TALENT:(LOCAL:0):LoGMobRival ;do not allow LoG rivals to have requests
+                CONTINUE
+            CALL Add_SET_NEW_IRAI_TR(LOCAL:0)
+        NEXT
+        ;#;PRINTFORML Request creation processing complete, deleting debug text
+        SIF !benchMarkStart
+        ;#;FORCEWAIT
+        ;#;DEBUGCLEAR
+        RETURN
+    ENDIF
+[ENDIF]
+REQUEST_GENERATION_COUNT = Add_Request_Generation_Count()
+;different implementation than original so we can avoid duplicates
+;FISHER_YATES_SHAFFLE includes 0, so we increment the value by one so we don't include MASTER
+CALL FISHER_YATES_SHAFFLE(CHARANUM-2)
+FOR LOCAL, 0, REQUEST_GENERATION_COUNT
+    CHARA = SHAFFLE_ARRAY:LOCAL + 1
+	SIF !CAN_MEET(CHARA)
+		CONTINUE
+	SIF CFLAG:CHARA:依頼状況
+		CONTINUE
+    SIF TALENT:(LOCAL:0):LoGMobRival ;do not allow LoG rivals to have requests
+        CONTINUE
+	CALL Add_SET_NEW_IRAI_TR(CHARA)
+NEXT
+
+REQUEST_GENERATION_COUNT = MAX(REQUEST_GENERATION_COUNT, 20) ;higher minimum for locals
+;run the check a second time for characters on the home map, making them twice as likely to generate requests
+CALL FISHER_YATES_SHAFFLE(CHARANUM-2)
+
+FOR LOCAL, 0, REQUEST_GENERATION_COUNT
+    CHARA = SHAFFLE_ARRAY:LOCAL + 1
+	SIF !CAN_MEET(CHARA)
+		CONTINUE
+	SIF CFLAG:CHARA:依頼状況
+		CONTINUE
+    SIF !CFLAG:CHARA:神社在住
+        CONTINUE
+	CALL Add_SET_NEW_IRAI_TR(CHARA)
+NEXT
+
+@Add_Request_Generation_Count
+#FUNCTION
+
+LOCAL = 15
+
+IF Add_Request_Helpfulness > 0
+    LOCAL += Add_Request_Helpfulness / 50
+ENDIF
+
+SIF Add_Request_Debug_Info
+    PRINTFORML Request generation count: {LIMIT(LOCAL, 15, CHARANUM - 2)}
+
+RETURNF LIMIT(LOCAL, 15, CHARANUM - 2)
+
+@Add_Request_Debug_Overview
+#FUNCTION
+LOCAL:1 = 0
+PRINTFORML Current requests:
+FOR LOCAL, 1, CHARANUM
+	IF CFLAG:LOCAL:依頼内容
+		LOCAL:1 ++
+        PRINTFORML %CALLNAME:LOCAL, 20, LEFT%: (%TOSTR(CFLAG:LOCAL:依頼内容 % 1000), 3, RIGHT%) ＜%REQUEST_NAMES_TR(STR_DATA_IRAI(CFLAG:LOCAL:依頼内容, "依頼名", LOCAL))%＞ (State: {CFLAG:LOCAL:依頼状況}) ({DAY-CFLAG:LOCAL:REQUEST_GENERATION_DAY} days old) \@ CFLAG:LOCAL:REQUEST_GENERATION_DAY == DAY ? (NEW!) # \@
+    ENDIF
+NEXT
+PRINTFORML Current request count: {LOCAL:1}.
+PRINTFORML Current helpfulness score: {Add_Request_Helpfulness} (Changed by {Add_Request_Helpfulness - Add_Request_Yesterdays_Helpfulness} from last day)
+
+@Add_SET_NEW_IRAI_TR(CHARA)
+#DIM CHARA
+CALL Add_IRAI_HIT_TR(CHARA, "HAPPEN")
+
+SELECTCASE RESULT
+CASE IS <= 0
+	RETURN
+CASE 1
+    CALL Add_IRAI_HIT_TR(CHARA, "COMMON")
+    LOCAL = RESULT
+    SIF !LOCAL
+        RETURN
+CASE 2
+    CALL Add_IRAI_HIT_TR(CHARA, "UNIQUE")
+    LOCAL = RESULT
+	SIF LOCAL <= 100
+		RETURN
+ENDSELECT
+CALL SET_IRAI_PROGRESS(CHARA, "依頼発生直後")
+CFLAG:CHARA:依頼内容 = MAKE_IRAI_ID(CHARA, LOCAL)
+
+CALL Add_Request_Created(CFLAG:CHARA:依頼内容) ;addition custom code
+
+;replacement that isn't a #FUNCTION
+@Add_IRAI_HIT_TR(CHARA, TYPE)
+#DIM  CHARA
+#DIMS TYPE
+#DIM CONST LAST_COMMON = 99 ;一般依頼IDの末端
+#DIM       LAST_UNIQUE      ;そのキャラに実装されている固有依頼IDの末端
+#DIM       HIT_LIST, 100    ;抽選確率配列
+#DIM       ID_LIST,  100    ;抽選を対象依頼IDの一覧
+#DIM       CNT_LIST         ;抽選対象となる依頼の数
+DEBUGPRINTFORML ＞IRAI_HIT{CHARA}　%TYPE%
+SELECTCASE TYPE
+CASE "HAPPEN"
+;依頼発生抽選
+	HIT_LIST:0 = GET_INT(0, "キャラデータ", CHARA, "依頼なし発生率")
+	HIT_LIST:1 = GET_INT(0, "キャラデータ", CHARA, "一般依頼発生率")
+	HIT_LIST:2 = GET_INT(0, "キャラデータ", CHARA, "固有依頼発生率")
+	SIF !SUMARRAY(HIT_LIST, 0, 3)
+		HIT_LIST = 7, 3, 0
+	DEBUGPRINTFORML ＞IRAI_HIT{CHARA}　{HIT_LIST:0}/{HIT_LIST:1}/{HIT_LIST:2}
+	RETURN ARRAY_HIT(HIT_LIST, 3)
+CASE "COMMON"
+;一般依頼の抽選
+	VARSET HIT_LIST
+	VARSET ID_LIST
+	VARSET CNT_LIST
+	FOR LOCAL:0, 1, LAST_COMMON + 1
+		SIF !INT_DATA_IRAI(MAKE_IRAI_ID(CHARA, LOCAL:0), "依頼発生条件", CHARA)
+			CONTINUE
+		;NAS: Factions
+		SIF GET_INT(0, "一般依頼", LOCAL:0, "Faction Only")
+			CONTINUE
+        CALL Add_IRAI_BLOCKED(CHARA, LOCAL:0)
+        SIF RESULT
+            CONTINUE
+
+		ID_LIST:CNT_LIST  = LOCAL:0
+		HIT_LIST:CNT_LIST = INT_DATA_IRAI(MAKE_IRAI_ID(CHARA, LOCAL:0), "依頼発生率", CHARA)
+		CNT_LIST ++
+	NEXT
+	SIF !CNT_LIST
+		RETURN 0
+	RETURN ID_LIST:(ARRAY_HIT(HIT_LIST, CNT_LIST))
+CASE "FACTION"
+;NAS Customs
+	VARSET HIT_LIST
+	VARSET ID_LIST
+	VARSET CNT_LIST
+	FOR LOCAL:0, 1, LAST_COMMON + 1
+		SIF !INT_DATA_IRAI(MAKE_IRAI_ID(CHARA, LOCAL:0), "依頼発生条件", CHARA)
+			CONTINUE
+		;NAS: Factions
+		SIF !GET_INT(0, "一般依頼", LOCAL:0, "Faction Only")
+			CONTINUE
+		ID_LIST:CNT_LIST  = LOCAL:0
+		HIT_LIST:CNT_LIST = INT_DATA_IRAI(MAKE_IRAI_ID(CHARA, LOCAL:0), "依頼発生率", CHARA)
+		CNT_LIST ++
+	NEXT
+	SIF !CNT_LIST
+		RETURN 0
+	RETURN ID_LIST:(ARRAY_HIT(HIT_LIST, CNT_LIST))
+CASE "UNIQUE"
+;固有依頼の抽選
+	VARSET HIT_LIST
+	VARSET ID_LIST
+	VARSET CNT_LIST
+	LAST_UNIQUE = GET_INT(0, "キャラデータ", CHARA, "固有依頼最終要素")
+	FOR LOCAL:0, 101, LAST_UNIQUE + 1
+		SIF !INT_DATA_IRAI(MAKE_IRAI_ID(CHARA, LOCAL:0), "依頼発生条件", CHARA)
+			CONTINUE
+        CALL Add_IRAI_BLOCKED(CHARA, LOCAL:0)
+        SIF RESULT
+            CONTINUE
+		ID_LIST:CNT_LIST  = LOCAL:0
+		HIT_LIST:CNT_LIST = INT_DATA_IRAI(MAKE_IRAI_ID(CHARA, LOCAL:0), "依頼発生率", CHARA)
+		CNT_LIST ++
+	NEXT
+	SIF !CNT_LIST
+		RETURN 0
+	RETURN ID_LIST:(ARRAY_HIT(HIT_LIST, CNT_LIST))
+ENDSELECT
+RETURN 0
+
+@Add_IRAI_BLOCKED(CHARA, IRAI_ID)
+#DIM CHARA
+#DIM IRAI_ID
+
+CALL KOJO_MESSAGE_SEND("IRAI_BLOCKED", IRAI_ID, CHARA)
+RETURN RESULT

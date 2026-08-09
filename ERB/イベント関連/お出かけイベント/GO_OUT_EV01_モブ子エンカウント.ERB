@@ -1,0 +1,383 @@
+@GO_OUT_CONDITION_EV1
+RESULT = 0
+;デート中は発生しない
+SIF RAND:3 || FLAG:デート相手
+	RETURN 0
+;その日物色済みだと無理
+SIF GETBIT(TFLAG:一日一回, 9)
+	RETURN 0
+CALL GO_OUT_EV1
+RETURN RESULT
+
+@GO_OUT_EV1
+#DIM ENEMY
+#DIMS ENEMY_RACE
+#DIM モブ残機
+#DIM LOOT
+#DIM LOOT_CANDIDATE, 17 = 51, 52, 53, 55, 56, 58, 59, 81, 82, 83, 84, 121, 131, 500, 501, 502, 510
+#DIM CONST CANDIDATE_N = 17
+#DIM REWARD
+#DIM 発情フラグ
+#DIM 満月バフ効果
+発情フラグ = 0
+満月バフ効果 = 0
+;相手が変わるとかやりたい
+SELECTCASE CFLAG:MASTER:デート中
+	;湖
+	CASE 3
+		ENEMY_RACE = 妖精
+	;竹林
+	CASE 4
+		IF !RAND:3
+			ENEMY_RACE = イナバ
+		ELSE
+			ENEMY_RACE = 妖精
+		ENDIF
+	;魔法の森
+	CASE 5
+		ENEMY_RACE '= TEXTR("化け狸/茨たぬき")
+	;三途の川
+	CASE 6
+		ENEMY_RACE '= TEXTR("化け狐/化け猫")
+	;山麓
+	CASE 7
+		ENEMY_RACE = 河童
+	;山頂
+	CASE 8
+		ENEMY_RACE = 白狼天狗
+	;地底
+	CASE 9
+		;addition custom code
+		IF !RAND:3
+			ENEMY_RACE = 鬼
+		ELSE
+			ENEMY_RACE = ゾンビフェアリー
+		ENDIF
+	;月
+	CASE 10
+		ENEMY_RACE = 玉兎
+	CASEELSE
+		;addition custom code, rare succubus if pink wind
+		IF FLAG:異常気象 == 8 && !RAND:6
+			ENEMY_RACE = サキュバス
+		ELSE
+		RETURN 0
+		ENDIF
+ENDSELECT
+SIF FLAG:異常気象 == 8 && !RAND:6 ;addition custom code, rare succubus if pink wind
+	ENEMY_RACE = サキュバス
+
+PRINTFORML On the way you're suddenly attacked by %ARTICLE(RACE_TR(ENEMY_RACE))%!
+SETBIT TFLAG:一日一回, 9
+;桃色の風による影響
+IF (FLAG:異常気象 == 8 && TCVAR:RANDOM_CHARANUM:発情) || TCVAR:RANDOM_CHARANUM:願掛け桃色の風
+	発情フラグ = 1
+ENDIF
+CALL MAKE_YUKIZURI(RANDOM_CHARANUM, ENEMY_RACE, 1)
+;bug fix, moved definition here
+ENEMY = RANDOM_CHARANUM
+TARGET = ENEMY
+CFLAG:ENEMY:デート中 = -1 ;bug fix, disable dating flag
+
+IF !発情フラグ && RAND:(MAX(CFLAG:ENEMY:溜まってる度+1, 1)) > 600 || TCVAR:ENEMY:発情 ;addition custom code, check how horny they are, if their upper level is high enough then we get this
+	発情フラグ = 3
+ENDIF
+;-----------------------------
+
+;満月時
+IF TALENT:ENEMY:動物耳 && MOON_WATCH(DAY:3) == 9
+	発情フラグ = 2
+	CALL COLORMESSAGE(@"The light of the full moon arouses %CALLNAME:ENEMY%'s instincts...!",C_YELLOW,1)
+	CALL COLORMESSAGE(@"%CALLNAME:ENEMY%'s Combat Ability has increased!",C_YELLOW,1)
+	満月バフ効果 = 1 + RAND:(MAX(2, ABL:MASTER:戦闘能力 - ABL:ENEMY:戦闘能力))
+	ABL:ENEMY:戦闘能力 += 満月バフ効果
+ENDIF
+IF 発情フラグ
+	TCVAR:ENEMY:発情 = 1
+	CFLAG:ENEMY:溜まってる度 += LIMIT((10 + RAND:20 + RAND:20 + RAND:20) * ABL:ENEMY:欲望,200,1000)
+	
+	IF 発情フラグ == 2
+		;満月時は危険日確定
+		CFLAG:ENEMY:900 = 7
+	ELSE
+		SELECTCASE FLAG:抱負
+			CASE 6
+				;抱負が子孫繁栄で未達成の場合は危険日確定
+				CFLAG:ENEMY:900 = 7
+			CASE 9
+				;子孫繁栄達成済み、かつ、安全日の場合は再設定
+				SIF ESTRUS_CYCLE(ENEMY) <= 15
+					CFLAG:ENEMY:900 = RAND:10
+		ENDSELECT
+	ENDIF
+ENDIF
+
+HANDICAP_FIXED = RAND:(ABL:ENEMY:戦闘能力 * 5 + 1) + 10
+HANDICAP_RAND = 0
+
+CALL KOJO_MESSAGE_SEND("DANMAKU", 0, ENEMY, 1, -1, "戦闘前")
+TEQUIP:ENEMY:上半身着衣状況 = 1
+
+CALL CHARA_STATE_TR(ENEMY)
+	DRAWLINE
+	CALL COLORMESSAGE(@"Virginity loss history: %CSTR:ENEMY:処女喪失履歴%",C_PINK,1)
+	PRINTFORML 
+CALL DANMAKU_OPPONENT_STATUS(ENEMY)
+IF HANDICAP_FIXED
+	CALL COLORMESSAGE(@"Terrain effect: %CALLNAME:MASTER%'s dice goes down by {HANDICAP_FIXED}!",C_YELLOW,1)
+	;【三粒の天滴】の効果
+	IF ITEM:三粒の天滴
+		HANDICAP_FIXED /= 2
+		CALL COLORMESSAGE(@"But the Curse of the Native God halves it, becoming {HANDICAP_FIXED}!",C_YELLOW,1)
+	ENDIF
+ENDIF
+;addition custom code
+SIF TCVAR:ENEMY:発情
+	CALL COLORMESSAGE(@"%CALLNAME:ENEMY% seems incredibly aroused. Losing could be dangerous...",C_YELLOW,1)
+;--------------------
+$LOOP
+CALL ASK_M("Fight",1,"Escape",1,"Rules",1)
+SELECTCASE RESULT
+	CASE 0
+		IF BASE:MASTER:気力 < 1000 || BASE:MASTER:体力 < 1000
+			PRINTFORML Somewhat exhausted, you feel much weaker than usual... Will you still fight?
+			CALL ASK_YN()
+			IF RESULT == 0
+				HANDICAP_FIXED += MAX(0, 1000 - BASE:MASTER:気力)
+				HANDICAP_FIXED += MAX(0, 1000 - BASE:MASTER:体力)
+				CALL COLORMESSAGE(@"Your fatigue applies a penalty to your dice rolls, reducing them by {HANDICAP_FIXED}!",C_YELLOW,1)
+			ELSE
+				PRINTFORML You scurry off.
+                CALL Add_HideMob() ;bug fix, transport the girl away to prevent location error
+				RETURN 1
+			ENDIF
+		ENDIF
+	CASE 1
+		PRINTFORML You flee from the fight.
+		CALL Add_HideMob ;bug fix, transport the girl away to prevent location error
+		RETURN 1
+	CASE 2
+		CALL SHOW_DANMAKU_RULE
+		GOTO LOOP
+ENDSELECT
+;bug fix, moved above
+;TARGET = ENEMY
+REWARD = MAX(ABL:ENEMY:戦闘能力 * 10 + RAND:5, 1)
+;米とか酒とか
+LOOT = LOOT_CANDIDATE:(RAND:CANDIDATE_N)
+TIME += 60
+CFLAG:ENEMY:面識 = 1
+CALL QoL_Info_Write(ENEMY, Qol_Dates_Meet) ;qol custom code
+PRINTFORMW Game Start!!!
+CALL KNIFE_FIGHT(MASTER,TARGET,1,1)
+
+モブ残機 = RESULT
+CALL RECOVER(MASTER, -500, "体力")
+CALL RECOVER(MASTER, -500, "気力")
+CALL KOJO_MESSAGE_SEND("DANMAKU", モブ残機, TARGET, 1, -1, "戦闘後")
+SIF モブ残機 < 3
+	EXP:MASTER:戦闘経験 += ABL:ENEMY:戦闘能力 * 3
+SIF モブ残機 < 1
+	EXP:MASTER:戦闘経験 += ABL:ENEMY:戦闘能力
+ABL:ENEMY:戦闘能力 -= 満月バフ効果
+IF lcWarResult == !CurrentBattle:Battle_PlayerSide
+	;モブ娘勝利（MASTERの敗戦）処理
+	CALL Add_HideMob(ENEMY) ;bug fix, transport the girl away to prevent location error
+	SETCOLOR C_RED
+	Qol_Info_Count_Array:MASTER:Qol_Count_EncountLost ++ ;qol custom code
+	IF TCVAR:ENEMY:発情 ;&& HAS_PENIS(MASTER) ;addition custom code
+		;CALL KOJO_MESSAGE_SEND("DANMAKU", モブ残機, TARGET, 1, -1, "逆レ開始")
+		PRINTFORMW No longer able to move, %CALLNAME:ENEMY% pins you down.
+		PRINTFORMW You feel a warm, almost steamy sigh breathing down on your defenseless throat...
+		CALL Add_LOST_GYAKURE_EX(ENEMY, 発情フラグ) ;addition custom code
+		SIF RESULT
+			GOTO GYAKURE_END
+		;------------------------------
+		PRINTFORMW Just when you thought you were finished, you feel something very hot enveloping your crotch.
+		PRINTFORMW %BREAKENG(@"A cautious glance at your lower half reveals %CALLNAME:ENEMY% grinning smugly at you, your %FSYN("penis")% firmly lodged deep inside her %FSYN("vagina",,ENEMY)% %FSYN("base")%.")%
+		PRINTFORMW 
+		SELECTCASE 発情フラグ ;addition custom code
+			CASE 1
+				PRINTFORM Under the powerful influence of the Pink Wind, 
+			CASE 2
+				PRINTFORM Estrus peaks during the full moon, and 
+			CASE 3 ;new case
+				PRINTFORM Aroused to %HIS_HER(ENEMY)% peak, 
+		ENDSELECT
+		PRINTFORM %CALLNAME:ENEMY% quenches her bestial thirst by ravaging, tormenting, and violating your body for all it is worth...
+		CALL PRINT_BREAK,,"wait"
+		CALL TRIPLEDOT("reverse:timed")
+		PRINTFORMW %BREAKENG(@"After %CALLNAME:ENEMY% has ravished you for what seems like an eternity to her utter satisfaction, she simply dumps you dead tired and exhausted on the side of the road.")%
+		$GYAKURE_END
+		FLAG:気絶中断 = 100 + CFLAG:MASTER:現在位置 / 100
+		CFLAG:MASTER:デート中 = CFLAG:MASTER:現在位置 / 100
+		CALL LOST_GYAKURE(ENEMY)
+	ELSEIF ITEM:LOOT
+		PRINTFORMW You lose %ITEMNAME_TR(LOOT)%...
+		ITEM:LOOT --
+	ELSEIF MONEY:2 >= REWARD
+		PRINTFORMW You lose %DIGIT_GROUP(REWARD)% Charisma...
+		MONEY:2 -= REWARD
+	ELSE
+		REWARD *= 300
+		PRINTFORMW You lose \@ MONEY > REWARD ? %金額表示(REWARD)%# all the money you have\@...
+		MONEY = MAX(MONEY - REWARD, 0)
+	ENDIF
+	RESETCOLOR
+	RETURN 1
+ENDIF
+
+;source操作他
+TCVAR:ENEMY:弾幕勝負不能 = 1
+CFLAG:ENEMY:弾幕勝負勝利 = 1
+CFLAG:ENEMY:負け犬 = 1
+CFLAG:ENEMY:よく行く地域 = CFLAG:MASTER:デート中
+
+PRINTFORML %CALLNAME:ENEMY% collapses on her knees...
+CALL ASK_M("Give an offering",1,"Demand money",1,"Demand her body",1, "Use a Stone of Mirada", ITEM:ミラダの石)
+SELECTCASE RESULT
+	CASE 0
+		PRINTFORML You hold your hands toward %CALLNAME:ENEMY% and say a prayer, watching as her panties begin to glow faintly.
+		PRINTFORML Soon the light turns into a supernatural flame and begins to burn her panties off without harming her or her clothes.
+		PRINTFORML After witnessing divine intervention, %CALLNAME:ENEMY% flees in panic.
+		CALL BUFF_BASE(MASTER,BASE_TSP,500, 1)
+		CALL BUFF_BASE(MASTER,BASE_精力,500, 1)
+		FLAG:篤信 += 10
+		;DELCHARA RANDOM_CHARANUM
+		;ADDCHARA RANDOM_CHARANUM
+		TARGET = 0
+		CALL Add_HideMob(ENEMY) ;bug fix, transport the girl away to prevent location error
+		Qol_Info_Count_Array:MASTER:Qol_Count_EncountWon ++ ;qol custom code
+		RETURN
+	CASE 1
+		PRINTFORMW Ora! Dance! Dance!
+		MONEY:2 += REWARD
+		PRINTFORMW You get {REWARD} Charisma from %CALLNAME:ENEMY%.
+		IF RAND:5 < ABL:ENEMY:戦闘能力
+			PRINTFORMW You also get %ITEMNAME_TR(LOOT)%!
+			ITEM:LOOT ++
+		ENDIF
+		TARGET = 0
+		;DELCHARA RANDOM_CHARANUM
+		;ADDCHARA RANDOM_CHARANUM
+		CALL Add_HideMob(ENEMY) ;bug fix, transport the girl away to prevent location error
+		Qol_Info_Count_Array:MASTER:Qol_Count_EncountWon ++ ;qol custom code
+		RETURN 1
+	CASE 2
+		PRINTFORML %BREAKENG(@"Giving %CALLNAME:ENEMY% a choice between obeying you for the rest of the day or getting exterminated by the Shrine Maiden, %HE_SHE(ENEMY)% decides to go with the former.")%
+		IF TALENT:ENEMY:マゾ
+			PRINTFORML %CALLNAME:ENEMY% seems to be %SPLIT_G("reeling in anticipation of the:itching to get a taste of the:eager to receive the:salivating at the thought of the:having high hopes for the")% ensuing %SPLIT_G(@"retribution:punishment:reprisal:payback:prospect of penance:chance to redeem %HIMSELF_HERSELF(ENEMY)%")%!
+			PALAM:ENEMY:欲情 = PALAMLV:3
+			ABL:ENEMY:欲望 = MAX(3, ABL:ENEMY:欲望)
+			CALL COLORMESSAGE(@"You can now initiate sex with %HIM_HER(ENEMY)% anywhere that isn't public!",C_YELLOW,1)
+		ELSE
+			MARK:ENEMY:反発刻印 = 1
+			CALL COLORMESSAGE(@"Although %CALLNAME:ENEMY% has received a Hate Mark, you can initiate sex with %HIM_HER(ENEMY)% anywhere that isn't public.",C_YELLOW,1)
+		ENDIF
+		PRINTFORMW You triumphantly take %CALLNAME:ENEMY% with you back home.
+		Qol_Info_Count_Array:MASTER:Qol_Count_EncountWon ++ ;qol custom code
+	CASE 3
+		PRINTFORML Watching %CALLNAME:ENEMY% carefully as %HE_SHE(ENEMY)% glares at you, you grasp the Stone of Mirada.
+		PRINTFORML %HE_SHE(ENEMY,1)% then averts %HIS_HER(ENEMY)% gaze and hangs %HIS_HER(ENEMY)% head.
+		CFLAG:ENEMY:体目当て = 1
+		ITEM:ミラダの石 --
+		ABL:ENEMY:親密 = MAX(3, ABL:ENEMY:親密)
+		ABL:ENEMY:欲望 = MAX(3, ABL:ENEMY:欲望)
+		CFLAG:ENEMY:溜まってる度 = 1000
+		PRINTFORML You put your hand on %CALLNAME:ENEMY%'s shoulder and order %HIM_HER(ENEMY)% to obey you for the rest of the day.
+		PRINTFORML %CALLNAME:ENEMY% accepts it rather obediently.
+		CALL COLORMESSAGE(@"%CALLNAME:ENEMY% can now be pushed down anywhere that isn't public.",C_YELLOW,1)
+		PRINTFORMW You triumphantly take %CALLNAME:ENEMY% with you back home.
+		Qol_Info_Count_Array:MASTER:Qol_Count_EncountWon ++ ;qol custom code
+ENDSELECT
+
+CFLAG:ENEMY:デート中 = MAIN_MAP ;bug fix
+FLAG:デート相手 = TARGET
+CFLAG:TARGET:同行 = 180
+CFLAG:MASTER:同行 = 180
+CFLAG:ENEMY:眠気覚まし = 600
+CFLAG:ENEMY:拠点来訪 = 1
+CFLAG:ENEMY:来訪時間 = 0
+CFLAG:ENEMY:帰宅時間 = 1440 + CFLAG:ENEMY:眠気覚まし
+CFLAG:ENEMY:就寝時間 = 1440 + CFLAG:ENEMY:眠気覚まし
+CFLAG:ENEMY:起床時間 = 0
+;note - these are translated through MOB_STATE_TR
+CSTR:ENEMY:モブ子プロフィール２ = 無様にも返り討ちにされ今はもう大人しい
+
+RETURN 1
+
+@LOST_GYAKURE(ARG, ARG:1) ;bug fix
+#DIM 性交回数
+#DIM 射精回数
+;NAS: Replaced
+CALL LOST_GYAKURE_NAS(ARG,MASTER,ARG:1)
+RETURN
+
+SIF !ARG:1 ;bug fix
+	CALL Add_LOST_GYAKURE(ARG) ;addition custom code, replace experience calculation
+GOTO SKIP
+性交回数 = MAX(1, CFLAG:ARG:溜まってる度 / 100)
+射精回数 = MAX(1, BASE:MASTER:精力 / 100)
+BASE:MASTER:体力 = 0
+BASE:MASTER:気力 = 0
+;BASE:MASTER:精力 = 0
+;射精処理
+CALL ADD_SAMEN_V(ARG, BASE:MASTER:精力)
+EXP:ARG:精液経験 += 射精回数
+EXP:ARG:膣射経験 += 射精回数
+EXP:ARG:Ｖ性交経験 += 性交回数
+EXP:ARG:Ｖ経験 += 性交回数
+EXP:MASTER:絶頂経験 += 射精回数
+EXP:MASTER:射精経験 += 射精回数
+EXP:MASTER:挿入経験 += 性交回数
+CFLAG:ARG:溜まってる度 = 0
+IF TALENT:ARG:処女
+	;note - replaced with a function in modded branch
+	CSTR:ARG:処女喪失履歴 = 発情中に%CALLNAME:MASTER%を襲って捨てた
+	TALENT:ARG:処女 = 0
+ENDIF
+$SKIP
+Qol_Info_Count_Array:MASTER:Qol_Count_EncountMolest ++ ;qol custom code
+
+;note - exception, not sure if PC name can be translated with the function if the name changes
+SIF !ARG:1 ;bug fix
+	CSTR:ARG:モブ子プロフィール２ = Has ravaged you in the past after defeating you.
+CALL SET_SLEEP(1,MASTER,0)
+CFLAG:MASTER:就寝時間 = DAY * 1440 + TIME + 120 + RAND:120
+TFLAG:106 = 0
+BEGIN AFTERTRAIN
+
+;IF TIME:2 >= 5 && TIME:2 <= 7 && TIME:5 < 2
+;	CALL COLORMESSAGE(@"満月の光が%CALLNAME:TARGET%の本能をかき立てる…！",C_YELLOW,1)
+;	CALL COLORMESSAGE(@"%CALLNAME:TARGET%の戦闘力がアップ！",C_YELLOW,1)
+;ENDIF
+
+;モブ娘エンカウント率上昇
+@MOB_BATTLE_ENCOUNT
+#FUNCTION
+#DIM 月の状態
+IF FLAG:異常気象 == 8 && TCVAR:RANDOM_CHARANUM:発情
+	RETURNF 1
+ELSEIF  TCVAR:RANDOM_CHARANUM:願掛け桃色の風
+	RETURNF 1
+ELSE
+	月の状態 = MOON_WATCH(DAY:3)
+	;満月
+	IF 月の状態 == 9
+		SELECTCASE FLAG:抱負
+			CASE 6
+				;抱負が子孫繁栄
+				RETURNF 1
+			CASE 9
+				;子孫繁栄達成済み
+				SIF RAND:5 == 0
+					RETURNF 1
+		ENDSELECT
+		SIF RAND:10 == 0
+			RETURNF 1
+	;新月
+	ELSEIF 月の状態 == 1 && RAND:3 == 0
+		RETURNF 1
+	ENDIF
+ENDIF
+RETURNF 0

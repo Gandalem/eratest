@@ -1,0 +1,1190 @@
+; New menu: Immiment Accident Settings
+; - Toggle on-person protections such as diapers, catheter systems when sleeping
+;      - Chose between different levels of protection as well 
+; - Change between different bed pads: Unimu Wanwanman (disposable), Play mat (resuable light), Gensou-chan Last Line (resusable heavy) 
+; - Toggle the bedwetting alarm
+; - Prioritze between waking up to stay dry or to keep sleeping and risk a bedwetting incident. 
+; - Auto-take dream drops (more lucid dreams) or dream suppressants (less lucid dreams)
+; - Auto-take diuretics, laxatives, antidiurethics, antidiarrheals, water, to change bedwetting chance
+; - Auto-masturbate before bed is moved here
+;===========================================
+;★★Imminent Accident Settings★★
+;When you're about to have an accident...
+
+; [ 0] - Acicdent (4th): Pee/poop in your underwear
+; [ 1] - TSP Relief (2nd): Use TSP to relieve yourself on the spot.
+; [ 2] - Aphedron (1st): Use MP to empty your bladder and bowels.
+; [ 3] - Waste Diversion (3rd): Use MP to divert your excretions to another person.
+; Yell and get the attention of everyone. 
+; [ 4] - Ask the player before an accident: Yes
+;
+; Current Priority
+; 「Aphedron」 -> 「TSP Relief」 -> 「Waste Diversion」 -> 「Acicdent」
+
+; [100] - Return
+;===========================================
+@ImminentAccidentSettings
+#DIMS CONST iasLabel = "Accident", "TSP Relief", "Aphedron", "Waste Diversion"
+{
+#DIMS CONST iasDesc =
+"Give up and soil your underwear.", 
+"Use TSP to relieve yourself on the spot.",
+"Use MP to empty your bladder and bowels.",
+"Use MP to divert your excretions to another person."
+}
+#DIM DYNAMIC iasLineCount,2
+#DIM DYNAMIC iasInput
+#DIM DYNAMIC iasCanSpell
+SIF MAXBASE:MASTER:TSP >= 350
+    SETBIT iasCanSpell, 1
+CALL YoujutsuMagicCanDo(MASTER,18,28)
+SIF RESULT
+    SETBIT iasCanSpell, 2
+CALL YoujutsuMagicCanDo(MASTER,18,37)
+SIF RESULT
+    SETBIT iasCanSpell, 3
+FONTBOLD
+SETCOLOR C_YELLOW
+PRINTFORML ★★Imminent Accident Settings★★
+RESETCOLOR
+FONTREGULAR
+iasLineCount = LINECOUNT
+DO
+CLEARLINE LINECOUNT-iasLineCount
+IF iasCanSpell
+    PRINTFORML When you're about to have an accident...
+    FOR LOCAL,0,VARSIZE("iasLabel")
+        SIF LOCAL && !GETBIT(iasCanSpell,LOCAL)
+            CONTINUE
+        IF FINDELEMENT(ImminentAccidentSettings_Priority,LOCAL) == -1
+            LOCALS:0 '= "(Off)"
+        ELSE
+            LOCALS:0 '= @"(%ORDINAL(FINDELEMENT(ImminentAccidentSettings_Priority,LOCAL)+1)%)"
+        ENDIF
+        PRINTFORML [{LOCAL,2}] %iasLabel:LOCAL% %LOCALS:0% - %iasDesc:LOCAL%
+    NEXT
+    PRINTL
+    PRINTFORML [20] Ask the player before an accident: %YesOrNo(ImminentAccidentSettings_AskPlayer)%
+    SIF GETBIT(iasCanSpell,3)
+        PRINTFORML [21] Chain redirections if you've been redirected: %YesOrNo(ImminentAccident_AutoRedirect)%
+    PRINTL
+    SETCOLOR C_YELLOW
+    PRINTFORML Current Priority:
+    RESETCOLOR
+    FOR LOCAL,0,VARSIZE("iasLabel")
+        SIF ImminentAccidentSettings_Priority:LOCAL > 0 && !GETBIT(iasCanSpell,ImminentAccidentSettings_Priority:LOCAL)
+            CONTINUE
+        SIF ImminentAccidentSettings_Priority:LOCAL == -1
+            CONTINUE
+        PRINTFORM 「%iasLabel:(ImminentAccidentSettings_Priority:LOCAL)%」
+        IF LOCAL+1 > VARSIZE("ImminentAccidentSettings_Priority")-1
+        ELSEIF ImminentAccidentSettings_Priority:(LOCAL+1) == -1
+        ELSE
+            PRINTFORMS " -> "
+        ENDIF
+    NEXT
+    PRINTL
+ELSE
+    PRINTFORML You don't have any spells, so having an accident is your only choice...
+ENDIF
+PRINTL
+PRINTFORML [100] - Return
+INPUT
+iasInput = RESULT
+SELECTCASE iasInput
+CASE 0 TO VARSIZE("iasLabel")-1
+    iasLineCount:1 = LINECOUNT
+    DO
+        CLEARLINE LINECOUNT-(iasLineCount:1)
+        PRINTFORML Changing priority of %iasLabel:iasInput%.
+        FOR LOCAL,0,VARSIZE("iasLabel")
+            PRINTFORML [{LOCAL,2}] Set to %ORDINAL(LOCAL+1)% (currently \@ ImminentAccidentSettings_Priority:LOCAL > -1 ? %iasLabel:(ImminentAccidentSettings_Priority:LOCAL)% # nothing\@)
+            IF ImminentAccidentSettings_Priority:LOCAL == -1
+                IF LOCAL >= VARSIZE("iasLabel")-1
+                    BREAK
+                ELSEIF ImminentAccidentSettings_Priority:(LOCAL+1) == -1
+                    BREAK
+                ENDIF
+            ENDIF
+        NEXT
+        PRINTFORML [-250] Disable
+        PRINTL
+        PRINTFORML [-999] Exit
+        INPUT
+        LOCAL:0 = RESULT
+        LOCAL:1 = FINDELEMENT(ImminentAccidentSettings_Priority,iasInput)
+        SELECTCASE LOCAL:0
+        CASE 0 TO VARSIZE("iasLabel")-1
+            IF LOCAL == FINDELEMENT(ImminentAccidentSettings_Priority,iasInput)
+                CONTINUE
+            ELSEIF ImminentAccidentSettings_Priority:LOCAL == -1
+                IF LOCAL:1 > -1
+                    PRINTFORMW Already in the priority list.
+                    CONTINUE
+                ENDIF
+                ImminentAccidentSettings_Priority:LOCAL = iasInput
+            ELSE
+                IF LOCAL:1 == -1
+                    ; FOR LOCAL:2, LOCAL:0, VARSIZE("iasLabel")-1
+                    ;     SIF ImminentAccidentSettings_Priority:(LOCAL:2+1) == -1
+                    ;         BREAK
+                    ;     ImminentAccidentSettings_Priority:(LOCAL:2+1) = ImminentAccidentSettings_Priority:(LOCAL:2) 
+                    ; NEXT
+                    ARRAYSHIFT ImminentAccidentSettings_Priority, 1, iasInput
+                    SWAP ImminentAccidentSettings_Priority:(0), ImminentAccidentSettings_Priority:(LOCAL)
+
+                    ; ImminentAccidentSettings_Priority:LOCAL = iasInput
+                ELSE
+                    SWAP ImminentAccidentSettings_Priority:(LOCAL:1), ImminentAccidentSettings_Priority:(LOCAL)
+                ENDIF
+            ENDIF
+        CASE -250
+            IF RESULT == -250 && iasInput == 0
+                PRINTFORMW You can't turn off having an accident!
+                CONTINUE
+            ENDIF
+            ImminentAccidentSettings_Priority:(LOCAL:1) = -1
+            FOR LOCAL:2, LOCAL:1, VARSIZE("iasLabel")-1
+                ImminentAccidentSettings_Priority:(LOCAL:2) = ImminentAccidentSettings_Priority:(LOCAL:2+1) 
+            NEXT
+
+        CASE -999
+            BREAK
+        ENDSELECT
+    LOOP 1
+CASE 20
+    ImminentAccidentSettings_AskPlayer = !ImminentAccidentSettings_AskPlayer
+CASE 21
+    ImminentAccident_AutoRedirect = !ImminentAccident_AutoRedirect
+CASE 100
+RETURN
+ENDSELECT
+LOOP 1
+
+@IAS_OPTION_NAME(ARG)
+#FUNCTIONS
+SELECTCASE ARG
+CASE 0
+RETURNF "Accident"
+CASE 1
+RETURNF "TSP Relief"
+CASE 2
+RETURNF "Aphedron"
+CASE 3
+RETURNF "Waste Diversion"
+ENDSELECT
+
+;i can make it so that they can try to stop their accidents
+@ImminentAccident(ARG,HasPiss,HasScat)
+#DIM HasPiss
+#DIM HasScat
+#DIM DYNAMIC CanSpell
+#DIM DYNAMIC nInput
+nInput = 0
+FOR LOCAL,1,VARSIZE("ImminentAccidentSettings_Priority")
+    CALL ImminentAccident_AbleToDo(ARG,LOCAL)
+    SIF RESULT
+        SETBIT CanSpell, LOCAL
+NEXT
+
+SIF !CanSpell || !SHIRAHU(ARG)
+    GOTO Accident
+
+SETCOLOR C_RED
+PRINTFORML ★★Imminent Accident%COND_STR(@" (%CALLNAME:ARG%)",ARG != MASTER)%★★
+RESETCOLOR
+SELECTCASE ARG
+CASE MASTER
+    IF ImminentAccidentSettings_AskPlayer
+        PRINTFORML Your \@ HasScat ? bowels are # bladder is \@ about to break!!!
+        FOR LOCAL, 1, 4
+            SIF GETBIT(CanSpell,LOCAL)
+                PRINTFORML [{LOCAL,2}] %IAS_OPTION_NAME(LOCAL)%
+        NEXT
+        SIF ImminentAccident_RedirectionCaster > -1
+            PRINTFORML [86] Continue the redirection.
+        ;[1] TSP Relief
+        ;[2] Waste Redirection
+        PRINTL
+        PRINTFORML [ 0] Let it out...
+        TINPUT 5000, 0, 1
+        nInput = RESULT
+    ELSE
+        FOR LOCAL,1,VARSIZE("ImminentAccidentSettings_Priority")
+            CALL ImminentAccident_AbleToDo(ARG,ImminentAccidentSettings_Priority:LOCAL)
+            IF RESULT
+                ;we can do the spell
+                nInput = ImminentAccidentSettings_Priority:LOCAL
+                BREAK
+            ENDIF
+        NEXT
+        IF ImminentAccident_AutoRedirect && ImminentAccident_RedirectionCaster > -1
+            CALL ImminentAccident_AbleToDo(ARG,3)
+            SIF RESULT
+                nInput = 86
+        ENDIF
+    ENDIF
+CASEELSE
+    IF WantsToUseDiaperOverPotty(ARG,1)
+        GOTO Accident
+    ENDIF
+    CALL FISHER_YATES_SHAFFLE(VARSIZE("ImminentAccidentSettings_Priority"))
+    FOR LOCAL,0,VARSIZE("ImminentAccidentSettings_Priority")
+        ;don't allow omorashi unless all rolls fail
+        SIF SHAFFLE_ARRAY:LOCAL == 0
+            CONTINUE
+        IF RAND(10000) <= ImminentAccident_NPCUseAbility(ARG,SHAFFLE_ARRAY:LOCAL,HasPiss,HasScat) && !nInput
+            ;done
+            nInput = SHAFFLE_ARRAY:LOCAL
+            BREAK
+        ELSE
+        ENDIF
+    NEXT
+    SIF nInput == 0
+        GOTO Accident
+ENDSELECT
+
+CALL ImminentAccident_OmorashiNoGacha(ARG,HasPiss,HasScat,nInput)
+ImminentAccident_SpellFailureLevel = RESULT
+IF ImminentAccident_SpellFailureLevel > 0
+    ImminentAccident_SpellCast = nInput
+    SIF ARG == MASTER
+        ImminentAccident_FailurePity++
+ELSEIF ImminentAccident_SpellFailureLevel == -1
+    nInput = 0
+ELSE
+    SIF ARG == MASTER
+        ImminentAccident_FailurePity = 0
+ENDIF
+SIF nInput == 86
+    nInput = 3
+SELECTCASE nInput
+CASE 1
+    IF ImminentAccident_SpellFailureLevel != 99
+        CALL TSP_RELIEF(ARG,ImminentAccident_ChooseVictim,HasPiss,HasScat)
+    ELSE
+        CALL ImminentAccident_SpellFailure(ARG,1,ImminentAccident_SpellFailureLevel,HasPiss,HasScat)
+        GOTO Accident
+    ENDIF
+CASE 2
+    ; PRINTFORML You cast Aphedron at yourself...
+    ; PRINTFORML .
+    ; PRINTFORML ..
+    ; PRINTFORML ...
+    IF !GETBIT(CanSpell,2)
+        ;lmfao good job cheater
+        ImminentAccident_SpellFailureLevel = 99
+        CALL ImminentAccident_PrintSpellOutcome(ImminentAccident_SpellFailureLevel)
+        CALL PRINT_GPC("W", @"「Aphedron!」", ARG)
+        CALL PRINT_GP("W", @"Oh no... it's doing nothing!")
+        CALL PRINT_GP("W", @"And it's too late to do anything... it's coming out!")
+        GOTO Accident
+    ENDIF
+    ;     CALL PRINT_GP("W", @"You realize that you know a chant that can clear your bowels.")
+    ;     CALL PRINT_GPC("W", @"「Aph....」", MASTER)
+    ;     CALL PRINT_GPC("W", @"「Aphe....」", MASTER)
+    ;     CALL PRINT_GPC("W", @"「Aphedra...」", MASTER)
+    ;     CALL PRINT_GP("W", @"Unable to focus, you're unable to cast the spell in time...")
+	;DIARAHAN!
+	; CALL PRINT_GPC("W", @"「\@ GROUPMATCH(NAS_ESP_RADIUS,4,5,6) ? %TOUPPER(NAS_ESP_NAME)%!!! # %NAS_ESP_NAME%!\@」", PYC_CASTER)
+    IF !ImminentAccident_SpellFailureLevel
+        CALL PROCESS_YOUJUTSU_COMMAND(ARG,ARG,18,28,1)
+        IF RESULT != 9530
+            CALL ImminentAccident_PrintSpellOutcome(0)
+            IF ARG == MASTER
+                PRINTFORMW Phew. You feel much better now.
+                PRINTFORMW Try keeping your potty needs at bay so you won't have another emergency.
+                BladderDiary += @"%時刻表示(TIME)%: Imminent Accident intervened with Aphedron\n"
+            ELSE
+                PRINTFORMW %CALLNAME:ARG% feels much better now.
+            ENDIF
+            RETURN
+        ELSE
+            ImminentAccident_SpellFailureLevel = 4
+            CALL ImminentAccident_PrintSpellOutcome(ImminentAccident_SpellFailureLevel)
+            PRINTFORMW Oh no... it's not working!
+            PRINTFORMW And it's too late to do anything... it's coming out!
+            PRINTL
+            GOTO Accident
+        ENDIF
+    ELSE
+        CALL ImminentAccident_SpellFailure(ARG,2,ImminentAccident_SpellFailureLevel,HasPiss,HasScat)
+        GOTO Accident
+    ENDIF
+CASE 3
+    IF !GETBIT(CanSpell,3)
+        CALL PRINT_GPC("W", @"「Waste Redirection」", ARG)
+        CALL PRINT_GP("W", @"Oh no... it's doing nothing!")
+        CALL PRINT_GP("W", @"And it's too late to do anything... it's coming out!")
+        GOTO Accident
+    ELSEIF !GET_TARGETNUM()
+        PRINTFORMW But where?
+        PRINTFORMW There's no where to go... 
+        PRINTFORMW Oh no. Oh no! It's coming out!
+        GOTO Accident
+    ENDIF
+
+    IF !ImminentAccident_SpellFailureLevel
+        ImminentAccident_RedirectionCaster = ARG
+        CALL WasteRedirection(ARG,ImminentAccident_ChooseVictim)
+    ELSE
+        CALL ImminentAccident_SpellFailure(ARG,3,ImminentAccident_SpellFailureLevel,HasPiss,HasScat)
+        GOTO Accident
+    ENDIF
+CASE 4
+    PRINTFORML Sorry. This is not done yet!
+    GOTO Accident
+CASEELSE
+    $Accident
+    IF HasScat
+        CALL UNCHI_OMORASHI(ARG,HasPiss)
+    ELSE
+        CALL OSHIKKO_OMORASHI(ARG,HasScat) 
+    ENDIF
+ENDSELECT
+ImminentAccident_ChooseVictim = -1
+ImminentAccident_RedirectionCaster = -1
+
+;roulette wheel
+;spin the wheel, 
+;1 point will ALWAYS be Failure to Cast
+@ImminentAccident_OmorashiNoGacha(ARG,HasPiss,HasScat,wsfSpell)
+#DIM DYNAMIC wsfSpell
+#DIM DYNAMIC wsfEntries, 101
+#DIM DYNAMIC wsfOdds, 5
+#DIM DYNAMIC wsfProbs, 5
+#DIM DYNAMIC wsfSize
+#DIM DYNAMIC wsfRand
+#DIM DYNAMIC wsfMaxRolls = 150
+#DIM DYNAMIC wsfTotal
+#DIM DYNAMIC wsfContinueRedirect
+#DIMS DYNAMIC wsfGood
+#DIMS DYNAMIC wsfBad
+#DIM HasPiss
+#DIM HasScat
+{
+#DIMS CONST wsfRollLabel =
+"Success",
+"Minor Failure",
+"Moderate Failure",
+"MAJOR FAILURE",
+"FAILURE TO CAST"
+}
+{
+#DIM CONST wsfRollColors =
+C_GREEN,
+C_YELLOW,
+C_ORANGE,
+C_RED,
+C_GRAY
+}
+; wsfOdds:0 = 1000
+; wsfOdds:1 = 0
+; wsfOdds:2 = 0
+; wsfOdds:3 = 0
+; wsfOdds:4 = 0
+; wsfOdds:5 = 1000
+; VARSET wsfOdds, 1000
+; wsfOdds:5 = 4000
+IF wsfSpell == 86
+    ImminentAccident_ChooseVictim = ImminentAccident_RedirectionCaster
+    wsfSpell = 3
+    wsfContinueRedirect = 1
+ENDIF
+
+
+CALL ImminentAccident_SpellChance(ARG,HasPiss,HasScat,wsfSpell)
+ARRAYCOPY "RESULT", "wsfOdds"
+wsfGood '= RESULTS:0
+wsfBad '= RESULTS:1
+
+wsfOdds:4 = MAX(10,wsfOdds:4)
+FOR LOCAL,0,VARSIZE("wsfOdds")
+    wsfTotal += wsfOdds:LOCAL
+NEXT
+FOR LOCAL,0,VARSIZE("wsfOdds")
+    wsfProbs:LOCAL += (1000*wsfOdds:LOCAL)/wsfTotal
+NEXT
+
+VARSET wsfEntries, 0
+FOR LOCAL,0,VARSIZE("wsfEntries")
+    wsfRand = RAND:1000+1
+    IF wsfRand <= wsfProbs:0
+        wsfEntries:LOCAL = 0
+    ELSEIF wsfRand <= wsfProbs:0+wsfProbs:1
+        wsfEntries:LOCAL = 1
+    ELSEIF wsfRand <= wsfProbs:0+wsfProbs:1+wsfProbs:2
+        wsfEntries:LOCAL = 2
+    ELSEIF wsfRand <= wsfProbs:0+wsfProbs:1+wsfProbs:2+wsfProbs:3
+        wsfEntries:LOCAL = 3
+    ELSEIF wsfRand <= wsfProbs:0+wsfProbs:1+wsfProbs:2+wsfProbs:3+wsfProbs:4
+        wsfEntries:LOCAL = 99
+    ELSE
+        wsfEntries:LOCAL = 0
+    ENDIF
+NEXT
+; FOR LOCAL,0,50
+;     wsfEntries:LOCAL = 99
+; NEXT
+wsfEntries:50 = 99
+wsfSize = VARSIZE("wsfEntries")
+; RETURNF 99
+CALL FISHER_YATES_SHAFFLE(wsfSize)
+SELECTCASE wsfSpell
+CASE 3
+    IF wsfContinueRedirect
+    ELSEIF GET_TARGETNUM()
+        IF ARG == MASTER
+            PRINTFORMW To who?
+            FOR LOCAL,0,CHARANUM-1
+                SIF LOCAL == MASTER
+                    CONTINUE
+                SIF CFLAG:LOCAL:300 != CFLAG:MASTER:300
+                    CONTINUE
+                PRINTFORML [{LOCAL,3}] - %CALLNAME:LOCAL%
+            NEXT
+            PRINTL
+            PRINTFORML [-1] Let it out...
+            INPUT
+            ImminentAccident_ChooseVictim = RESULT
+            SELECTCASE ImminentAccident_ChooseVictim
+            CASE -1, MASTER
+                PRINTFORMDW You let your excretory functions win you over..
+                RETURN -1
+            CASEELSE
+                IF !INRANGE(LOCAL,0,CHARANUM-1)
+                    PRINTFORMDW That's not a real person.
+                    PRINTFORMW Oh no. Oh no! It's coming out!
+                    RETURN -1
+                ENDIF
+            ENDSELECT
+        ELSE
+            ImminentAccident_ChooseVictim = ImminentAccident_PickRedirectionTarget(ARG)
+        ENDIF
+    ELSE
+        RETURN 99
+    ENDIF
+CASE 2
+	PRINTFORML %PARSE("You cast",,,ARG)% Aphedron at %PARSE("yourself",,,ARG)%....
+CASE 1
+    IF ARG == MASTER
+        CALL TSP_RELIEF_INIT(MASTER,1,HasPiss,HasScat)
+        ImminentAccident_ChooseVictim = RESULT
+    ELSE
+        ImminentAccident_ChooseVictim = ImminentAccident_PickRedirectionTarget(ARG)
+    ENDIF
+CASE 0
+    PRINTFORML %PARSE("You choose",,,ARG)% to give up and \@ IsDiapered(ARG) ? use %PARSE("your",5,,ARG)% diaper # soil %PARSE("yourself",,,ARG)%\@...
+    RETURN 99
+ENDSELECT
+PRINTL
+SETCOLOR C_YELLOW
+PRINTFORML ★★Omorashi No Gacha★★
+RESETCOLOR
+PRINTFORML .
+PRINTFORM ★Excretion Youjutsu: 
+CALL PRINT_RANK(YoujutsuLevel:ARG:18,"MAX_6")
+PRINTFORM  {YoujutsuLevel:ARG:18}
+PRINTL
+PRINTFORML ..
+PRINTFORML ★EPL: %TOSTR_EPL(EffectivePottyLevel(ARG))% {EffectivePottyLevel(ARG)}
+PRINTFORML ...
+IF STRLENS(wsfGood) || STRLENS(wsfBad)
+    IF STRLENS(wsfGood)
+        SETCOLOR C_GREEN
+        PRINTFORML ★%LIST_IN_STRING(wsfGood,,", ")%
+        RESETCOLOR
+    ENDIF
+    IF STRLENS(wsfBad)
+        SETCOLOR C_RED
+        PRINTFORML ★%LIST_IN_STRING(wsfBad,,", ")%
+        RESETCOLOR
+    ENDIF
+    PRINTFORML ....
+ENDIF
+
+FOR LOCAL,0,VARSIZE("wsfOdds")
+    SETCOLOR wsfRollColors:LOCAL
+    PRINTFORM ★%wsfRollLabel:LOCAL%: 
+    PRINTFORML {wsfProbs:LOCAL/10}.{wsfProbs:LOCAL%10}\%
+    ; IF wsfOdds:LOCAL <= 0
+    ;     PRINTFORML ∞/1
+    ; ELSE
+    ;     PRINTFORML {(1000*wsfOdds:LOCAL)/wsfTotal}/{wsfTotal}
+    ;     ; PRINTFORML {1001-wsfOdds:LOCAL}/1
+    ; ENDIF
+NEXT
+RESETCOLOR
+REPEAT wsfMaxRolls
+    PRINTFORMSL (" "*34)+"↓"
+    FOR LOCAL,25,-25,-1
+        IF iNRANGE(COUNT % wsfSize+LOCAL,0,wsfSize-1)
+            LOCAL:1 = (COUNT % wsfSize)+LOCAL
+        ELSE
+            ; LOCAL:1 = wsfSize-1
+            LOCAL:1 = wsfSize-LOCAL
+        ENDIF
+        SELECTCASE wsfEntries:(SHAFFLE_ARRAY:(LOCAL:1))
+        CASE 0
+            SETCOLOR C_GREEN
+        CASE 1
+            SETCOLOR C_YELLOW
+        CASE 2
+            SETCOLOR C_ORANGE
+        CASE 3
+            SETCOLOR C_RED
+        CASE 4
+            SETCOLOR C_D_RED
+        CASE 99
+            SETCOLOR C_GRAY
+        ENDSELECT
+        PRINTFORM %UNICODE(0x2585)%
+        RESETCOLOR
+    NEXT
+    PRINTL
+    PRINTFORMSL (" "*34)+"↑"
+    SELECTCASE wsfMaxRolls-COUNT
+    CASE IS > 31
+        TWAIT 10, 1
+    CASE IS > 7
+        TWAIT 50, 1
+    CASE IS > 3
+        TWAIT 250, 1
+    CASE IS > 0
+        TWAIT 500, 1
+    CASE 1
+        TWAIT 1000, 1
+    ENDSELECT
+    TWAIT 20, 1
+    SIF COUNT != wsfMaxRolls && COUNT != wsfMaxRolls-1
+        CLEARLINE 3
+    IF COUNT % wsfSize == 0
+        CALL FISHER_YATES_SHAFFLE(wsfSize)
+    ENDIF
+REND
+LOCAL:6 = wsfEntries:(SHAFFLE_ARRAY:((COUNT-1) % wsfSize))
+IF LOCAL:6 == 0 && ARG == MASTER
+    SIF wsfProbs:0 <= 10
+        CALL AL_NOTIFY_ACHIEVEMENT_COMPLETION("omoGachaSSRPull")
+    SIF ImminentAccident_FailurePity >= 12
+        CALL AL_NOTIFY_ACHIEVEMENT_COMPLETION("omoGachaHardPity")
+ENDIF
+
+RETURN wsfEntries:(SHAFFLE_ARRAY:((COUNT-1) % wsfSize))
+
+@ImminentAccident_SpellFailure(ARG,sfSpell,sfFailLevel,HasPiss,HasScat)
+#DIM sfSpell
+#DIM sfFailLevel
+#DIM HasPiss
+#DIM HasScat
+CALL ImminentAccident_PrintSpellOutcome(sfFailLevel)
+SELECTCASE sfSpell
+CASE 1
+    SELECTCASE sfFailLevel
+    CASE 99
+        PRINTFORMW ....or at least, try to.
+            CALL SET_KOJO_COLOR(ARG)
+        PRINTFORML 「The....」
+        PRINTFORML 「The Uh....」
+        PRINTFORMW 「Uh.......」
+        RESETCOLOR
+        PRINTFORMW Unable to focus, time wins %PARSE("you",,,ARG)% over...
+    CASE 1 TO 3
+        SETBGCOLOR C_THE_WORLD
+        PRINTFORMW %PARSE("You manage",,,ARG)% to get time stopped, but not %PARSE("your",5,,ARG)% breaking excretory systems...
+    ENDSELECT
+CASE 2
+    SELECTCASE sfFailLevel
+    CASE 99
+    ;failure to cast (no mitigation)
+        PRINTFORMW ....or at least, try to.
+        CALL SET_KOJO_COLOR(ARG)
+        PRINTFORML 「Aph....」
+        PRINTFORML 「Aphe....」
+        PRINTFORMW 「Aphedra...」
+        RESETCOLOR
+        PRINTFORMW Unable to focus, %PARSE("you're",,,ARG)% unable to cast the spell in time...
+        ; >Your bowels release themselves
+    CASE 4
+    ; catastrophic (no mitigation):
+        PRINTFORML Oh no... it's not working!
+        PRINTFORML And it's too late to do anything... it's coming out!
+        ; >Your bowels release themselves
+
+    CASE 3
+    ; major (50% mitigation):
+        IF ARG == MASTER
+            PRINTFORML It's doing something... but not doing enough.
+            PRINTFORML Oh no. Oh no! Aphedron's not here to save you!
+            PRINTFORML You're just gonna have to let your accident play out.
+        ; >Your bowels release themselves
+        ; >Aphedron procs at around 40-65% of your accident
+        ELSE
+            PRINTFORML It's doing something... but not enough.
+            PRINTFORML A heavy wave of desperation overtakes %HIM_HER(ARG)%, forcing %HIM_HER(ARG)% to keel over.
+            PRINTFORML %HE_SHE(ARG,1)% tries to hold it with %HIS_HER(ARG)% utmost effort, but %HIS_HER(ARG)% body eventually wins %HIM_HER(ARG)% over.
+        ENDIF
+    CASE 2
+    ; modereate (75% mitigation)
+        IF ARG == MASTER
+            PRINTFORML You feel somewhat better...
+            PRINTFORML But the urgency hasn't gone away...
+            PRINTFORML Oh no. Oh no! Here it comes!
+            ; >Your bowels release themselves
+            ; >Aphedron procs at around 10-25% of your accident
+        ELSE
+            PRINTFORML %HE_SHE(ARG)% feels somewhat better...
+            PRINTFORML But suddenly %HE_SHE(ARG)% begins to lose control without .
+        ENDIF
+    CASE 1
+    ; minor (90-95% mitigation, slight leakage):
+        PRINTFORML %PARSE("You think",,,ARG)% %PARSE("you feel",5,,ARG)% fine, but then it hits %PARSE("you",6,,ARG)%...
+        PRINTFORML %PARSE("You try",5,,ARG)% to keep it in, but %PARSE("your",5,,ARG)% sphincters simply won't close!
+    ENDSELECT
+CASE 3
+    SELECTCASE sfFailLevel
+    CASE 99
+        IF ImminentAccident_RedirectionChain > 1
+            PRINTFORML The ping-pong of redirections between %PARSE("you",5,,ARG)% and %PARSE("you",,,ImminentAccident_ChooseVictim)% breaks apart on %PARSE("your",,,ARG)% side. 
+        ELSEIF ImminentAccident_RedirectionChain == 1
+            PRINTFORML %PARSE("You try",,,ARG)% to counter %CALLNAME:ImminentAccident_ChooseVictim%'s waste redirection with your own, but fail to get it off. 
+        ELSE
+            PRINTFORML %PARSE("You try",,,ARG)% to direct %PARSE("your",5,,ARG)% waste over to %CALLNAME:ImminentAccident_ChooseVictim% but fail to get it off. 
+        ENDIF
+    CASE 1 TO 3
+            PRINTFORML %PARSE("You direct",,,ARG)% %PARSE("your",5,,ARG)% waste over to %CALLNAME:ImminentAccident_ChooseVictim%, but it's not working fast enough.
+            PRINTFORML Oh no! You're losing control as you stand!
+ENDSELECT
+ENDSELECT
+
+@ImminentAccident_SpellFailureProc(ARG,HasPiss,HasScat)
+#DIM sfSpell
+#DIM sfFailLevel
+#DIM HasPiss
+#DIM HasScat
+; SIF ARG != MASTER
+;     RETURN`
+SIF GROUPMATCH(ImminentAccident_SpellFailureLevel,0,99)
+    RETURN
+
+SELECTCASE ImminentAccident_SpellCast
+CASE 2
+    CALL SET_KOJO_COLOR(ARG)
+    SIF GETCOLOR() == GETCONFIG("TEXT COLOR")
+        SETCOLOR C_GREEN
+    PRINTFORML ★APHEDRON★
+    RESETCOLOR
+    PRINTFORML Aphedron finally kicks in, emptying the contents of %PARSE("your",,,ARG)% bowels that haven't went in %PARSE("your",5,,ARG)% %PeeProtectType(ARG,2)%.
+    PRINTFORMW %PARSE("You",5,,ARG)% kinda %PARSE("wish",,,ARG)% it kicked in *before* %PARSE("your",5,,ARG)% accident, but oh well.
+CASE 3
+    SIF GETCOLOR() == GETCONFIG("TEXT COLOR")
+        SETCOLOR C_GREEN
+    PRINTFORML ★WASTE REDIRECTION★
+    RESETCOLOR
+    PRINTFORML Waste redirection finally moves the contents of %PARSE("your",5,,ARG)% bowels that haven't went in %PARSE("your",5,,ARG)% %PeeProtectType(ARG,2)% to %CALLNAME:ImminentAccident_ChooseVictim%.
+    PRINTFORMW %PARSE("You",5,,ARG)% kinda %PARSE("wish",,,ARG)% it kicked in *before* %PARSE("your",5,,ARG)% accident, but oh well.
+    ImminentAccident_SpellCast = 0
+    CALL WasteRedirection(ARG,ImminentAccident_ChooseVictim)
+ENDSELECT
+
+@ImminentAccident_SpellFailureEnd(ARG,HasPiss,HasScat)
+#DIM sfSpell
+#DIM sfFailLevel
+#DIM HasPiss
+#DIM HasScat
+; SIF ARG != MASTER
+;     RETURN
+SELECTCASE ImminentAccident_SpellCast
+CASE 2
+    SIF ARG != MASTER
+        RETURN
+    SELECTCASE ImminentAccident_SpellFailureLevel
+    CASE 99
+        PRINTFORML You can't believe it. You couldn't cast Aphedron in time!
+    CASE 4
+        PRINTFORML You press the front of your %PeeProtectType(ARG)% hoping Aphedron did its thing... but instead you feel the %PeeAndPoo(HasPiss,HasScat,"wet","messy")% damage on your hands
+        PRINTFORML You can't believe it. Aphedron failed you!
+    CASE 3
+        PRINTFORML You can't believe it. Aphedron failed you!
+        PRINTFORML It removed around half of your accident, but the other half's all in your %PeeProtectType(MASTER,2)%!
+    CASE 2
+        PRINTFORML You can't believe it. Aphedron failed you!
+        PRINTFORML Most of your accident's gone, but some of it is in your %PeeProtectType(MASTER,2)%!
+    CASE 1
+    ENDSELECT
+ENDSELECT
+VARSET ImminentAccident_SpellCast
+VARSET ImminentAccident_SpellFailureLevel
+
+@ImminentAccident_PrintSpellOutcome(ARG)
+SELECTCASE ARG
+CASE 99
+FONTBOLD
+SETCOLOR C_GRAY
+PRINTFORML ★★FAILURE TO CAST★★
+RESETCOLOR
+FONTREGULAR
+CASE 4
+FONTBOLD
+SETCOLOR C_D_RED
+PRINTFORML ★★CATASTROPHIC FAILURE★★
+RESETCOLOR
+FONTREGULAR
+CASE 3
+SETCOLOR C_RED
+PRINTFORML ★★MAJOR FALURE★★
+RESETCOLOR
+CASE 2
+SETCOLOR C_ORANGE
+PRINTFORML ★★Moderate Failure★★
+RESETCOLOR
+CASE 1
+SETCOLOR C_YELLOW
+PRINTFORML ★★Minor Failure★★
+RESETCOLOR
+CASE 0
+SETCOLOR C_GREEN
+PRINTFORML ★★Success★★
+RESETCOLOR
+ENDSELECT
+
+;OK MN MD MJ CA NG
+
+
+; being a potty pants increases chances of a failure to cast
+; being unskilled increases the other failure types
+; and decreases success
+; so if you have quadultra excretion youjutsu but you're functionally incontinent:
+; - much of the time you will fail to cast because your bladder couldn't hold it while you were trying to cast
+; - but when you cast it's basically always successes.
+@ImminentAccident_SpellChance(ARG,HasPiss,HasScat,scSpell)
+#DIM DYNAMIC scSpell
+#DIM DYNAMIC scWeights,5
+#DIM DYNAMIC HasPiss
+#DIM DYNAMIC HasScat
+#DIMS DYNAMIC scModReason,2
+VARSET scWeights, 1000
+VARSET RESULT
+VARSET RESULTS
+
+;youjutsu level
+; Casting skill: :check:
+SELECTCASE scSpell
+CASE 1
+    ;TSP Relief
+    SELECTCASE MAXBASE:ARG:TSP
+    CASE IS >= 64000
+        scWeights = 3000, 0, 0, 0, 10
+    CASE IS >= 32000
+        scWeights = 2500, 20, 10, 10, 40
+    CASE IS >= 16000
+        scWeights = 2000, 50, 25, 10, 70
+    CASE IS >= 8000
+        scWeights = 1500, 50, 25, 10, 180
+    CASE IS >= 4000
+        scWeights = 1000, 50, 25, 10, 300
+    CASE IS >= 2500
+        scWeights = 700, 80, 50, 100, 500
+    CASE IS >= 1500
+        scWeights = 500, 90, 90, 180, 650
+    CASE IS >= 800
+        scWeights = 100, 100, 150, 200, 700
+    CASE IS >= 500
+        scWeights = 45, 100, 170, 220, 700
+    CASEELSE
+        scWeights = 10, 100, 200, 300, 800
+    ENDSELECT
+CASE 2
+    ;Aphedron
+    SELECTCASE YoujutsuLevel:ARG:18
+    CASE IS >= 10
+        ;QuadUltra
+        scWeights = 3000, 0, 0, 0,  10
+    CASE 9
+        ;TriUltra
+        scWeights = 2500, 20, 10, 10, 40
+    CASE 8
+        ;OverDrive
+        scWeights = 2000, 50, 25, 10, 70
+    CASE 7
+        ;Phantasm
+        scWeights = 1500, 50, 25, 10, 180
+    CASE 6
+        ;Extra
+        scWeights = 1000, 50, 25, 10, 300
+    CASE 5
+        ;S
+        scWeights = 700, 80, 50, 100, 500
+    CASE 4
+        ;A
+        scWeights = 500, 90, 90, 180, 650
+    CASE 3
+        ;B
+        scWeights = 100, 100, 150, 200, 700
+    CASE 2
+        ;C
+        scWeights = 45, 100, 170, 220, 700
+    CASE IS < 2
+        ;D/E/G
+        scWeights = 10, 100, 200, 300, 800
+    ENDSELECT
+CASE 3
+    ;waste redirection
+    ;this is a G rank skill
+    SELECTCASE YoujutsuLevel:ARG:18
+    CASE IS >= 10
+        ;QuadUltra
+        scWeights = 6000, 0, 0, 0, 10
+    CASE 9
+        ;TriUltra
+        scWeights = 3000, 0, 0, 0, 10
+    CASE 8
+        ;OverDrive
+        scWeights = 2500, 20, 10, 10, 40
+    CASE 7
+        ;Phantasm
+        scWeights = 2000, 50, 25, 10, 70
+    CASE 6
+        ;Extra
+        scWeights = 1500, 50, 25, 10, 180
+    CASE 5
+        ;S
+        scWeights = 1000, 50, 25, 10, 300
+    CASE 4
+        ;A
+        scWeights = 700, 80, 50, 100, 500
+    CASE 3
+        ;B
+        scWeights = 500, 90, 90, 180, 650
+    CASE 2
+        ;C
+        scWeights = 100, 100, 150, 200, 700
+    CASE 1
+        ;D
+        scWeights = 45, 100, 170, 220, 700
+    CASE 0
+        ;G
+        scWeights = 10, 100, 200, 300, 800
+    ENDSELECT
+ENDSELECT
+
+; Continence of self :check:
+SELECTCASE EffectivePottyLevel(ARG)
+CASE IS > 5
+    scWeights:0 += (300*EffectivePottyLevel(ARG))
+CASE 5
+    scWeights:0 += 1500
+CASE 4
+    scWeights:0 += 970
+CASE 3
+    scWeights:0 += 640
+CASE 2
+    scWeights:0 += 230
+CASE 1
+    scWeights:0 += 100
+CASE -1
+    scWeights:4 += 250
+CASE -2
+    scWeights:4 += 470
+CASE -3
+    scWeights:4 += 950
+CASE -4
+    scWeights:4 += 1400
+CASE IS <= -5
+    scWeights:4 += 2000
+ENDSELECT
+
+; Pottypants or no :check:
+IF HasScat
+    IF GETBIT(TALENT:ARG:OmoGuardian,1)
+        scModReason:1 += "Messy Legend、"
+        scWeights:4 += 750
+    ELSE
+        scWeights:4 += (35*ABL:ARG:PooAddict)
+    ENDIF
+ELSE
+    IF GETBIT(TALENT:ARG:OmoGuardian,0)
+        scModReason:1 += "Leaky Legend、"
+        scWeights:4 += 750
+    ELSE
+        scWeights:4 += (35*ABL:ARG:PeeAddict)
+    ENDIF
+ENDIF
+
+;Diapered or not :check:
+IF IsDiapered(ARG)
+    scModReason:1 += "Diapered、"
+    IF GETBIT(TALENT:ARG:OmoGuardian,2)
+        scWeights:4 += 750
+    ELSE
+        scWeights:4 += 450
+    ENDIF
+ENDIF
+
+IF HasScat
+; What if the PC is under a laxative
+    IF DrugStats:ARG:LaxativeTime
+        scModReason:0 += "Laxative、"
+        scWeights:4 += 750
+    ENDIF
+    IF DrugStats:ARG:EnemaTime
+        ;anal obstructed should make this affect characters less 
+        scModReason:1 += "Enema、"
+        scWeights:4 += 1200
+    ENDIF
+; or has IBS/blort prone
+    IF HasIBS(ARG)
+        scModReason:1 += "Irritable bowel syndrome、"
+        scWeights:4 += 750
+        ;IBS Flaring Up!!!!!
+    ENDIF
+ENDIF
+
+IF HasPiss
+; What if the PC is under a diuretic
+    IF TCVAR:ARG:141
+        scModReason:1 += "Diuretic、"
+        scWeights:4 += 750
+    ENDIF
+; overactive bladder
+    IF HasOAB(ARG)
+        scModReason:1 += "Overactive bladder、"
+        scWeights:4 += 750
+        ;oab flare could make it harder to hold
+        ;i need to make an oae flare hediff first though
+    ENDIF
+ENDIF
+
+IF AL_IS_CLAIMED("omoGachaSSRPull")
+    ;SSR LUCK!
+    scModReason:0 += "SSR Luck!!!、"
+    scWeights:0 += 1000
+    ;could make this random
+    ;free 777 bonus weight?
+ENDIF
+
+IF AL_IS_CLAIMED("omoGachaHardPity")
+    ;Hard pity
+    scModReason:0 += "Pity Trauma、"
+    scWeights:0 += 1000
+    ;could make this random
+    ;free 777 bonus weight?
+ENDIF
+
+IF ImminentAccident_FailurePity && ARG == MASTER
+    IF ImminentAccident_FailurePity >= 12
+    ;hard pity
+        scModReason:0 += @"Pity: {ImminentAccident_FailurePity}x (HARD PITY)、"
+        scWeights:0 += 100000000
+    ELSE
+    ;soft pity
+        scModReason:0 += @"Pity: {ImminentAccident_FailurePity}x、"
+        scWeights:0 += 350*ImminentAccident_FailurePity
+    ENDIF
+ENDIF
+
+IF ImminentAccident_RedirectionChain
+    ;anti stall
+    scModReason:1 += @"Redirection Chain: {ImminentAccident_RedirectionChain}x、"
+    scWeights:4 += 350*ImminentAccident_RedirectionChain
+    ;at 5x or 6x this should just result in a fail?
+ENDIF
+
+ARRAYCOPY "scWeights", "RESULT"
+ARRAYCOPY "scModReason", "RESULTS"
+RETURN scWeights:0
+
+@ImminentAccident_AbleToDo(ARG,ARG:1)
+SELECTCASE ARG:1
+CASE 0
+    ;accident
+    RETURN 1
+CASE 1
+    ;TSP Relief
+    SIF BASE:ARG:TSP >= 350
+        RETURN 1
+CASE 2
+    ;Aphedron
+    CALL YoujutsuMagicCanDo(ARG,18,28)
+    SIF RESULT
+        RETURN 1
+CASE 3
+    ;Waste Diversion
+CALL YoujutsuMagicCanDo(ARG,18,37)
+SIF RESULT && GET_TARGETNUM()
+    RETURN 1
+CASE 4
+ENDSELECT
+RETURN 0
+
+;ARG:0: Character
+;ARG:1: Ability
+@ImminentAccident_NPCUseAbility(ARG,ARG:1,HasPiss,HasScat)
+#FUNCTION
+#DIM abilityChance
+#DIM HasPiss
+#DIM HasScat
+;pee/poo addict
+SELECTCASE HasScat ? ABL:ARG:PooAddict # ABL:ARG:PeeAddict
+CASE 0
+    abilityChance = 10000
+CASE 1
+    abilityChance = 8500
+CASE 2
+    abilityChance = 7000
+CASE 3
+    abilityChance = 6000
+CASE 4
+    abilityChance = 5000
+CASE 5
+    abilityChance = 4000
+CASE 6
+    abilityChance = 3000
+CASE 7
+    abilityChance = 2500
+CASE 8
+    abilityChance = 2100
+CASE 9
+    abilityChance = 1700
+CASEELSE
+    ;messy legend
+    abilityChance = 1500
+ENDSELECT
+
+IF IsDiapered(ARG:0)
+    ;if diapered they should use their ability less.
+    ;even less if they are alone.
+    TIMES abilityChance, 0.7
+ELSE
+ENDIF
+
+IF GET_TARGETNUM() > 1
+    ;with others
+    TIMES abilityChance, 1.3
+ELSE
+    ; TIMES abilityChance, 0.7
+ENDIF
+
+;wetting/messing addiction
+
+;traits
+;working
+SIF BASE:ARG:仕事量
+    TIMES abilityChance, 2.00
+
+SELECTCASE ARG:1
+CASE 1
+    ;TSP Relief
+    
+    ;if she can TSP
+    SIF BASE:ARG:TSP >= 350
+        TIMES abilityChance, 3.00
+        
+CASE 3
+    ;Waste redirection
+    IF CAN_SEE_NPC(ARG,MASTER)
+    TIMES abilityChance, 3.00
+    ENDIF
+ENDSELECT
+
+RETURNF abilityChance
+
+
+@WasteRedirection(theCulprit,theVictim,redirectMult=-1)
+#DIM DYNAMIC theCulprit
+#DIM DYNAMIC theVictim
+#DIM DYNAMIC redirectMult
+IF redirectMult == -1
+    IF ACCIDENT_BLADDER_STORAGE:1 == 0 && ACCIDENT_BOWEL_STORAGE:1 == 0
+        redirectMult = 100
+    ELSE
+        redirectMult = MAX(100*ACCIDENT_BOWEL_STORAGE:1/MAX(ACCIDENT_BOWEL_STORAGE,1),100*ACCIDENT_BLADDER_STORAGE:1/MAX(ACCIDENT_BLADDER_STORAGE,1))
+    ENDIF
+ENDIF
+
+
+PRINTFORML %PARSE("You redirect your",,,theCulprit)% waste over to %PARSE("you",,,theVictim)%.
+PRINTW
+BASE:theVictim:4 += redirectMult == 100 ? BASE:theCulprit:4 # (BASE:theCulprit:4*(redirectMult))/100
+BASE:theVictim:Poo += redirectMult == 100 ? BASE:theCulprit:Poo # (BASE:theCulprit:Poo*(redirectMult))/100
+BASE:theCulprit:4 = redirectMult == 100 ? 0 # (BASE:theCulprit:4*(redirectMult))/100
+BASE:theCulprit:Poo = redirectMult == 100 ? 0 # (BASE:theCulprit:Poo*(redirectMult))/100
+ImminentAccident_RedirectionChain++
+
+IF PeeBarStage(theVictim) >= 7|| PooBarStage(theVictim) >= 7
+    ; You can't cope with the sudden amount of pee filling your bladder and has to let go.
+    ; You move your legs apart and let go.
+    PRINTFORML %PARSE("You",,,theVictim)% can't cope with the sudden amount of \@ PooBarStage(theVictim) >= 7 ? %SCAT(theVictim)% # %URINE(theVictim)% \@ filling %PARSE("your",5,,theVictim)% \@ PooBarStage(theVictim) >= 7 ? bowels # bladder \@.
+    CALL NeedForPee(theVictim)
+ENDIF
+
+
+@ImminentAccident_PickRedirectionTarget(ARG,HasPiss,HasScat)
+#FUNCTION
+#DIM DYNAMIC characterList,キャラクタ数上限
+#DIM DYNAMIC characterPriority,キャラクタ数上限
+#DIM DYNAMIC characterIndex
+#DIM DYNAMIC canHoldWaste
+#DIM HasPiss
+#DIM HasScat
+
+;will continue a redirection chain
+SIF ImminentAccident_RedirectionCaster > -1
+    RETURNF  ImminentAccident_RedirectionCaster
+IF GET_TARGETNUM() == 1
+    ;if only you and the target are in the same place
+    ;always target MASTER
+    RETURNF MASTER
+ELSE
+    ;getting all characters in area
+    FOR LOCAL,0,CHARANUM
+        IF CFLAG:LOCAL:300 == CFLAG:ARG:300
+            SIF IsDead:LOCAL:0
+                CONTINUE
+            SIF LOCAL == ARG
+                CONTINUE
+            canHoldWaste = 0
+            characterList:characterIndex = LOCAL
+            IF LOCAL == MASTER
+            characterPriority:characterIndex = 3000
+            ELSE
+            characterPriority:characterIndex = 1000
+            ENDIF
+            SIF !SHIRAHU(LOCAL)
+                characterPriority:characterIndex += 3000
+            SIF RELATION:ARG:LOCAL
+                characterPriority:characterIndex += (100*(100-(RELATION:ARG:LOCAL)))    
+            SIF LOCAL == MASTER && HasFallState(ARG)
+                TIMES characterPriority:characterIndex, 0.7
+            ;if bladder can fit 
+            IF HasScat
+                SIF DiapePooCharges:LOCAL:0 >= (BASE:LOCAL:Poo + BASE:ARG:Poo)
+                    canHoldWaste = 2
+                SIF BASE:LOCAL:Poo + BASE:ARG:Poo > (MAXBASE:LOCAL:Poo*12/10)
+                    canHoldWaste = 1
+            ELSEIF HasPiss
+                SIF DiapeCharges:LOCAL:0 >= (BASE:LOCAL:4 + BASE:ARG:4)
+                    canHoldWaste = 2
+                SIF BASE:LOCAL:4 + BASE:ARG:4 > (MAXBASE:LOCAL:4*12/10)
+                    canHoldWaste = 1
+            ENDIF
+            
+
+            IF canHoldWaste == 1
+                ;bladder can fit
+                    characterPriority:characterIndex += 5000
+            ELSEIF canHoldWaste == 2
+                ;diaper can fit
+                    characterPriority:characterIndex += 5000
+            ENDIF
+
+
+            characterIndex++
+        ENDIF
+    NEXT
+    RETURNF characterList:ARRAY_HIT(characterPriority, characterIndex+1)
+
+    ;leaky/messy legend NPC wants to make you mess
+
+    ;if she knoes you aren't potty trained she'll rub it in.
+ENDIF

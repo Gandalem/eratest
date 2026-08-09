@@ -1,0 +1,691 @@
+;-------------------------------------------------
+;Urinate
+;Portal command which replaces COM144
+;Hard training command level: 2
+;Flags required: Urination
+;-------------------------------------------------
+@COM144_NAS
+#DIM Recipient
+SIF IsSkip()
+	RETURN -1
+
+PRINTFORML Pee yourself, or make %CALLNAME:TARGET% do it?
+CALL ASK_M("Yourself", TCVAR:MASTER:利尿剤 || PeeHold:MASTER:2 <= -2 || PeeBarStage(MASTER) >= 2, CALLNAME:TARGET, TCVAR:TARGET:利尿剤 || PeeHold:TARGET:2 <= -2 || PeeBarStage(TARGET) >= 2, "Cancel", 1)
+IF RESULT == 2
+    DEBUG_Target = -1
+	RETURN -1
+ELSEIF RESULT == 0 ;drinking semen yourself
+    DEBUG_Target = MASTER
+    Recipient = TARGET
+ELSE
+    DEBUG_Target = TARGET
+    Recipient = MASTER
+ENDIF
+
+PRINTFORML How \@ DEBUG_Target == MASTER ? %PARSE("are you")% # is %CALLNAME:DEBUG_Target% \@ going to pee? 
+PRINTFORML [  0] - On the floor
+SIF GETBIT(nPee, 1)
+PRINTFORML [  1] - In %HIS_HER(DEBUG_Target)+" "+PeeProtectType(DEBUG_Target,1)%
+SIF GETBIT(nPee, 2)
+PRINTFORML [  2] - In a cup
+PRINTFORML [  3] - On \@ DEBUG_Target == MASTER ? %CALLNAME:TARGET% # %PARSE("you")% \@
+SIF GETBIT(nPee, 2)
+PRINTFORML [  4] - Make \@ DEBUG_Target == MASTER ? %CALLNAME:TARGET% # %PARSE("you")% \@ drink it
+INPUT
+TFLAG:144 = RESULT
+;effects
+SELECTCASE TFLAG:144
+CASE 0
+    CALL OMORASHI_END(DEBUG_Target, 1,,1,-1)
+CASE 1
+    CALL OMORASHI_END(DEBUG_Target, 1,,,-1)
+CASE 2
+    IF TFLAG:PissCupConcentration
+    TFLAG:PissCupConcentration = (TFLAG:PissCupConcentration+TCVAR:DEBUG_Target:PeeConcentration)/2
+    ELSE
+    TFLAG:PissCupConcentration = TCVAR:DEBUG_Target:PeeConcentration
+    ENDIF
+    TFLAG:PissCup += BASE:DEBUG_Target:尿意    
+    CALL OMORASHI_END(DEBUG_Target, 1,,1,-1,1)
+CASE 3
+    FOR LOCAL, 0, 8
+    STAIN:Recipient:LOCAL |= 256
+    NEXT
+    EXP:Recipient:GeneralPeeExp += BASE:DEBUG_Target:尿意/100
+    CALL OMORASHI_END(DEBUG_Target, 1,,1,-1,1)
+CASE 4
+    STAIN:Recipient:0 |= 256
+    EXP:Recipient:GeneralPeeExp += BASE:DEBUG_Target:尿意/100    
+    TCVAR:Recipient:LiquidIntake += BASE:DEBUG_Target:尿意
+    CALL OMORASHI_END(DEBUG_Target, 1,,1,-1,1)
+ENDSELECT
+
+;-------------------------------------------------
+;COM別FLAGの設定
+;-------------------------------------------------
+;行為者
+TCVAR:116 = PLAYER
+
+;-------------------------------------------------
+;ソース追加処理
+;-------------------------------------------------
+;消費体力、気力
+IF FLAG:70 == 1
+	BASE:MASTER:TSP -= 200
+
+
+ELSE
+
+	DOWNBASE:DEBUG_Target:体力 -= 10
+	DOWNBASE:DEBUG_Target:気力 -= 200
+
+	SOURCE:DEBUG_Target:恐怖 = 200
+	SOURCE:DEBUG_Target:露出 = 800
+	SOURCE:DEBUG_Target:屈従 = 500
+	SOURCE:DEBUG_Target:逸脱 = 700
+	SOURCE:DEBUG_Target:反感 = 700
+
+	;-------------------------------------------------
+	;特殊ソース処理
+	;-------------------------------------------------
+	;抑圧、抵抗持ちには、抑鬱ソース追加
+	SIF TALENT:自己愛 < 0 || TALENT:抵抗
+		SOURCE:DEBUG_Target:鬱屈 += 700
+
+	;場所によって逸脱のソースが上下
+	;野外
+	IF TEQUIP:野外プレイ
+		TIMES SOURCE:DEBUG_Target:逸脱 , 2.50
+	;鏡の前（羞恥プレイ）
+	ELSEIF TEQUIP:羞恥プレイ
+		TIMES SOURCE:DEBUG_Target:逸脱 , 1.50
+	;風呂場
+	ELSEIF TEQUIP:お風呂場プレイ
+		TIMES SOURCE:DEBUG_Target:逸脱 , 0.50
+	ENDIF
+ENDIF
+;-------------------------------------------------
+;経験の処理
+;-------------------------------------------------
+;OMORASHI_END does the trick
+;EXP:DEBUG_Target:放尿経験 += BASE:DEBUG_Target:尿意/100
+;EXP:DEBUG_Target:GeneralPeeExp += BASE:DEBUG_Target:尿意/100
+;BASE:DEBUG_Target:尿意 = 0
+
+;同性愛　レズなら戻り値1ゲイなら戻り値2
+IF FLAG:70 == 1
+	IF HETEROSEX(TARGET,PLAYER)
+		EXP:PLAYER:(50 + HETEROSEX(TARGET,PLAYER)) += 2
+	ENDIF
+ELSE
+	IF HETEROSEX(TARGET,PLAYER)
+		EXP:(50 + HETEROSEX(TARGET,PLAYER)) += 2
+		EXP:PLAYER:(50 + HETEROSEX(TARGET,PLAYER)) += 2
+	ENDIF
+
+	;野外放尿で異常経験
+	IF TEQUIP:野外プレイ && !GETBIT(CFLAG:3,6)
+		EXP:異常経験 += 1
+		SETBIT CFLAG:3,6
+	ENDIF
+ENDIF
+
+RETURN 1
+
+@MESSAGE_COM144_NAS
+#DIM DiapeStand
+#DIM Recipient
+IF DEBUG_Target == -1
+    RETURN -1
+ELSEIF DEBUG_Target == MASTER
+    Recipient = TARGET
+ELSE
+    Recipient = MASTER
+ENDIF
+
+SELECTCASE TFLAG:144
+    CASE 0
+    IF FLAG:70 == 1
+        ;PRINTFORML %CALLNAME:PLAYER%は時間を止めたまま%CALLNAME:TARGET%の尿道口を刺激した…
+        ;PRINTFORML 時間を止められ我慢が出来ない%CALLNAME:TARGET%は、刺激されるままおもらししてしまった…
+        PRINTFORML %PARSE("You start")% to stimulate %CALLNAME:DEBUG_Target%'s urethra...
+        PRINTFORML As %PARSE("you continue")% to stimulate %HIS_HER(DEBUG_Target)%'s urethra, %HE_SHE(DEBUG_Target)% can't seem to hold it when time is stopped...
+        CALL PEESOUNDS("loc")
+        PRINTFORML And eventually has an accident...        
+    ;野外プレイ中
+    ELSEIF TEQUIP:野外プレイ
+        PRINTFORML %CALLNAME:DEBUG_Target% is filled with a sense of %FSYN("shame:n")% as %HE_SHE(DEBUG_Target)% starts %FSYN("pee:ing")% on the grass...
+    ;羞恥プレイ中
+    ELSEIF TEQUIP:羞恥プレイ
+        ;PRINTFORML %CALLNAME:TARGET%は鏡に映る自分を見ないようにしながらしゃがみこんで放尿し始めた…
+        PRINTFORML %CALLNAME:DEBUG_Target% %FSYN("shame")% display is relected on the mirror as %HE_SHE(DEBUG_Target)% squats down and starts to %FSYN("pee")% on the floor...
+    ;小柄体型
+    ELSEIF TALENT:体型 < 0
+        PRINTFORML %PARSE("You stare")% at %CALLNAME:DEBUG_Target% as %HE_SHE(DEBUG_Target)% spreads %HIS_HER(DEBUG_Target)% legs and %FSYN("pee:s")% on the floor like a little \@TALENT:DEBUG_Target:性別 == 2 ? boy # girl\@...
+    ELSE
+        PRINTFORML %CALLNAME:DEBUG_Target%'s cheeks glow bright red with %FSYN("shame:n")% as %HE_SHE(DEBUG_Target)% squats down and starts to %FSYN("pee")% on the floor...
+    ENDIF    
+    CASE 1
+    $PeePadded
+    IF (CFLAG:DEBUG_Target:DiapeCharges >= BASE:DEBUG_Target:尿意)
+        DiapeStand = 1
+    ELSE
+        DiapeStand = 0
+    ENDIF
+
+    PRINTFORML %CALLNAME:DEBUG_Target%'s cheeks glow bright red with %FSYN("shame:n")% as %HE_SHE(DEBUG_Target)% squats and starts to %FSYN("pee")+" "+HIS_HER(DEBUG_Target)+" "+PeeProtectType(DEBUG_Target,1)%...
+    CALL PEESOUNDS("v")
+    IF DiapeStand == 1
+        PRINTFORMW %HIS_HER(DEBUG_Target,1)% %PeeProtectType(DEBUG_Target)% fills up with %HIS_HER(DEBUG_Target)% %FSYN("pee:n")%, making an impressive bulge...
+    ELSE
+        PRINTFORMW %CAPITALIZE(FSYN("pee:n"))% leaks through %HIS_HER(DEBUG_Target)% %PeeProtectType(DEBUG_Target,1)% and forms a %PeeColor(DEBUG_Target)% puddle..
+    ENDIF
+    CALL WetFeelings(DEBUG_Target)
+    PRINTFORMW \@ DEBUG_Target == MASTER ? %PARSE("You stop")% # %CALLNAME:DEBUG_Target% stops\@ %FSYN("pee:ing")% as \@ DEBUG_Target == MASTER ? %PARSE("you try")% # %HE_SHE(DEBUG_Target)% tries\@ to walk away from \@ DEBUG_Target == MASTER ? %PARSE("your")% # %HIS_HER(DEBUG_Target)%\@ mess.      
+    CASE 2
+    IF DEBUG_Target != MASTER
+    PRINTFORML You tell %CALLNAME:DEBUG_Target% to start %FSYN("pee:ing")% inside a cup.
+    PRINTFORML %HE_SHE(DEBUG_Target,1)% reluctantly agrees, as %HE_SHE(DEBUG_Target)% places the cup on top of %HIS_HER(DEBUG_Target)+" "+FSYN("crotch")%.
+    ELSE
+    PRINTFORML You place a cup on top of your %FSYN("crotch")%.
+    ENDIF
+    PRINTFORML Bursting with %FSYN("shame:n")%, \@ DEBUG_Target == MASTER ? %PARSE("you begin")% # %CALLNAME:DEBUG_Target% begins \@ to %FSYN("pee")%.
+    PRINTFORML The cup fills up with %URINE(DEBUG_Target,1)% as \@ DEBUG_Target == MASTER ? %PARSE("you give")% # %HE_SHE(DEBUG_Target)% gives \@ a sigh of relief.
+    CASE 3
+    PRINTFORML \@ DEBUG_Target == MASTER ? %PARSE("You tell")+" "+CALLNAME:Recipient% # %CALLNAME:DEBUG_Target% tells %PARSE("you")%\@ to get down so \@ DEBUG_TARGET == MASTER ? %PARSE("you")% # %HE_SHE(DEBUG_Target)%\@ can pee.
+    PRINTFORM \@ Recipient == MASTER ?#%CALLNAME:Recipient+" "%\@
+    SELECTCASE ABL:Recipient:PeeDrinkAddict
+    CASE 0
+        PRINTFORM \@ Recipient == MASTER ? %PARSE("You seem")% # seems \@ to be quite %SPLIT_G("disgusted:repulsed:creeped out")% by such request, 
+        IF TALENT:性別嗜好 == 1
+            PRINTFORM not wanting to be %FSYN("pee:d")% on
+        ELSEIF ABL:Recipient:PeeAddict && RAND:2
+            PRINTFORM saying that it's %SPLIT_G(@"better off in %HIS_HER(Recipient)%'s pants:something that pee holders don't do:disgusting even for someone who likes having an accident")%
+        ELSE
+            PRINTFORM complaining about the %SPLIT_G("dirtiness:smell:whole thing:cleanup:ruining the floor")%
+        ENDIF
+        PRINTFORML .
+        PRINTFORML Nevertheless, after some convincing, \@ Recipient == MASTER ? %PARSE("you lay")% #%HE_SHE(Recipient)% lays\@ down, \@ DEBUG_Target == MASTER ? %PARSE("you shift your")% #%HE_SHE(DEBUG_Target)% shifts %HIS_HER(DEBUG_Target)%\@ %PeeProtectType(DEBUG_Target)%, and peeeeeee.
+        PRINTFORM \@ Recipient == MASTER ? %PARSE("You shriek")% # %CALLNAME:Recipient% shrieks \@ in fear
+    CASE 1, 2
+        PRINTFORML %HE_SHE(Recipient)% complies, you shift your %PeeProtectType(DEBUG_Target)%, and peeeeeee.
+        PRINTFORM %CALLNAME:Recipient% tries to %SPLIT_G(@"ignore its wetness as much as possible:get it out of %HIS_HER(Recipient)% body as much as possible:trying to not get wet:")%
+    CASE 3
+        PRINTFORM takes %HIS_HER(Recipient)% time carefully embracing the %FSYN("stream:ing")% %FSYN("pee:n")%, savoring %HIS_HER(Recipient)% body deliciously%SPLIT_G(@" without any complaints: as if %HE_SHE(Recipient)%'s already used to it: in an experienced fashion::")%
+    CASE IS < 5
+        PRINTFORM savors the feeling of %FSYN("pee:n")% hitting %HIM_HER(Recipient)%, %SPLIT_G(@"barely holding %HIMSELF_HERSELF(Recipient)% from asking for seconds:making it look very %SPLIT_G("hot:arousing:appealing")%:almost looking like %HE_SHE(Recipient)%'d love to have some more")%
+    CASEELSE
+        PRINTFORM \@ Recipient == MASTER ? %PARSE("You sniff")% # sniffs \@ it very deeply at first, enjoying its rich fragrance as \@ Recipient == MASTER ? %PARSE("you open your")% # %HE_SHE(Recipient)% opens %HIS_HER(Recipient)% \@ mouth wide and %FSYN("start:s")% slurping \@ Recipient == MASTER ? %PARSE("your")% #%HIS_HER(DEBUG_Target)%\@ %FSYN("stream:ing")% %FSYN("pee:n")% very carefully as to not let a single drop hit anything but \@ Recipient == MASTER ? %PARSE("your")% #%HIS_HER(Recipient)%\@ mouth 
+        IF RAND:4
+            PRINTFORM as though it's some sort of blessing for \@ Recipient == MASTER ? %PARSE("you")% # %HIM_HER(Recipient)% \@
+        ELSEIF RAND:3
+            PRINTFORM as if it's the %SPLIT_G("greatest:most divine:best")% thing in the world
+        ELSE
+            PRINTFORM while %SPLIT_G("savoring:enjoying")% it thoroughly
+        ENDIF
+    ENDSELECT    
+    PRINTFORML  as %URINE(DEBUG_Target,1)% flows into and stains \@ Recipient == MASTER ? %PARSE("your")% # %HIS_HER(Recipient)% \@ clothes, entire body, and the floor.
+	SIF DEBUG_Target == MASTER
+	CALL AL_NOTIFY_ACHIEVEMENT_COMPLETION("rKelly")
+
+    CASE 4
+    PRINTFORM \@ DEBUG_Target == MASTER ? %PARSE("You make")% %CALLNAME:Recipient% # %CALLNAME:DEBUG_Target% makes %PARSE("you")% \@ open \@ Recipient == MASTER ? %PARSE("your")% # %HIS_HER(Recipient)% \@ mouth, expecting \@ DEBUG_Target == MASTER ? %PARSE("you")% # %HIS_HER(DEBUG_Target)% \@ to 
+    IF HAS_PENIS(DEBUG_Target)
+    PRINTFORML suck \@ DEBUG_Target == MASTER ? %PARSE("you")% # %HIS_HER(DEBUG_Target)% \@ off.
+    ELSE
+    PRINTFORML lick \@ DEBUG_Target == MASTER ? %PARSE("your")% # %HIS_HER(DEBUG_Target)% \@ %FSYN("labia")% and %FSYN("clit")% clean.
+    ENDIF
+    PRINTFORML Once \@ DEBUG_Target == MASTER ? %PARSE("you insert your")% # %CALLNAME:DEBUG_Target% inserts %HIS_HER(DEBUG_Target)% \@ %PRINT_CLIT(DEBUG_Target)% inside \@ DEBUG_Target == MASTER ? %CALLNAME:Recipient%'s # %PARSE("your")% \@ mouth, \@ DEBUG_Target == MASTER ? %PARSE("you begin")% # %CALLNAME:DEBUG_Target% begins \@ to %FSYN("pee")% inside.
+    PRINTFORML %URINE(DEBUG_Target,1,1)% fills up \@ DEBUG_Target == MASTER ? %HIS_HER(Recipient)%  # %PARSE("your")% \@ mouth quickly.
+    CALL Com_DrinkPeeFromOwner(DEBUG_Target,Recipient)
+ENDSELECT
+RETURN 1
+
+
+@Com_DrinkPeeFromOwner(SENDER,RECIEVER)
+#DIM SENDER
+#DIM RECIEVER
+SELECTCASE ABL:RECIEVER:PeeDrinkAddict
+    CASE 0
+        PRINTFORML Not expecting it, most of the %FSYN("pee:n")% overflows and and leaks onto \@ RECIEVER == MASTER ? %PARSE("your")% # %HIS_HER(RECIEVER)% \@ clothes.
+        PRINTFORML In a desperate attempt to save \@ RECIEVER == MASTER ? %PARSE("your")% # %HIS_HER(RECIEVER)% \@ clothes and dignity, \@ RECIEVER == MASTER ? %PARSE("you try")% # %CALLNAME:RECIEVER% tries \@ to drink what little \@ RECIEVER == MASTER ? %PARSE("you")% # %HE_SHE(RECIEVER)% \@ had left.
+        PRINTFORML Even then, it tastes terrible, the musky odor and vile taste making \@ RECIEVER == MASTER ? %PARSE("your")% # %HIS_HER(RECIEVER)% \@ gag...
+        PRINTFORML \@ SENDER == MASTER ? %PARSE("You start")% # %CALLNAME:SENDER% starts \@ regretting \@ SENDER == MASTER ? %PARSE("your")% # %HIS_HER(RECIEVER)% \@ decision.
+    CASE 1
+        PRINTFORML The taste is as terrible as \@ RECIEVER == MASTER ? %PARSE("you")% # %HE_SHE(RECIEVER)% \@'d expect, but somehow, \@ RECIEVER == MASTER ? %PARSE("you don't")% # %CALLNAME:RECIEVER% doesn't \@ feel like vomiting all over \@ RECIEVER == MASTER ? %PARSE("your")% # %HIS_HER(RECIEVER)% \@self this time.
+    CASE 2
+        PRINTFORML Not being able to handle urine too well, \@ RECIEVER == MASTER ? %PARSE("you let")% # %CALLNAME:RECIEVER% lets \@ some overflow...
+    CASE 3
+        IF RECIEVER == MASTER
+        PRINTFORML Something is odd. You didn't have to waste time mentally preparing as much.
+        PRINTFORML Perhaps after doing it so many times, it's starting to affect you.
+        PRINTFORML It feels scary, but at the same time... exciting.
+        ELSE
+        PRINTFORM %CALLNAME:RECIEVER% drinks the %FSYN("pee:n")%, tasting it while savoring %HIS_HER(TARGET)% lips deliciously%SPLIT_G(@" without any complaints: as if %HE_SHE(TARGET)%'s already used to it: in an experienced fashion::")%        
+        ENDIF
+    CASE 4
+        IF RECIEVER == MASTER
+        PRINTFORML You can get used to anything, and this is the proof.
+        PRINTFORML As a result of swallowing and smelling %FSYN("pee:n")% as much as you did, drinking it didn't seem like such a big deal anymore.
+        PRINTFORML You almost... start to enjoy the taste somewhat.
+        ELSE
+        PRINTFORML %CALLNAME:RECIEVER% %SPLIT_G("gulps:sucks:slurps:guzzles:chugs")% it down\@ RAND:3 ? %SPLIT_G(" casually: nonchalantly")% # with a resounding gulp\@, %SPLIT_G(@"barely holding %HIMSELF_HERSELF(TARGET)% from asking for seconds:making it look very tasty:almost looking like %HE_SHE(TARGET)%'d love to have some more")%.
+        ENDIF
+    CASEELSE
+    IF RECIEVER == MASTER
+        PRINTFORML What you're doing right now may seem disgusting or odd for others, but you care not for their opinion.
+        PRINTFORML It's an acquired taste, and those people are missing out, you're sure of it.
+        PRINTFORML You drink all of the %FSYN("pee:n")% like it's nothing, almost wishing for seconds...
+    ELSE
+        PRINTFORM %CALLNAME:RECIEVER% %FSYN("start:s")% to %SPLIT_G("gulps:sucks:slurps:guzzles:chugs")% the %FSYN("pee:n")% very carefully as to not spill a single drop 
+        IF RAND:4
+            PRINTFORM as though it's some sort of ambrosia for %HIM_HER(TARGET)%
+        ELSEIF RAND:3
+            PRINTFORM as if it's the %SPLIT_G("most delicious:tastiest")% thing in the world
+        ELSE
+            PRINTFORM while %SPLIT_G("tasting:savoring:enjoying")% it thoroughly
+        ENDIF
+        PRINTFORM , looking really sad when it's over.
+    ENDIF
+ENDSELECT
+SIF SENDER == MASTER
+	CALL AL_NOTIFY_ACHIEVEMENT_COMPLETION("rKelly")
+
+;-------------------------------------------------
+; Com_DrinkPee
+; Describes how you and other ARGcters drink pee
+; Acts like the cum drinking one.
+; Based on sqn/akuma maid
+; ARGS: ARG (override)
+;-------------------------------------------------
+
+@Com_DrinkPee(C_ID = -1,EventForce=0)
+#DIM C_ID
+#DIM EventForce
+SIF !GETBIT(nPee, 2)
+    RETURN -1
+IF C_ID == -1
+	C_ID = TARGET
+	PRINTFORML Drink urine yourself, or make %CALLNAME:TARGET% do it?
+	CALL ASK_M("Yourself", 1, CALLNAME:TARGET, 1, "Cancel", 1)
+	IF RESULT == 2
+		RETURN -1
+	ELSEIF RESULT == 1
+		C_ID = TARGET
+	ELSEIF RESULT == 0 ;drinking semen yourself
+		C_ID = MASTER
+	ENDIF
+ENDIF
+$OVERRIDE
+SIF C_ID == MASTER
+	CALL AL_NOTIFY_ACHIEVEMENT_COMPLETION("pissDrinker")
+
+
+TFLAG:194 = C_ID ;flag for self
+
+;-------------------------------------------------
+;実行できるかの判定
+;-------------------------------------------------
+IF SHIRAHU(C_ID) && C_ID != MASTER
+	CALL Com_DrinkPee_COMORDER
+	SIF RESULT < 0
+		RETURN -1
+ENDIF
+
+;-------------------------------------------------
+;COM別FLAGの設定
+;-------------------------------------------------
+;行為者
+TCVAR:116 = PLAYER
+;-------------------------------------------------
+;ソース追加処理
+;-------------------------------------------------
+EXP:C_ID:GeneralPeeExp += TFLAG:PissCup/100
+STAIN:C_ID:口 |= 256
+; IF FLAG:時間停止 == 1
+; 	CFLAG:口に精液 = 2
+; ELSE
+; 	CFLAG:口に精液 = 1
+; ENDIF
+
+;消費体力、気力
+IF FLAG:70 == 1
+	BASE:MASTER:TSP -= 50
+ELSE
+	DOWNBASE:C_ID:気力 += 100
+ENDIF
+IF C_ID == MASTER && !EventForce
+	SELECTCASE ABL:MASTER:PeeDrinkAddict
+	CASE 0
+		PRINTFORML Not being able to handle urine too well, you spill most of it out...
+		TFLAG:PissCup = MULTIPLY(TFLAG:PissCup, 25)
+	CASE 1
+		PRINTFORML Not being able to handle urine too well, you spill half of it out...
+		TFLAG:PissCup = MULTIPLY(TFLAG:PissCup, 50)
+	CASE 2
+		PRINTFORML Not being able to handle urine too well, you spill some out...
+		TFLAG:PissCup = MULTIPLY(TFLAG:PissCup, 75)
+	ENDSELECT
+ENDIF
+
+SOURCE:C_ID:達成 = MULTIPLY(ABL:C_ID:マゾっ気*200, 100 + ABL:PLAYER:サドっ気*20)
+SOURCE:C_ID:情愛 = MULTIPLY(ABL:C_ID:マゾっ気*200, 100 + ABL:PLAYER:サドっ気*20)
+
+SOURCE:C_ID:情愛 += TFLAG:PissCup / 2
+SOURCE:C_ID:性行動 = TFLAG:PissCup / 2
+SOURCE:C_ID:達成 += TFLAG:PissCup / 2
+SOURCE:C_ID:屈従 = TFLAG:PissCup * 2
+SOURCE:C_ID:不潔 = (TFLAG:PissCup + 4)/5 * 10
+SOURCE:C_ID:反感 = TFLAG:PissCup
+
+IF C_ID != MASTER
+	A = MASTER
+ELSE
+	A = TARGET
+ENDIF
+	 
+SIF ABL:PeeDrinkAddict >= 3
+	SOURCE:C_ID:欲情 = (TFLAG:PissCup + 4)/5 * 100 + 150 * ABL:A:サドっ気
+IF SHIRAHU(C_ID)
+	SOURCE:C_ID:逸脱 = (TFLAG:PissCup + 4)/5 * 100
+
+	;精液経験をみる
+	SELECTCASE EXP:GeneralPeeExp
+	CASE IS < 5
+		TIMES SOURCE:C_ID:逸脱, 2.00
+		TIMES SOURCE:C_ID:不潔, 3.00
+		TIMES DOWNBASE:C_ID:気力, 4.00
+	CASE IS < 20
+		TIMES SOURCE:C_ID:逸脱, 1.50
+		TIMES SOURCE:C_ID:不潔, 2.00
+		TIMES DOWNBASE:C_ID:気力, 2.00
+	CASE IS < 50
+		TIMES SOURCE:C_ID:逸脱, 1.25
+		TIMES SOURCE:C_ID:不潔, 1.50
+		TIMES DOWNBASE:C_ID:気力, 1.50
+	CASE IS < 100
+		TIMES SOURCE:C_ID:逸脱, 1.00
+		TIMES SOURCE:C_ID:不潔, 1.20
+		TIMES DOWNBASE:C_ID:気力, 1.20
+	CASE IS < 300
+		TIMES SOURCE:C_ID:逸脱, 0.50
+		TIMES SOURCE:C_ID:不潔, 1.00
+	CASEELSE
+		TIMES SOURCE:C_ID:逸脱, 0.50
+		TIMES SOURCE:C_ID:不潔, 0.50
+		TIMES DOWNBASE:C_ID:気力, 0.50
+	ENDSELECT
+	IF ABL:A:サドっ気 > 3 && C_ID == MASTER
+		TIMES SOURCE:A:逸脱, 0.25
+		TIMES SOURCE:A:不潔, 0
+		SOURCE:A:強要 = (TFLAG:PissCup + 4)/5 * 500
+		SOURCE:A:加虐 = (TFLAG:PissCup + 4)/5 * 500
+	ENDIF
+ENDIF
+
+;ABL:PeeDrinkAddictをみる
+SELECTCASE ABL:C_ID:PeeDrinkAddict
+CASE 0
+	TIMES SOURCE:C_ID:欲情, 0.10
+	TIMES SOURCE:C_ID:屈従, 0.50
+CASE 1
+	TIMES SOURCE:C_ID:欲情, 1.00
+	TIMES SOURCE:C_ID:屈従, 1.00
+CASE 2
+	TIMES SOURCE:C_ID:欲情, 1.20
+	TIMES SOURCE:C_ID:屈従, 1.30
+CASE 3
+	TIMES SOURCE:C_ID:欲情, 1.40
+	TIMES SOURCE:C_ID:屈従, 1.60
+CASE 4
+	TIMES SOURCE:C_ID:欲情, 1.80
+	TIMES SOURCE:C_ID:屈従, 2.00
+CASEELSE
+	TIMES SOURCE:C_ID:欲情, 2.00
+	TIMES SOURCE:C_ID:屈従, 3.00
+ENDSELECT
+;loves semen
+IF TALENT:C_ID:PeeDrinker
+	SOURCE:C_ID:快Ｍ += (TFLAG:PissCup * 10) / 2
+	SOURCE:C_ID:不潔 = 0
+	TIMES SOURCE:C_ID:達成 , 2.00
+	TIMES SOURCE:C_ID:屈従 , 1.50
+	TIMES SOURCE:C_ID:逸脱 , 0.10
+ENDIF
+; SIF SOURCE:屈従 > 10000
+; 	SOURCE:屈従 = 10000
+; SIF SOURCE:欲情 > 10000
+; 	SOURCE:欲情 = 10000
+
+;SIF SHIRAHU(TARGET)
+;	TRYCALL QoL_Info_Write(TARGET, 7) ;qol custom code Qol_Dates_Semen
+;-------------------------------------------------
+;特殊ソース処理
+;-------------------------------------------------
+;抑圧、抵抗持ちには、抑鬱ソース追加
+SIF TALENT:C_ID:自己愛 < 0 || TALENT:C_ID:抵抗
+	SOURCE:C_ID:鬱屈 += 400
+RETURN 1
+
+@Com_DrinkPee_COMORDER(ARG)
+SKIPDISP ARG
+PRINTL Urine Drinking
+LOCAL:99 = 0
+$START
+A = 0
+S = 0
+
+;すべての命令に共通の要素を考慮
+;(従順が高いと命令に従いやすいなど)
+CALL COM_ORDER
+
+;ABL:欲望
+IF ABL:欲望
+	SIF S
+		PRINT  + 
+	A += ABL:欲望 * 1
+	PRINT Desire
+	PRINTV 'LV,ABL:欲望,'(,ABL:欲望 * 1,')
+	S = 1
+ENDIF
+;ABL:奉仕精神
+IF ABL:奉仕精神
+	SIF S
+		PRINT  + 
+	A += MIN(ABL:奉仕精神, 10) * 2
+	PRINT Servitude
+	PRINTV 'LV,ABL:奉仕精神,'(,MIN(ABL:奉仕精神, 10) * 2,')
+	S = 1
+ENDIF
+;ABL:PeeDrinkAddict
+IF ABL:PeeDrinkAddict
+	SIF S
+		PRINT  + 
+	A += MIN(ABL:PeeDrinkAddict, 5) * 5
+	PRINT Urine Addict
+	PRINTV 'LV,ABL:PeeDrinkAddict,'(,MIN(ABL:PeeDrinkAddict, 5) * 5,')
+	S = 1
+ENDIF
+
+IF MARK:快楽刻印
+	SIF S
+		PRINT  + 
+	A += MARK:快楽刻印 * 1
+	PRINT Pleasure Mark
+	PRINTV 'LV,MARK:快楽刻印,'(,MARK:快楽刻印 * 1,')
+	S = 1
+ENDIF
+;PALAM:欲情
+IF GETPALAMLV(PALAM:欲情,5)
+	IF PALAM:欲情 < 3000
+		SIF S
+			PRINT  - 
+		A -= 50
+		PRINT Insufficient Desire
+		PRINTV '(,50,')
+		S = 1
+	ELSE
+		SIF S
+			PRINT  + 
+		A += GETPALAMLV(PALAM:欲情,5) * 1
+		PRINT Desire
+		PRINTV 'LV,GETPALAMLV(PALAM:欲情,5),'(,GETPALAMLV(PALAM:欲情,5) * 1,')
+		S = 1
+	ENDIF
+ENDIF
+;恥じらい
+IF TALENT:羞恥心 > 0
+	PRINT  - 
+	A -= 3
+	PRINT Shy
+	PRINTV '(,3,')
+	S = 1
+ENDIF
+;汚臭鈍感
+IF TALENT:汚臭耐性 > 0
+	SIF S
+		PRINT  + 
+	A += 3
+	PRINT Smell Resistant
+	PRINTV '(,3,')
+	S = 1
+ENDIF
+;献身的
+IF TALENT:献身的
+	SIF S
+		PRINT  + 
+	A += 6
+	PRINT Devoted
+	PRINTV '(,6,')
+	S = 1
+ENDIF
+;快感の否定（淫乱、娼婦で無効）
+IF TALENT:快感応答 < 0 && !TALENT:淫乱
+	PRINT  - 
+	A -= 1
+	PRINT Denies Pleasure
+	PRINTV '(,1,')
+	S = 1
+ENDIF
+;男嫌い（恋慕、親愛で無効）
+IF OTOKOGIRAI(TARGET)
+	PRINT  - 
+	A -= 12
+	PRINT Man Hater
+	PRINTV '(,12,')
+	S = 1
+ENDIF
+;恋慕
+IF TALENT:恋慕 && ASSIPLAY == 0
+	SIF S
+		PRINT  + 
+	A += 5
+	PRINT Love
+	PRINTV '(,5,')
+	S = 5
+ENDIF
+;親愛
+IF TALENT:恋慕 > 1 && ASSIPLAY == 0
+	SIF S
+		PRINT  + 
+	A += 5
+	PRINT Deep Love
+	PRINTV '(,5,')
+	S = 5
+ENDIF
+IF CFLAG:負け犬
+	SIF S
+		PRINT  + 
+	A += 20
+	PRINT Loser
+	PRINTV '(,20,')
+	S = 1
+ENDIF
+
+Y = 10
+Y = Y * (2 - TALENT:汚臭耐性) / 2
+;汚れあり
+IF Y
+	PRINT  - 
+	A -= Y
+	PRINT Yucky
+	;汚臭鈍感
+	IF TALENT:汚臭耐性 > 0
+		PRINT , Smell Resistant
+	ELSEIF TALENT:汚臭耐性 < 0
+		PRINT , Smell Sensitive
+	ENDIF
+	PRINTV '(,Y,')
+	S = 1
+ENDIF
+
+;amount
+IF ABL:PeeDrinkAddict < 3 && !TALENT:PeeDrinker
+	PRINT  - 
+	SELECTCASE TFLAG:PissCup
+		CASE IS > 1000
+			Y = 20
+			PRINT Lots of urine
+		CASE IS > 500
+			Y = 10
+			PRINT Cupfull of urine
+		CASEELSE
+			Y = 3
+			PRINT Urine
+	ENDSELECT
+	A -= Y
+	PRINTV '(,Y,')
+	S = 1
+ENDIF
+
+;合計を表示(24以上で実行)
+PRINT  = 
+PRINTV A
+
+V = 50
+SIF A < V
+	PRINT  < 
+SIF A == V
+	PRINT  = 
+SIF A > V
+	PRINT  > 
+PRINT Required Value 
+PRINTV V
+
+WAIT
+SKIPDISP 0
+;実行できない
+IF A < V
+	IF ABL:PeeDrinkAddict < 3 && !TALENT:PeeDrinker
+		PRINTFORML
+		DRAWLINE
+		IF TFLAG:PissCup > 500
+			PRINTFORML Looks like this amount is a little too much for %CALLNAME:TARGET%...
+			PRINTFORML Spill out some and try again?
+			CALL ASK_YN
+			IF !RESULT
+				TFLAG:PissCup = 500
+				GOTO START
+			ENDIF
+			LOCAL:99 = 1
+		ELSEIF TFLAG:PissCup > 250
+			PRINTFORML Looks like this amount is still a bit too much for %CALLNAME:TARGET%...
+			PRINTFORML Spill out some and try again?
+			CALL ASK_YN
+			IF !RESULT
+				TFLAG:PissCup = 250
+				GOTO START
+			ENDIF
+			LOCAL:99 = 1
+		ELSE
+			IF LOCAL:99 == 1
+				PRINTFORML You spill out so much, there's nothing left anymore, and %CALLNAME:TARGET% still doesn't want to drink it...
+			ELSE
+				PRINTFORML You offer just a little bit, and %CALLNAME:TARGET% still doesn't want to drink it...
+			ENDIF
+			PRINTFORML You give up for now.
+		ENDIF
+	ENDIF
+	RETURN -1
+ENDIF
+RETURN 1

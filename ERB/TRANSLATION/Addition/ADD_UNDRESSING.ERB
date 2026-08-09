@@ -1,0 +1,247 @@
+@ADD_UNDRESSING_MENU
+#DIM INITIAL_LINECOUNT
+#DIM CHARA
+#DIM PART
+#DIM STATE
+#DIM CURRENT_SET
+INITIAL_LINECOUNT = LINECOUNT
+$MENUSTART
+
+CALL ADD_UNDRESSING_MENU_CHARA(MASTER)
+CALL ADD_UNDRESSING_MENU_CHARA(TARGET)
+
+PRINTBUTTON "Finish", -1
+INPUT
+
+LOCAL = RESULT
+IF LOCAL == -1
+    CLEARLINE LINECOUNT - INITIAL_LINECOUNT
+
+    CALL CLOTHES_SETTING_TRAIN(MASTER)
+    CALL CLOTHES_SETTING_TRAIN(TARGET)
+
+    RETURN
+ELSE
+    IF LOCAL >= 0
+        CHARA = LOCAL / 1000
+        PART = (LOCAL / 10) % 100
+        STATE = LOCAL % 10
+        CURRENT_SET = CURRENT_CLOTHES_SET(CHARA)
+
+        IF INRANGE(CHARA, 0, CHARANUM) && INRANGE(PART, 1, 22) && CFLAG:CHARA:うふふ
+            IF STATE == 0 || (PART == 6 && CFLAG:CHARA:ノーパン)
+                EQUIP:CHARA:PART = 0
+            ELSEIF CFLAG:CHARA:睡眠
+                EQUIP:CHARA:PART = CFLAG:CHARA:(240 + PART)
+            ELSEIF PART == 6 && (CURRENT_SET > 100 || !GET_INT(CHARA, "衣装セット", CURRENT_SET, "OVERRIDE_UNDERWEAR_BOTTOM"))
+                EQUIP:CHARA:PART = CFLAG:CHARA:(200 + PART)
+            ELSEIF PART == 7 && (CURRENT_SET > 100 || !GET_INT(CHARA, "衣装セット", CURRENT_SET, "OVERRIDE_UNDERWEAR_TOP"))
+                EQUIP:CHARA:PART = CFLAG:CHARA:(200 + PART)
+            ELSEIF CFLAG:CHARA:睡眠
+                EQUIP:CHARA:PART = CFLAG:CHARA:(200 + PART)
+            ELSEIF CURRENT_SET > 100
+                EQUIP:CHARA:PART = GET_INT(CHARA, "キャラデータ", CURRENT_SET - 100, @"普段着：%EQUIPNAME:PART%")
+            ELSE
+                EQUIP:CHARA:PART = GET_INT(CHARA, "衣装セット", CURRENT_SET, @"%EQUIPNAME:PART%")
+            ENDIF
+
+            IF PART == 6 ;extra processing for panties
+                ;nas custom
+                SELECTCASE STATE
+                    CASE 1
+                        LOCAL:1 = PANTY_WORN
+                    CASE 2
+                        LOCAL:1 = PANTY_UNZIPPED
+                    CASE 3
+                        LOCAL:1 = PANTY_ASIDE
+                    CASE 4
+                        LOCAL:1 = PANTY_DOWN
+                    CASE 5
+                        LOCAL:1 = PANTY_ON_LEG
+                    ;NAS CUSTOM
+                    CASE 6
+                        LOCAL:1 = DIAPER_OPEN
+                    ;///////////////
+                    CASEELSE
+                        LOCAL:1 = PANTY_WORN
+                ENDSELECT
+
+                CALL Undressing_ShiftPantyMSG(CHARA,LOCAL:1)
+                IF RESULT == -1
+                    ;no change
+                    CLEARLINE LINECOUNT - INITIAL_LINECOUNT
+                    GOTO MENUSTART
+                ENDIF
+                ;//////////////
+
+                SELECTCASE STATE
+                    CASE 1
+                        TEQUIP:CHARA:PANTY_STATE = PANTY_WORN
+                    CASE 2
+                        TEQUIP:CHARA:PANTY_STATE = PANTY_UNZIPPED
+                    CASE 3
+                        TEQUIP:CHARA:PANTY_STATE = PANTY_ASIDE
+                    CASE 4
+                        TEQUIP:CHARA:PANTY_STATE = PANTY_DOWN
+                    CASE 5
+                        TEQUIP:CHARA:PANTY_STATE = PANTY_ON_LEG
+                    ;NAS CUSTOM
+                    CASE 6
+                        TEQUIP:CHARA:PANTY_STATE = DIAPER_OPEN
+                    ;///////////////
+                    CASEELSE
+                        TEQUIP:CHARA:PANTY_STATE = PANTY_WORN
+                ENDSELECT
+
+                CALL ADD_TOUCH_CLEAR_CHARA(CHARA) ;reset insertions
+            ENDIF
+        ENDIF
+    ENDIF
+    CLEARLINE LINECOUNT - INITIAL_LINECOUNT
+    GOTO MENUSTART
+ENDIF
+
+@ADD_UNDRESSING_MENU_CHARA(ARG)
+#DIM CFLAG_OFFSET
+#DIM PART
+#DIM CLOTH_ID
+#DIM CURRENT_SET
+CURRENT_SET = CURRENT_CLOTHES_SET(ARG)
+IF CFLAG:ARG:睡眠
+    CFLAG_OFFSET = 240
+ELSE
+    CFLAG_OFFSET = 200
+ENDIF
+
+CALLF 上半身下着チェック(ARG)
+CALLF 下半身下着チェック(ARG)
+
+PRINTFORMDL %CALLNAME:ARG%'s current clothing:
+FOR LOCAL, 1, VARSIZE("表示部位")
+    PART = FINDELEMENT(EQUIPNAME, 表示部位:LOCAL)
+    SIF PART < 0
+        THROW Non-Existent Equipment: %表示部位:LOCAL%
+
+    IF PART == 6 && (CURRENT_SET > 100 || !GET_INT(ARG, "衣装セット", CURRENT_SET, "OVERRIDE_UNDERWEAR_BOTTOM"))
+        CLOTH_ID = CFLAG:ARG:(CFLAG_OFFSET + PART)
+    ELSEIF PART == 7 && (CURRENT_SET > 100 || !GET_INT(ARG, "衣装セット", CURRENT_SET, "OVERRIDE_UNDERWEAR_TOP"))
+        CLOTH_ID = CFLAG:ARG:(CFLAG_OFFSET + PART)
+    ELSEIF CFLAG:ARG:睡眠
+        CLOTH_ID = CFLAG:ARG:(CFLAG_OFFSET + PART)
+    ELSEIF CURRENT_SET > 100
+        CLOTH_ID = GET_INT(ARG, "キャラデータ", CURRENT_SET - 100, @"普段着：%EQUIPNAME:PART%")
+    ELSE
+        CLOTH_ID = GET_INT(ARG, "衣装セット", CURRENT_SET, @"%EQUIPNAME:PART%")
+    ENDIF
+
+    IF CLOTH_ID
+        SELECTCASE PART
+            CASE 6
+                LOCALS '= PANTSNAME(CLOTH_ID, ARG)
+            CASE 7
+                LOCALS '= BRANAME(CLOTH_ID, ARG)
+            CASEELSE
+                LOCALS '= CLOTHNAME(PART, CLOTH_ID)
+        ENDSELECT
+        LOCALS '= UNDIES_NAME_WITH_BRAND(ARG,CLOTH_ID,1,PART)
+
+        PRINTFORMD %WRAP_IN_QUOTES(表示ラベル:LOCAL), 19, LEFT% %CAPITALIZE(LOCALS), 35, LEFT% 
+
+        ;nas custom
+        IF ArmorCharges:ARG:PART:1
+        PRINTFORM %SoilStr(ARG,3,1,PART),10,LEFT% 
+        PRINTFORM ({ArmorCharges:ARG:PART:0,5}/{ArmorCharges:ARG:PART:1,5}kJ) 
+        RESETCOLOR
+        ELSE
+        PRINTFORMD %" "*27%
+        ENDIF
+        ;///////////////
+        
+        IF PART == 6
+            IF CFLAG:ARG:ノーパン
+                SETCOLOR C_L_GRAY
+                PRINT [Taken]
+            ELSE
+                FOR LOCAL:1, 0, PANTY_OFF + 1
+                    SIF TEQUIP:ARG:PANTY_STATE == LOCAL:1
+                        SETCOLOR C_BLUE
+                    SELECTCASE LOCAL:1
+                        CASE PANTY_WORN
+                            SIF !EQUIP:ARG:PART
+                                RESETCOLOR
+                            PRINTBUTTON "[Wear]", ARG * 1000 + PART * 10 + 1
+                            PRINT  
+                        CASE PANTY_UNZIPPED
+                            IF CHECK_PANTIES("zippable_front", ARG) || CHECK_PANTIES("zippable_back", ARG)
+                                PRINTBUTTON "[Unzip]", ARG * 1000 + PART * 10 + 2
+                                PRINT  
+                            ENDIF
+                        CASE PANTY_ASIDE
+                            IF CHECK_PANTIES("can_shift_aside", ARG)
+                                PRINTBUTTON "[Shift Aside]", ARG * 1000 + PART * 10 + 3
+                                PRINT  
+                            ENDIF
+                        CASE PANTY_DOWN
+                            IF CHECK_PANTIES("can_pull_down", ARG)
+                                PRINTBUTTON "[Pull Down]", ARG * 1000 + PART * 10 + 4
+                                PRINT  
+                            ENDIF
+                        CASE PANTY_ON_LEG
+                            PRINTBUTTON "[Put Around Leg]", ARG * 1000 + PART * 10 + 5
+                            PRINT  
+                        ;NAS CUSTOM
+                        CASE DIAPER_OPEN
+                            IF CHECK_PANTIES("diaper_tape", ARG)
+                                PRINTBUTTON "[Untape and Open]", ARG * 1000 + PART * 10 + 6
+                                PRINT  
+                            ELSEIF CHECK_PANTIES("diaper_pin", ARG)
+                                PRINTBUTTON "[Unpin and Open]", ARG * 1000 + PART * 10 + 6
+                                PRINT  
+                            ENDIF
+                        ;/////////
+                        CASE PANTY_OFF
+                            SIF !EQUIP:ARG:PART
+                                SETCOLOR C_BLUE
+                            PRINTBUTTON "[Take Off]", ARG * 1000 + PART * 10 + 0
+                    ENDSELECT
+                    RESETCOLOR
+                NEXT
+            ENDIF
+            PRINTL
+            ;NAS Custom code
+            IF DiapeCharges:ARG:1 || DiapePooCharges:ARG:1
+                LOCALS '= @"%WRAP_IN_QUOTES("Soiling"), 17, LEFT%"
+                LOCALS += @"{SoiledDiaper(ARG,1,2,0), 4, RIGHT}/{DiapeCharges:ARG:1,4, LEFT}ml "
+                SIF PANTY_HAS_WETNESS_INDICATOR(CLOTH_ID)
+                    LOCALS += @"(%ACCIDENT_WETNESS_INDICATOR(ARG,1,1)% {SoiledDiaper(ARG,1,1,0),3}\%) "
+                SIF CAN_ACCIDENT(ARG,1)
+                LOCALS += @"{SoiledDiaper(ARG,2,2,0), 4, RIGHT}/{DiapePooCharges:ARG:1, 4, LEFT}g  (%ACCIDENT_WETNESS_INDICATOR(ARG,2,1)% {SoiledDiaper(ARG,2,1,0),3}\%)"
+                HTML_PRINT LOCALS
+            ENDIF
+            ;/////////////
+            CONTINUE
+        ENDIF
+
+        IF EQUIP:ARG:PART
+            SETCOLOR C_BLUE
+        ELSE
+            RESETCOLOR
+        ENDIF
+        PRINTBUTTON "[Wear]", ARG * 1000 + PART * 10 + 1
+        PRINT  
+        
+        IF !EQUIP:ARG:PART
+            SETCOLOR C_BLUE
+        ELSE
+            RESETCOLOR
+        ENDIF
+        PRINTBUTTON "[Take Off]", ARG * 1000 + PART * 10 + 0
+        RESETCOLOR
+        PRINTL
+    ENDIF
+NEXT
+PRINTL
+
+@WRAP_IN_QUOTES(ARGS)
+#FUNCTIONS
+RETURNF @"【%ARGS%】"

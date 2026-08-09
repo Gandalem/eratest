@@ -1,0 +1,235 @@
+;-------------------------------------------------
+; DAILY_EV_906
+; Night event where you can pay 20K to reassign a trait.
+; Higher inteligence compared to you means a lower chance of success.
+;-------------------------------------------------
+@DAILY_INFO_EV906
+#FUNCTION
+DAILY_INFO_NAME '= @"Hypnosis Trainer"
+DAILY_INFO_DESC '= @"Night event where you can pay 20K to reassign a trait.\nHigher inteligence compared to you means a lower chance of success."
+DAILY_INFO_TYPE '= @"Minor"
+
+@DAILY_CONDITION_EV906
+VARSET LOCAL
+[IF_DEBUG]
+LOCAL = 1
+[ENDIF]
+
+SIF MONEY < 20000
+    RETURN -1
+SIF !nHypno
+    RETURN -1
+
+SIF !RAND:10 || LOCAL
+CALL DAILY_EV_906
+RETURN 1
+
+@DAILY_EV_906
+#DIM CHARA
+#DIM NEWTRAIT
+#DIM NEWVAL
+#DIM PercentPass
+
+$LOOP
+PRINTFORMW You're approached by a weird girl with some kind of crystal ball
+PRINTFORML 「Hey, I can change any trait on any girl you know.」
+PRINTFORML 「Just for the low price of \\20000」
+PRINTFORML Accept her offer?
+{
+CALL ASK_M(
+    "Accept Offer", 1,
+    "Teach me the art of Hypnosis", !GETBIT(TALENT:MASTER:ESP,19),
+    "Send away", 1
+)
+}
+SELECTCASE RESULT
+CASE 0
+PRINTFORML You politely decline her offer and kick her out, promptly going back to sleep. 
+CASE 1
+PRINTFORML You ask the hypnosis trainer if she can teach you hypnosis.
+PRINTFORML 「Fufu, you want to know some of my tricks?」
+PRINTFORML 「I'll let you teach what makes my magic work, but at a steep price.」
+PRINTFORML 「¥250,000 sounds like a fair price for all of the stuff you can do with it.」
+PRINTFORMDL Do you accept the offer?
+{
+CALL ASK_M(
+    "Pay", MONEY >= 250000,
+    "Negotiate", 0,
+    "Back Off", 1
+)
+}
+SELECTCASE RESULT
+CASE 0
+    CALL PAY_MONEY_YEN(250000,1)
+    PRINTFORMW You now have hypnosis!
+    SETBIT TALENT:MASTER:ESP, 19
+    MAXBASE:MASTER:7 = MAX(MAXBASE:MASTER:7,100)
+    RETURN 1
+CASE 1
+CASE 2
+PRINTFORML You back off on the offer.
+GOTO LOOP
+ENDSELECT
+CASE 2
+RETURN -1
+ENDSELECT
+
+$PickChara
+PRINTFORML Select who you do you want to put into hypnosis.
+DRAWLINE
+FOR LOCAL, 0, CHARANUM-1
+    IF LOCAL == MASTER
+	ELSEIF !IS_NAMED(LOCAL) || !CFLAG:LOCAL:面識
+		CONTINUE
+	ENDIF
+    PRINTFORMLC [{LOCAL}] %CALLNAME:LOCAL%
+NEXT
+PRINTFORML
+PRINTFORML
+PRINTFORML [999] Cancel
+INPUT
+CHARA = RESULT
+
+IF INRANGE(CHARA,0,CHARANUM)
+CALL HYPNO_TALENT_REASSIGN(CHARA,1)
+SIF RESULT < 0
+    GOTO PickChara
+ENDIF
+
+@HYPNO_TALENT_REASSIGN(CHARA,nPaid)
+#DIM CHARA
+#DIM NEWTRAIT
+#DIM NEWVAL
+#DIM PercentPass
+#DIM nPaid
+$PickTrait
+IF CHARA == MASTER
+PercentPass = 100
+ELSE
+PercentPass = 50 + (15*ABL:MASTER:教養) - (10*ABL:CHARA:教養)
+ENDIF
+
+PRINTFORML Which trait do you want to manifest in %NAME:CHARA%
+SETCOLOR C_ORANGE
+PRINTFORML Traits in orange are ones %CALLNAME:CHARA% currently has.
+RESETCOLOR
+
+IF PercentPass >= 80
+    SETCOLOR C_GREEN
+ELSEIF PercentPass >= 50
+    SETCOLOR C_YELLOW
+ELSEIF PercentPass >= 30
+    SETCOLOR C_ORANGE
+ELSE
+    SETCOLOR C_RED
+ENDIF
+
+PRINTFORM {MIN(PercentPass,100)}\% 
+RESETCOLOR
+PRINTFORML chance of success.
+
+DRAWLINE
+FOR LOCAL, 0, 999
+    SIF TALENT_TR(LOCAL) == ""
+        CONTINUE
+    
+    SELECTCASE LOCAL
+    ; CASE 0 TO 8, 15 TO 17, 46 TO 55, 73 TO 79, 90, 91, 100, 105, 120, 122, 132, 145, 152 TO 303, 150, 144, 142, 59, 108
+    ;     CONTINUE
+		CASE 0 TO 8, 15 TO 17, 46 TO 55, 73 TO 79, 90, 91, 100 TO 106, 120, 122, 132, 152 TO 303, 150, 142 TO 145, 149, 59, 108
+			CONTINUE
+    ENDSELECT
+
+    IF TALENT:CHARA:LOCAL != 0
+        SETCOLOR C_ORANGE
+    PRINTFORMLC [{LOCAL}] %GET_TALENTNAME_TR(LOCAL,TALENT:CHARA:LOCAL)%
+    ELSE
+    PRINTFORMLC [{LOCAL}] %TALENT_TR(LOCAL)%
+    ENDIF
+    RESETCOLOR
+NEXT
+PRINTFORML
+PRINTFORML
+PRINTFORML [999] Cancel
+INPUT
+NEWTRAIT = RESULT
+
+SIF RESULT == 999
+    RETURN -1
+
+IF GET_TALENTNAME(NEWTRAIT,-1) != GET_TALENTNAME(NEWTRAIT,1) || GET_TALENTNAME(NEWTRAIT,2) != GET_TALENTNAME(NEWTRAIT,1)
+PRINTFORML Please chose which tier do you want to manifest?
+FOR LOCAL, -10, 10
+    SIF GET_TALENTNAME_TR(NEWTRAIT,LOCAL) == "" && LOCAL != 0
+        CONTINUE
+
+    SIF TALENT:CHARA:NEWTRAIT == LOCAl
+        SETCOLOR C_ORANGE
+    PRINTFORML [{LOCAL}] - 【%GET_TALENTNAME_TR(NEWTRAIT,LOCAL)%】
+    RESETCOLOR
+NEXT
+PRINTFORML
+PRINTFORML
+PRINTFORML [999] Cancel
+INPUT
+
+SIF RESULT == 999
+    GOTO PickTrait
+NEWVAL = RESULT
+ELSEIF TALENT:CHARA:NEWTRAIT == 1
+NEWVAL = 0
+ELSE
+NEWVAL = 1
+ENDIF
+
+
+PRINTFORM Try to 
+IF GET_TALENTNAME(NEWTRAIT,-1) != GET_TALENTNAME(NEWTRAIT,1) || GET_TALENTNAME(NEWTRAIT,2) != GET_TALENTNAME(NEWTRAIT,1)
+PRINTFORM replace【%GET_TALENTNAME_TR(NEWTRAIT,TALENT:CHARA:NEWTRAIT)%】with 【%GET_TALENTNAME_TR(NEWTRAIT,NEWVAL)%】
+ELSEIF NEWVAL == 0
+PRINTFORM remove【%GET_TALENTNAME_TR(NEWTRAIT,TALENT:CHARA:NEWTRAIT)%】from %CALLNAME:CHARA%
+ELSE
+PRINTFORM add【%GET_TALENTNAME_TR(NEWTRAIT,NEWVAL)%】to %CALLNAME:CHARA%
+ENDIF
+PRINTFORML ?
+CALL ASK_YN()
+SIF RESULT
+    GOTO PickTrait
+
+PRINTFORML ・
+PRINTFORML ・・
+PRINTFORMW ・・・
+
+IF RAND(100) <= PercentPass
+    IF NEWTRAIT == 95
+    OrgasmDeny:CHARA:0 = NEWVAL
+    OrgasmDenyExp:CHARA:0 = EXP_DEMAND_19(0,,CHARA)
+    ELSEIF NEWTRAIT == 56
+    DrugAddict:CHARA:0 = NEWVAL
+    DrugExp:CHARA:0 = EXP_DEMAND_23(0,94,CHARA)
+    ELSEIF NEWTRAIT == 57
+    PeeHold:CHARA:0 = NEWVAL
+    PeeHoldExp:CHARA:0 = EXP_DEMAND_20(0,91,CHARA)
+    ELSEIF NEWTRAIT == 58
+    PooHold:CHARA:0 = NEWVAL
+    PooHoldExp:CHARA:0 = EXP_DEMAND_21(0,92,CHARA)
+    ELSEIF NEWTRAIT == 121
+    AlcoholAddict:CHARA:0 = NEWVAL
+    DrinkingExp:CHARA:0 = EXP_DEMAND_22(0,93,CHARA)
+    ENDIF
+    TALENT:CHARA:NEWTRAIT = NEWVAL
+    PRINTFORMW Success! 
+    PRINTFORML %CALLNAME:CHARA% now has【%GET_TALENTNAME_TR(NEWTRAIT,NEWVAL)%】!
+ELSE
+    PRINTFORMW Failure!
+    IF nPaid
+    PRINTFORML 「I couldn't manifest【%GET_TALENTNAME_TR(NEWTRAIT,NEWVAL)%】onto %CALLNAME:CHARA% unfortunately.」
+    PRINTFORML 「Try again once you've gotten a bit smarter.」
+    ENDIF
+ENDIF
+
+IF nPaid
+PRINTFORML 「Thanks for using my services!」
+CALL PAY_MONEY_YEN(20000,2)
+ENDIF
+RETURN 1

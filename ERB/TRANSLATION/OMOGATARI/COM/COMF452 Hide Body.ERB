@@ -1,0 +1,370 @@
+;-------------------------------------------------
+;Hide Body
+;Hides a dead body
+;-------------------------------------------------
+@ADD_CUSTOM_COM452
+#DIM CurrentBodies
+#DIM MaxBodies
+#DIM AMT
+#DIM CHARA
+AMT = 50 + RAND:50
+
+MaxBodies = CheckBeforeHiding(MASTER)
+CurrentBodies = RESULT:1
+
+PRINTFORML Bodies Hidden: {RESULT:1}/{CheckBeforeHiding(MASTER)}
+PRINTFORML Recover a body, or dig up another one?
+PRINTFORML Percentage shows the chance of the body being discovered.
+FOR LOCAL, 0, CHARANUM
+	SIF CFLAG:MASTER:現在位置 != GET_MAP_REPLACEMENT(CFLAG:LOCAL:現在位置)
+		CONTINUE
+	SIF !IsDead:LOCAL:0
+		CONTINUE
+	SIF !CFLAG:LOCAL:出禁
+		CONTINUE
+
+	IF HasGrave:(LOCAL):0
+		IF CFLAG:LOCAL:現在位置 != HasGrave:(LOCAL):0
+		LOCALS '= "(Stolen)"
+		ELSE
+		LOCALS '= "(Buried)"
+		ENDIF
+	ELSEIF KnowsDeadBodies:29:LOCAL
+	LOCALS '= "(FOUND)"
+	ELSE
+	LOCALS '= @"({(100/CalculateHideChance(LOCAL))}\%)"
+	ENDIF
+
+
+	PRINTFORMC [{LOCAL,3}] - %CALLNAME:LOCAL% %LOCALS%
+NEXT
+PRINTFORML
+
+IF IS_GRAVEYARD(CFLAG:MASTER:現在位置)
+PRINTFORML Graves:
+	FOR LOCAL, 0, CHARANUM
+		SIF HasGrave:(LOCAL):0 != CFLAG:MASTER:現在位置
+			CONTINUE
+
+		PRINTFORMC [{LOCAL+1000,4}] - %CALLNAME:LOCAL%
+	NEXT
+ENDIF
+
+PRINTFORML
+
+SIF (TFLAG:運搬 != MASTER) && IsDead:(TFLAG:運搬):0
+	PRINTFORML [{TFLAG:運搬,3}] - Dump %CALLNAME:(TFLAG:運搬)%
+
+IF OUTROOF(CFLAG:MASTER:現在位置)
+	PRINTFORML [300] - Dig \@ PlayerPitfalls:(CFLAG:MASTER:現在位置) ? a deeper pitfall # pitfall\@
+SIF PlayerPitfalls:(CFLAG:MASTER:現在位置)
+	PRINTFORML [301] - Fill pitfall	
+ENDIF	
+IF TFLAG:運搬 != MASTER && EQUIP:(TFLAG:運搬):その他３ != 60 && IS_GRAVEYARD(CFLAG:MASTER:現在位置)
+	PRINTFORML [360] - Place %CALLNAME:(TFLAG:運搬)% in a coffin
+ELSEIF TFLAG:運搬 != MASTER && EQUIP:(TFLAG:運搬):その他３ == 60
+	PRINTFORML [360] - Remove %CALLNAME:(TFLAG:運搬)% from coffin
+ENDIF
+
+PRINTFORML [999] - Get me out of here!
+INPUT
+
+LOCAL = RESULT
+IF LOCAL == TFLAG:運搬
+	IF CurrentBodies < MaxBodies
+		IF FISHING_SPOT(CFLAG:MASTER:現在位置)
+		PRINTFORMDW You dump the dead %CALLNAME:(TFLAG:運搬)% in the river
+		ELSEIF CFLAG:MASTER:現在位置 == CFLAG:MASTER:初期位置
+		PRINTFORMDW You open up your dresser and put the dead %CALLNAME:(TFLAG:運搬)% inside.
+		ELSE
+		PRINTFORMDW You dig up a hole and dump the dead %CALLNAME:(TFLAG:運搬)% in.
+		ENDIF
+		CALL HideBody(TFLAG:運搬)
+		TFLAG:運搬 = MASTER
+	ELSE
+		PRINTFORMW This area cannot hold any more dead bodies.
+	ENDIF
+ELSEIF LOCAL == 300
+	IF PlayerPitfalls:(CFLAG:MASTER:現在位置)
+	PlayerPitfalls:(CFLAG:MASTER:現在位置) += 1
+	PRINTFORMDL You dig a deeper pitfall
+	PRINTFORMDW The pitfall is now {PlayerPitfalls:(CFLAG:MASTER:現在位置)} levels deep.
+	ELSE
+	PRINTFORMDW You dig a pitfall inside the area.
+	PlayerPitfalls:(CFLAG:MASTER:現在位置) = 1
+	ENDIF
+ELSEIF LOCAL == 301
+	IF PlayerPitfalls:(CFLAG:MASTER:現在位置)
+	PRINTFORMDW You fill up the pitfall inside the area.
+	PlayerPitfalls:(CFLAG:MASTER:現在位置) = 0
+	ENDIF
+ELSEIF LOCAL == 360
+	PRINTFORMDW You put %CALLNAME:(TFLAG:運搬)% inside a coffin.
+	EQUIP:(TFLAG:運搬):その他３ = 60
+ELSEIF INRANGE(LOCAL-1000,0,CHARANUM)
+	LOCAL = LOCAL-1000
+	SIF HasGrave:(LOCAL):0 != CFLAG:MASTER:現在位置
+		CONTINUE
+	CALL ASK_M("Give Offerings", 1, "Masturbate on Grave", 1, "Pee on Grave", nPee && PeeBarStage(MASTER) >= 2, "Poo on Grave", nScat && PooBarStage(MASTER) >= 2, "Destroy Grave", 1, "Get me out of here!", 1)
+	SELECTCASE RESULT
+	CASE 0
+		PRINTFORML %PARSE("You place")% a bouquet of flowers on %CALLNAME:LOCAL%'s grave.
+		SETBIT GraveEffects:LOCAL:0, 0
+		CALL AL_NOTIFY_ACHIEVEMENT_COMPLETION("pressF")
+		IF SaveAchievementClaimed("pressF")
+			LOCAL = MIN(MAXBASE:MASTER:7 / 2, 500)
+			CALL BUFF_BASE(MASTER,7,LOCAL)
+			LOCAL = MIN(MAXBASE:MASTER:8 / 2, 500)
+			CALL BUFF_BASE(MASTER,8,LOCAL)
+		ENDIF
+	CASE 1
+		PRINTFORML %PARSE("You")% masturbate on %CALLNAME:LOCAL%'s grave.
+		IF HAS_PENIS(MASTER)
+			;custom code for color
+			SETCOLOR C_CREAM
+			IF TALENT:MASTER:濃厚精液
+				AMT *= 2
+				;CALL CUMSOUNDS("m")
+				PRINTFORMW ... %PARSE("You release")% {AMT}ml of %PARSE("your",1)% extra thick stuff.
+			ELSE
+				;CALL CUMSOUNDS("l")
+				PRINTFORMW ... %PARSE("You release")% {AMT}ml.
+			ENDIF
+			PRINTFORMW %PARSE("You finish")% with a gasp as %PARSE("your")% %TINKO()% spurts several ropes of %SEMEN()% on the floor.  	
+			SETBIT GraveEffects:LOCAL:0, 1
+			RESETCOLOR
+		ENDIF
+		PRINTFORML Your mind blanks as your back curves in orgasm, pleasure filling your entire body as you cum. 
+		IF PeeHold:MASTER:2 <= -2
+			;CALL PEESOUNDS("h")
+			PRINTFORML ... A %PeeColor(MASTER)% spray soaks into the grass during your orgasm.
+			SETBIT GraveEffects:LOCAL:0, 2
+		ENDIF
+		BASE:MASTER:精力 -= AMT
+		DOWNBASE:MASTER:気力 = 100
+		;custom code for exp and message
+		EXP:MASTER:自慰経験 += 1
+		OrgasmDenyExp:MASTER:0 -= 1
+		SIF TALENT:MASTER:濃厚精液 || CFLAG:MASTER:溜まってる度 >= 900
+			PRINTFORML %PARSE("You feel")% relieved.
+		CFLAG:MASTER:溜まってる度 /= 4
+		;-----------
+		PRINTFORMW You soak in the afterglow for a bit before you get up and consider what to do next.
+		nSexDone -- ;addition custom code
+		TIME += 20
+
+		FOR CHARA, 0, CHARANUM
+			SIF CFLAG:MASTER:現在位置 != CFLAG:CHARA:現在位置
+				CONTINUE
+			SIF !SHIRAHU(CHARA)
+				CONTINUE
+			SIF CHARA == MASTER
+				CONTINUE
+
+			IF RELATION:CHARA:LOCAL < 100
+				PRINTFORML %CALLNAME:CHARA% enjoys %PARSE("your")% show...
+				SOURCE:CHARA:歓楽 = 4000
+				CALL CHANGE_CFLAG(2, CHARA, 40 + RAND:20)
+				CALL CHANGE_CFLAG(4, CHARA, 40 + RAND:20)
+			ELSEIF RELATION:CHARA:LOCAL > 100
+				PRINTFORML %CALLNAME:CHARA% is furious that %PARSE("you")% disrespected %CALLNAME:LOCAL%'s grave...
+				CALL SET_REP(CHARA,10,,1)
+				CALL GET_ANGRY(CHARA,1)
+			ELSE
+				PRINTFORML %CALLNAME:CHARA% looks at %PARSE("you")% weirdly...
+				CALL SET_REP(CHARA,10,,1)
+				CALL GET_ANGRY(CHARA)
+			ENDIF
+		NEXT
+	CASE 2
+		PRINTFORML %PARSE("You")+" "+FSYN("pee")% on %CALLNAME:LOCAL%'s grave.
+		BASE:MASTER:4 = 0
+		SETBIT GraveEffects:LOCAL:0, 2
+
+		FOR CHARA, 0, CHARANUM
+			SIF CFLAG:MASTER:現在位置 != CFLAG:CHARA:現在位置
+				CONTINUE
+			SIF !SHIRAHU(CHARA)
+				CONTINUE
+			SIF CHARA == MASTER
+				CONTINUE			
+
+			IF RELATION:CHARA:LOCAL < 100 || ABL:CHARA:PeeAddict >= 10
+				PRINTFORML %CALLNAME:CHARA% enjoys %PARSE("your")% show...
+				SOURCE:CHARA:歓楽 = 4000
+				CALL CHANGE_CFLAG(2, CHARA, 40 + RAND:20)
+				CALL CHANGE_CFLAG(4, CHARA, 40 + RAND:20)
+			ELSEIF RELATION:CHARA:LOCAL > 100
+				PRINTFORML %CALLNAME:CHARA% is furious that %PARSE("you")% disrespected %CALLNAME:LOCAL%'s grave...
+				CALL SET_REP(CHARA,7,,1)
+				CALL GET_ANGRY(CHARA,1)
+			ELSE
+				PRINTFORML %CALLNAME:CHARA% looks at %PARSE("you")% weirdly...
+				CALL SET_REP(CHARA,7,,1)
+				CALL GET_ANGRY(CHARA)
+			ENDIF
+		NEXT
+
+	CASE 3
+		PRINTFORML %PARSE("You")+" "+FSYN("poo")% on %CALLNAME:LOCAL%'s grave.
+		BASE:MASTER:17 = 0
+		SETBIT GraveEffects:LOCAL:0, 3
+
+		FOR CHARA, 0, CHARANUM
+			SIF CFLAG:MASTER:現在位置 != CFLAG:CHARA:現在位置
+				CONTINUE
+			SIF !SHIRAHU(CHARA)
+				CONTINUE
+			SIF CHARA == MASTER
+				CONTINUE			
+
+			IF RELATION:CHARA:LOCAL < 100 || ABL:CHARA:PooAddict >= 10
+				PRINTFORML %CALLNAME:CHARA% enjoys %PARSE("your")% show...
+				SOURCE:CHARA:歓楽 = 4000
+				CALL CHANGE_CFLAG(2, CHARA, 40 + RAND:20)
+				CALL CHANGE_CFLAG(4, CHARA, 40 + RAND:20)
+			ELSEIF RELATION:CHARA:LOCAL > 100
+				PRINTFORML %CALLNAME:CHARA% is furious that %PARSE("you")% disrespected %CALLNAME:LOCAL%'s grave...
+				CALL SET_REP(CHARA,7,,1)
+				CALL GET_ANGRY(CHARA,1)
+			ELSE
+				PRINTFORML %CALLNAME:CHARA% looks at %PARSE("you")% weirdly...
+				CALL SET_REP(CHARA,7,,1)
+				CALL GET_ANGRY(CHARA)
+			ENDIF
+		NEXT
+	ENDSELECT
+ELSEIF INRANGE(LOCAL,0,CHARANUM)
+	SIF !IsDead:LOCAL:0
+		RETURN
+	PRINTFORMDW You recover the dead body of %CALLNAME:LOCAL%.
+	CFLAG:LOCAL:出禁 = 0
+ENDIF
+RETURN 1
+
+@HideBody(ARG)
+IF IS_MORGUE(CFLAG:ARG:現在位置)
+CFLAG:ARG:出禁 = 30
+ELSEIF IS_GRAVEYARD(CFLAG:ARG:現在位置)
+CFLAG:ARG:出禁 = 20
+ELSEIF FISHING_SPOT(CFLAG:ARG:現在位置) || CFLAG:ARG:現在位置 == CFLAG:MASTER:初期位置
+CFLAG:ARG:出禁 = 10
+ELSEIF OUTROOF(CFLAG:ARG:現在位置)
+CFLAG:ARG:出禁 = 3
+ELSE
+CFLAG:ARG:出禁 = 3
+ENDIF
+
+@CheckBeforeHiding(ARG = -1)
+#FUNCTION
+#DIM MaxBodies
+#DIM CurrentBodies
+#DIM C_ID
+VARSET CurrentBodies
+
+SIF ARG == -1
+	ARG = MASTER
+
+FOR C_ID, 1, CHARANUM
+	IF CFLAG:ARG:現在位置 == CFLAG:C_ID:現在位置 && IsDead:C_ID:0 && CFLAG:(C_ID):出禁
+		CurrentBodies ++
+	ENDIF
+NEXT
+
+IF ROOMDATA:(CFLAG:ARG:現在位置 % 100) & Is_Graveyard
+MaxBodies = 20
+ELSEIF FISHING_SPOT(CFLAG:ARG:現在位置)
+MaxBodies = 10
+ELSEIF OUTROOF(CFLAG:ARG:現在位置)
+MaxBodies = 3
+ELSEIF CFLAG:ARG:現在位置 == CFLAG:MASTER:初期位置
+MaxBodies = 1
+ENDIF
+
+RESULT:1 = CurrentBodies
+RETURNF MaxBodies
+
+
+@PlayerPitfall(ARG)
+#DIM C_ID
+
+SIF ARG == MASTER
+	RETURN
+SIF CFLAG:ARG:睡眠
+	RETURN
+;Lucid Dream
+SIF inTrain == 3
+	RETURN
+
+
+IF PlayerPitfalls:(CFLAG:ARG:現在位置)
+	IF (50 - (ABL:ARG:戦闘能力 * 7)) < RAND:100
+		SIF CFLAG:ARG:現在位置 == CFLAG:MASTER:現在位置
+		PRINTFORML ...There was a pitfall at %CALLNAME:ARG%'s feet, but %HE_SHE(ARG)% easily sidesteps it.
+	ELSE
+		PRINTFORML %CALLNAME:ARG% falls down into %PARSE("your")% pitfall!!!
+		LOCAL = RAND(MAX(100/PlayerPitfalls:(CFLAG:ARG:現在位置),1)) + TFLAG:幸運補正 
+		SELECTCASE LOCAL
+			CASE IS <= 10
+				PRINTFORML Ee-yow!!!
+				PRINTFORML %CALLNAME:ARG% ends up falling on %HIS_HER(ARG)% ass, hard...
+				CALL RECOVER(ARG, -200, "体力", "Ow, my butt!")
+				WAIT
+			CASE 0
+				PRINTFORML %CALLNAME:ARG% ends up falling head first into the pitfall at a weird angle, snapping %HIS_HER(ARG)% neck...
+				BASE:ARG:体力 = -5000
+				DOWNBASE:ARG:体力 = 5000	
+				CALL SET_HISTORY_DEATH(ARG,MASTER,"Pitfall")
+				CFLAG:ARG:出禁 = 3
+				WAIT
+				RETURN
+			CASEELSE
+				CALL RECOVER(ARG, -50, "体力", "Ow!")
+				WAIT			
+		ENDSELECT
+		IF TALENT:ARG:妊娠
+		CALL COLORMESSAGE(@"The baby inside %CALLNAME:ARG%'s belly died. How cruel...",C_RED,2,1)
+		TALENT:ARG:妊娠 = 0
+		CFLAG:ARG:妊娠経過日数 = 0
+		ENDIF
+
+		FOR C_ID, 1, CHARANUM
+			IF CFLAG:ARG:現在位置 == CFLAG:C_ID:現在位置 && IsDead:C_ID:0 && CFLAG:(C_ID):出禁
+				PRINTFORML %CALLNAME:ARG% falls onto %CALLNAME:C_ID%'s dead body!
+				CALL FIND_DEATH(ARG,C_ID,1)
+			ENDIF
+		NEXT
+
+		IF CFLAG:ARG:現在位置 == CFLAG:MASTER:現在位置
+		PRINTFORM %PARSE("You")%\@ TARGET != ARG ? %" "%and %CALLNAME:TARGET% # \@ 
+		SELECTCASE 14-LOCAL
+			CASE IS <= 1
+				PRINTFORML \@TARGET != ARG?%PARSE("peek")%#peek\@ into the pitfall where %CALLNAME:ARG% had fallen into.
+				PRINTFORML %CALLNAME:ARG% can be seen %TEXTR(@"slumped on %HIS_HER(ARG)% butt/upside down with %HIS_HER(ARG)% \@ EQUIP:下半身下着２ ? panties # naked crotch\@ exposed/passed out")% at the bottom of the pit.
+			CASE 2, 3, 4
+				PRINTFORML \@ TARGET != ARG ? %PARSE("take")% a sneak peek at # check out \@ the pitfall.
+				PRINTFORML %CALLNAME:ARG% %SPLIT_G(@"screams out curses:curses %HIS_HER(ARG)% luck aloud:is cussing away loudly")% at the bottom of the pit.
+			CASEELSE
+				PRINTFORML cautiously \@TARGET != ARG?%PARSE("approach")%#approach\@ the pitfall where %CALLNAME:ARG% had fallen into.
+				PRINTFORMW There's an uncontrollable rush of fierce bloodlust rising from the bottom of the pit...
+		ENDSELECT
+		ENDIF
+
+		SOURCE:ARG:鬱屈 += 50 + LOCAL * 50
+		SOURCE:ARG:苦痛 += 350 + LOCAL * 50	
+		TCVAR:ARG:なるべく動かない = 1		
+	ENDIF
+ENDIF
+
+
+@ADD_CUSTOM_COM_ABLE452
+; Do not allow during ufufu or time stop
+SIF CFLAG:うふふ != 0
+	RETURN 0        
+SIF !TFLAG:100
+	RETURN 0
+SIF !FISHING_SPOT(CFLAG:MASTER:現在位置) && !OUTROOF(CFLAG:MASTER:現在位置) && !CFLAG:MASTER:現在位置 == CFLAG:MASTER:初期位置
+	RETURN 0
+SIF !nNecro
+	RETURN 0
+RETURN 1

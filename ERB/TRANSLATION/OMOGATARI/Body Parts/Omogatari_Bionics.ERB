@@ -1,0 +1,470 @@
+@IsBionicPart(ARG,nPart,nHediff)
+#FUNCTION
+#DIM DYNAMIC nPart
+#DIM DYNAMIC nHediff
+
+nHediff = DT_CELL_GET(@"Hediff", HediffGet(ARG,nPart,nHediff), "type", 1)
+IF GET_STR(ARG, "Hediff", nHediff, "Hediff Type") == "Bionic"
+	SIF GET_INT(ARG, "Hediff", nHediff, "Natural")
+    	RETURNF 2
+	RETURNF 1
+ENDIF
+
+@IsDrugHediff(ARG,nPart,nHediff)
+#FUNCTION
+#DIM DYNAMIC nPart
+#DIM DYNAMIC nHediff
+
+nHediff = DT_CELL_GET(@"Hediff", HediffGet(ARG,nPart,nHediff), "type", 1)
+SIF GET_STR(ARG, "Hediff", nHediff, "Hediff Type") == "Drug"
+    RETURNF 1
+
+@IsDiseaseHediff(ARG,nPart,nHediff)
+#FUNCTION
+#DIM DYNAMIC nPart
+#DIM DYNAMIC nHediff
+
+nHediff = DT_CELL_GET(@"Hediff", HediffGet(ARG,nPart,nHediff), "type", 1)
+SIF GET_STR(ARG, "Hediff", nHediff, "Hediff Type") == "Disease"
+    RETURNF 1
+
+
+@AddBionic(ARG,nPart,nBionic,reclaimPart = 1)
+#FUNCTION
+#DIM DYNAMIC nPart
+#DIM DYNAMIC nBionic
+#DIM DYNAMIC nHediff
+#DIM DYNAMIC reclaimPart
+#DIM H_ID
+VARSET tempHediffList
+IF reclaimPart && GET_INT(MASTER, "Hediff", nBionic+100, "Replaces Other Bionics")
+	IF !IsBionicPart(ARG,nPart,0)
+		$CanReclaimPart
+			HasNaturalPart:nPart ++
+	ELSEIF !GET_INT(MASTER, "Hediff", DT_CELL_GET(@"Hediff", HediffGet(ARG,nPart,0), "type", 1), "Replaces Other Bionics")
+		GOTO CanReclaimPart
+	ENDIF
+ENDIF
+
+CALLF BodyPartParent(nPart)
+FOR LOCAL,0,20
+    SIF !BodyPartChildren:LOCAL
+        CONTINUE
+    FOR LOCAL:3,0, DT_SELECT(@"Hediff", @"chara = {ARG} and part = {(BodyPartChildren:LOCAL)}",,tempHediffList)
+		;prevent duplicated parts
+		SIF DT_CELL_GET(@"Hediff", tempHediffList:(LOCAL:3), "type", 1) == nBionic+100
+			RETURNF
+
+        SIF !GET_INT(MASTER, "Hediff", nBionic+100, "Replaces Other Bionics") && IsBionicPart(ARG,(BodyPartChildren:LOCAL),(LOCAL:3))
+            CONTINUE
+        SIF IsBionicPart(ARG,(BodyPartChildren:LOCAL),(LOCAL:3)) && reclaimPart
+			HasBionic:(DT_CELL_GET(@"Hediff", tempHediffList:(LOCAL:3), "type", 1)) ++
+        CALLF ClearHediff(ARG,BodyPartChildren:LOCAL,LOCAL:3)
+    NEXT
+
+    ;don't give hediff for natural replacements
+    SIF !nPart
+        CONTINUE
+
+    ;bionics only for main parts. subparts get "removed" but aren't actually 
+    IF LOCAL == 0
+	BodyPartRemoved:ARG:(BodyPartChildren:LOCAL) = 0
+	DT_ROW_ADD @"Hediff", "chara", ARG, "part", (BodyPartChildren:LOCAL), "type", 100+nBionic, "severity", 1, "tended", 0, "bleeding", 0, "owner", ARG, "cause", "Surgery", "permanent", 0,
+    ELSE
+    SIF GET_INT(ARG, "Hediff", nBionic+100, "Replaces Other Bionics") && !GET_INT(ARG, "Hediff", nBionic+100, "Natural")
+        BodyPartRemoved:ARG:(BodyPartChildren:LOCAL) = 1
+    ENDIF
+NEXT
+RETURNF 1
+
+;code that checks if a part is bionic
+@PartOrChildIsBionic(C_ID, P_ID, CHK_FOR_REMOVAL=0)
+#FUNCTION
+#DIM DYNAMIC C_ID
+#DIM DYNAMIC P_ID
+#DIM DYNAMIC CHK_FOR_REMOVAL
+;return negative if the parent is not dead
+CALLF BodyPartParentFromChild(P_ID)
+SIF BodyPartChildren:0 == P_ID && CHK_FOR_REMOVAL
+	RETURNF 0
+IF IsBionicPart(C_ID,BodyPartChildren:0,0) == 1 && BodyPartHealth:C_ID:(BodyPartChildren:0):0 > -BodyPartHealth:C_ID:(BodyPartChildren:0):1 && !BodyPartRemoved:C_ID:(BodyPartChildren:0)
+    RETURNF 1
+ENDIF
+RETURNF 0
+
+@BionicConflictMenu(ARG,nBionic, giveBack = 1)
+#DIM DYNAMIC nBionic
+#DIM DYNAMIC nPart
+#DIM DYNAMIC giveBack
+#DIM DYNAMIC nHasBionicParts,2
+#DIM DYNAMIC gotHediffs, 100
+#DIM DYNAMIC gotHediffs2, 100
+
+nPart = GET_INT(ARG, "Hediff", nBionic, "Part")
+
+CALLF ConflictingParts(nPart)
+
+
+IF ConflictingPartChoices:1
+PRINTFORML There's multiple places where you can put this %GET_STR(ARG, "Hediff", (nBionic), "名前")% in.
+FOR LOCAL,0, 100
+    SIF ConflictingPartChoices:LOCAL && BDY_PART_NAME(ConflictingPartChoices:LOCAL) != ""
+        PRINTFORML [{ConflictingPartChoices:LOCAL}] - %BDY_PART_NAME(ConflictingPartChoices:LOCAL)%
+NEXT
+PRINTFORML [-1] - Cancel
+INPUT
+    IF RESULT != -1
+        nPart = RESULT
+    ELSE
+        RETURN 0
+    ENDIF
+ENDIF
+
+LOCAL = 0
+IF GET_INT(MASTER, "Hediff", nBionic, "Replaces Other Bionics")
+	LOCALS =
+	PRINTFORM Adding a %GET_STR(MASTER, "Hediff", (nBionic), "名前")% will remove everything in %CALLNAME:ARG%'s 
+	CALLF BodyPartParent(nPart)
+	FOR LOCAL:1,0,20
+		SIF !BodyPartChildren:(LOCAL:1)
+			CONTINUE
+		LOCALS += @"%BDY_PART_NAME(BodyPartChildren:(LOCAL:1))%、"
+	NEXT
+	PRINTFORML %LIST_IN_STRING(LOCALS)%
+	IF !IsBionicPart(ARG,nPart,0)
+		$CanReclaimPartText
+		PRINTFORML You will get a natural %BDY_PART_NAME(nPart)% since it's a natural part.
+	ELSEIF !GET_INT(MASTER, "Hediff", DT_CELL_GET(@"Hediff", HediffGet(ARG,nPart,0), "type", 1), "Replaces Other Bionics")
+		GOTO CanReclaimPartText
+	ENDIF
+
+	PRINTL
+
+	X = DT_SELECT(@"Hediff", @"chara = {ARG} and part = {nPart}", , gotHediffs)
+	FOR LOCAL:3,0,X
+		IF DT_CELL_GETS(@"Hediff", gotHediffs:(LOCAL:3), "Hediff Type", 1) == "Bionic"
+			IF !nHasBionicParts
+				PRINTFORML The following bionic parts will be \@ giveBack ? reclaimed to your inventory # lost\@:
+				FOR LOCAL:1,0,20
+					SIF !BodyPartChildren:(LOCAL:1)
+						BREAK
+					Y = DT_SELECT(@"Hediff", @"chara = {ARG} and part = {BodyPartChildren:(LOCAL:1)}", , gotHediffs2)
+					FOR LOCAL:3,0,Y
+
+						SIF DT_CELL_GET(@"Hediff", gotHediffs2:(LOCAL:3), "type", 1) < 100
+							CONTINUE
+
+						PRINTFORML ・%GET_STR(MASTER, "Hediff", DT_CELL_GET(@"Hediff", gotHediffs2:(LOCAL:3), "type", 1), "名前")%
+					NEXT
+				NEXT
+				nHasBionicParts = 1
+			ENDIF
+		ENDIF
+	NEXT
+ENDIF
+
+
+
+PRINTFORMW Adding a %GET_STR(MASTER, "Hediff", (nBionic), "名前")% to %BDY_PART_NAME(nPart)%.
+CALLF AddBionic(ARG,nPart,nBionic-100)
+
+RETURN RESULT
+
+
+
+@BionicDescription(ARG,ARG:1)
+#FUNCTIONS
+VARSET LOCALS
+
+SELECTCASE ARG
+CASE 1000
+;Third Eye
+LOCALS '= @"A third-eye akin to the Satoris that can read though people's minds. Completely negates all bad mental traits such as Reserved, %GET_TALENTNAME_TR(81,MAX(TALENT:MASTER:2,2))%, Defiant, Prideful etc. Double dodge and accuracy as well."
+CASE 1000
+;Crystal wings
+LOCALS '= @"Increased dodge during combat. The wings are also less noticeable than their animal counterparts, and will get damaged less often."
+CASE 1000
+;Reflex Surrender
+LOCALS '= @"A mere look from you is enough to make any hostile combatant either retreat to yield to you. Also negates hate marks."
+CASE 1000
+;Monsterous Physique
+LOCALS '= @"Synergizes with natural parts, increasing efficiency by 20\% for all natural parts for every non-bionic part."
+CASE 1000
+;Lunatic Eyes
+LOCALS '= @"Introduce insanity and hallucinations with your lunatic red eyes. Delusions can be spawned with no cost, and automatically when combat is initiated. Combatants will target these delusions, leaving them vulnerable to attacks by real enemies.\nLunatic eyes are just implants to eyes, and can be put onto bionic eyes as well"
+CASEELSE
+	LOCALS '= @"%GET_STR(ARG:1, "Hediff", (ARG), "描写")%"
+	IF LOCALS == "" || LOCALS == "0"
+		LOCALS '= @"Efficiency: {GET_INT(ARG:1, "Hediff", (ARG), "Efficiency")}\%\n"
+	ENDIF
+ENDSELECT
+
+RETURNF HTML_ESCAPE(LOCALS)
+
+@GET_BIONIC(ITEM_ID, ITEM_NUM, PRINT_TYPE)
+#DIM ITEM_ID
+#DIM ITEM_NUM
+#DIM PRINT_TYPE;表示形式　0=通常　1=L　2=W
+
+IF GET_STR(0, "Hediff", ITEM_ID, "名前") == ""
+	PRINTFORML {ITEM_ID} does not exist.
+ENDIF
+DEBUGPRINTFORML Bionic name: %GET_STR(0, "Hediff", ITEM_ID, "名前")%, Id: {ITEM_ID}
+IF HasBionic:ITEM_ID + ITEM_NUM >= 100
+	;custom code
+	CALL COLORMESSAGE(@"Got \@ STRCOUNT(GET_STR(0, "Hediff", ITEM_ID, "名前"), "s$") ? %GET_STR(0, "Hediff", ITEM_ID, "名前")% # %ARTICLE(GET_STR(0, "Hediff", ITEM_ID, "名前"))%\@", C_YELLOW, PRINT_TYPE)
+	HasBionic:ITEM_ID = MAX(HasBionic:ITEM_ID, 99)
+ELSE
+	CALL COLORMESSAGE(@"Got {ITEM_NUM} %GET_STR(0, "Hediff", ITEM_ID, "名前")%", C_YELLOW, PRINT_TYPE)
+	HasBionic:ITEM_ID += ITEM_NUM
+ENDIF
+
+@GET_BDY_PART(ITEM_ID, ITEM_NUM, PRINT_TYPE)
+#DIM ITEM_ID
+#DIM ITEM_NUM
+#DIM PRINT_TYPE;表示形式　0=通常　1=L　2=W
+
+IF BDY_PART_NAME(ITEM_ID) == ""
+	PRINTFORML {ITEM_ID} does not exist.
+ENDIF
+DEBUGPRINTFORML Part name: %BDY_PART_NAME(ITEM_ID)%, Id: {ITEM_ID}
+IF HasNaturalPart:ITEM_ID + ITEM_NUM >= 100
+	;custom code
+	CALL COLORMESSAGE(@"Got \@ STRCOUNT(BDY_PART_NAME(ITEM_ID), "s$") ? %BDY_PART_NAME(ITEM_ID)% # %ARTICLE(BDY_PART_NAME(ITEM_ID))%\@", C_YELLOW, PRINT_TYPE)
+	HasNaturalPart:ITEM_ID = MAX(HasNaturalPart:ITEM_ID, 99)
+ELSE
+	CALL COLORMESSAGE(@"Got {ITEM_NUM} %BDY_PART_NAME(ITEM_ID)%", C_YELLOW, PRINT_TYPE)
+	HasNaturalPart:ITEM_ID += ITEM_NUM
+ENDIF
+
+@HasBionicPart(ARG,nBionic)
+#FUNCTION
+#DIM nPart
+#DIM nBionic
+
+RETURNF DT_SELECT(@"Hediff", @"chara = {ARG} and type = {nBionic+100}")
+
+
+@ConflictingParts(ARG)
+#FUNCTION
+VARSET ConflictingPartChoices
+
+SELECTCASE ARG
+CASE 0
+FOR LOCAL,0,100
+ConflictingPartChoices:LOCAL = LOCAL
+NEXT
+CASE 5
+ConflictingPartChoices:0 = 5
+ConflictingPartChoices:1 = 6
+CASE 20
+ConflictingPartChoices:0 = 20
+ConflictingPartChoices:1 = 30
+CASE 23
+ConflictingPartChoices:0 = 23
+ConflictingPartChoices:1 = 33
+CASE 41
+ConflictingPartChoices:0 = 41
+ConflictingPartChoices:1 = 43
+CASE 45
+ConflictingPartChoices:0 = 45
+ConflictingPartChoices:1 = 46
+CASE 75
+ConflictingPartChoices:0 = 75
+ConflictingPartChoices:1 = 76
+CASE 81
+ConflictingPartChoices:0 = 81
+ConflictingPartChoices:1 = 91
+CASE 83
+ConflictingPartChoices:0 = 83
+ConflictingPartChoices:1 = 93
+CASEELSE
+	ConflictingPartChoices:0 = ARG
+	RETURNF 0
+ENDSELECT
+RETURNF 1
+
+
+;checks if reserved can fuck off
+@FuckReserved(ARG)
+#FUNCTION
+SIF !TALENT:ARG:一線越えない
+	RETURNF 0
+
+SIF HasBionicPart(ARG,60)
+	RETURNF 0
+
+SIF HasBionicPart(MASTER,67) || HasBionicPart(MASTER,82)
+	RETURNF 0
+
+SIF SignificantRelationship(ARG)
+	RETURNF 0
+
+RETURNF 1
+
+@FuckVirtuous(ARG)
+#FUNCTION
+
+@HasOAB(ARG)
+#FUNCTION
+#DIM nPart
+;Cheat
+SIF NASCheat:2
+	RETURNF 1
+;Fetishes
+SIF !nPee
+	RETURNF 0
+
+RETURNF DT_SELECT(@"Hediff", @"chara = {ARG} and part = 74 and type = 30")
+@HasIBS(ARG)
+#FUNCTION
+#DIM nPart
+;Cheat
+SIF NASCheat:2
+	RETURNF 1
+;Fetishes
+SIF !nScat || !CAN_ACCIDENT(ARG,2)
+	RETURNF 0
+SIF DrugStats:ARG:LaxativeFakeTime
+	RETURNF 1
+
+RETURNF DT_SELECT(@"Hediff", @"chara = {ARG} and part = 53 and type = 31")
+
+
+
+@organPrice(ARG)
+#FUNCTION
+SELECTCASE ARG
+CASE 4
+	RETURNF 300000
+CASE 5, 6
+	RETURNF 40000
+CASE 7
+;nose
+	RETURNF 20000
+CASE 8
+;mouth
+	RETURNF 60000
+CASE 20, 30
+;arms
+	RETURNF 80000
+CASE 23, 33
+;hands
+	RETURNF 25000
+CASE 41, 43
+;breasts
+	RETURNF 30000
+CASE 45, 46
+;lungs
+	RETURNF 100000
+CASE 47
+;heart
+	RETURNF 200000
+CASE 53
+;belly
+	RETURNF 200000
+CASE 55
+;back
+	RETURNF 100000
+CASE 56, 57
+;wings
+	RETURNF 75000
+CASE 60
+;hip
+	RETURNF 70000
+CASE 63
+;vagina
+	RETURNF 40000
+CASE 64
+;womb
+	RETURNF 30000
+CASE 65
+;butt
+	RETURNF 80000
+CASE 67
+;colin
+	RETURNF 40000
+CASE 68
+;penis
+	RETURNF 30000
+CASE 73
+;tail
+	RETURNF 40000
+CASE 74
+;bladder
+	RETURNF 100000
+CASE 75, 76
+;kidney
+	RETURNF 80000
+CASE 77
+;liver
+	RETURNF 300000
+CASE 81, 91
+;legs
+	RETURNF 100000
+CASE 83, 93
+;feet
+	RETURNF 40000
+ENDSELECT
+
+@BIONIC_CONFIG_35(ARG)
+CALL BIONIC_CONFIG_BLADDER(ARG, 2, 1)
+
+@BIONIC_CONFIG_55(ARG)
+CALL BIONIC_CONFIG_BLADDER(ARG, 10, 1)
+
+@BIONIC_CONFIG_120(ARG)
+CALL BIONIC_CONFIG_BLADDER(ARG, 2, 2)
+
+@BIONIC_CONFIG_121(ARG)
+CALL BIONIC_CONFIG_BLADDER(ARG, 10, 2)
+
+@BIONIC_CONFIG_BLADDER(ARG, nRange = 2, nPart = 1)
+#DIM nRange
+#DIM nPart
+
+C = TALENT:ARG:(95+nPart)
+PRINTFORML Please select a \@ nPart == 2 ? bowel # bladder \@ size (Current Size: %TOSTR_BLADDERSIZE(C)%)
+FOR LOCAL, -nRange, nRange+1
+	SIF STRLENS(TOSTR_BLADDERSIZE(LOCAL))
+		PRINTFORML [{LOCAL, 2}] - %TOSTR_BLADDERSIZE(LOCAL)%
+NEXT
+PRINTL
+PRINTFORML [999] - Return
+INPUT
+SELECTCASE RESULT
+CASE -nRange TO nRange
+	TALENT:ARG:(95+nPart) = RESULT
+	PRINTFORMW \@ nPart == 2 ? Bowel # Bladder \@ size changed to %TOSTR_BLADDERSIZE(RESULT)%
+	CALLF ResetBladders(ARG)
+ENDSELECT
+
+@charaHasEnabler(ARG)
+#FUNCTION
+RETURNF HasBionicPart(ARG,127) || HasBionicPart(ARG,128) || HasBionicPart(ARG,129) || HasBionicPart(ARG,130) || HasBionicPart(ARG,131)
+
+;more through check
+@charaBodyPartIsBionic(C_ID,P_ID)
+#FUNCTION
+#DIM C_ID
+#DIM P_ID
+#DIM DYNAMIC H_ID
+#DIM DYNAMIC H_DEF
+#DIM DYNAMIC H_LOOP
+#DIM DYNAMIC H_LIST, 1000
+
+FOR H_LOOP,0,DT_SELECT(@"Hediff", @"chara = {C_ID} and part = {P_ID}", "", H_LIST)
+    H_ID = H_LIST:(H_LOOP)
+    SIF BodyPartRemoved:C_ID:(DT_CELL_GET(@"Hediff", H_ID, "part", 1))
+        CONTINUE
+    H_DEF = DT_CELL_GET(@"Hediff", H_ID, "type", 1)
+
+	IF GET_STR(C_ID,"Hediff", H_DEF, "Hediff Type") == "Bionic"
+		IF GET_INT(C_ID, "Hediff", (H_DEF), "Natural")
+			CONTINUE
+		ELSEIF GET_INT(C_ID, "Hediff", (H_DEF), "Replaces Other Bionics")
+			RETURNF H_ID
+		ENDIF
+	ENDIF
+NEXT
+RETURNF 0

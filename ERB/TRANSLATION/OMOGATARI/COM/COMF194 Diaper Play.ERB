@@ -1,0 +1,276 @@
+;-------------------------------------------------
+;Diaper Play
+;Allows the 2hu to wear diapes without peeing habbit.
+;This also disables penetration commands.
+;Hard training command level: 2
+;Flags required: Diaper, Urination or Scat
+;-------------------------------------------------
+@ADD_CUSTOM_COM194
+PRINTFORML Work in progress!
+CALL Com_DiaperGrab(TARGET)
+
+@Com_DiaperGrab(ARG, ARG:1 = 0, ARG:2 = 0)
+#DIM PAGE
+#DIM PG_LINECOUNT
+#DIM PG_INLINE
+#DIM PG_CAN_MAGIC
+#DIMS CONST PICKABLE_TYPES = "Underwear", "Open-Crotch", "Pull-Up", "Diaper"
+#DIMS CONST PAD_TYPES = "Underwear", "Open-Crotch", "Pull-Up", "Diaper"
+CALL COM_DiaperCheck(ARG)
+VARSET PAGE
+
+PRINTFORML Select your underwear
+DRAWLINE
+PG_LINECOUNT = LINECOUNT
+DO
+	CLEARLINE LINECOUNT - PG_LINECOUNT 
+	VARSET PG_INLINE
+	FOR LOCAL:2,0,VAR_TEMP_MAX	
+		CALLF DiapeStats(ARG,LOCAL:2,1,1)
+		IF PANTSNAME(LOCAL:2, ARG) != "" && (RESULTS == PICKABLE_TYPES:PAGE) && (BoughtClothing:6:(LOCAL:2) || ARG:2)
+			CALLF DiapeStats(ARG,LOCAL:2,1,1)	
+			PRINTBUTTON @"%@"[{LOCAL:2,3}] - "+UNDIES_NAME_WITH_BRAND(ARG,LOCAL:2)+" ("+TOSTR(RESULT:1)+"ml/"+TOSTR(RESULT:2)+@"g%COND_STR(@"/{MagicUnderwear_Cost(ARG,LOCAL:2,ARG == MASTER ? UNDERWEAR_MAGIC_AUTO_USE_SELF # UNDERWEAR_MAGIC_AUTO_USE_OTHER)} MP",ARG == MASTER ? STRLENS(UNDERWEAR_MAGIC_AUTO_USE_SELF) # STRLENS(UNDERWEAR_MAGIC_AUTO_USE_OTHER))%)",62,LEFT%", LOCAL:2
+			PG_INLINE ++
+			IF PG_INLINE % 3 == 0
+				PRINTL
+				PG_INLINE = 0
+			ENDIF
+		ENDIF
+	NEXT
+	IF PG_INLINE % 3
+		PRINTL
+	ENDIF
+	DRAWLINE
+	FOR LOCAL,0,VARSIZE("PICKABLE_TYPES")
+		IF GROUPMATCH(LOCAL,2,3) && !nOmutsu
+			CONTINUE
+		ENDIF
+		SIF PAGE == LOCAL
+			SETCOLOR C_AQUA
+		PRINTBUTTON @"%PICKABLE_TYPES:LOCAL%", 8000+LOCAL
+		PRINTFORM 　　
+		RESETCOLOR
+	NEXT
+	PRINTL
+	DRAWLINE
+	PRINTFORML [ -3] Underwear pad: %UndiesPadName(UNDERWEAR_PAD_AUTO_USE)%
+	SIF GETBIT(TALENT:MASTER:ESP,2) || GETBIT(TALENT:MASTER:ESP,18)
+	PRINTFORML [ -4] Preferred magic type: %MagicUnderwear_GetName(ARG == MASTER ? UNDERWEAR_MAGIC_AUTO_USE_SELF # UNDERWEAR_MAGIC_AUTO_USE_OTHER)%
+	PRINTL
+	IF ARG:1 == 3
+		PRINTFORML [ -1] Remove underwear
+		PRINTFORML [  0] Automatically pick underwear
+	ELSE
+		PRINTFORML [  0] Remove Underwear
+	ENDIF
+	PRINTFORML [999] Stop
+	INPUT
+	SELECTCASE RESULT
+	CASE 8000 TO 8000+VARSIZE("PICKABLE_TYPES")
+		PAGE = RESULT-8000
+	CASE 999
+		RETURN
+	CASE -3
+		CALL UnderwearPadPick
+	CASE -4
+		SIF GETBIT(TALENT:MASTER:ESP,2) || GETBIT(TALENT:MASTER:ESP,18)
+			CALL UndiesMagicPick(ARG)
+	CASEELSE
+		LOCAL:3 = RESULT
+		BREAK
+	ENDSELECT
+LOOP 1
+
+IF !ARG:1
+CALL DiaperChangeDesc(ARG, LOCAL:3, MASTER, UNDERWEAR_PAD_AUTO_USE)
+ELSEIF ARG:1 == 2
+CALLF PANTY_REWORK_CHANGE(ARG,LOCAL:3, UNDERWEAR_PAD_AUTO_USE, MASTER, ARG == MASTER ? UNDERWEAR_MAGIC_AUTO_USE_SELF # UNDERWEAR_MAGIC_AUTO_USE_OTHER)
+ENDIF
+RETURN LOCAL:3
+
+@UnderwearPadPick
+PRINTFORML Pick what kind of padding will go inside your regular underwear.
+PRINTFORML The padding thickness will also affect your underwear's concealment.
+HTML_PRINT "Liners are considered thick-enough padding to count as <font color='#9999ff'>diapers</font>."
+PRINTL
+PRINTFORML Exceptions:
+PRINTFORML - Diapers are unaffected.
+PRINTFORML - Will only affect underwear that you change to. Caregiver changes are unaffected.
+PRINTL
+PRINTFORML Current pad: %UndiesPadName(UNDERWEAR_PAD_AUTO_USE)%
+PRINTL
+HTML_PRINT @"<button value='0'>[ 0] - %"Automatic",15,LEFT% %"(Varies)",16%: Automatically pads your underwear depending on your continence level.</button>"
+HTML_PRINT @"<button value='1'>[-1] - %"Unpadded",15,LEFT% %COND_STR("(",nPee||nScat)+PeeAndPoo(nPee,nScat,@"{UNDERWEAR_PAD_TYPES_LIQUID,4}ml",@"{UNDERWEAR_PAD_TYPES_SOLID,4}g"," /")+COND_STR(")",nPee||nScat),16%: No padding. Most discreet but has no accident protection.</button>"
+FOR LOCAL, 1, VARSIZE("UNDERWEAR_PAD_TYPES")+1
+	CALLF UNDERWEAR_PAD_TYPES(UNDERWEAR_PAD_TYPES:(LOCAL-1))
+	LOCALS '= @"<button value='{LOCAL}'>"
+	LOCALS += @"[{LOCAL,2}] - <font color='#\@ UNDERWEAR_PAD_TYPES_COUNT_AS_PAD ? 9999FF # %TOSTR(GETCONFIG("TEXT COLOR"),"X6")%\@'>%CAPITALIZE(UNDERWEAR_PAD_TYPES_LABEL),15,LEFT%</font> "
+	IF nPee||nScat
+		;Color_Gradient_PER(C_RED,C_D_RED,100 - (BB_PER*4))
+		LOCALS += @"%COND_STR("(",nPee||nScat)+PeeAndPoo(nPee,nScat,@"{UNDERWEAR_PAD_TYPES_LIQUID,4}ml",@"{UNDERWEAR_PAD_TYPES_SOLID,4}g"," /")+COND_STR(")",nPee||nScat),16%"
+	ENDIF
+	LOCALS += @": %UNDERWEAR_PAD_TYPES_DESC%"
+	LOCALS += "</button>"
+	HTML_PRINT LOCALS
+NEXT
+PRINTL
+PRINTFORML [-9] Back
+INPUT
+SELECTCASE RESULT
+CASE -1 TO VARSIZE("UNDERWEAR_PAD_TYPES")+1
+	UNDERWEAR_PAD_AUTO_USE = RESULT
+CASEELSE
+ENDSELECT
+;[ 1] - Sanitary pad    (  20ml/  20g): Zero-feel padding intended for periods. Not made to contain pee.
+;[ 2] - Thin pad        ( 200ml/ 200g): A light pee pad for small bladder leaks and spurts.
+;[ 3] - Bladder pad     ( 400ml/ 200g): Bladder pad for bursts and surges of pee. Not for full on accidents.
+;[ 4] - Thick pad       ( 600ml/ 300g): A thicker yet discreet pad. Can contain an accident from a small bladder.
+;[ 5] - Thin liner      (1200ml/ 885g): Long yet thin liner that can hold a full-on accident.
+;[ 6] - Underwear liner (1600ml/1100g): Diaper-like liner that holds a bladder and bowel loss with some extra.
+;[ 7] - Thick liner     (2500ml/1500g): While it may scream "You're padded", this liner can endure multiple accidents with ease.
+;[ 8] - Bulky liner     (3400ml/2130g): Like strapping a bulky diaper to your underwear, this liner is made for total incontinence
+;[ 1] - Void liner     : Pocket barrier panties that moves your excretions to a pocket dimension
+
+
+@UndiesPadName(ARG)
+#FUNCTIONS
+SELECTCASE ARG
+CASE 0
+	RETURNF "Automatic"
+CASE -1
+	RETURNF "Unpadded"
+CASE IS > 0
+	CALLF UNDERWEAR_PAD_TYPES(UNDERWEAR_PAD_TYPES:(ARG-1))
+	RETURNF Capitalize(UNDERWEAR_PAD_TYPES_LABEL)
+ENDSELECT
+
+
+@UndiesPadDesc(ARG)
+#FUNCTIONS
+SELECTCASE ARG
+CASE 0
+	RETURNF "No padding. Most discreet but has no accident protection."
+CASE -1
+	RETURNF "Automatically pads your underwear depending on your continence level."
+CASE IS > 0
+	CALLF UNDERWEAR_PAD_TYPES(UNDERWEAR_PAD_TYPES:(ARG-1))
+	RETURNF Capitalize(UNDERWEAR_PAD_TYPES_LABEL)
+ENDSELECT
+
+@UndiesPadWearFlavor(ARGS)
+SELECTCASE ARGS
+CASE "Sanitary"
+	PRINTFORML It feels like nothing...
+CASE "Thin"
+    PRINTFORML You can't seem to feel it at all. 
+CASE "Average"
+	PRINTFORML You can feel it a bit for sure.
+CASE "Thick"
+	PRINTFORML You definitely feel like you're padded...
+CASE "Thin Liner"
+	PRINTFORML It feels like you're wearing a pull-up diaper...
+CASE "Average Liner"
+	PRINTFORML It feels like you're wearing a taped diaper...
+CASE "Thick Liner"
+	PRINTFORML It feels like you're wearing a thick diaper...
+CASE "Bulky Liner"
+	PRINTFORML This pad is really... really thick...
+ENDSELECT
+
+@UndiesMagicPick(ARG)
+; #DIM DYNAMIC MagicTypes, 30
+; #DIM DYNAMIC MagicTypeCount
+PRINTFORML Underwear can be attuned to certain magic types with an MP cost. You need to have enough MP to attune the underwear.
+PRINTFORML Depending on the underwear type, the cost to attune can be expensive
+PRINTL
+PRINTFORML - Self: Will only affect your underwear that you change to. Caregiver changes are unaffected.
+PRINTFORML - Other: Any underwear that you change yourself even if not yours
+PRINTL
+PRINTFORML Current attunement   (Self): %MagicUnderwear_GetName(UNDERWEAR_MAGIC_AUTO_USE_SELF)%
+PRINTFORML Current attunement (Others): %MagicUnderwear_GetName(UNDERWEAR_MAGIC_AUTO_USE_OTHER)%
+PRINTFORML This will change the attunement of \@ ARG == MASTER ? your underwear # the underwear you give to others. \@
+PRINTL
+; HTML_PRINT @"<button value='0'>[ 0] - %"Automatic",15,LEFT% %"(Varies)",16%: Automatically pads your underwear depending on your continence level.</button>"
+; HTML_PRINT @"<button value='1'>[-1] - %"Unpadded",15,LEFT% %COND_STR("(",nPee||nScat)+PeeAndPoo(nPee,nScat,@"{UNDERWEAR_PAD_TYPES_LIQUID,4}ml",@"{UNDERWEAR_PAD_TYPES_SOLID,4}g"," /")+COND_STR(")",nPee||nScat),16%: No padding. Most discreet but has no accident protection.</button>"
+
+FOR LOCAL, 0, 30
+	SIF DT_CELL_GET("DiapeMagic", LOCAL, "id") == 0
+		BREAK
+	LOCAL:1 = DT_CELL_GET("DiapeMagic", LOCAL, "youjutsuType")
+	LOCALS '= ""
+	IF !INRANGE(LOCAL:1,0,64)
+		GOTO HasMagic
+	ELSEIF GETBIT(TALENT:MASTER:ESP,LOCAL:1)
+		$HasMagic
+		LOCALS += @"<button value='%DT_CELL_GETS("DiapeMagic", LOCAL, "defName")%'>"
+	ENDIF
+	LOCALS += @"[{LOCAL,2}] - "
+	IF !INRANGE(LOCAL:1,0,64)
+		LOCALS += @"<font color='#%TOSTR(GETCONFIG("TEXT COLOR"),"X6")%'>"
+	ELSE
+		LOCALS += @"<font color='#\@ GETBIT(TALENT:MASTER:ESP,LOCAL:1) ? %TOSTR(GETCONFIG("TEXT COLOR"),"X6")% # 666666\@'>"
+	ENDIF
+	LOCALS += @"%DT_CELL_GETS("DiapeMagic", LOCAL, "label"),15,LEFT% "
+	LOCALS += @": %DT_CELL_GETS("DiapeMagic", LOCAL, "description")%</font>"
+	IF !INRANGE(LOCAL:1,0,64)
+		LOCALS += "</button>"
+	ELSEIF GETBIT(TALENT:MASTER:ESP,LOCAL:1)
+		LOCALS += "</button>"
+	ELSE
+		SIF INRANGE(LOCAL:1,0,64)
+		TRYCALLFORMF NAS_ESP_{LOCAL:1}
+		LOCALS += @"(<font color='#%TOSTR(NAS_ESP_COLOR,"X6")%'>%NAS_ESP_NAME%</font> Youjutsu not learned)"
+	ENDIF
+	HTML_PRINT LOCALS
+NEXT
+PRINTL
+PRINTBUTTON "[Back]", "[GoBack]"
+; PRINTFORML [-9] Back
+INPUTS
+; SELECTCASE RESULT
+; CASE -1 TO VARSIZE("UNDERWEAR_PAD_TYPES")+1
+; 	UNDERWEAR_PAD_AUTO_USE = RESULT
+; CASEELSE
+; ENDSELECT
+SELECTCASE RESULTS
+CASE "[GoBack]"
+	RETURN
+CASEELSE
+	LOCALS:0 '= RESULTS
+	IF !MagicUnderwear_GetID(LOCALS:0)
+		REUSELASTLINE Invalid Input
+		RESTART
+	ENDIF
+	IF INRANGE(MagicUnderwear_GetID(LOCALS:0),0,64)
+		TRYCALLFORMF NAS_ESP_{MagicUnderwear_GetID(LOCALS:0)}
+		IF !GETBIT(TALENT:MASTER:ESP,MagicUnderwear_GetMagicType(LOCALS:0))
+			REUSELASTLINE %NAS_ESP_NAME% Youjutsu not learned
+			RESTART
+		ENDIF
+	ENDIF
+	IF ARG == MASTER
+		UNDERWEAR_MAGIC_AUTO_USE_SELF '= LOCALS:0
+	ELSE
+		UNDERWEAR_MAGIC_AUTO_USE_OTHER '= LOCALS:0
+	ENDIF
+ENDSELECT
+@ADD_CUSTOM_COM_ABLE194
+;浣腸実行判定
+SIF !TFLAG:100
+	RETURN 0
+;一括管理
+SIF GLOBAL_COMABLE(194)
+	RETURN RESULT
+IF FLAG: 70 == 1
+ELSE
+;Do not enable if obdience + desire + exposure + diaper attraction is less than 5 and is continent enough
+SIF ABL:従順 + ABL:欲望 + ABL:露出癖 + ABL:DiaperAttraction < 5 && EffectivePottyLevel(TARGET) > -2
+	RETURN 0
+ENDIF
+;'nuff said
+SIF !nOmutsu
+	RETURN 0
+SIF PANTIES_LOCKED(TARGET)
+	RETURN 0
+RETURN 1
+

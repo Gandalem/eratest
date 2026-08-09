@@ -1,0 +1,1233 @@
+;FLAG:50:bit表記:0魔理沙,1るみゃ,2大ちゃん,3⑨,4咲夜,5レミリア,6アリス,7白百合,8黒百合、9-10-11プリズムリバーズ,12妖夢,13-14-15八雲家,16リグル,17みすちー,18あやや,19映姫様,20-21-22山の神様たち,23天子,24衣玖さん,25-26-27地霊組,28ナズー,29たったらーん,30ぬえ,31はたてん,32華扇,33エレン,34理香子,35明羅,
+;FLAG:50:bit表記:36里香,37ルイズ,38さとり様,39フランちゃん,40にとりん,41鈴仙,42てゐ,43パチェ,44ひじりん,45神子様,(46こころ,意味なし),47めーりん,48こぁ,49パルスィ,50もこたん,51姫様,52影狼,53勇儀,54椛,55ゆゆ様,56けーね,57ゆうかりん,58マミゾウ,59小鈴,(60針妙丸・意味なし),61永琳,62赤蛮奇,63レティ
+;FLAG:51:bit表記:0メディ,1小町,2静葉,3穣子,4雛,5阿求,6蓮子,7メリー,8キスメ,9ヤマメ,10一輪,11ムラサ,12星,13響子,14芳香,15にゃんにゃん,16トジ,17フト,18わかさぎ,19弁々,20八橋,21雷鼓,22正邪,23,24,25,26,27,28,29,30,31,32,33,34,35,
+;FLAG:51:bit表記:
+;FileName_BEFORETRAIN.ERB -------------------------- Rev1.00
+;朝１日スタート処理
+;CALL		SYSTEM
+;ARG		VOID
+;RETURN		VOID
+;COMMENT	
+;-----------------------------------------------------------
+@EVENTTRAIN
+#DIM コレクションスキマ入手数
+#DIM 易書入手数
+#DIM 睡眠時間
+#DIM あなたの起床時間
+#DIM 依頼主候補
+#DIM 依頼人
+#DIM 同居人
+#DIM 追加睡眠時間
+#DIM 起床妨害確率
+#DIM 安眠補正
+#DIM 快眠係数
+#DIM ET_TIME
+#DIM ClothingLocal ;custom code
+
+;mid day save
+IF inTrain
+	;let's assume it's a mid day save
+	FOR LOCAL,0,DT_ROW_LENGTH("SavedTempStats")
+		SELECTCASE DT_CELL_GETS("SavedTempStats", LOCAL, "type")
+		CASE "TFLAG"
+			TFLAG:DT_CELL_GET("SavedTempStats", LOCAL, "slot") = DT_CELL_GET("SavedTempStats", LOCAL, "integer")
+		CASE "TCVAR"
+			TCVAR:DT_CELL_GET("SavedTempStats", LOCAL, "chara"):DT_CELL_GET("SavedTempStats", LOCAL, "slot") = DT_CELL_GET("SavedTempStats", LOCAL, "integer")
+		CASE "TEQUIP"
+			TEQUIP:DT_CELL_GET("SavedTempStats", LOCAL, "chara"):DT_CELL_GET("SavedTempStats", LOCAL, "slot") = DT_CELL_GET("SavedTempStats", LOCAL, "integer")
+		CASE "PALAM"
+			PALAM:DT_CELL_GET("SavedTempStats", LOCAL, "chara"):DT_CELL_GET("SavedTempStats", LOCAL, "slot") = DT_CELL_GET("SavedTempStats", LOCAL, "integer")
+		ENDSELECT
+	NEXT
+	DT_RELEASE "SavedTempStats"
+	CALL InitSavedTempStats()
+	SELECTCASE inTrain
+	CASE 1
+		CALL NAS_LOAD_END
+		RETURN
+	CASE 3
+	;Lucid dream
+		CALL NAS_LOAD_END
+		CALL LucidDream("",DAILY_Lucid_Stats:1,DAILY_Lucid_Stats:2,DAILY_Lucid_Stats:3)
+		RETURN
+	CASE 4
+	;Phaseskip
+		inTrain = 1
+		RETURN
+	ENDSELECT
+ENDIF
+inTrain = 1
+
+
+;NAS: loading timer
+IF benchMarkStart
+	CALL BENCHMARK_START_STAGE
+ENDIF
+; [IF_DEBUG]
+; PRINTFORML Right click to start a loading timer.
+; FORCEWAIT
+; IF MESSKIP()
+; ET_TIME = GETMILLISECOND()
+; ENDIF
+; [ENDIF]
+CALL NAS_START_LOADING()
+
+;TRAGET初期化
+VARSET TARGET
+VARSET LOCAL
+;朝1日スタート処理
+;初期化
+;addition custom code, let dialogues check for sleeping pill. reset sleeping pill status when you get up
+SIF nSleepingPill_Taken
+	nSleepingPill_Taken = !nSleepingPill_Taken
+
+;(天候パッチ)現在の天候管理が0であるときは初回プレイであると判断
+IF NOW_WEATHER_CONTROL == 0
+	;(天候パッチ)短期予報を行う
+	CALL WEATHER_FORECAST_1TERM
+	;(天候パッチ)1日予報を行う
+	CALL WEATHER_FORECAST_1DAY
+ENDIF
+
+FLAG:日替わりイベント = RAND:1000
+FLAG:70 = 0
+;(天候パッチ)時刻・天候に応じて背景色を変更
+CALL SET_MAP_WEATHER_BGCOLOR
+CFLAG:MASTER:添い寝中 = 0
+IF IN_HOME(CFLAG:MASTER:初期位置) == 0 || CFLAG:MASTER:初期位置 <= 0
+	PRINTW Initial location is invalid. Reverting to default location.
+	CFLAG:MASTER:初期位置 = デフォルト初期位置
+ENDIF
+TFLAG:102 = 1
+TFLAG:運搬 = MASTER
+;addition custom code, disabled
+;TFLAG:宴会場 = GET_JOBPLACE("宴会")
+UFUFU_START_TIME = 0
+UFUFU_START_DAY = 0
+BladderDiary =
+VARSET BladderDiaryToilet
+
+FOR LOCAL,0,CHARANUM
+	SIF LOCAL%10 == 0
+		CALL ANIMATION_LOAD_NAS(LOCAL, 0, CSV_CHARANUM(), @"Initializing characters"); nas loading
+	CALL InitializeBeforeTrain(LOCAL)
+	;end ufufu
+	SIF CFLAG:LOCAL:うふふ
+			CALL ENDUFUFU(LOCAL)
+NEXT
+
+;EXキャラ部屋名再定義
+
+
+;エンカウントモブ店員のリセット
+CALL モブ店員画像リセット
+
+;自由行動落とし穴＆雪だるまの処理
+VARSET FA16_HOLE
+FOR COUNT, 0, 100
+	SIF !FA17_OBJ:COUNT
+		CONTINUE
+	CALL INIT_SCREEN_MESSAGE(@"Destroying snowmen"); nas loading
+	;完成した雪だるまは翌日に持ち越される
+	IF FA17_EXIST:COUNT % 10 || FA17_OBJ:COUNT < 1000
+		FA17_OBJ:COUNT = 0
+		FA17_EXIST:COUNT =0
+		FA17_TYPE:COUNT = 0 ;custom code
+	ELSE
+		FA17_EXIST:COUNT ++
+	ENDIF
+NEXT
+
+CALL RESET_DISH
+CALL INIT_SCREEN_MESSAGE(@"Checking the time"); nas loading
+CALL CHANGE_TIMEZONE
+;時間がMASTERの起床予定時刻より大きければ日付＋１
+IF TIME > TIME:3
+	DAY ++
+	DAY:3 ++
+	TIME -= 1440
+	
+	CALL CHANGE_MONTH
+	;(天候パッチ)短期予報を行う
+	CALL WEATHER_FORECAST_1TERM
+	;(天候パッチ)1日予報を行う
+	CALL WEATHER_FORECAST_1DAY
+	;宴会の参加者決定
+	; SIF FLAG:3 && 宴会開始日判定()
+	; 	CALL ENKAI_ENTRY
+	CALL ADD_BANQUET_SET_PARTICIPANTS() ;addition custom code
+ENDIF
+
+;乙女の身体周期の進行
+;=================================
+FOR LOCAL,0,CHARANUM
+	SIF LOCAL%10 == 0
+		CALL ANIMATION_LOAD_NAS(LOCAL, 0, CSV_CHARANUM(), @"Cycling menstruation cycles"); nas loading
+	;キス経験が0なら[キス未経験]を取得（未設定キャラへの対策と思われる）
+	SIF EXP:LOCAL:キス経験 == 0 && TALENT:LOCAL:キス未経験 == 0 && CFLAG:LOCAL:ファーストキス喪失対象 != 1
+		 TALENT:LOCAL:キス未経験 = 1
+	;女性器不在（性別のbit0が0）もしくは[幼児／幼児退行][幼稚]で[初潮]未取得であれば周期を設定しない
+	IF ((TALENT:LOCAL:150 || TALENT:LOCAL:151 || CharaAge:LOCAL:0 < 13) && !TALENT:LOCAL:初潮) || !GETBIT(TALENT:LOCAL:性別,0)
+		CFLAG:LOCAL:900 = 0
+		CONTINUE
+	ENDIF
+	;周期が未設定の場合ここで決定
+	SIF (CFLAG:LOCAL:900 == 0 || CFLAG:LOCAL:900 > 11)
+		CFLAG:LOCAL:900 = RAND:10
+	;周期が1進む
+	CFLAG:LOCAL:900 += 1
+	;なお10日周期（11以上で1の位だけにする）
+	SIF CFLAG:LOCAL:900 > 10
+		 CFLAG:LOCAL:900 %= 10
+	SIF TALENT:LOCAL:妊娠 > 0
+	 	TALENT:LOCAL:妊娠 += 1
+NEXT
+;=================================
+
+CALL 来訪フラグ
+
+;EXキャラ休日デート先ばったり判定
+CALL 遭遇判定
+
+同居人 = 0
+追加睡眠時間 = 0
+;布団に引きずり込まれる
+IF CFLAG:MASTER:現在位置 == OMANEKIBEYA()
+	同居人 = CFLAG:MASTER:お招き
+ELSEIF PRIVATEROOM:(CFLAG:MASTER:初期位置 % 100) && CFLAG:MASTER:現在位置 == CFLAG:MASTER:初期位置
+	同居人 = PRIVATEROOM:(CFLAG:MASTER:初期位置 % 100)
+ENDIF
+
+CFLAG:同居人:最後に会った日 = DAY
+
+IF TALENT:同居人:恋慕 && INRANGE(TIME:3, CFLAG:同居人:起床時間 - 180,CFLAG:同居人:起床時間) && 同居人 != MASTER
+	起床妨害確率 = 20
+	SIF DAY:2 == 2
+		起床妨害確率 = 10
+	SIF DAY:2 == 4
+		起床妨害確率 = 35
+	IF 起床妨害確率 > RAND:100
+		PRINTFORML When you try to crawl out from the %BED_FUTON()%, %CALLNAME:同居人% embraces you.
+		PRINTFORML It seems %HE_SHE(同居人)% wants to stay together a bit longer.
+		PRINTFORMW You decide to stay in the %BED_FUTON()% until %HE_SHE(同居人)% decides to get up...
+		EXP:同居人:愛情経験 += 5
+		CALL COLORMESSAGE(@"Love Exp＋5 （%CALLNAME:同居人%）",C_PINK,1)
+		追加睡眠時間 = CFLAG:同居人:起床時間 - TIME:3
+	ENDIF
+ENDIF
+
+FOR LOCAL, 0, CHARANUM
+	SIF IsDead:LOCAL:0
+		CONTINUE
+	SIF LOCAL % 10 == 0
+	CALL ANIMATION_LOAD_NAS(LOCAL, 0, CHARANUM, @"Setting clothes" ); nas loading
+
+	;衣装設定
+	;行動中に着る服を設定してお着替えする
+	IF LOCAL == MASTER || !睡眠時間(LOCAL)
+		CALL SELECT_CLOTHES(LOCAL, "今日の衣装")
+		CALL SELECT_CLOTHES(LOCAL, "今日のパジャマ")
+		CALL CTRL_CLOTHES_SET(LOCAL, "現在衣装の変更_普段着")
+		SETBIT CFLAG:LOCAL:着替え実行, 0
+	ELSE
+		CALL SELECT_CLOTHES(LOCAL, "明日の衣装")
+		CALL SELECT_CLOTHES(LOCAL, "今日のパジャマ")
+		CALL CTRL_CLOTHES_SET(LOCAL, "現在衣装の変更_パジャマ")
+		CFLAG:LOCAL:パジャマ = 1
+		SETBIT CFLAG:LOCAL:着替え実行, 1
+	ENDIF
+	IF SPECIAL_OUTFIT(LOCAL)
+		CALL CTRL_CLOTHES_SET(LOCAL, "現在衣装の変更_衣装セット", SPECIAL_OUTFIT(LOCAL))
+		[IF_DEBUG]
+		PRINTFORML %CALLNAME:LOCAL% seems to be wearing clothes different than usual.
+		[ENDIF]
+		TCVAR:LOCAL:アナザー普段着 = 1
+	ENDIF
+	IF LOCAL != MASTER
+	CALLF ARMUP(LOCAL)	
+	;i'm trying to get this to work	
+	CALLF ARMORUP(LOCAL)
+	ENDIF
+	;CALLF EquipWeapon(LOCAL,EQUIP:LOCAL:Weapon)
+
+
+	CALL 下着確認リセット(LOCAL)
+	CALL CLOTHES_SETTING_TRAIN(LOCAL)
+NEXT
+
+
+;30分毎に神社のキャラを移動させる
+LOCAL = 1
+LOCAL:6 = TIME:1
+NAS_BedWetTimer_Current = 0 ;bedwetting count tracker
+VARSET EV901_BED_ACCIDENT
+WHILE LOCAL
+	IF TIME + 30 < TIME:3 + 追加睡眠時間
+		TIME:1 = TIME + 1440 * DAY
+		TIME += 30
+		NAS_BedWetTimer_Current += 30
+		CALL ANIMATION_LOAD_NAS(TIME:1, LOCAL:6, TIME:3 + 追加睡眠時間 + (1440*DAY), @"Checking for movement on %時刻表示(TIME)%" ); nas loading
+		IF GETBIT(nPee,1) || GETBIT(nScat,2)
+			CALL BEDWETTING_GETUP
+			;interval alarm
+			IF NAS_BedWetTimer_Current >= NAS_BedWetAlarm_Timer && GETBIT(NAS_BEDWETALARM,1) && NAS_BedWetAlarm_Timer > 0
+				;#; PRINTFORML Bedwetting Alarm Ready.
+				CALL BEDWETTING_ALARM(PeeBarStage(MASTER) >= 3,PooBarStage(MASTER) >= 3)
+				NAS_BedWetTimer_Current = 0
+			ENDIF
+			IF (PeeBarStage(MASTER) >= 5 && GETBIT(nPee,1))
+				EV901_BED_ACCIDENT:0 += BASE:MASTER:4
+				BASE:MASTER:4 = 0
+				;CALL DAILY_CONDITION_EV901
+			ENDIF
+			IF (PooBarStage(MASTER) >= 5 && GETBIT(nScat,2))
+				EV901_BED_ACCIDENT:1 += BASE:MASTER:Poo
+				BASE:MASTER:Poo = 0
+			ENDIF
+		ENDIF
+		CALL CHARA_MOVEMENT
+	ELSE
+		;全キャラの現在位置保存
+		FOR LOCAL:1,0,CHARANUM
+			CFLAG:(LOCAL:1):前ターン位置 = CFLAG:(LOCAL:1):現在位置
+		NEXT
+		;時間をMASTERの起床予定時刻に
+		TIME =  TIME:3 + 追加睡眠時間
+		TIME:1 = TIME + 1440 * DAY
+		TFLAG:あなた起床 = TIME + 1440 * DAY
+		CALL CHARA_MOVEMENT
+		BREAK
+	ENDIF
+WEND
+CFLAG:MASTER:あなた前ターン位置 = CFLAG:MASTER:初期位置
+CALL CHANGE_TIMEZONE()
+
+CALL NAS_LOAD_END
+;目覚め共通メッセージ表示
+CALL GOODMORNING
+;time done
+; [IF_DEBUG]
+; IF MESSKIP()
+; 	Y = GETMILLISECOND()
+; 	PRINTFORML It took {Y-ET_TIME}ms to calculate movements and start a day
+; 	FORCEWAIT
+; 	VARSET ET_TIME
+; ENDIF
+;[ENDIF]
+IF benchMarkStart
+	CALL BENCHMARK_ADVANCE_STAGE
+ENDIF
+
+;NAS: Player Housing
+PlayerLandComfort:0 = LIMIT(PlayerLandComfort-(RAND:5 + 3),0,PlayerLandComfort:1)
+
+VARSET nChildrenPresent
+VARSET CHILD_PRINT_DESCRIPTION
+VARSET CHILD_HUNGER
+nChildrenPresentCount = 0
+
+FOR LOCAL,0,CHARANUM
+	IF IsDead:LOCAL:0 || CharaTrauma:LOCAL:0 >= 5
+		CFLAG:LOCAL:睡眠 = 1
+		;dead bitches stay dead
+		CONTINUE
+	ENDIF
+	;player
+	SIF LOCAL == MASTER
+		CONTINUE
+
+	;初期位置は99で統一（53は古いデータ用）
+	SIF CFLAG:LOCAL:初期位置 == 53 || CFLAG:LOCAL:初期位置 == MAXROOM || CFLAG:LOCAL:初期位置 == 0
+		CFLAG:LOCAL:初期位置 = SUKIMA()
+	SIF CFLAG:LOCAL:神社在住
+		CFLAG:LOCAL:初期位置 = CFLAG:LOCAL:神社在住
+	;お仕事を定義
+	BASE:LOCAL:仕事量 = MAXBASE:LOCAL:仕事量
+	;お招きしていたら遭遇フラグを自宅位置にする
+	IF CFLAG:LOCAL:お招き
+		[SKIPSTART]
+		;連動キャラはワープしてしまうので一括補正
+		;↑これどういう意味だろ、構文見る限り最後のFLAG:(590 + LOCAL) = CFLAG:LOCAL:自宅位置だけでいい気がするけど
+		SELECTCASE LOCAL
+		;プリズムリバー
+		CASE 20, 21, 22
+			FLAG:(590 + 20) = CFLAG:LOCAL:自宅位置
+			FLAG:(590 + 21) = CFLAG:LOCAL:自宅位置
+			FLAG:(590 + 22) = CFLAG:LOCAL:自宅位置
+		;秋姉妹
+		CASE 77, 78
+			FLAG:(590 + 77) = CFLAG:LOCAL:自宅位置
+			FLAG:(590 + 78) = CFLAG:LOCAL:自宅位置
+		;蓮メリ
+		CASE 81, 82
+			FLAG:(590 + 81) = CFLAG:LOCAL:自宅位置
+			FLAG:(590 + 82) = CFLAG:LOCAL:自宅位置
+		;九十九姉妹（自宅はないが設定した時用）
+		CASE 94, 95
+			FLAG:(590 + 94) = CFLAG:LOCAL:自宅位置
+			FLAG:(590 + 95) = CFLAG:LOCAL:自宅位置
+		CASEELSE
+			FLAG:(590 + LOCAL) = CFLAG:LOCAL:自宅位置
+		ENDSELECT
+		[SKIPEND]
+		CFLAG:LOCAL:遭遇位置 = CFLAG:LOCAL:自宅位置
+		;MASTERは外泊していたらデートフラグ（外出フラグ）を立てる
+		SIF CFLAG:MASTER:お招き
+			CFLAG:MASTER:デート中 = CFLAG:LOCAL:自宅位置 / 100
+		;その日は連泊できないように
+		TCVAR:LOCAL:連泊禁止 = 1
+	ENDIF
+	;育児中なら子供の行動を判定
+	IF FLAG:子供描写 && TALENT:LOCAL:育児中 ;check all children
+		FOR LOCAL:11, 1, MAXCHILD + 1
+		SIF CHILDNAME:LOCAL:(LOCAL:11) == ""
+			CONTINUE
+		SIF CHILD_INDEPENDENT:LOCAL:(LOCAL:11)
+			CONTINUE
+		CALL CHILD_MOVEMENT(LOCAL, LOCAL:11)
+		NEXT
+	ENDIF
+	;自立した子供がいるなら子供の行動を判定
+	SIF FLAG:子供描写 && CFLAG:LOCAL:子供人数 - CFLAG:LOCAL:育児人数 > 0
+		CALL CHILD_MOVEMENT_2(LOCAL)
+NEXT
+
+;システム変化系イベント
+CALL SYS_EVENT
+
+;起床時間の記録
+あなたの起床時間 = 1440 * DAY + TIME
+
+;体力気力の回復
+IF DAY == 1
+	睡眠時間 = 480
+ELSE
+	睡眠時間 = あなたの起床時間 - CFLAG:MASTER:就寝時間 - 追加睡眠時間 / 2
+ENDIF
+CFLAG:MASTER:デート中 = CFLAG:MASTER:現在位置 / 100
+PRINTL
+IF FLAG:気絶中断
+	;SIF CFLAG:MASTER:現在位置 != ENTRANCE
+	;	CFLAG:MASTER:デート中 = FLAG:気絶中断 / 100
+	FLAG:気絶中断 = 0
+	睡眠時間 /= 5
+	PRINTFORMW Sleeping in such strange places is sure to give one back pains...
+ELSEIF CFLAG:MASTER:徹夜
+	睡眠時間 /= 2
+	PRINTFORMW Last night's sleep wasn't enough...
+ELSE
+	SIF !benchMarkStart
+	PRINTFORMW Slept for {睡眠時間 / 60} hours
+ENDIF
+CALL SleepSoundly
+安眠補正 = RESULT
+快眠係数 = 480 - (60 * TALENT:MASTER:回復速度) - 安眠補正
+BASE:MASTER:体力 += MAXBASE:MASTER:体力 * 睡眠時間 / 2 / 快眠係数
+BASE:MASTER:気力 += MAXBASE:MASTER:気力 * 睡眠時間 / 快眠係数
+BASE:MASTER:精力 += MAXBASE:MASTER:精力 * 睡眠時間 / 快眠係数 / (!IS_SPERMARCHE(MASTER) ? 5 # 1) ;addition custom code
+BASE:MASTER:体力 = MIN(MAXBASE:MASTER:体力,BASE:MASTER:体力)
+BASE:MASTER:気力 = MIN(MAXBASE:MASTER:気力,BASE:MASTER:気力)
+BASE:MASTER:精力 = MIN(MAXBASE:MASTER:精力,BASE:MASTER:精力)
+BASE:MASTER:勃起 = MIN(1000 * BASE:MASTER:体力 / MAXBASE:MASTER:体力,1000)
+;DEBUGPRINTFORM 体力{MAXBASE:MASTER:体力 * 睡眠時間 / 2 / (480 -120 * TALENT:MASTER:回復速度)}回復
+CFLAG:MASTER:徹夜 = 0
+
+;process DOWNBASE from morning events
+FOR LOCAL, 0, CHARANUM
+	FOR LOCAL:1, 0, 100
+		BASE:LOCAL:(LOCAL:1) -= DOWNBASE:MASTER:(LOCAL:1)
+	NEXT
+	VARSET DOWNBASE:LOCAL:0
+NEXT
+
+IF 0 > BASE:MASTER:精力
+	BASE:MASTER:気力 += BASE:MASTER:精力 * 5
+	IF 0 > BASE:MASTER:気力
+		PRINTFORMW You're not feeling well today, likely in response to yesterday's reckless ejaculation...
+		BASE:MASTER:体力 += BASE:MASTER:気力
+		BASE:MASTER:気力 = 0
+	ELSE
+		PRINTFORMW You're not sure if it's yesterday's reckless ejaculation to blame, but you don't feel refreshed at all.
+	ENDIF
+	BASE:MASTER:精力 = 0
+ENDIF
+
+IF EV901_BED_ACCIDENT:0 || EV901_BED_ACCIDENT:1
+	BASE:MASTER:4 += EV901_BED_ACCIDENT:0
+	BASE:MASTER:Poo += EV901_BED_ACCIDENT:1
+	CALL DAILY_CONDITION_EV901
+	;PRINTFORML You feel some wetness in your %PeeProtectType(MASTER)%, indicating that you %FSYN("pee:ed")% yourself in your sleep.
+
+ENDIF
+
+;依頼の発生と消滅
+CALL IRAI_HAPPEN
+CALL IRAI_VANISH
+CALL MEMO_IRAI_DEADLINE
+CALLF ResetBladders(MASTER)
+VARSET nInsemination
+VARSET DAILY_Lucid_Stats
+SIF Add_Request_Debug_Info ;addition custom code
+    CALLF Add_Request_Debug_Overview
+
+IF FLAG:おみくじ契約
+	DRAWLINE
+	PRINTFORML 
+	PRINTFORML ┌────────┐
+	PRINTFORML ｜　　　　　　　　｜
+	PRINTFORML ｜　Wonderful 　　｜
+	PRINTFORML ｜　　 Omikuji　　｜
+	PRINTFORML ｜　　　　　　　　｜
+	PRINTFORML └────────┘
+	PRINTFORMW 
+	CALL FORTUNE
+	PRINTFORML 
+	DRAWLINE
+ENDIF
+IF FLAG:コレクションスキマ != NOW_PERIOD()
+	IF FLAG:コレクションスキマ < NOW_PERIOD()
+		コレクションスキマ入手数 = 2
+		易書入手数 = 1
+	ELSE
+		コレクションスキマ入手数 = (FLAG:コレクションスキマ - NOW_PERIOD()) * 2
+		易書入手数 = FLAG:コレクションスキマ - NOW_PERIOD()
+	ENDIF
+	ITEM:コレクションのスキマ = MIN(コレクションスキマ入手数 + ITEM:コレクションのスキマ, 10)
+	ITEM:易書 = MIN(易書入手数 + ITEM:易書, 5)
+	FLAG:コレクションスキマ = NOW_PERIOD()
+	PRINTL
+	PRINTFORML ☆Collector's Gap quantity+ (now: {ITEM:コレクションのスキマ})
+	PRINTFORML ☆Fortune Letter quantity+ (now: {ITEM:易書})
+ENDIF
+;nas marketeers injector
+IF HealthInsuranceLevel >= 2 && !ITEM:MarketeersInjector
+	IF !HealthInsuranceGotInjectorFirst
+		HealthInsuranceGotInjectorFirst = 1
+		CALL MarketeersInjectorGet()
+	ELSE
+		ITEM:MarketeersInjector = MAX(ITEM:MarketeersInjector, 1)
+		PRINTFORML ☆Marketeers Autoinjector quantity+ (now: {ITEM:MarketeersInjector})
+	ENDIF
+ENDIF
+;////////////////////////////
+
+;IF !ITEM:ミラダの石 && (FLAG:ミラダ支給 < NOW_PERIOD())
+;	CALL COLORMESSAGE(@"Have you heard of the Millennium Stone of Mirada that Monopolizes Lust?",C_D_PINK,2)
+;	PRINTFORMW ☆Got a Millennium Stone of Mirada that Monopolizes Lust
+;	ITEM:ミラダの石 ++
+;	FLAG:ミラダ支給 = NOW_PERIOD()
+;ENDIF
+;小作人かつ月初め（初日除く）なら年貢のとりたて
+;外泊して逃げまわることもできなくはない
+SIF FLAG:地主 && FLAG:年貢 && (TARGET == FLAG:地主 || CFLAG:MASTER:現在位置 != OMANEKIBEYA())
+	CALL NENGU_NOUMIN
+CALL KODUCHI
+CALL CHARA_MOVEMENT
+
+
+;起床時に枕元へのプレゼント判定を行う
+;CALL GET_GIFT
+
+;調教者は誰か
+IF ASSIPLAY == 0
+	PLAYER = MASTER
+ELSE
+	PLAYER = ASSI
+ENDIF
+;--------------------------------------------
+;大掃除
+FOR LOCAL,1,11
+SIF CFLAG:LOCAL:335 > 0
+	CFLAG:LOCAL:335 -= 1
+NEXT
+SIF CFLAG:MASTER:335 > 0
+	CFLAG:MASTER:335 -= 1
+
+CALL CLOTHES_SETTING_TRAIN(MASTER)
+
+FOR LOCAL, 0, CHARANUM
+	;衣装設定
+	;行動中に着る服を設定してお着替えする
+	IF LOCAL == MASTER || !睡眠時間(LOCAL)
+		CFLAG:LOCAL:パジャマ = 0 ;disable pajama mode before setting clothes
+		CALL SELECT_CLOTHES(LOCAL, "今日の衣装")
+		CALL SELECT_CLOTHES(LOCAL, "今日のパジャマ")
+		CALL CTRL_CLOTHES_SET(LOCAL, "現在衣装の変更_普段着")
+		SETBIT CFLAG:LOCAL:着替え実行, 0
+	ELSE
+		CFLAG:LOCAL:パジャマ = 1
+		CALL SELECT_CLOTHES(LOCAL, "明日の衣装")
+		CALL SELECT_CLOTHES(LOCAL, "今日のパジャマ")
+		CALL CTRL_CLOTHES_SET(LOCAL, "現在衣装の変更_パジャマ")
+		SETBIT CFLAG:LOCAL:着替え実行, 1
+	ENDIF
+	IF SPECIAL_OUTFIT(LOCAL)
+		CALL CTRL_CLOTHES_SET(LOCAL, "現在衣装の変更_衣装セット", SPECIAL_OUTFIT(LOCAL))
+		[IF_DEBUG]
+		PRINTFORML %CALLNAME:LOCAL% seems to be wearing clothes different than usual.
+		[ENDIF]
+		TCVAR:LOCAL:アナザー普段着 = 1
+	ENDIF
+	CALL 下着確認リセット(LOCAL)
+	CALL CLOTHES_SETTING_TRAIN(LOCAL)
+	IF nSubconsciousHypno && PERCENT(CFLAG:LOCAL:Times_Made_Nudist) ;custom code
+		FOR ClothingLocal,0,40 ;custom code: manually unequip all clothing to ensure that the character stays naked if the auto-hypno nudity check passes
+			EQUIP:LOCAL:ClothingLocal = 0
+			CFLAG:LOCAL:(200 + ClothingLocal) = EQUIP:LOCAL:ClothingLocal
+		NEXT
+		SIF !TCVAR:LOCAL:本来の服装
+			TCVAR:LOCAL:本来の服装 = CFLAG:LOCAL:基本服装セット
+		CFLAG:LOCAL:基本服装セット = 301
+		CALL CTRL_CLOTHES_SET(LOCAL, "現在衣装の変更_全裸")
+		CFLAG:LOCAL:ノーパン = 1
+		CFLAG:LOCAL:きょうのブラ = 0
+		TCVAR:LOCAL:Subconscious_Exhibitionist_Nudist_Sense = 2
+		TCVAR:LOCAL:アナザー普段着 = 0
+	ELSEIF nSubconsciousHypno && PERCENT(CFLAG:LOCAL:Times_Made_Exhibitionist)
+		SIF !TCVAR:LOCAL:本来の服装
+			TCVAR:LOCAL:本来の服装 = CFLAG:LOCAL:基本服装セット
+
+		FOR ClothingLocal,0,40 ;custom code: manually unequip all clothing except underwear to ensure that the character stays in their underwear if the auto-hypno exhibitionism check passes
+			EQUIP:LOCAL:ClothingLocal = 0
+			CFLAG:LOCAL:(200 + ClothingLocal) = EQUIP:LOCAL:ClothingLocal
+		NEXT
+		CFLAG:LOCAL:基本服装セット = 300
+		CALL CTRL_CLOTHES_SET(LOCAL, "現在衣装の変更_下着姿の変更_全裸")
+		TCVAR:LOCAL:Subconscious_Exhibitionist_Nudist_Sense = 1
+		TCVAR:LOCAL:アナザー普段着 = 0
+	ENDIF
+NEXT
+
+;願掛けリセット
+CVARSET CFLAG, GETNUM(CFLAG, "翌日来訪"), 0
+FLAG:560 = 0
+FLAG:561 = 0
+;qol custom code, replaced, apply to all characters
+; IF FLAG:一時滞在
+; 	CFLAG:(FLAG:一時滞在):初期位置 = CFLAG:(FLAG:一時滞在):本来の初期位置
+; 	CFLAG:(FLAG:一時滞在):神社在住 = 0
+; 	CFLAG:(FLAG:一時滞在):拠点来訪 = 1
+; 	FLAG:一時滞在 = 0
+; ENDIF
+FOR LOCAL, 0, CHARANUM
+	SIF LOCAL == MASTER
+		CONTINUE
+	IF CFLAG:LOCAL:本来の初期位置
+		CFLAG:LOCAL:初期位置 = CFLAG:LOCAL:本来の初期位置
+		IF CFLAG:LOCAL:初期位置 == SUKIMA()
+			CFLAG:LOCAL:神社在住 = 0
+			CFLAG:LOCAL:拠点来訪 = 1
+		ENDIF
+		CFLAG:LOCAL:本来の初期位置 = 0
+	ENDIF
+NEXT
+FLAG:一時滞在 = 0
+
+[IF_DEBUG]
+;PRINTFORML Cause a population boom?
+;CALL ASK_YN()
+;SIF !RESULT
+;CALL DUMP_MOBS
+[ENDIF]
+[SKIPSTART]
+
+LOCAL:4 = GetMaxBladder(MASTER)
+LOCAL:17 = GetMaxBowels(MASTER)
+[IF_DEBUG]
+PRINTFORM Bladder: {BASE:MASTER:尿意}/{LOCAL:4} - 
+IF BASE:MASTER:尿意 >= LOCAL:4
+PRINTFORM Peed self! - 
+	IF CFLAG:MASTER:DiapeCharges <= BASE:MASTER:尿意
+	PRINTFORML Wet the bed!
+	ELSE
+	PRINTFORML Didn't leak.
+	ENDIF
+ELSE
+PRINTFORML Stayed dry.
+ENDIF
+
+PRINTFORM Bowels: {BASE:MASTER:Poo}/{LOCAL:17} - 
+IF BASE:MASTER:Poo >= LOCAL:4
+PRINTFORM Pooed self! - 
+	IF CFLAG:MASTER:DiapePooCharges <= BASE:MASTER:Poo
+	PRINTFORML Shat the bed!
+	ELSE
+	PRINTFORML Didn't leak.
+	ENDIF
+ELSE
+PRINTFORML Stayed clean.
+ENDIF
+[ENDIF]
+IF BASE:MASTER:尿意 >= LOCAL:4
+	PRINTFORML You feel some wetness in your %PeeProtectType(MASTER)%, indicating that you %FSYN("pee:ed")% yourself in your sleep.
+	CFLAG:MASTER:DiapeCharges -= BASE:MASTER:尿意
+	IF CFLAG:MASTER:DiapeCharges <= 0	
+		PRINTFORML It overflowed out of your %PeeProtectType(MASTER,1)% and leaked into the futon...
+		PRINTFORML A large dark stain can be seen on the bed... 		
+		YOGORE:(CFLAG:MASTER:現在位置) += BASE:MASTER:尿意
+		Qol_Info_Count_Array:MASTER:Qol_Count_BedWetting += 1
+	ENDIF
+	CALL OMORASHI_END(MASTER, 1, 0, 1)
+ENDIF
+
+IF BASE:MASTER:Poo >= LOCAL:17
+	PRINTFORML A squishy feeling beneath the rear of your %PeeProtectType(MASTER)% tells you that you %FSYN("poo:ed")% in your sleep.
+	CFLAG:MASTER:DiapePooCharges -= BASE:MASTER:Poo
+	IF CFLAG:MASTER:DiapePooCharges <= 0
+		PRINTFORML It blew out of your %PeeProtectType(MASTER,1)%... staining the futon brown with your mess...   		
+		YOGORE:(CFLAG:MASTER:現在位置) += BASE:MASTER:Poo*3
+		Qol_Info_Count_Array:MASTER:Qol_Count_BedMessing += 1
+	ENDIF
+	CALL OMORASHI_END(MASTER, 0, 1, 1)
+ENDIF
+
+SIF BASE:MASTER:尿意 >= MAXBASE:MASTER:尿意
+	BASE:MASTER:尿意 = MAXBASE:MASTER:尿意
+SIF BASE:MASTER:Poo >= MAXBASE:MASTER:Poo
+	BASE:MASTER:Poo = MAXBASE:MASTER:Poo
+[SKIPEND]
+;just call bedwetting event again
+;SIF GETBIT(nPee,1) || GETBIT(nScat,2)
+;CALL DAILY_CONDITION_EV901
+CALLF RemoveAllCombatants
+TotalBattleStats:Battle_Streak = 0 ;reset win streak
+IF nNASQOL
+	PRINTFORM Rising from your slumber, you 
+	IF nOmutsu < 4 && GET_INT(MASTER, "Religion", TALENT:MASTER:Religion, "Incontinence") < 1
+		PRINTFORML start heading to the toilet and bath
+	ELSE
+		PRINTFORML head to the bath and change your %PeeProtectType(MASTER,2)%.
+	ENDIF
+	PRINTFORMW
+	SIF PeeBarStage(MASTER) >= 2 || PooBarStage(MASTER) >= 2
+	CALL MasterGoToilet(PeeBarStage(MASTER) >= 2,PooBarStage(MASTER) >= 2)
+	CALL ODEKAKE_OFURO(MASTER, 1)
+	SIF nOmutsu >= 4
+		CALLF PANTY_REWORK_CHANGE(MASTER,EQUIP:MASTER:6)
+ENDIF
+
+FOR LOCAL,0,CHARANUM
+	CSTR:LOCAL:1 =
+NEXT
+
+CALL QUEST_EVENT("Wake Up") ;Custom code, quest system.
+;addition custom code
+FOR LOCAL, 1, CHARANUM	
+	CALL KOJO_MESSAGE_SEND("EVENT", 0, LOCAL, , , "BEFORETRAIN_END")
+NEXT
+CALL QUEST_EVENT("Wake Up End") ;Custom code, quest system.
+;----------------------------------------------
+
+;----------------------------------------------
+;FileName_BEFORETRAIN.ERB -------------------------- Rev1.00
+;目覚め共通メッセージ表示
+;CALL		USER
+;ARG		VOID
+;RETURN		VOID
+;COMMENT	
+;-----------------------------------------------------------
+@GOODMORNING
+#DIM 起床状況
+#DIM 起床場所
+#DIM 宴会位置是正
+#DIM HAS_MORNING_EVENTS ;custom code
+#DIM  DYNAMIC CNT_BIRTHDAY
+#DIMS DYNAMIC NAME_CHILD   , 10 * キャラクタ数上限 + 1
+#DIM  DYNAMIC AGE_CHILD    , 10 * キャラクタ数上限 + 1
+VARSET LOCAL
+TARGET = MASTER
+起床状況 = 0
+起床場所 = 0
+FLAG:デート相手 = MASTER
+
+;addition custom code, allow other characters to wake the player up under the right circumstances
+CALL DAYEVENT_MAIN("day")
+IF DAYEVENT_TARGET
+	TARGET = DAYEVENT_TARGET
+ELSE
+ENDIF
+;MASTERと同室のキャラを探す
+FOR LOCAL,1,CHARANUM
+
+	;custom code
+	IF CFLAG:LOCAL:Morning_Event_Guaranteed && EXISTFUNCTION(@"K{NO:LOCAL}_DAYEVENT_COND")
+		IF CFLAG:LOCAL:現在位置 != CFLAG:MASTER:現在位置
+			PRINTFORMDL 
+			PRINTFORMDL %CALLNAME:LOCAL% is overcome by an uncontrollable urge to sneak into your house and crawl into bed with you before you wake up...
+			PRINTFORMDL 
+			CFLAG:LOCAL:現在位置 = CFLAG:MASTER:現在位置
+		ENDIF
+		CALLF WakeUp(LOCAL)
+	ENDIF
+
+	SIF CFLAG:MASTER:現在位置 == CFLAG:LOCAL:現在位置
+		;TARGET決定
+		TARGET = LOCAL
+
+	;dumbass mobs in LoG getting knocked out before you arrive
+	SIF SaveIsEZB
+		CALLF HESOYAM(LOCAL)
+NEXT
+;ターゲットが入れば表示
+IF TARGET != MASTER
+	;IF CFLAG:TARGET:睡眠
+	IF 睡眠時間(TARGET) || IsDead:TARGET:0
+		;同棲中
+		IF CFLAG:MASTER:初期位置 == CFLAG:TARGET:初期位置
+			;同棲中かつ相手が寝てる 
+			起床状況 = 3 
+			FOR LOCAL,0,CHARANUM
+				CALL SET_TOGETHER(0,LOCAL,1)
+			NEXT
+			;MASTERとの接触位置をリセット
+			CALL TOUCH_SET(0,0,0,1)
+			;RETURN 1
+		;非同棲中(部屋から出て行くので、起床口上は無し → お招き就寝条件である恋慕持ち相手に何故出て行っちゃうのかわからないので忍び込みや悪戯時のみ撤退するよう変更した
+		;ついでに言えば先に部屋主が外に出ていた場合、部屋に取り残される。 もしも睡眠姦後就寝を実装した時にはここで要分岐
+		ELSE
+			FOR LOCAL,0,CHARANUM
+				CALL SET_TOGETHER(0,LOCAL,1)
+			NEXT
+			;MASTERとの接触位置をリセット
+			CALL TOUCH_SET(0,0,0,1)
+			;自分の部屋じゃない、かつやましい場合、移動可能な場所へ移動
+			SIF (CFLAG:TARGET:隠密中 || CFLAG:TARGET:イタズラ) && CFLAG:MASTER:現在位置 != CFLAG:MASTER:初期位置
+				CALL GETOUT(MASTER)
+			;忍び込みOFF
+			CALL SET_SNEAK(0,TARGET,2)
+			;イタズラOFF
+			CALL SET_PRANK(0,TARGET,2)
+		ENDIF
+	ELSE
+		;同棲中
+		IF CFLAG:MASTER:初期位置 == CFLAG:TARGET:初期位置
+			;同棲中かつ相手が起きてる
+			起床状況 = 2
+			FOR LOCAL,0,CHARANUM
+				CALL SET_TOGETHER(0,LOCAL,1)
+			NEXT
+			;MASTERとの接触位置をリセット
+			CALL TOUCH_SET(0,0,0,1)
+		;非同棲中
+		ELSE
+			;非同棲かつ相手が起きてる
+			起床状況 = 1
+			;MASTARの自室で起床した
+			IF CFLAG:MASTER:現在位置 == CFLAG:MASTER:311
+				起床場所 = 1
+				FOR LOCAL,0,CHARANUM
+					CALL SET_TOGETHER(0,LOCAL,1)
+				NEXT
+				;MASTERとの接触位置をリセット
+				CALL TOUCH_SET(0,0,0,1)
+			;TARGETの自室で起床した（恋慕付き相手の部屋で添い寝後就寝時のみの筈
+			ELSEIF CFLAG:MASTER:現在位置 == CFLAG:TARGET:311
+				起床場所 = 0
+				FOR LOCAL,0,CHARANUM
+					CALL SET_TOGETHER(0,LOCAL,1)
+				NEXT
+				;MASTERとの接触位置をリセット
+				CALL TOUCH_SET(0,0,0,1)
+			;それ以外(
+			ELSE
+				;どこで寝てるの…？恋慕持ちキャラの部屋に他の恋慕持ちキャラを連れ込んで寝た…？？？
+				起床場所 = -1
+			ENDIF
+			;忍び込みOFF
+			CALL SET_SNEAK(0,TARGET,2)
+			;イタズラOFF
+			CALL SET_PRANK(0,TARGET,2)
+		ENDIF
+		;CALL KOJO_EVENT(6, TARGET, 1)
+		;添い寝後かどうか
+		;添い寝フラグが立たないので、通常起床のみ
+		;IF CFLAG:MASTER:添い寝中
+			;CALL KOJO_MESSAGE_SEND("EVENT",2,TARGET,2,0)
+		;ELSE
+		;ENDIF
+	ENDIF
+	SIF 起床状況 == 0 || 起床場所 == -1
+		CALL MESSAGE_GOODMONING(起床状況, 起床場所)
+	;addition custom code, adjusted for DAYEVENT
+	IF 起床状況 && 起床場所 != -1
+		SIF DAYEVENT_TARGET == TARGET && DAYEVENT_SCENARIO
+			CALL DAYEVENT_EXECUTE_EVENT()
+		CALL KOJO_MESSAGE_SEND("EVENT",2,TARGET,起床状況,起床場所)
+	ENDIF
+ENDIF
+IF FLAG:異常気象
+	PRINTFORML There's something strange in the air...
+ELSE
+	;custom code
+	SELECTCASE TIME:5
+		CASE 0,1
+		CALL COLORMESSAGE(@"The weather's good.",C_P_GREEN,1)
+		CASE IS & 4
+		CALL COLORMESSAGE(@"Rain is falling.",C_AQUA,1)
+		CASE IS & 8
+		CALL COLORMESSAGE(@"Snow is falling.",C_CREAM,1)
+	ENDSELECT
+ENDIF
+;大荒れ予報の日判定
+IF STRCOUNT(GET_WEATHER_WARNING_HEAVY_RAIN(), "警報") || STRCOUNT(GET_WEATHER_WARNING_HEAVY_SNOWFALL(), "警報")
+	TFLAG:大荒れ予報の日 = 1
+ELSEIF STRCOUNT(GET_WEATHER_WARNING_STORM(), "警報") || IS_TYPHOON:0
+	TFLAG:大荒れ予報の日 = 1
+ELSE
+	TFLAG:大荒れ予報の日 = 0
+ENDIF
+IF FESTIVAL() != ""
+	;custom code
+	PRINTFORML %FESTIVAL_DAY()%%FESTIVAL_TR()%.
+	CALL SEASONAL_MORNING
+ENDIF
+CALL ADD_BANQUET_PRINT_TODAYS_EVENTS() ;addition custom code
+
+;custom code, disabled
+; IF DAY == FLAG:開始日 && FLAG:宴会開催フラグ
+; ;宴会日
+; 	PRINTFORM Today, 
+; 	CALL 宴会予定表示
+; 	PRINTL  will be held.
+; 	;ここでの宴会場代入だとCHARA_MOVEMENTで不具合が出たため上部へ移動
+; 	;FLAG:32 = GET_JOBPLACE("宴会")
+; 	IF TIME:3 >= FLAG:33
+; 		FOR 宴会位置是正,1,CHARANUM
+; 			IF CFLAG:宴会位置是正:宴会参加
+; 				CFLAG:宴会位置是正:職場 = TFLAG:宴会場
+; 				CFLAG:宴会位置是正:現在位置 = TFLAG:宴会場
+; 			ENDIF
+; 		NEXT
+; 	ENDIF
+; ELSEIF DAY > FLAG:開始日 && FLAG:宴会開催フラグ
+; 	CALL ENKAI_END()
+; 	PRINTFORML %EnkaiTitle% has ended.
+; ENDIF
+IF CHILD_HAPPY_BIRTHDAY(CNT_BIRTHDAY, NAME_CHILD, AGE_CHILD)
+	;custom code
+	LOCALS =
+	FOR LOCAL, 1, CNT_BIRTHDAY + 1
+		LOCALS += @"%NAME_CHILD:LOCAL%'s (Age: {AGE_CHILD:LOCAL})、"
+		SIF LOCAL == CNT_BIRTHDAY
+			BREAK
+	NEXT
+	;PRINTFORML Today is %LIST_IN_STRING(LOCALS)% birthday.
+	CALL COLORMESSAGE(@"Today is %LIST_IN_STRING(LOCALS)% birthday!",C_YELLOW,2,1) ;qol custom code
+ENDIF
+CALL CHARA_MOVEMENT
+SIF CFLAG:MASTER:今忙しくて手が離せない
+	PRINTFORML ... It seems %PARSE("you")% masturbated in %PARSE("your",1)% sleep...
+CALL RikaArmsRefresh
+CALL MarketeersPharmacyInvTablePopulate
+CALL MarketeersPharmacySellingTablePopulate
+CALL TODAYS_CHARISMA(1)
+CALL GetStateOfCrisis
+CALL NEWSPAPER_CONDITION
+CALL BeforeTrainDeathThings
+
+;----------------------------------------------
+@KODUCHI
+;小槌の代償
+IF CFLAG:MASTER:小槌 > 0
+	CFLAG:MASTER:魔力回収 -= 1
+	LOCAL = CFLAG:MASTER:魔力回収
+	IF CFLAG:MASTER:小槌 == 8
+			PRINTFORMW Shinmyoumaru's body returns to its original size.
+		TALENT:71:体型 = -5
+		SIF CFLAG:71:変異前の形状 != 0
+			TALENT:71:体型 = CFLAG:71:変異前の形状
+		IF CFLAG:71:初期位置 == 54 || CFLAG:71:現在位置 == 9
+			CFLAG:71:現在位置 = 54
+			CFLAG:71:初期位置 = 54
+		ENDIF
+	ELSEIF CFLAG:MASTER:小槌 == 4
+		IF CFLAG:MASTER:魔力回収 < 1
+			TALENT:MASTER:形状 = CFLAG:MASTER:382
+			PRINTW The mallet's magic finally wears off, and your penis returns to its usual shape.
+		ELSEIF !FLAG:MALLET_BACKLASH ;qol custom code
+			TALENT:MASTER:形状 = CFLAG:MASTER:382
+			CFLAG:MASTER:小槌 = 99
+			PRINTW Your magically enhanced penis returns to its usual shape.
+		ELSEIF FLAG:MALLET_BACKLASH == 1 ;qol custom code
+			PRINTW Something that used to be colossal can only be described as pitiful right now...
+			TALENT:MASTER:形状 = 2
+			FLAG:MALLET_BACKLASH = 2 ;qol custom code
+		ENDIF
+	ELSEIF CFLAG:MASTER:小槌 == 5
+		IF CFLAG:MASTER:魔力回収 < 1
+			TALENT:MASTER:形状 = CFLAG:MASTER:382
+			PRINTW The mallet's magic finally wears off, and your penis returns to its usual shape.
+		ELSEIF !FLAG:MALLET_BACKLASH ;qol custom code
+			TALENT:MASTER:双槍 = 0
+			CFLAG:MASTER:小槌 = 99
+			PRINTW Your magically enhanced penis returns to its usual shape.
+		ELSEIF FLAG:MALLET_BACKLASH == 1 ;qol custom code
+			PRINTW There used to be two rods... Now there's only one left... if even that.
+			TALENT:MASTER:183 = 0
+			TALENT:MASTER:形状 = 2
+			BASE:MASTER:精力 -= MAXBASE:MASTER:精力 / 2
+			FLAG:MALLET_BACKLASH = 2 ;qol custom code
+		ENDIF
+	ELSEIF CFLAG:MASTER:小槌 == 6
+		SIF CFLAG:MASTER:魔力回収 == 2
+			PRINTFORMW Your body returns to its usual size.
+		TALENT:MASTER:100 = FLAG:元の体格
+		IF CFLAG:MASTER:初期位置 == 54 || CFLAG:MASTER:現在位置 == 54
+			CFLAG:MASTER:現在位置 = 9
+			SIF CFLAG:MASTER:初期位置 == 54
+				CFLAG:MASTER:初期位置 = デフォルト初期位置
+		ENDIF
+	ELSEIF CFLAG:MASTER:小槌 == 7
+		;元の大きさに戻すだけなので変化なし
+	;addition custom code
+	ELSEIF CFLAG:MASTER:小槌 == 93
+		IF FLAG:MALLET_BACKLASH == 1
+			PRINTW As the mallet's power fades away, you wake up feeling extremely diminished.
+			FLAG:MALLET_BACKLASH = 2
+			SIF MAXBASE:MASTER:体力 > 1000
+			CALL BUFF_BASE(MASTER,BASE_体力,-MAXBASE:MASTER:体力 + 1000) 
+			CALL BUFF_BASE(MASTER,BASE_気力,-MAXBASE:MASTER:気力 + 1000) 
+			CALL BUFF_BASE(MASTER,BASE_精力,-MAXBASE:MASTER:精力 + 250) 
+		ENDIF
+	ENDIF
+ENDIF
+IF CFLAG:MASTER:魔力回収 <= 0
+	CFLAG:MASTER:小槌 = 0
+	CFLAG:MASTER:魔力回収 = 0
+	FLAG:MALLET_BACKLASH = 0 ;qol custom code
+ENDIF
+;----------------------------------------------
+;おはよう共通口上
+;起床状況 = 0:非同棲相手眠り 1:非同棲相手起き 2:同棲相手起き 3:同棲中相手眠り 4:
+;起床場所 = 0:相手部屋 1:自室
+;----------------------------------------------
+@MESSAGE_GOODMONING(起床状況,起床場所)
+#DIM 起床状況
+#DIM 起床場所
+LOCAL:9 = GETCOLOR()
+RESETCOLOR
+PRINTFORML
+SELECTCASE 起床状況
+CASE 0
+	;非同棲相手眠り
+	IF !起床場所
+		;とにかくやましい時のみ抜け出すよう変更
+		PRINTFORMW You wake up to find %CALLNAME:TARGET% sleeping next to you.
+		IF CFLAG:TARGET:隠密中 || CFLAG:TARGET:イタズラ
+			IF CFLAG:MASTER:現在位置 == CFLAG:MASTER:初期位置
+				PRINTFORMW You ponder how to deal with %TNAME(TARGET)% once %HE_SHE(TARGET)% wakes up...
+			ELSE
+				PRINTFORMW Sneaking out of the room, you make sure not to wake up %TNAME(TARGET)%...
+			ENDIF
+		ELSE
+			PRINTFORMW Sneaking away from %TNAME(TARGET)%, you start preparing for the day.
+		ENDIF
+	ELSE
+		;今のところ死に分岐
+		PRINTFORMW You wake up to find %CALLNAME:TARGET% sleeping next to you.
+		PRINTFORMW %BREAKENG(@"While surprised and wondering why %TNAME(TARGET)% is in the room, you \@ BEDROOM(CFLAG:MASTER:現在位置) ? slip out of the %BED_FUTON()% # sneak away from %HIM_HER(TARGET)% \@ and start preparing for the new day.")%
+	ENDIF
+CASE 1
+	;非同棲相手起き
+	IF 起床場所 == 0
+		;お招き部屋睡眠かな…？ 恋慕付き確定？
+		PRINTFORMW You awake staring into %CALLNAME:TARGET%'s eyes.
+		PRINTFORMW After exchanging morning greetings with %TNAME(TARGET)%, you get up and start preparing for the new day.
+	ELSEIF 起床場所 == 1
+		;自室にキャラを連れ込んだ後で（あなたの睡眠時間の方が早い）寝た場合や勝手に部屋に入ってくる場合（三月精とか割と頻繁）
+		;自分で連れ込んだんじゃろがいっ！ って時は個人口上側で対処してください
+		PRINTFORMW You awake staring into %CALLNAME:TARGET%'s eyes.
+		PRINTFORMW %BREAKENG(@"While surprised and wondering why %TNAME(TARGET)% is in the room, you \@ BEDROOM(CFLAG:MASTER:現在位置) ? slip out of the %BED_FUTON()% # sneak away from %HIM_HER(TARGET)% \@ and start preparing for the new day.")%
+	ELSE
+		;ここはどこ、この子は誰状態 どうやったらこの分岐に来るかわからない…
+		PRINTFORMW %BREAKENG(@"Baffled as to why you were sleeping in an unfamiliar place with %CALLNAME:TARGET% sleeping next to you, you \@ BEDROOM(CFLAG:MASTER:現在位置) ? slip out of the %BED_FUTON()% # sneak away from %HIM_HER(TARGET)% \@ and start preparing for the day.")%
+	ENDIF
+CASE 2
+	;同棲相手起き
+	PRINTFORMW You awake staring into %CALLNAME:TARGET%'s eyes.
+	PRINTFORMW Exchanging morning greetings with %HIM_HER(TARGET)%, you \@ BEDROOM(CFLAG:MASTER:現在位置) ? slip out of the %BED_FUTON()% # get up\@ and start preparing for the new day.
+CASE 3
+	;同棲相手眠り
+	PRINTFORMW You awaken to find %CALLNAME:TARGET% still sleeping peacefully next to you.
+	PRINTFORMW Sneaking carefully to avoid waking %TNAME(TARGET)%, you get \@ BEDROOM(CFLAG:MASTER:現在位置) ? out of the %BED_FUTON()% # up \@ and start preparing for a new day.
+ENDSELECT
+PRINTFORML
+SETCOLOR LOCAL:9
+RETURN 1
+
+;----------------------------------------------
+
+@InitializeBeforeTrain(ARG)
+CFLAG:ARG:眠姦発覚 = 0
+CFLAG:ARG:前ターン位置 = 0
+CFLAG:ARG:デート中 = MAIN_MAP
+CFLAG:ARG:眠気覚まし = 0
+CFLAG:ARG:今日の運勢 = QOL_DAILY_LUCK(ARG) ;qol custom code
+;射精、勃起、ムード、理性、怒り
+BASE:ARG:射精 = 0
+BASE:ARG:勃起 = 0
+BASE:ARG:ムード = 0
+BASE:ARG:理性 = MAXBASE:ARG:11
+BASE:ARG:怒り = 0
+BASE:ARG:酒気 = 0
+BASE:ARG:勃起 = 0
+BASE:ARG:深度 = 0
+CFLAG:ARG:勃起度 = 0
+CALLF ResetTempEndurance(ARG,1)
+CALLF ChangeEndurance(ARG,"alcoholaddict",-10)
+CALLF ChangeEndurance(ARG,"drugaddict",-10)
+CALLF ChangeEndurance(ARG,"orgasmdeny",10)
+CALLF ChangeEndurance(ARG,"charatrauma",-10)
+FOR LOCAL, 0, 3
+	SELECTCASE LOCAL
+	CASE 0
+		LOCAL:1 = 1
+	CASE 1
+		LOCAL:1 = 2
+	CASE 2
+		LOCAL:1 = 30
+	ENDSELECT
+	IF !EXP:ARG:(LOCAL:1)
+	LOCAL:2 = 1000
+	ELSE
+	LOCAL:2 = 999
+	ENDIF
+	HoleStretch:ARG:LOCAL = LIMIT(HoleStretch:ARG:LOCAL+10,0,LOCAL:2)
+NEXT
+IF SaveIsEZB
+	CALLF HESOYAM(ARG)
+	SIF ARG == MASTER
+		CFLAG:MASTER:313 = 1
+ENDIF
+
+MAXBASE:ARG:Blood = MAXBASE:ARG:0
+SIF !BASE:ARG:Blood && !IsDead:ARG:0
+BASE:ARG:Blood = MAXBASE:ARG:0
+;NAS: ESP
+BASE:ARG:法力 = MAXBASE:ARG:法力
+BASE:ARG:TSP  = MAXBASE:ARG:TSP
+charReligionCertainty:ARG:(TALENT:ARG:Religion) = LIMIT(charReligionCertainty:ARG:(TALENT:ARG:Religion) + RAND(30), 0, 1000)
+TempUfufuBecome = MASTER
+TempUfufuBecome:1 = MASTER
+CALLF ResetTempEndurance(ARG)
+
+SIF !IsDead:ARG:0
+	IsLooted:ARG:0 = 0
+IF PermaDeath < 1
+	IF AutoReviveCondition(ARG) && IsDead:ARG:0
+		CALL Resurrect(ARG,,1)
+	ELSEIF ARG == 1 && IsDead:ARG:0
+		CALL MAKE_YUKIZURI(1,"HakureiMiko",1)
+		CALL COLORMESSAGE(@"A new Hakurei Miko has spawned in the wake of the death of Reimu. %HIS_HER(1,1)% name is %NAME:1%", C_GREEN, 2, 1)
+	ELSEIF TALENT:ARG:190 == 5 && (!IsDead:102:0 || !IsDead:102:0) && IsDead:ARG:0
+		CALL Resurrect(ARG)
+		CALL COLORMESSAGE(@"%CALLNAME:ARG% has been recreated by %CALLNAME:102%. Try not to let %HIM_HER(ARG)% die again.", C_GREEN, 2, 1)
+	ELSEIF GROUPMATCH(ARG,75, [[Shanghai]],[[Hourai]],[[Ooedo]],[[Goliath]]) && (!IsDead:17:0 || !IsDead:102:0) && IsDead:ARG:0
+		CALL Resurrect(ARG)
+		CALL COLORMESSAGE(@"%CALLNAME:ARG% has been recreated by the doll maker. Try not to let %HIM_HER(ARG)% die again.", C_GREEN, 2, 1)
+	ELSEIF GROUPMATCH(ARG,59) && (!IsDead:54:0 || !IsDead:54:0) && IsDead:ARG:0
+		CALL Resurrect(ARG)
+		CALL COLORMESSAGE(@"%CALLNAME:ARG% has been recreated by %CALLNAME:54%. Try not to let %HIM_HER(ARG)% die again.", C_GREEN, 2, 1)
+	ENDIF
+ENDIF
+;行動はリセット
+CFLAG:ARG:行動 = 0
+;夜這い侵入リセット
+CLEARBIT CFLAG:ARG:42,8
+;経験表示用
+FOR LOCAL:1,0,200
+	TCVAR:ARG:(400 + LOCAL:1) = EXP:ARG:(LOCAL:1)
+NEXT
+CALL SETTING_PERSONALITY(ARG)
+CALLF ResetBladders(ARG)
+CALL HypnoFlavor(ARG)
+CALL CrippleEffects(ARG)
+;NAS: Insemination
+FOR LOCAL,0,CHARANUM
+	;nInsemination:ARG:LOCAL = MAX((nInsemination:ARG:LOCAL*70/100)-10,0)
+	nInsemination:ARG:LOCAL = LIMIT((nInsemination:ARG:LOCAL*70/100)-10,0,充填率(ARG, 1, -1, 1))
+	
+NEXT
+;NAS: No Diaper Day
+TCVAR:ARG:NoDiaperDay = 0
+CALLF NoDiaperDay(ARG)
+;NAS: Fashion Ignoring
+TCVAR:ARG:IgnoreFashion = 0
+SIF !RAND:10
+	TCVAR:ARG:IgnoreFashion = 1
+
+;性交フラグ
+TEQUIP:ARG:50 = -1
+TEQUIP:ARG:51 = -1
+TEQUIP:ARG:55 = -1 ; urethral sex
+TCVAR:ARG:100 = -1
+TCVAR:ARG:101 = -1
+TCVAR:ARG:814 = -1
+;中出し表示用フラグ
+TCVAR:ARG:103 = -1
+TCVAR:ARG:105 = -1
+;睡眠薬お茶関連
+TCVAR:TARGET:睡眠薬お茶使用 = 0
+;射精処理用文字列変数
+CSTR:ARG:10 = /
+CSTR:ARG:11 = /
+;生活時間設定
+IF ARG != MASTER
+	IF SaveIsEZB && EZB_ESSENTIAL(ARG)
+		CFLAG:ARG:帰宅時間 = 0
+		CFLAG:ARG:就寝時間 = 0
+		CFLAG:ARG:起床時間 = 0
+	ELSE
+		CALL 生活時間設定(ARG)
+	ENDIF
+ENDIF
+SIF IN_HOME(CFLAG:ARG:初期位置) != 1 & CFLAG:ARG:睡眠
+	CALL SET_SLEEP(0,ARG,0)
+RESET_STAIN ARG
+
+@SleepSoundly
+#DIM 安眠補正
+#DIM 枕 ;logging patch custom code
+SIF FLAG:気絶中断
+	RETURN 0
+SIF CFLAG:MASTER:徹夜
+	RETURN 0
+SIF CFLAG:MASTER:お招き
+	RETURN 0
+;安眠枕の補正
+IF ITEM:スイート安眠枕
+	安眠補正 = MIN(RAND:(SQRT(FLAG:チュート文累計 + 1)), 40)
+	枕 = 安眠補正 ;logging patch custom code
+	SELECTCASE 安眠補正
+		CASE IS > 30
+			PRINTFORMW It might be due to the pillow, but you wake up extremely refreshed!
+		CASE IS > 20
+			PRINTFORMW It might be due to the pillow, but you wake up pretty rested...
+	ENDSELECT
+ELSE
+	安眠補正 = 0
+	枕 = 0 ;logging patch custom code
+ENDIF
+;ベッドの補正
+;Furniture patch custom code, re-enabled
+;addition custom code, added base bonus outside of rng
+IF ITEM:キリのベッド
+	SELECTCASE ITEM:キリのベッド
+		CASE 1
+			安眠補正 += 10 + RAND:11 + RAND:21
+		CASE 2
+			安眠補正 += 15 + RAND:16 + RAND:31
+		CASE 3
+			安眠補正 += 20 + RAND:21 + RAND:41
+	ENDSELECT
+	;logging patch custom code
+	SELECTCASE 安眠補正 - 枕
+		;bugfix custom code, reversed order
+		CASE IS > 60
+			PRINTFORMW You wake up fresh from your custom-made bed with the feeling that it's going to be another good day!
+		CASE IS > 30
+			PRINTFORMW Sleeping on a soft, custom-made bed is nothing short of extraordinary...
+	ENDSELECT
+ENDIF
+
+RETURN 安眠補正

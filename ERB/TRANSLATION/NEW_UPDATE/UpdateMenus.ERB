@@ -1,0 +1,611 @@
+@Update_Menu
+#DIM nLineCnt_Head
+#DIMS FormerNames, 20
+
+LOADGLOBAL
+FOR LOCAL, 0, 100
+	PRINTL
+NEXT
+PRINTFORML Update Menu 2: Super Hyper Ultra Ultimate Deluxe Perfect Amazing Shining God 流派東方不敗
+CUSTOMDRAWLINE -
+nLineCnt_Head = LINECOUNT
+REDRAW 0
+
+;bring all names from csv for them to get translated via (formerly) trchara
+FOR LOCAL, 0, CHARANUM
+	SIF EXISTCSV(LOCAL) < 1 ;failsafe
+		CONTINUE
+	SIF CFLAG:LOCAL:出禁 == 2 || TALENT:LOCAL:BornChild || TALENT:LOCAL:CustomChara ;skip randos
+		CONTINUE
+	
+	;not character ID 0
+	IF LOCAL
+		FOR N, 0, VARSIZE("nameArray")
+			FormerNames:N '= nameArray:LOCAL:N
+		NEXT
+		CALL IndividualNameSet(LOCAL)
+		FOR N, 0, VARSIZE("nameArray")
+			SIF FormerNames:N != nameArray:LOCAL:N
+				SETBIT UpdateForceShow:LOCAL, 1
+			nameArray:LOCAL:N '= FormerNames:N
+		NEXT
+
+		IF nameArray:LOCAL:na_Name != ""
+		;set name
+		NAME:LOCAL '= nameArray:LOCAL:na_Name
+		;set callname
+		CALLNAME:LOCAL '= nameArray:LOCAL:na_Callname
+		ELSE
+		NAME:LOCAL = %CSVNAME(LOCAL)%
+		CALLNAME:LOCAL = %CSVCALLNAME(LOCAL)%
+		ENDIF
+	ENDIF
+	;endurance adjustments
+	;these stats are grabbed from TRANSLATION/OMOGATARI/Omogatari_Set.erb
+	IF !GETBIT(CFLAG:LOCAL:OmoStatsDone,0)
+	CALL SetOmoStats(LOCAL)
+	ELSE
+	CALL SetOmoStats_Update(LOCAL)
+	ENDIF
+	;reset name back to the namechecker one.
+	NAME:LOCAL = %NameChecker(LOCAL)%
+NEXT
+
+DO
+	SIF LINECOUNT - nLineCnt_Head > 0
+		CLEARLINE LINECOUNT - nLineCnt_Head
+	CALL UPDATE_STATE
+	SELECTCASE RESULT
+		CASE 0
+			SAVEGLOBAL
+			RETURN
+	CASEELSE
+	ENDSELECT
+LOOP 1
+
+@UPDATE_PAGE_0(P0_PAGE)
+#DIM DYNAMIC P0_PAGE
+#DIM C_ID
+#DIM Img_Detected_Counter
+
+VARSET Update_Behavior_FullUpdate
+VARSET Img_Detected_Counter
+
+FOR C_ID, 1, CHARANUM - 1
+	SIF CFLAG:C_ID:出禁
+		CONTINUE
+	SIF !EXISTCSV(C_ID)
+		CONTINUE
+	SIF IS_MOB(C_ID)
+		CONTINUE
+	SIF CFLAG:C_ID:別顔有 != CSVCFLAG(C_ID, 562) + Img_CustomFace:C_ID:0 || CFLAG:C_ID:別立ち有 != CSVCFLAG(C_ID, 563) + Img_CustomStand:C_ID:0
+		Img_Detected_Counter ++
+NEXT
+CALL COLORMESSAGE("//.Update", C_S_BLUE, 1, 1)
+CALL PRINTBUTTON_EX("□ Update: Essentials", 500)
+PRINTL
+SETCOLOR C_GRAY
+PRINTFORML (Properly set up the game excluding dialogues which can be done upon first meet)
+RESETCOLOR
+CALL PRINTBUTTON_EX("□ Update: Full", 501)
+PRINTL
+SETCOLOR C_GRAY
+PRINTFORML (Recommended option, properly set up the game and update the dialogues as well)
+RESETCOLOR
+CALL PRINTBUTTON_EX("□ Update: Legacy", 502)
+PRINTL
+SETCOLOR C_GRAY
+PRINTFORML (The original update function, use this as a fail-safe when options above have failed)
+RESETCOLOR
+IF Img_Detected_Counter
+	CALL PRINTBUTTON_EX("□ Image Update", 503)
+	PRINTL
+	SETCOLOR C_ORANGE
+	PRINTFORML (New alternative image %PLURALIZER("set", Img_Detected_Counter)% detected)
+	RESETCOLOR
+ELSE
+	CALL PRINTBUTTON_EX("□ Image Update", 503,1)
+	PRINTL
+	SETCOLOR C_GRAY
+	PRINTFORML (Images are up-to-date)
+	RESETCOLOR
+ENDIF
+PRINTL
+PRINTL
+
+CALL COLORMESSAGE("//.Settings", C_S_BLUE, 1, 1)
+CALL PRINTBUTTON_EX("□ Pregnancy Settings", 601)
+PRINTL
+PRINTL
+
+CALL COLORMESSAGE("//.Extra", C_S_BLUE, 1, 1)
+CALL PRINTBUTTON_EX("□ Apply The Expanded Relations Patch", 504)
+PRINTL
+[IF_DEBUG]
+CALL PRINTBUTTON_EX("□ (Debug) Dialogue Color List and Color Customization", 507)
+PRINTL
+CALL PRINTBUTTON_EX("□ (Debug) Generate Request", 602)
+PRINTL
+CALL PRINTBUTTON_EX("□ (Debug) Test Translations", 603)
+PRINTL
+[ENDIF]
+PRINTL
+CALL PRINTBUTTON_EX("□ Update Characters' Sexual Experiences According to the CSV Defaults", 505)
+PRINTL
+CALL PRINTBUTTON_EX("□ Update Characters' Basic Skill Experiences According to the CSV Defaults", 506)
+PRINTL
+
+@UPDATE_PAGE_1(P1_PAGE)
+#DIM DYNAMIC P1_PAGE
+#DIM CHARA
+
+IF (CHARANUM % UpdateP1_CharaPerPage == 0)
+	UpdateMaxPages = (CHARANUM / UpdateP1_CharaPerPage)
+ELSE 
+	UpdateMaxPages = (CHARANUM / UpdateP1_CharaPerPage) + 1
+ENDIF
+
+PRINTFORML Page {P1_PAGE} ({((P1_PAGE - 1) * UpdateP1_CharaPerPage) + 1}～{MIN((P1_PAGE * UpdateP1_CharaPerPage), CHARANUM - 2)})
+FOR CHARA, 1, CHARANUM - 1
+	SIF CFLAG:CHARA:出禁
+		CONTINUE
+
+	RESULTS =
+	IF INRANGE(CHARA, (((P1_PAGE - 1) * UpdateP1_CharaPerPage) + 1), (P1_PAGE * UpdateP1_CharaPerPage))
+		;has update
+		IF CFLAG:CHARA:口上セレクタ
+			TRYCALLFORM M_KOJO_K{NO:CHARA}_{CFLAG:CHARA:口上セレクタ}
+		ELSE
+			TRYCALLFORM M_KOJO_K{NO:CHARA}
+		ENDIF
+		;known issue: Sanae(31) dialogue 0 shows up as No Update Function (she has one and the function name checks out)
+		;after update she shows up as (Updated) which she shouldn't be
+		IF !EXISTFUNCTION(@"M_KOJO%RESULTS%_UPDATE_K{NO:CHARA}")
+			SETCOLOR C_GRAY
+			LOCALS '= @"%NameChecker(CHARA), 25, LEFT%"
+			CALL KOJO_COUNT_CHECK(CHARA)
+			IF !RESULT
+				LOCALS += " (N/A, No Dialogue)"
+			ELSE 
+				LOCALS += " (N/A, No Update Function)"
+			ENDIF
+		ELSE
+			LOCALS '= @"%NameChecker(CHARA), 25, LEFT%"
+			SIF CharaDialogueAmount_History:CHARA > 1
+				LOCALS += @" (Has Alt. Dialogue)"
+		ENDIF
+		IF GETBIT(UpdateForceShow:CHARA,1)
+			SETCOLOR C_YELLOW
+			LOCALS += " (Abnormal Name)"
+		ENDIF
+		SIF Highlighted_Character == CHARA
+			SETCOLOR C_ORANGE
+		SIF nCharaUpdate:CHARA:(CFLAG:CHARA:口上セレクタ):18
+			SETCOLOR C_AQUA
+		PRINTFORM [{CHARA, 3}] - %LOCALS%
+		PRINTL
+		RESETCOLOR
+	ENDIF
+NEXT
+PRINTL
+PRINTBUTTON @"%"Prev page",15,LEFT%", 8102
+PRINTBUTTON @"%"Next page",15,LEFT%", 8103
+PRINTL
+
+@UPDATE_PAGE_2(P2_PAGE)
+#DIM DYNAMIC P2_PAGE
+PRINTFORML Changing the dialogue of a character will require a complete character reset.
+CALL SPTALK, [[にとり]], "笑顔", 1, @"「This page is under construction, dear sworn friend!」", 1
+
+@UPDATE_STATE(C_ID,OP)
+#DIMS    OP         ;実行オプション
+#DIM     C_ID       ;登録番号
+#DIM DYNAMIC    PAGE       ;表示中のページ
+#DIM	 SubPage
+#DIMS CONST DISP_NAME = "Main Menu", "Individual Tweaks", "Dialogue Selector", "World Manipulation"
+#DIM CREDRAW
+#DIM FIRST_LINE
+#DIM SelectionMode
+#DIM Update_Selected
+#DIM UP_INPUT
+#DIM News_Amount
+#DIM News_Amount_Vers, 2
+#DIM Highlight_SideSpaces
+
+VARSET Update_Selected
+VARSET nCharaUpdate
+
+News_Amount_Vers:0 = (ATW_NEWSLETTER_VER - News_VersionLastSeen)
+News_Amount_Vers:1 = (NAS_NEWSLETTER_VER - NAS_News_VersionLastSeen)
+News_Amount = (News_Amount_Vers:0 + News_Amount_Vers:1)
+FIRST_LINE = LINECOUNT
+SubPage = 1
+$REPRINT
+CLEARLINE LINECOUNT - FIRST_LINE
+CREDRAW = CURRENTREDRAW()
+REDRAW 0
+IF PAGE == 0
+	IF SAVESTR:本体バージョン != eraTW_Version || SAVESTR:ATW_SAVE_VER != ATW_VERSION || SAVESTR:NAS_SAVE_VER != NAS_VERSION
+		CALL COLORMESSAGE(@"Updating game save from a previous version.", C_RED, 1)
+		PRINTFORML Completing the update will/may add: new characters, traits and flags that were introduced in the new versions.
+	ELSE
+		CALL COLORMESSAGE(@"This save is already at the latest version.", C_YELLOW, 1)
+		PRINTFORML Running this function might fix some problems. Other things might get reset though.
+	ENDIF
+	PRINTL 
+	IF News_VersionLastSeen != ATW_NEWSLETTER_VER || NAS_News_VersionLastSeen != NAS_NEWSLETTER_VER
+		CALL PRINTBUTTON_EX(@"□ You have {News_Amount} %PLURALIZER("notification", News_Amount)%. {News_Amount_Vers:0} from the ATW team and {News_Amount_Vers:1} from the eraNAS team. □",508, , , ,)
+		PRINTL
+	ELSE
+		CALL PRINTBUTTON_EX(@"□ No new message from the ATW team nor eraNAS team. □",508, , , ,)
+		PRINTL
+		;PRINTFORML □ No new message from the ATW teams nor eraCorrection. □
+	ENDIF
+	PRINTFORML Welcome to eraNAS, Version %NAS_VERSION%. Based on AnonTW, Version %ATW_VERSION%.
+	PRINTL 
+ELSEIF PAGE == 1
+	PRINTFORML Here's where you'd call a character's update function and make tweaks to them.
+	PRINTFORML Click once to select, click again to run the update and tweaks.
+	PRINTL 
+	PRINTBUTTON "[Dialogue: Customization]", 701
+	PRINTFORML : \@ !Ask_Customization ? Off # On \@
+	PRINTBUTTON "[Dialogue: Switch Dialogues]", 702
+	PRINTFORML : \@ !Ask_SwitchDialogue ? Off # On \@
+	SIF ResetToggle
+		SETCOLOR C_RED
+	PRINTBUTTON "[Character: Reset Character]", 703
+	PRINTFORML : \@ !ResetToggle ? Off # On \@
+	PRINTL
+	RESETCOLOR
+	CALL HIGHLIGHT_CHARA_DISPLAY(HL_CHARA)
+ENDIF
+TRYCALLFORM UPDATE_PAGE_{PAGE}(SubPage)
+DRAWLINE
+FOR LOCAL, 0, VARSIZE("DISP_NAME")
+	SIF PAGE == LOCAL
+		SETCOLOR 0x00FFFF
+	PRINTBUTTON DISP_NAME:LOCAL, LOCAL + 8002
+	RESETCOLOR
+	PRINTFORM 　　
+NEXT
+PRINTFORML 
+PRINTL
+PRINTBUTTON " [Exit] ", 0
+RESETCOLOR
+DO
+	INPUT
+	SELECTCASE RESULT
+	CASE 0
+		VARSET HL_CHARA
+		IF PAGE == 1
+			IF Update_Selected
+				PRINTFORMW Individual update process completed.
+				WAIT
+			ENDIF
+			SAVEGLOBAL
+		ENDIF
+		RETURN 0
+	CASE 500
+		Update_Behavior_FullUpdate = 1
+		CALL Update_TR
+		Update_Behavior_FullUpdate = 0
+		PRINTL ...
+		PRINTL ......
+		PRINTW Essential updates completed.
+	CASE 501
+		PRINTFORML Enable dialogue customization options for this update?
+		PRINTFORML You can also customize them individually through the tweak menu or their status screen.
+		CALL ASK_YN
+		SELECTCASE RESULT
+			CASE 1
+				Ask_Customization = 0
+			CASEELSE
+				Ask_Customization = 1
+		ENDSELECT
+		;------------------------Dialogue Update n shiet
+		Update_Behavior_FullUpdate = 1
+		CALL Update_TR
+		IF !FullUpdate_NotFirstTimeRun
+			FOR LOCAL, 1, CHARANUM - 1
+				SIF CFLAG:LOCAL:出禁
+					CONTINUE
+				CALL Update_Dialogue_Individual(LOCAL, 1)
+				CharaDialogueAmount_History:LOCAL = DialogueCount_Result
+			NEXT
+			Update_Behavior_FullUpdate = 0
+			FullUpdate_NotFirstTimeRun = 1
+		ELSE
+			FOR LOCAL, 1, CHARANUM - 1
+				SIF CFLAG:LOCAL:出禁
+					CONTINUE
+				CALL Update_Dialogue_Individual(LOCAL, 1)
+				;dumbass
+				IF CharaDialogueAmount_History:LOCAL < DialogueCount_Result
+					WhoHasNewDialogue:Update_Behavior_NewDlgAdded = LOCAL
+					Update_Behavior_NewDlgAdded ++
+					CharaDialogueAmount_History:LOCAL = DialogueCount_Result
+				ELSEIF CharaDialogueAmount_History:LOCAL > DialogueCount_Result
+					WhoLostDialogue:Update_Behavior_DlgLost = LOCAL
+					Update_Behavior_DlgLost ++
+					CharaDialogueAmount_History:LOCAL = DialogueCount_Result
+				ENDIF
+			NEXT
+		ENDIF
+		Update_Behavior_FullUpdate = 0
+		Ask_Customization = 0
+		;------------------------Dialogue Update n shiet
+		PRINTL ...
+		PRINTL ......
+		PRINTW Full update completed.
+		IF Update_Behavior_NewDlgAdded
+			PRINTFORMW {Update_Behavior_NewDlgAdded} %PLURALIZER("character", Update_Behavior_NewDlgAdded)% received new %PLURALIZER("dialogue", Update_Behavior_NewDlgAdded)% after this update.
+			FOR LOCAL, 0, Update_Behavior_NewDlgAdded
+				CALL PRINT_FACE(WhoHasNewDialogue:LOCAL, "通常", "服")
+				PRINTFORMW %CALLNAME:(WhoHasNewDialogue:LOCAL)%
+			NEXT
+			VARSET Update_Behavior_NewDlgAdded
+		ENDIF
+		IF Update_Behavior_DlgLost
+			PRINTFORMW {Update_Behavior_DlgLost} %PLURALIZER("character", Update_Behavior_DlgLost)% have lost existing %PLURALIZER("dialogue", Update_Behavior_DlgLost)% after this update.
+			FOR LOCAL, 0, Update_Behavior_DlgLost
+				CALL PRINT_FACE(WhoLostDialogue:LOCAL, "通常", "服")
+				PRINTFORMW %CALLNAME:(WhoLostDialogue:LOCAL)%
+			NEXT
+			PRINTFORMW Please confirm if this is intentional.
+			VARSET Update_Behavior_DlgLost
+		ENDIF
+		RESETCOLOR
+	CASE 502
+		CALL UPDATE_TR
+	CASE 503
+		CALL Update_ImageSets
+	CASE 504
+		PRINTFORML This option will set modified, expanded affinities for almost all characters.
+		PRINTFORML It will override all current relations between characters, confirm to proceed.
+		CALL ASK_YN
+		IF !RESULT
+			FOR C_ID, 1, CHARANUM - 1
+				;NAS: Child or custom
+				SIF TALENT:C_ID:行きずり
+					CONTINUE
+				SIF TALENT:C_ID:BornChild
+					CONTINUE
+				SIF TALENT:C_ID:CustomChara
+					CONTINUE
+				CALL ADD_SET_RELATION_PROC(C_ID)
+			NEXT
+			PRINTFORMW Applied.
+		ENDIF
+	CASE 505
+		Update_Behavior_ResetSexEXP = 1
+		CALL UPDATE_TR
+		Update_Behavior_ResetSexEXP = 0
+		PRINTFORMW Done.
+	CASE 506
+		Update_Behavior_ResetSkillEXP = 1
+		CALL UPDATE_TR
+		Update_Behavior_ResetSkillEXP = 0
+		PRINTFORMW Done.
+	[IF_DEBUG]
+	CASE 507
+		CALL CHANGE_PT_KOJO_COLOR
+	[ENDIF]
+	CASE 508
+		CALL Notification_Menu
+	CASE 601
+		CALL PREGNANCY_TYPE_OPTIONS
+	CASE 602
+		CALL DEBUG_IRAI_HAPPEN
+	CASE 603
+		CALL DEBUG_TRANSLATION_MENU
+	CASE 701
+		Ask_Customization = !Ask_Customization
+	CASE 702
+		Ask_SwitchDialogue = !Ask_SwitchDialogue
+	CASE 703
+		ResetToggle = !ResetToggle
+	CASE 8002 TO VARSIZE("DISP_NAME")+8002
+		PAGE = RESULT-8002
+	CASE 8102
+		SubPage--
+		VARSET HL_CHARA
+		SIF SubPage <= 0
+			SubPage = UpdateMaxPages
+	CASE 8103
+		SubPage++
+		VARSET HL_CHARA
+		SIF SubPage > UpdateMaxPages
+			SubPage = 1
+	CASE 1 TO CHARANUM - 1
+		IF HL_CHARA == RESULT
+			C_ID = RESULT
+			IF Ask_SwitchDialogue
+				CALL SELECT_NEW_KOJO(C_ID)
+				SIF RESULT == -1
+					PRINTFORMW No alternative dialogue options detected for %CALLNAME:C_ID%.
+			ELSEIF ResetToggle
+				PRINTFORML Are you sure about wanting to reset %CALLNAME:C_ID%?
+				PRINTFORML Relationships, events, physical developments and CFLAGs will be reset.
+				CALL PRINTBUTTON_EX(@"[Yes]",1, , , ,)
+				PRINT   
+				CALL PRINTBUTTON_EX(@"[Cancel]",0, , , ,)
+				INPUT
+				SELECTCASE RESULT
+					CASE 1
+						CALL RESET_KOJO_CHARA_TR(C_ID)
+				ENDSELECT
+			ELSE
+				CALL Update_Dialogue_Individual(C_ID, 1)
+			ENDIF
+		ELSE
+			HL_CHARA = RESULT
+		ENDIF
+	CASEELSE
+		$RETRY
+		REUSELASTLINE Invalid Input
+		CONTINUE
+	ENDSELECT
+	BREAK
+LOOP 1
+GOTO REPRINT
+
+@HIGHLIGHT_CHARA_DISPLAY(C_ID)
+#DIM LAYER_COUNT
+#DIM RESET_OFFSETS
+
+#DIM CURRENT_INDEX      ;the current element index for the line
+#DIM CURRENT_X_OFFSET   ;the current x offset for the line
+#DIM X_OFFSETS, キャラクタ数上限 ;stores the offset per element
+#DIM ELEMENT_WIDTH      ;the width of the current line+image
+#DIM IMAGE_WIDTH        ;the width of the image
+#DIM ELEMENT_HEIGHT       ;the height of the element
+#DIM CHARACTER_WIDTH    ;estimated width in pixels per character
+
+#DIM C_ID
+#DIMS TITLE_TEXT
+#DIM TITLE_COLOR
+
+CALL KOJO_ACTIVE_INFO(C_ID)
+SIF RESULTS:1 != ""
+	RESULTS:1 '= @"%RESULTS:1% "
+TITLE_TEXT '= @"[%RESULTS:1%%CALLNAME:C_ID%]"
+
+CALL SET_KOJO_COLOR(C_ID)
+TITLE_COLOR = GETCOLOR()
+RESETCOLOR
+
+IF C_ID && FLAG:画像表示
+	SIF !CHARACTER_WIDTH
+    CHARACTER_WIDTH = CLIENTWIDTH() / HTML_STRINGLEN(DRAWLINESTR)
+
+	IF TEMP_HTML:LAYER_COUNT == "" ;first element, reset
+		CURRENT_X_OFFSET = 0
+		CURRENT_INDEX = 0
+	ENDIF
+
+	SIF RESET_OFFSETS
+		VARSET X_OFFSETS
+
+	IMAGE_WIDTH = 180
+	ELEMENT_HEIGHT = IMAGE_WIDTH+GETCONFIG("一行の高さ")
+	ELEMENT_WIDTH = MAX(HTML_STRINGLEN(TITLE_TEXT) * CHARACTER_WIDTH, IMAGE_WIDTH, X_OFFSETS:CURRENT_INDEX)
+
+	SIF !X_OFFSETS:CURRENT_INDEX
+		X_OFFSETS:CURRENT_INDEX = ELEMENT_WIDTH
+
+	LOCAL = FLAG:立ち絵種類
+	FLAG:立ち絵種類 = 1
+
+	TRYCALLFORM IMAGE_EX_I{NO:C_ID}_PREリソースチェック(C_ID, "顔絵", "服", "通常", "", "", "")
+	CALL GET_BASE_RESOURCE(C_ID, "顔絵", "服", "通常", "", "")
+	SIF !RESULT
+		RESULTS = %GET_BASESTYLE(C_ID, "顔絵")%_服_通常_{C_ID}
+	TEMP_HTML:LAYER_COUNT += @"<div width='{ELEMENT_WIDTH}px' height='{ELEMENT_HEIGHT}px' xpos='{CURRENT_X_OFFSET}px'>"
+	TEMP_HTML:LAYER_COUNT += @"<p align='center'><font color='#%TOSTR(TITLE_COLOR,"X6")%'>%TITLE_TEXT%</font></p>"
+	CALL IMAGE_SET(RESULTS, 0, 0, 100, 0, 1, "", "")
+	TEMP_HTML:LAYER_COUNT += "</div>"
+
+	CURRENT_X_OFFSET += ELEMENT_WIDTH
+	CURRENT_INDEX++
+
+	CALL SIMULTANEOUS_IMAGE_DISPLAY(0, 0, 1, -1)
+	PRINTL
+
+	FLAG:立ち絵種類 = LOCAL
+ELSE
+	PRINTL
+	PRINTL
+	PRINTL
+	PRINTL
+	PRINTL
+	PRINTL
+	PRINTL
+	PRINTL
+	PRINTL
+	PRINTFORML %COND_STR(@"%TITLE_TEXT%", C_ID > 0)%
+	PRINTL
+ENDIF
+
+@KOJO_SELECTOR_CONFIRM(C_ID)
+#DIM C_ID
+IF !Reset_NeverAskAgain
+	PRINTFORM To prevent save breaking behaviors, changing the dialogue of a character
+	CALL COLORMESSAGE(" will require a complete reset ",C_YELLOW,0,0)
+	PRINTFORML for said character.
+	PRINTFORML Relationships, events, physical developments and CFLAGs will be reset.
+	PRINTFORML 
+	PRINTFORML Confirm if you understand. This will not show up a second time.
+	CALL PRINTBUTTON_EX("[Yes]",0,)
+	$YESIAMOVER18
+	INPUT
+	IF RESULT == 0
+		Reset_NeverAskAgain = 1
+	ELSE
+		GOTO YESIAMOVER18
+	ENDIF
+ENDIF
+
+@SELECT_NEW_KOJO(C_ID)
+#DIM C_ID
+#DIM DYNAMIC kojoIndex
+#DIM DYNAMIC validKojoCount
+#DIMS DYNAMIC kojoNameList, 4
+#DIM DYNAMIC kojoIndexList, 4
+#DIM DYNAMIC kojoListPointer
+#DIMS kojoDescriptions, DESCRIPTIONS_SIZE
+#DIM DYNAMIC kojoSelectResult
+
+FOR kojoIndex,0,5
+	VARSET RESULT
+	VARSET RESULTS:1
+	VARSET RESULTS:2
+	IF kojoIndex
+		TRYCALLFORM M_KOJO_K{NO:C_ID}_{kojoIndex}
+	ELSE
+		TRYCALLFORM M_KOJO_K{NO:C_ID}
+	ENDIF
+	IF RESULT
+		kojoDescriptions:kojoListPointer = \@RESULTS:2 != "" ? %RESULTS:2% # No description available. \@
+		SIF RESULTS:1 == ""
+			RESULTS:1 = Default
+		kojoNameList:kojoListPointer = %CALLNAME:C_ID% %RESULTS:1% Dialogue
+		kojoIndexList:kojoListPointer = kojoIndex
+		kojoListPointer ++
+		IF !GETBIT(CFLAG:C_ID:口上実装状況,kojoIndex)
+			validKojoCount += 1
+			SETBIT CFLAG:C_ID:口上実装状況,kojoIndex
+		ELSEIF GETBIT(CFLAG:C_ID:口上実装状況,kojoIndex)
+			validKojoCount += 1
+		ENDIF
+	ENDIF
+NEXT
+SIF validKojoCount < 2
+	RETURN -1
+IF validKojoCount > 1
+	PRINTFORML Select which dialog to use. (Hover over each option for a brief description of the dialogue.)
+	CALL KOJO_ACTIVE_INFO(C_ID)
+	SIF RESULTS:1 == ""
+		RESULTS:1 = 初期
+	PRINTFORML %CALLNAME:C_ID% currently uses: %RESULTS:1% dialogue
+	CALL ASK_CHOICES_TITLE(kojoNameList, kojoDescriptions, kojoListPointer)
+	kojoSelectResult = kojoIndexList:RESULT
+	IF CFLAG:C_ID:口上セレクタ == kojoSelectResult
+		PRINTFORMW Left %CALLNAME:C_ID%'s dialogue status as is.
+	ELSE
+		CALL CHARACTER_RESET_KOJO_SELECT(C_ID)
+		PRINTFORML Applying dialogue...
+		CFLAG:C_ID:口上セレクタ = kojoIndexList:kojoSelectResult
+		CALL KOJO_ACTIVE_INFO(C_ID)
+		PRINTFORML Running %RESULTS:1%'s update function...
+		TRYCALLFORM M_KOJO%RESULTS%_UPDATE_K{NO:C_ID}
+		SIF Ask_Customization
+			CALL Update_Show_Settings(C_ID)
+		PRINTL
+		PRINTFORMW %CALLNAME:C_ID% is now using: %RESULTS:1% dialogue
+	ENDIF
+ENDIF
+
+@CHARACTER_RESET_KOJO_SELECT(C_ID)
+#DIM C_ID
+CALL KOJO_SELECTOR_CONFIRM(C_ID)
+CALL RESET_KOJO_CHARA_TR(C_ID)

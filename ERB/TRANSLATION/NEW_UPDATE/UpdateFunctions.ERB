@@ -1,0 +1,143 @@
+;ADDITION CUSTOM CODE FILE, custom img branch
+
+@Update_ImageSets
+;uses more resources to achieve very little, but since we have a bunch of custom images this is necessary evil
+;0.took image check out of the update process
+;1.removed the redundant question about which set to replace the current set with
+;2.right-click skippable
+;3.shows a bit more info, I guess
+
+;Img_Detected detects how many characters have new alts and doubles as CharaNum's real size (how many slots actually hold values)
+#DIM C_ID
+#DIM Img_Detected
+#DIM Img_CharaNum, キャラクタ数上限
+
+VARSET Img_CharaNum
+VARSET Img_Detected
+
+;reset and recount for accurate count if new characters got added that have custom counters when updating from very old saves
+CVARSET Img_CustomFace
+CVARSET Img_CustomStand
+CALL ModImg_Set
+
+;差し替え画像の有無を確認
+FOR C_ID, 1, CHARANUM
+	SIF CFLAG:C_ID:出禁
+		CONTINUE
+	IF CFLAG:C_ID:別顔有 != CSVCFLAG(NO:C_ID, 562) + Img_CustomFace:C_ID:0 || CFLAG:C_ID:別立ち有 != CSVCFLAG(NO:C_ID, 563) + Img_CustomStand:C_ID:0 ;image tweak custom code
+		Img_CharaNum:Img_Detected = C_ID
+		Img_Detected ++
+	ENDIF
+NEXT
+IF Img_Detected
+	PRINTL 
+	PRINTFORMW New alternative image sets detected for these characters:
+ELSE
+	RETURN
+ENDIF
+FOR LOCAL, 0, Img_Detected
+	CFLAG:(NO:(Img_CharaNum:LOCAL)):別顔有 = CSVCFLAG(NO:(Img_CharaNum:LOCAL), 562) + Img_CustomFace:(Img_CharaNum:LOCAL):0
+	CFLAG:(NO:(Img_CharaNum:LOCAL)):別立ち有 = CSVCFLAG(NO:(Img_CharaNum:LOCAL), 563) + Img_CustomStand:(Img_CharaNum:LOCAL):0
+
+	CALL SET_KOJO_COLOR(Img_CharaNum:LOCAL)
+	PRINTFORML %CALLNAME:(Img_CharaNum:LOCAL)%
+	RESETCOLOR
+	
+	SIF GROUPMATCH((Img_CharaNum:LOCAL), [[白蓮]], [[輝夜]], [[影狼]], [[映姫]], [[正邪]], [[日狭美]], [[わかさぎ姫]]) ;debloat custom code
+		TRYCALLFORM COMPOSE_SPRITE_{NO:(Img_CharaNum:LOCAL)} ;image custom code
+	CALL SET_IMAGE_WITH_HEADER(@"顔絵_服_通常_{NO:(Img_CharaNum:LOCAL)}", 0, 0, 100, 0, 1, "Default", "デフォルト顔絵", "", 0, "[Default]",, 1)
+	FOR LOCAL:1, 1, CSVCFLAG(NO:(Img_CharaNum:LOCAL), 562) + Img_CustomFace:(NO:(Img_CharaNum:LOCAL)):0+1
+		LOCALS '= @"\@LOCAL:1 >= 2?別顔{LOCAL:1}#別顔\@_服_通常_{(Img_CharaNum:LOCAL)}"
+		LOCALS:1 '= @"[Alternative Set {LOCAL:1}]"
+		IF SPRITECREATED(LOCALS)
+			CALL SET_IMAGE_WITH_HEADER(LOCALS, 0, 0, 100, 0, 0, "", "差し替え顔絵", "", 0,LOCALS:1)
+		ELSE
+			CALL SET_IMAGE_WITH_HEADER("ダミー", 0, 0, 100, 0, 0, "", "差し替え立ち絵", "", 0,LOCALS:1)
+		ENDIF
+	NEXT
+	CALL SIMULTANEOUS_IMAGE_DISPLAY("左", 0, 1)
+
+	IF CFLAG:(NO:(Img_CharaNum:LOCAL)):別立ち有
+		PRINTL 
+		CALL SET_IMAGE_WITH_HEADER(@"立ち絵_服_通常_{NO:(Img_CharaNum:LOCAL)}", 0, 0, 100, 0, 0, "", "デフォルト立ち絵", "", 0,,,)
+		LOCAL:1 = 1
+		LOCAL:2 = 0
+		WHILE LOCAL:2 != CSVCFLAG(NO:(Img_CharaNum:LOCAL), 563) + Img_CustomStand:(Img_CharaNum:LOCAL):0
+			LOCALS '= @"\@LOCAL:1 >= 2?別立ち{LOCAL:1}#別立ち\@_服_通常_{NO:(Img_CharaNum:LOCAL)}"
+			IF SPRITECREATED(LOCALS)
+				CALL SET_IMAGE_WITH_HEADER(LOCALS, 0, 0, 100, 0, 0, "", "差し替え立ち絵", "", 0,)
+				LOCAL:2++
+			ELSE
+				CALL SET_IMAGE_WITH_HEADER("ダミー", 0, 0, 100, 0, 0, "", "差し替え立ち絵", "", 0,)
+			ENDIF
+			LOCAL:1++
+			SIF LOCAL:1 > 10 ; failsafe in case the images aren't configured correctly
+				BREAK
+		WEND
+		CALL SIMULTANEOUS_IMAGE_DISPLAY("左", 0, 1)
+	ENDIF
+	PRINTL
+	WAIT
+NEXT
+SIF Img_Detected
+	PRINTFORMW Image update completed.
+CUSTOMDRAWLINE -
+CALL PRINTBUTTON_EX(@"[Exit]",0, , , ,)
+$LOOP
+INPUT
+SELECTCASE RESULT
+	CASE 0
+		RETURN
+	CASEELSE
+		GOTO LOOP
+ENDSELECT
+
+@Update_Show_Settings(ARG)
+VARSET KojoUpdateFlags
+CALL KOJO_SETTINGS_EXIST(ARG)
+IF RESULT
+	LOCALS '= RESULTS
+	gLineCount = LINECOUNT
+	REDRAW 0
+	DO
+		SIF LINECOUNT - gLineCount > 0
+			CLEARLINE LINECOUNT - gLineCount
+		
+		PRINTFORML %CALLNAME:ARG% Settings:
+		TRYCALLFORM KOJO%LOCALS%_OPTION_K{NO:ARG}
+		PRINTFORML
+		PRINTFORML [100] Done
+		INPUT
+		SELECTCASE RESULT
+		CASE 100
+			BREAK
+		CASE 7000 TO 7050
+			CALL KOJO_RESULT(ARG, RESULT)
+		ENDSELECT
+	LOOP 1
+ENDIF
+
+
+@Update_Dialogue_Individual(ARG, ARG:1)
+#DIMS Dialogue_Prefix
+#DIMS Dialogue_Name
+
+CALL KOJO_MULTIPLE(ARG, ARG:1)
+DialogueCount_Result = RESULT
+
+IF RESULT
+	CALL KOJO_ACTIVE_INFO(ARG)
+	;abnormal name checking
+	IF GETBIT(UpdateForceShow:ARG, 1)
+	CALL NAME_ARRAY_COMPARE(ARG,1)
+	ENDIF
+	Dialogue_Prefix '= RESULTS
+	PRINTFORML Trying to UPDATE %CALLNAME:ARG%'s current dialogue...
+	TRYCALLFORM M_KOJO%Dialogue_Prefix%_UPDATE_K{NO:ARG}
+	UpdateUpdated:ARG = 1
+	PRINTL 
+	SIF Ask_Customization
+		CALL Update_Show_Settings(ARG)
+ENDIF
+SIF !Update_Behavior_FullUpdate
+	PRINTFORMW Updates done to %CALLNAME:ARG%'s dialogue.

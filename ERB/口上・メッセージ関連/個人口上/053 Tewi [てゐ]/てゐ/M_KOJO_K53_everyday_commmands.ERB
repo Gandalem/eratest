@@ -1,0 +1,4570 @@
+;※※※※※※※※※※※※※※※※※※※※※※※※※
+;日常系コマンド
+;※※※※※※※※※※※※※※※※※※※※※※※※※
+;==================================================
+;300,会話
+;TFLAG:193(1=大成功 0=成功 -1=失敗 -2=大失敗（TARGETがMASTERより教養が4以上高い)
+;TCVAR:302(0=会話可能 1>=非恋慕時会話不能)
+;MARK:反発刻印(3以上=会話不能)(4以上はバグ
+;TCVAR:泥酔(1=通常成功or大失敗)
+;==================================================
+@M_KOJO_SUCCESS_COM_K53_300
+;成否判定
+;TFLAG:192(-2=コマンド終了、-1＝強制失敗、0=COM依存、1=強制成功or大成功
+TFLAG:192 = 0
+
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_300
+RETURN 1
+
+@M_KOJO_MESSAGE_COM_K53_300(Counter)
+#DIM DYNAMIC Counter
+#DIM DYNAMIC Topic
+RESULT = 0
+SIF !Counter
+	CALL D_LINE
+IF MARK:53:反発刻印 > 1
+		;Hate mark dialogue.
+	CALL K53_CONVERSATION_HATE(Counter)
+	RETURN 0
+ENDIF
+IF TALENT:53:機嫌 == -1
+		;Sullen dialogue.
+	CALL K53_CONVERSATION_SULLEN(Counter)
+	RETURN 0
+ENDIF
+IF TFLAG:193 < 0
+		;Failure dialogue.
+	CALL K53_CONVERSATION_AWKWARD(Counter)
+	RETURN 0
+ENDIF
+CALL K53_SPECIAL_EVENTS(Counter)
+	;Check if any special events will trigger.
+SIF RESULT
+	RETURN 1
+$CONVERSATION
+Topic = RAND:8
+SIF !RAND:6
+		;Slightly higher chance to pick the general topic, since it's the largest.
+	Topic = 5
+SIF IS_HERE(52) && !RAND:4
+		;Higher chance to pick the interaction topic if Reisen is around.
+	Topic = 7
+SELECTCASE Topic
+	CASE 0
+			;Residents of Eientei.
+		CALL K53_CONVERSATION_PEOPLE(RAND:4,Counter)
+	CASE 1
+			;Tall tales.
+		SIF TALENT:53:恋人 && !RAND:2
+				;Lower chance after Lovers.
+			GOTO CONVERSATION
+		CALL K53_CONVERSATION_TALL_TALES(Counter)
+	CASE 2
+			;Business. Locks after Lovers.
+		SIF TALENT:53:恋人
+			GOTO CONVERSATION
+		CALL K53_CONVERSATION_BUSINESS(Counter)
+	CASE 3
+			;Listening to you talk. Lower chance.
+		SIF !RAND:2
+			GOTO CONVERSATION
+		CALL K53_CONVERSATION_LISTENING(Counter)
+	CASE 4
+			;The player character.
+		CALL K53_CONVERSATION_MASTER(Counter)
+	CASE 5
+			;General topics.
+		CALL K53_CONVERSATION_GENERAL(Counter)
+	CASE 6
+			;Children. Locked if she has none.
+		SIF CFLAG:53:子供人数 < 1
+			GOTO CONVERSATION
+		IF !RAND:2
+				;Set the conversation to be about a random child of yours and Tewi's.
+			LOCAL = FIND_CHILD("53")
+			LOCALS '= CHILDNAME:53:LOCAL
+		ELSE
+				;Set the conversation to be about parenthood in general.
+			LOCAL = -1
+		ENDIF
+		CALL K53_CONVERSATION_CHILDREN(LOCAL,LOCALS,Counter)
+	CASE 7
+			;Interactions. Only possible while other characters are present.
+		SIF GET_TARGETNUM() < 2
+			GOTO CONVERSATION
+		CALL K53_CONVERSATION_INTERACTION(Counter)
+		SIF !RESULT
+			GOTO CONVERSATION
+ENDSELECT
+WAIT
+RETURN 1
+
+;Character's interaction with the Shanghai doll accessory
+;triggers after COM300 dialogue by chance
+;related variables:
+;TCVAR:Shanghai_EventChance, 20 by default, meaning 20%, +10% each time Shanghai event is not triggered during COM300, resets to 20% if triggered
+;TFLAG:Shanghai_EventDisable, 1 = disabled, 0 = enabled
+@M_KOJO_MESSAGE_COM_K53_300_Shanghai
+;-------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 0
+;-------------------------------------------------
+IF LOCAL
+	;use visuals to separate it from regular dialogues 
+	;CALL SPTALK, TARGET, "笑顔", 0, @"「S-so… How was it?」", 1
+    ;CALL SPTALK, 0, "Expr3_B", Shanghai_MOB_ID, @"「......」", 1
+    ;PRINTFORML Ruukoto is making Shanghai taste test her handmade cookies... 
+ENDIF
+RETURN 1
+;==================================================
+;301,お茶を淹れる
+;TFLAG:193(1=大成功 0=成功 -1=失敗)
+;==================================================
+@M_KOJO_SUCCESS_COM_K53_301
+;成否判定
+;TFLAG:192(-2=コマンド終了、-1＝強制失敗、0=COM依存、1=強制成功or大成功
+TFLAG:192 = 0
+
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_301
+RETURN 1
+
+@M_KOJO_MESSAGE_COM_K53_301(ARG)
+	;Serve Tea.
+CALL D_LINE
+PRINTFORMDL You %SPLIT_G(@"carefully hands Tewi a hot cup of tea:serve Tewi a fresh cup of tea:share some freshly-prepared tea with Tewi:and Tewi share a cup of tea together:offer Tewi some freshly-prepared tea")%...
+PRINTFORMDW
+IF IS_DRUNK(53) > 2
+	SELECTCASE TFLAG:193
+		CASE 0
+			SELECTCASE RAND:2
+				CASE 0
+					PRINTFORML 「Fuu... Gulp... Gulp...」
+					PRINTFORMDL Tewi giggles into her tea as she gulps it down.
+				CASE 1
+					PRINTFORML 「Blow on it! Fuu― Fuu―!」
+			ENDSELECT
+		CASE 1
+			PRINTFORML 「%CALLNAME:PLAYER%-shan's tea's rea-lly delicious!」
+		CASE -1
+			PRINTFORML 「Keho Keho... Nhoo! More sakee!」
+	ENDSELECT
+	PRINTFORMDL The dead drunk Tewi drinks the tea...
+;ブチギレ
+ELSEIF CFLAG:ブチギレ
+	PRINTFORML 「..................」
+	PRINTFORMDL Tewi glares at you as if she's sizing you for the noose.
+	PRINTFORMDL She takes the teacup from your hands without any remark.
+;初回
+ELSEIF FIRSTTIME(301,0,53)
+	PRINTFORML 「Eh? Where'd you get this tea from? ...I mean, I'll drink it, but still...」
+	PRINTFORMDL Tewi takes the teacup from you, although she's got a close eye on you.
+;通常
+ELSEIF K53_TSUN() || TFLAG:193 == -1
+	PRINTFORML 「You made tea for me? Thank you!」
+	PRINTFORMDL Tewi takes the teacup from you with a curt but polite thanks.
+	PRINTL
+	SELECTCASE TFLAG:193
+		CASE 0
+			SELECTCASE RAND:2
+				CASE 0
+					PRINTFORML 「Mhh... Sip-sip... Fuu...」
+					PRINTFORMDL Tewi sips the tea through her teeth. Loudly.
+				CASE 1
+					PRINTFORML 「Gulp... Gulp... Puhaa―」
+					PRINTFORMDL Tewi loudly gulps down the tea.
+			ENDSELECT
+		CASE 1
+			PRINTFORML 「Mmm, delicious!」
+			PRINTFORML 「Ha ha! Getting better with every cup...」
+			PRINTFORMDL She says that with a strange tone, perhaps she's mimicking Eirin...
+		CASE -1
+			PRINTFORML 「Blergh, Hang on! Don't you have any tea better than this?」
+	ENDSELECT
+ELSE
+	SELECTCASE RAND:6
+		CASE 0,1,2
+			PRINTFORML 「%SPLIT_G(@"Ah, gimme, gimme!:Ooh, gimme!:Give it here!:Ah, I'm thirsty! Give it here!:For me? Ooh!:Smells great!")%」
+			PRINTFORMDL Tewi gulps down the tea %SPLIT_G(@"without a word of thanks:while paying you no mind:and forgets that you're there:without looking at you:right away:so fast that she burns her tongue:too fast, spilling some in the process:without any manners")%.
+		CASE 3
+			PRINTFORML 「My personal \@ IS_MALE(MASTER) ? butler # maid\@, %SPLIT_G(@"how fancy:thank youuu:thank you very much:what service:hehe")%～」
+			PRINTFORMDL Tewi sips the tea whilst imitating a lady.
+		CASE 4
+			PRINTFORML 「%SPLIT_G(@"O bringer of tea, accept my thanks!:Once again, we give thanks for this bounty of tea...:Tea-maker, your labors are most appreciated.:T-Tea... Are you sure? Thank you, I'll treasure this gift...")%」
+			PRINTFORMDL Tewi makes a solemn and dramatic show of gratitude, then downs it in a single gulp.
+			SIF !RAND:2
+				PRINTFORML 「%SPLIT_G(@"Aah! Hot!:Hot! Hot!:Hooot!:Gah, it's hot!")%」
+		CASE 5
+			PRINTFORML 「%SPLIT_G(@"Ah, thanks!:Oh, more tea?:Why, thank you!:Thank you for the tea!:How nice! Don't mind if I do!:Aw, you're sweet!")%」
+			IF !RAND:4
+				PRINTFORMDL After taking it from you, Tewi drops something inside.
+				PRINTFORML 「%SPLIT_G(@"Sugar makes everything better!:Don't worry, it's just something I found in the apothecary.:What? I'm not telling～:...Hmm? No, I didn't put anything in～:This will help keep my energy up today!")%」
+			ENDIF
+			PRINTFORMDL She sips happily from the cup...
+	ENDSELECT
+	SIF TFLAG:193 == 1
+		PRINTFORML 「Mmm... %SPLIT_G(@"It's %SPLIT_G(@"really :so ::")%good!:Hey, not bad.:How'd you make this?:Your tea is so good...:How do you make it this good?:Not bad!:Great!:What kind is this? I like it!:I like it!:Nice!")%」
+ENDIF
+LOCAL = FIND_CHILD("53","Learning manners-Independent",,,"Here")
+SIF LOCAL
+	PRINTFORMDL %CHILDNAME:53:LOCAL% tries some as well.
+SIF !ARG
+		;Don't do the final wait if this function was called from Serve Tea W/ Medicine.
+	WAIT
+RETURN 1
+
+;==================================================
+;302,スキンシップ
+;TFLAG:193(1=大成功 0=成功 -1=失敗)
+;==================================================
+@M_KOJO_SUCCESS_COM_K53_302
+;成否判定
+;TFLAG:192(-2=コマンド終了、-1＝強制失敗、0=COM依存、1=強制成功or大成功
+TFLAG:192 = 0
+
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_302
+RETURN 1
+
+@M_KOJO_MESSAGE_COM_K53_302
+	;Skinship.
+CALL D_LINE
+IF CFLAG:53:ブチギレ || MARK:53:反発刻印 || TFLAG:193 == -1
+		;Reject if she's mad at you, or if you fail.
+	PRINTFORMDL You try to engage Tewi in some skinship, but she jumps out of your grasp...
+	PRINTFORMDW
+	PRINTFORMW 「Hey! Stop that! It hurts!」
+	RETURN 1
+ELSEIF IS_DRUNK(53) > 2
+	PRINTFORMDL Tewi doesn't resist as you engage in skinship with her...
+	PRINTFORMDW
+	PRINTFORML 「Ehehe... That tickles, stoppit―...!」
+ELSEIF IsHeat(TARGET)
+	SELECTCASE RAND:3
+		;くすぐる
+		CASE 0
+			PRINTFORMDL You assault the unsuspecting Tewi's weak spot and strike her armpits...
+			PRINTFORMDW
+	 		PRINTFORML 「N-No! Aah ah-no! D-Don't do that now! Stopitstopit! Fuahh!」
+	 		PRINTFORMDL Tewi writhes and jumps as she indecently moans at your touch...
+		;肩に手を置く
+	 	CASE 1
+	 		PRINTFORMDL You put your hand on Tewi's shoulder and her neck blushes...
+			PRINTFORMDW
+	 		PRINTFORML 「Haah ah! N-No, it's not that. You just t-touched me so suddenly. It's nothing!」
+	 		PRINTFORMDL Caught off guard, Tewi lets out a huge gasp of pleasure despite herself...
+	 	;頬を撫でる
+	 	CASE 2
+	 		SELECTCASE TFLAG:193
+	 			CASE 1
+					PRINTFORMDL You ask Tewi if she's feeling okay, as her cheeks are so red. You feel one with your palm...
+					PRINTFORMDW
+					PRINTFORML 「...Nnh? ...Haa...」
+					PRINTFORMDL Tewi's a little surprised but doesn't say anything about it.
+					PRINTFORML （Ah, %CALLNAME:PLAYER%'s hand... It's cold, but it feels good...）
+				CASEELSE
+					PRINTFORMDL Thinking she might have a fever, you ask Tewi if she's all right and put a palm on her cheek...
+					PRINTFORMDW
+					PRINTFORML 「Oh! N-No, it's not that. I used a little moxa earlier, i-is all.」
+			ENDSELECT
+	 ENDSELECT
+ELSE
+	IF K53_TSUN()
+		SELECTCASE RAND:4
+			;耳を触る
+			CASE 0
+				PRINTFORMDL You run your hands along Tewi's bunny ear where it droops down a bit...
+				PRINTFORMDW
+				SELECTCASE RAND:2
+					CASE 0
+						PRINTFORML 「Yaah! If you're going to touch those, at least tell me first～」
+					CASE 1
+						PRINTFORML 「Th-That's rabbit harrassment～...」
+						PRINTFORMDL Tewi tries to cover her ears, but her hands are too small.
+				ENDSELECT
+			;くすぐる
+			CASE 1
+				PRINTFORMDL From behind, you lightly tickle Tewi's sides...
+				PRINTFORMDW
+				PRINTFORML 「No n-ahh! Haha! Ah ha s-stop! Stop th-aah ha ha! Ahahahaha!」
+			;手を触る
+			CASE 2
+				PRINTFORMDL You put your hand gently on top of Tewi's...
+				PRINTFORMDW
+				PRINTFORML 「Hem? What're you doing? It's not like I dislike it, but...」
+			CASE 3
+				PRINTFORMDL You poke Tewi's cheek where it pudges out a bit...
+				PRINTFORMDW
+				PRINTFORML 「Aah, don't do that!」
+				PRINTFORMDL She pokes you back while pouting.
+		ENDSELECT
+	ELSE
+		SELECTCASE RAND:4
+			CASE 0
+				PRINTFORMDL A bit of contact quickly turns into roughhousing...
+				PRINTFORMDW
+				PRINTFORML 「%SPLIT_G(@"Why, you! Take that!:Hehehe! Stop it―!:Hiyah―!")%」
+				IF TALENT:MASTER:体型 == -5
+					PRINTFORMDL She's surprisingly gentle with your tiny body, but you don't let her push you around.
+				ELSEIF TALENT:MASTER:体型 == -2
+					PRINTFORMDL Since she's the same size as you, you need to go all out.
+				ELSEIF TALENT:MASTER:体型 == -1
+					PRINTFORMDL She's quick, but you're a bit bigger, and it turns into a lopsided engagement.
+				ELSEIF TALENT:MASTER:体型 == 1
+					PRINTFORMDL Her body is so small, you easily gain the upper hand.
+				ELSEIF TALENT:MASTER:体型 == 2
+					PRINTFORMDL With your huge body, she can't move you at all no matter how hard she tries.
+				ELSEIF TALENT:MASTER:体型 == 3
+					PRINTFORMDL You can easily pick her up and turn her over with your sheer size...
+					PRINTFORMDL You have to be careful not to crush her.
+				ELSE
+					PRINTFORMDL She's quick, but you're bigger, and it turns into a lopsided engagement.
+				ENDIF
+			CASE 1
+				IF TALENT:MASTER:体型 == -5
+					IF TALENT:恋人 || TALENT:愛欲 || TALENT:セフレ && !RAND:2
+						PRINTFORMDL Slipping into Tewi's clothes, you run your hands along her body...
+						PRINTFORMDW
+						PRINTFORMDL She shivers, partly from pleasure and partly from being ticklish.
+						PRINTFORML 「Aah～ That feels weird～」
+						PRINTFORMDL She seems to enjoy it...
+					ELSE
+						PRINTFORMDL Sitting on Tewi's shoulder, you lean your body against her neck.
+						PRINTFORML 「Eeh～ That feels weird～」
+						PRINTFORMDL Despite her complaints, she leans her head a little bit against you.
+					ENDIF
+				ELSE
+					IF TALENT:恋人
+						PRINTFORMDL As soon as you touch her body, Tewi snuggles up against you and forces you to sit...
+						PRINTFORMDW
+						PRINTFORML 「%SPLIT_G(@"Fuu―n～ Pet my head～:Your hands are cold, but your body is warm～:Ah～ You smell nice～:Huuug～")%」
+						IF RAND:9 == 0
+							PRINTFORMDL She kicks her legs happily, melting into you.
+						ENDIF
+						PRINTFORMDL You cuddle with her for a while.
+					ELSEIF GETBIT(CFLAG:53:既成事実,1)
+						PRINTFORMDL As soon as you touch her body, Tewi presses into you and starts stroking your stomach...
+						PRINTFORMDW
+						PRINTFORML 「%SPLIT_G(@"Fuu―n～ Pet my head～:Your hands are cold, but your body is warm～:Ah～ You smell nice～:Huuug～")%」
+						PRINTFORMDL In a slightly indecent way, you enjoy each others' warmth for a moment.
+					ELSE
+						PRINTFORMDL As soon as you touch her body, Tewi bumps you with her shoulder, smiling a little...
+						PRINTFORMDW
+						PRINTFORMDL You bump her back, and make a little game of it.
+						PRINTFORML 「%SPLIT_G(@"Ehehe～:Aaah, you―!:Wah! You―!:Ehyahaha―!")%」
+					ENDIF
+				ENDIF
+			CASE 2
+				IF TALENT:MASTER:体型 > TALENT:53:体型
+					PRINTFORMDL You sneak up behind Tewi and lift her off the ground...
+					PRINTFORMDW
+					PRINTFORML 「Gwaah! No fair―!」
+					PRINTFORMDL She kicks her legs and squirms uselessly.
+				ELSE
+					PRINTFORMDL You sneak up behind Tewi and grab her shoulders...
+					PRINTFORMDW
+					PRINTFORML 「Gwaah! I'm caught―!」
+					PRINTFORMDL She wriggles to try and get free while giggling.
+				ENDIF
+			CASE 3
+				PRINTFORMDL You %SPLIT_G(@"entertain yourself by playing with:feel the texture of:tug on")% Tewi's bunny ears...
+				PRINTFORMDW
+				PRINTFORML 「You really like touching those, huh...」
+				PRINTFORMDL Tewi %SPLIT_G(@"starts pinching your ear in return:wiggles her ears a bit for you:starts feeling them as well")%.
+		ENDSELECT
+	ENDIF
+ENDIF
+WAIT
+RETURN 1
+
+;==================================================
+;303,謝る
+;TFLAG:193(2=菓子折成功 1=大成功 0=成功 -1=失敗 -2=菓子折失敗)
+;==================================================
+@M_KOJO_SUCCESS_COM_K53_303
+;成否判定
+;TFLAG:192(-2=コマンド終了、-1＝強制失敗、0=COM依存、1=強制成功or大成功
+TFLAG:192 = 0
+
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_303
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_303
+	;Apologize.
+SELECTCASE TFLAG:193
+	CASE 2
+		PRINTFORML 「Ha～? A box of cakes! You think you win me over with something like that?」
+		PRINTFORML 「...Ah! T-This bright-yellow looking one...」
+		PRINTFORML 「...Fu～umm... All right. It can't be helped. Just be careful next time, alright?」
+	CASE 1
+	CASE 0
+		PRINTFORML 「...I won't be so forgiving next time...」
+	CASE -1
+	CASE -2
+ENDSELECT
+WAIT
+RETURN 1
+
+;==================================================
+;304,仕事を手伝う
+;TFLAG:193(1=大成功 0=成功 -1=失敗)
+;CFLAG:350(仕事内容(JOB_仕事内容.ERB参照のこと
+;TCVAR:手伝えない(=2 手伝っても早くは終わらない、時間停止中不可 永琳の診察等)
+;==================================================
+@M_KOJO_SUCCESS_COM_K53_304
+;成否判定
+;TFLAG:192(-2=コマンド終了、-1＝強制失敗、0=COM依存、1=強制成功or大成功
+TFLAG:192 = 0
+
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_304
+RETURN 1
+
+@M_KOJO_MESSAGE_COM_K53_304
+	;Help With Work.
+CALL D_LINE
+RETURN 1
+;==================================================
+;305,膝枕してもらう
+;TFLAG:193(-5=MASTERがTARGETよりも巨体の場合(TALENT:MASTER:体型 > TALENT:体型 + 2) 1=大成功 0=成功 -1=失敗)(-5以外は地の文分岐無し)
+;ABL:親密(6以上=顔をのぞき込みながら頭を撫でてくれる 3以上=ただ頭を撫でてくれる 2以下=縮こまっている)
+;==================================================
+@M_KOJO_SUCCESS_COM_K53_305
+;成否判定
+;TFLAG:192(-2=コマンド終了、-1＝強制失敗、0=COM依存、1=強制成功or大成功
+TFLAG:192 = 0
+
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_305
+RETURN TFLAG:193 == -1
+
+@M_KOJO_MESSAGE_COM_K53_305
+	;Get Lap Pillow.
+SIF !SHIRAHU(53)
+	RETURN 1
+SELECTCASE TFLAG:193
+	CASE -5
+		PRINTFORML 「Waah! I'm dyiiiiing!」
+		PRINTFORML 「Have a little delicacy, would you?!」
+	CASE -1
+		PRINTFORMDL Tewi leaps straight up into the air when you try to put your head down...
+		PRINTFORMDW
+		PRINTFORML 「Reversal!」
+		PRINTFORMDL Her bare feet land on the side of your head and she bounces off to escape.
+	CASE 0,1
+		SELECTCASE RAND:4
+			CASE 0
+				PRINTFORML 「All right, it's in range!」
+				PRINTFORMDL Tewi pulls out an inkbrush and starts doodling on your face.
+			CASE 1
+				PRINTFORML 「Are you tired? Recharge as much as you like～」
+				PRINTFORMDL Tewi plays with your ears while you lie down.
+			CASE 2
+				IF IS_MALE(MASTER)
+					PRINTFORML 「A boy in a vulnerable position... What should I do?～」
+					PRINTFORMDL Tewi pokes and pinches at your face to amuse herself.
+				ELSE
+					PRINTFORML 「Your hair's so pretty...」
+					PRINTFORMDL Tewi strokes her fingers through your hair while you lie down.
+				ENDIF
+			CASE 3
+				PRINTFORML 「Poor %CALLNAME:MASTER%, life sure is hard for \@ IS_CHILD(MASTER) ? kids like us # an adult \@...」
+				PRINTFORMDL Tewi takes pity on you while stroking your head.
+		ENDSELECT
+ENDSELECT
+WAIT
+RETURN 1
+
+;==================================================
+;306,お腹を撫でる
+;TFLAG:193(1=ABL:親密6以上かつ妊娠時 0=成功 -1=ABL:親密5以下)
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_306
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_306
+	;Belly Caress.
+IF !SHIRAHU(53)
+ELSEIF TALENT:53:妊娠
+	PRINTFORML 「%SPLIT_G(@"Hehe, it's getting big, huh?:Not too rough, now～:Ooh! I think I felt a kick!～:Feel anything in there?:I can't wait until the %BABYPLNOUN("baby",53)% %BABYPLVERB("is",53)% here...")%」
+	SIF CFLAG:53:子供人数 > 0
+		CALL M_KOJO_DIARYSETTING_K53(58)
+ENDIF
+WAIT
+RETURN 1
+
+;==================================================
+;307,頬をつまむ
+;TFLAG:193(1=大成功 0=成功 -1=失敗)(地の文分岐無し
+	;以下は先に書いた条件が優先される
+	;TALENT:恋慕(受け入れつつ笑顔でやり返す
+	;ABL:親密(6以上=おずおずとやり返す
+	;ABL:従順(5以上=されるがまま
+;==================================================
+@M_KOJO_SUCCESS_COM_K53_307
+;成否判定
+;TFLAG:192(-2=コマンド終了、-1＝強制失敗(注、抱きつきモード中は自動成功)、0=COM依存、1=強制成功or大成功
+TFLAG:192 = 0
+
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_307
+RETURN (!SHIRAHU(53) || TFLAG:193 == -1) ? 2 # 0
+
+@M_KOJO_MESSAGE_COM_K53_307
+	;Pinch Cheek.
+PRINTFORML 「%SPLIT_G("Owie!:Ooo―ow...:Ouchie, ouchie, ouch!:Stooo―op iiii―it...:Ow, ow, ow!:Yeow-ow-ow-ow!:Owie, owie, ow, ow, ow...")%」
+SELECTCASE RAND:13
+	CASE 0
+		PRINTFORML 「I didn't do iii―it...」
+	CASE 1
+		PRINTFORML 「It was just a little trick, have mercy―...!」
+	CASE 2
+		PRINTFORML 「Even if you torture me, I won't reveal my secrets!」
+	CASE 3
+		PRINTFORML 「I'm being punished agaaain―...」
+	CASE 4
+		PRINTFORML 「I'm just a little bunny, have a heart―!」
+	CASE 5
+		PRINTFORML 「I got cauuu―ught...」
+	CASE 6
+		PRINTFORML 「Oh nyooo, I was too cute and got pinched～」
+	CASE 7
+		PRINTFORML 「I'm innocent, really―...」
+	CASE 8
+		PRINTFORML 「Don't hurt me, I'm an innocent bunny―!」
+	CASE 9
+		PRINTFORML 「What's that for? ...It wasn't me!」
+	CASE 10
+		PRINTFORML 「You can't do this to meeee―!」
+	CASE 11
+		PRINTFORML 「It wasn't me, I was framed―!」
+	CASE 12
+		IF IS_HERE(52)
+			PRINTFORML 「Help me, Reisen―!」
+			CALL CHARA_TEXT(52,"「I think you brought that on yourself.」","l")
+		ELSE
+			PRINTFORML 「Somebody help, this is bunny abuse―!」
+		ENDIF
+ENDSELECT
+WAIT
+RETURN 1
+
+;==================================================
+;308,頬をつつく
+;添い寝中or睡眠中限定
+;TFLAG:193(1=大成功 0=成功 -1=失敗)
+;==================================================
+@M_KOJO_SUCCESS_COM_K53_308
+;成否判定
+;TFLAG:192(-2=コマンド終了、-1＝強制失敗(注、抱きつきモード中は自動成功)、0=COM依存、1=強制成功or大成功
+TFLAG:192 = 0
+
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_308
+RETURN (!SHIRAHU(53) || TFLAG:193 == -1) ? 2 # 0
+
+@M_KOJO_MESSAGE_COM_K53_308
+	;Poke Cheek.
+IF TALENT:53:恋人
+	SELECTCASE RAND:4
+		CASE 0
+			PRINTFORML 「Ei―! Ei―!」
+			PRINTFORMDL Tewi pokes you back four times over.
+		CASE 1
+			PRINTFORML 「Lucky poke!」
+			PRINTFORMDL Tewi pokes you back to share good fortune.
+		CASE 2
+			PRINTFORML 「That does it, I'm gonna bite!」
+			PRINTFORMDL Tewi nibbles your finger cutely.
+		CASE 3
+			PRINTFORML 「Stop iii―it!」
+			PRINTFORMDL Tewi lightly headbutts you to escape from being poked.
+	ENDSELECT
+ELSE
+	SELECTCASE RAND:4
+		CASE 0
+			PRINTFORML 「Ei―!」
+			PRINTFORMDL Tewi pokes you back twice over.
+		CASE 1
+			PRINTFORML 「Are you trying to get some good luck?」
+		CASE 2
+			PRINTFORML 「Watch out, you. I'll bite that finger!」
+		CASE 3
+			PRINTFORML 「You're gonna make me mad!」
+			PRINTFORMDL What will Tewi do when she's mad?
+			PRINTFORML 「I'll start poking you instead!」
+	ENDSELECT
+ENDIF
+WAIT
+RETURN 1
+
+;==================================================
+;309,頭を撫でる
+;TFLAG:193(1=大成功 0=成功 -1=失敗)
+;ABL:親密(6以上=通常成功時分岐
+;==================================================
+@M_KOJO_SUCCESS_COM_K53_309
+;成否判定
+;TFLAG:192(-2=コマンド終了、-1＝強制失敗(注、抱きつきモード中は自動成功)、0=COM依存、1=強制成功or大成功
+TFLAG:192 = 0
+
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_309
+RETURN (!SHIRAHU(53) || TFLAG:193 == -1) ? 2 # 0
+
+@M_KOJO_MESSAGE_COM_K53_309
+	;Head Pat.
+SIF !SHIRAHU(53) || TFLAG:193 == -1
+	RETURN 1
+IF TALENT:53:恋人
+	SELECTCASE RAND:4
+		CASE 0
+			PRINTFORML 「Pet me more～」
+			PRINTFORMDL Tewi snuggles up to you and relaxes. Is she your lover or your pet rabbit?
+			PRINTFORML 「I'll be your pet as long as you pet me～」
+		CASE 1
+			IF IS_HERE(52) && TALENT:52:恋人
+				PRINTFORML 「Reisen, come get your pets too!」
+				CALL CHARA_TEXT(52,"「Don't say that, that's embarrassing...」","l")
+				PRINTFORMDL Despite complaining, Reisen comes forward and you pet both rabbits' heads together.
+			ELSEIF IS_HERE(52)
+				PRINTFORML 「Not in front of Reisen, you'll make her jealous～」
+				CALL CHARA_TEXT(52,"「Wh-Why would I be jealous...」","l")
+			ELSE
+				PRINTFORML 「I'll be your little bunny～」
+				PRINTFORMDL Tewi smiles happily while you rub around her head.
+			ENDIF
+		CASE 2
+			PRINTFORML 「Aaah, don't play with my ears, come on...!」
+			PRINTFORMDL Tewi pouts while you get your fill of her soft fur.
+		CASE 3
+			PRINTFORML 「I'm ready for turbo mode. Go on, I can take it!」
+			PRINTFORMDL Safeties disengaged, you seize Tewi's head with both hands and start rubbing furiously.
+			PRINTFORML 「Wo-o-oa-oa-oah...!」
+	ENDSELECT
+ELSE
+	SELECTCASE RAND:4
+		CASE 0
+			PRINTFORML 「Ahaha, you just wanted to touch my ears～」
+		CASE 1
+			PRINTFORML 「～～～」
+			PRINTFORMDL Tewi leans into you and snuggles against your body while you pat her.
+		CASE 2
+			PRINTFORML 「From this position, I can go through your pockets.」
+			PRINTFORMDL From this position, you can pull on Tewi's ears.
+			PRINTFORML 「Mutually assured destruction, huh...」
+		CASE 3
+			PRINTFORML 「Don't mess up my hair.」
+			PRINTFORMDL Tewi's hair looks messy already, you note as you run your fingers through it.
+	ENDSELECT
+ENDIF
+WAIT
+RETURN 1
+
+;==================================================
+;331,お茶を淹れる（薬入り）
+;TFLAG:193(1=大成功 0=成功 -1=失敗)
+;==================================================
+@M_KOJO_SUCCESS_COM_K53_331
+;成否判定
+;TFLAG:192(-2=強制失敗(注、非コマンド終了）、-1＝強制失敗、0=COM依存、1=強制成功or大成功(注、睡眠薬アイスティーは眠気を感じていると飲まない)
+TFLAG:192 = 0
+
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_331
+RETURN 1
+
+@M_KOJO_MESSAGE_COM_K53_331
+	;Serve Tea W/ Medicine.
+IF TFLAG:193 == -1 || !RAND:4
+	CALL D_LINE
+	PRINTFORMDL You offer Tewi a cup of tea...
+	PRINTFORMDW
+	SELECTCASE TFLAG:193
+		CASE 0
+			PRINTFORML （...? This tea smells a little funny.... Oh well.）
+			PRINTFORMDL Although she feels uncertain, Tewi drinks the doctored tea.
+		CASE 1
+			PRINTFORMDL Not noticing the unusual scent of the tea at all, Tewi happily gulps it down.
+		CASE -1
+			IF K53_TSUN()
+				PRINTFORML 「...? Sniff, sniff... What's this? It smells a bit weird, but... Another cup, please.」
+				PRINTFORMDW Tewi politely refuses the tea and hands the cup back to you.
+			ELSE
+				PRINTFORML 「...? Hmm...」
+				PRINTFORMDL Tewi brings the cup to her face, and sniffs it delicately...
+				PRINTFORML 「Oops!」
+				PRINTFORMDL ...then tips the whole thing over in an exaggerated motion, spilling out all of the tea.
+				PRINTFORML 「Ahaha, clumsy me～ Sorry～」
+				PRINTFORMDL She must have gotten suspicious...
+			ENDIF
+	 ENDSELECT
+ELSE
+		;Use the regular Serve Tea function, then add some extra text on the end.
+	CALL M_KOJO_MESSAGE_COM_K53_301(1)
+	PRINTFORMDL She doesn't notice the additive...
+ENDIF
+WAIT
+RETURN 1
+
+;==================================================
+;332,お酒をふるまう
+;TFLAG:193(0=下戸飲み成功 -1=下戸飲み失敗 -2=下戸飲み大失敗 -5=下戸飲みあきらめ)
+;COM_STR(酒の名称)
+;ALCOHOL_TASTE(TFLAG:194)(15以上=気に入る 9以下=口に合わない)
+;==================================================
+@M_KOJO_SUCCESS_COM_K53_332
+;成否判定
+;TFLAG:192(-1＝強制失敗、0=COM依存
+;TFLAG:口上特殊補正 (ここに数値を入れるとALCOHOL_TASTEを増減させられる)
+TFLAG:192 = 0
+TFLAG:口上特殊補正 = 0
+
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_332
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_332
+	;Serve Alcohol.
+	;Different lines for different kinds of alcohol.
+IF STRFIND(ITEMNAME_TR(TFLAG:194),"Beer") > -1
+	PRINTFORML 「%SPLIT_G("Well, I won't say no to beer.:Ooh, gimme a beer!:I shouldn't have too much, but...:Is that beer I smell?:Enough of this stuff and any day's a good day.:Aw, you got me beer!:I'll have a big glass, please.:This is the good stuff.")%」
+ELSEIF STRFIND(ITEMNAME_TR(TFLAG:194),"Wine") > -1
+	IF TFLAG:194 == 54
+			;Wine.
+		PRINTFORML 「%SPLIT_G("This is a cheap wine, right? I'll have it.:Regular wine this time?:Wine? Sure, why not?")%」
+	ELSE
+		PRINTFORML 「%SPLIT_G("Ooh, the good stuff!:Is this an expensive wine?:Good wine? As long as it's your treat～")%」
+	ENDIF
+ELSEIF TFLAG:194 == 580
+		;Koshu.
+	PRINTFORML 「%SPLIT_G("Oh, this smells nice.:This is wine, right?:Well, it smells good at least.")%」
+ELSEIF TFLAG:194 == 59
+		;Medical Alcohol.
+	PRINTFORML 「%SPLIT_G("Ah, the old work favourite!:Hehe, I got a taste for this stuff from Master's cabinets.:It's medical, so it's healthy, right?")%」
+ELSEIF TFLAG:194 == 51
+		;Doburoku.
+	PRINTFORML 「%SPLIT_G("Lazy sake, huh.:Oh, it's not the finished kind.:I guess I'll have it.")%」
+ELSEIF STRFIND(ITEMNAME_TR(TFLAG:194),"Mead") > -1
+	PRINTFORML 「%SPLIT_G("Sweet honey, gimme～:The old favourite! I'll have some.:Oh, I used to drink this all the time!")%」
+ELSEIF STRFIND(ITEMNAME_TR(TFLAG:194),"Rum") > -1
+	PRINTFORML 「%SPLIT_G("Ah, Rum is kinda...:Rum's not my thing, but I'll try it.:I'm not a big fan of rum...")%」
+ELSEIF STRFIND(ITEMNAME_TR(TFLAG:194),"Brandy") > -1
+	IF TFLAG:194 == 573
+			;Brandy XO.
+		PRINTFORML 「%SPLIT_G("This kind is pretty good for brandy!:Oh, the good brandy!:Is it the kind I like?")%」
+	ELSE
+		PRINTFORML 「%SPLIT_G("Brandy, huh... I don't like it that much.:Most brandy tastes bad to me...:I don't like brandy that much.")%」
+	ENDIF
+ELSEIF STRFIND(ITEMNAME_TR(TFLAG:194),"Shochu") > -1
+	IF TFLAG:194 == 560
+			;Sweet Potato Shochu.
+		PRINTFORML 「%SPLIT_G("This one smells weird...:Shochu isn't bad, but I don't think I like this kind.:I like sweet potatoes, but not like this...")%」
+	ELSE
+		PRINTFORML 「%SPLIT_G("Shochu? Okay.:Shochu's all right, but I prefer beer.:Oh, shochu. I'll have some, I guess.")%」
+	ENDIF
+ELSEIF STRFIND(TOLOWER(ITEMNAME_TR(TFLAG:194)),"sake") > -1 || STRFIND(ITEMNAME_TR(TFLAG:194),"zake") > -1
+	IF TFLAG:194 == 56
+			;Sweet Sake.
+		PRINTFORML 「%SPLIT_G("This is the easy-to-drink kind, right?」\n「I'll have it, but I'm a big girl who can drink beer too.:Oh, it smells really nice.:I like this kind, it smells good.")%」
+	ELSEIF TFLAG:194 == 55
+			;Sacred Sake.
+		PRINTFORML 「%SPLIT_G("Even though it's meant for gods, this kind isn't usually that good.:Someone spit in this, didn't they?:Oh, it's a special kind.")%」
+	ELSE
+		PRINTFORML 「%SPLIT_G("Oooh, sake, sake!:Sake, huh?」\n「I get tired of it quick, but I really like the taste.:Can't go wrong with good sake!")%」
+	ENDIF
+ELSE
+	PRINTFORML 「%SPLIT_G("Sure, gimme!:I won't say no to a free drink.:Free drink! I'll have some.:Okay, bottoms up!:All right, let's drink!")%」
+ENDIF
+PRINTFORMDL Tewi picks up the cup and %SPLIT_G("starts to drink:takes a sip:sips from it:takes a gulp of its contents:knocks it back")%.
+IF TFLAG:193 < 0
+		;If she can't or won't finish it.
+	PRINTFORML 「...Bleeeh―, never mind!」
+	PRINTFORMDL Her face turns red as she hands it back.
+ELSE
+	SELECTCASE ALCOHOL_TASTE(TFLAG:194)
+		CASE IS > 14
+				;If she likes it.
+			PRINTFORMDL Her expression turns pleased and she continues to sip from it while chatting pleasantly.
+			PRINTFORML 「%SPLIT_G("Mmmmm～!:That's the stuff, all right.:You've got good taste, I guess.:Mm, mm, mmm...」\n「That's really good... Is there any more?:Yaa―ay, booze!:You picked a good one this time!")%」
+		CASE IS < 10
+				;If she doesn't like it.
+			IF TFLAG:194 == 560
+					;Sweet Potato Shochu.
+				PRINTFORML 「%SPLIT_G("Blech, I don't wanna drink sweet potatoes...:Yeah, it just tastes like liquid sweet potato... But in a bad way...:Yep, I hate it... Why would you wanna drink a sweet potato?")%」
+			ELSEIF !RAND:4
+				PRINTFORML 「%SPLIT_G("Mmm, it's actually good!:Yep, it's better like this after all.:Aah, that's good stuff.")%」
+				PRINTFORMDL %SPLIT_G("Looking at her cup, the contents have been replaced with beer.:Somehow, she switched out the cup with a flagon of beer.")%
+				PRINTFORML 「%SPLIT_G("Hmm? This is what you gave me, really～:I didn't like that, so I'm having this.:That was bad, but this is good.:What? I'm drinking it.")%」
+			ELSE
+				PRINTFORMDL However, her expression turns sour as she drinks it.
+				PRINTFORML 「%SPLIT_G("As expected, I don't like it...:Ugh, I don't like this...:Bleeeh―!:Bleh, I don't like this kind.")%」
+			ENDIF
+		CASEELSE
+				;If it's okay.
+			PRINTFORML 「%SPLIT_G("Yep, it's so-so.:Well, it's okay.:Well, it's pretty good.:Mm, not bad.")%」
+	ENDSELECT
+ENDIF
+WAIT
+RETURN 1
+
+;==================================================
+;333,愚痴を聞く
+;TFLAG:193(6=大成功(酔い) 5=成功(酔い) 4=失敗(酔い) 3=大成功 2=成功 1=失敗)
+;==================================================
+@M_KOJO_SUCCESS_COM_K53_333
+;成否判定
+;TFLAG:192(-2=コマンド終了、-1＝強制失敗、0=COM依存、1=強制成功or大成功
+TFLAG:192 = 0
+
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_333
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_333
+	;Listen to Complaints.
+RETURN 1
+
+;==================================================
+;334,杯を交わす
+;TFLAG:193(1=大成功 0=成功 -1=失敗)
+;CFLAG:妊娠自覚状態(1=食事)
+;TALENT:酒耐性(-2=食事)
+;==================================================
+@M_KOJO_SUCCESS_COM_K53_334
+;成否判定
+;TFLAG:192(-2=コマンド終了、-1＝強制失敗、0=COM依存、1=強制成功or大成功
+TFLAG:192 = 0
+
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_334
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_334
+	;Share Drink.
+RETURN 1
+
+;==================================================
+;335,介抱する
+;TFLAG:193(1=大成功 0=成功 -1=失敗)
+;==================================================
+@M_KOJO_SUCCESS_COM_K53_335
+;成否判定
+;TFLAG:192(-2=コマンド終了、-1＝強制失敗、0=COM依存、1=強制成功or大成功
+TFLAG:192 = 0
+
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_335
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_335
+	;Look After.
+RETURN 1
+
+;==================================================
+;336,膝枕する
+;ABL:親密(4以下=居心地悪げ 9以下=恥ずかしげ それ以上=幸せそう
+;TIME_PROGRESS(TFLAG:膝枕した)(44以下=失敗
+;==================================================
+@M_KOJO_SUCCESS_COM_K53_336
+;成否判定
+;TFLAG:192(-2=コマンド終了、-1＝強制失敗、0=COM依存、1=強制成功or大成功
+TFLAG:192 = 0
+
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_336
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_336
+	;Give Lap Pillow.
+SIF !SHIRAHU(53)
+	RETURN 1
+SELECTCASE TFLAG:193
+	CASE -1
+	CASE 0,1
+		PRINTFORML 「Zzz...」
+		PRINTFORMDL She's only pretending to sleep, but the way her mouth hangs slightly open looks cute.
+ENDSELECT
+WAIT
+RETURN 1
+
+;==================================================
+;350,押し倒す（時姦時イタズラする
+;TFLAG:194 (0=成功 1=人目がある　2=野外は嫌でござりまする　3=多人数プレイは勘弁　4=合意があってもムードが足りぬ　100=合意はあるが口上内特殊判定によって失敗）
+;TCVAR:抱き寄せ初回　1=普通に合意ゲット　2=先にキスぐらいしろよ　3=媚薬or発情には勝てなかったよお…　4=悔しい…刻印さえなければﾋﾞｸﾋﾞｸﾝ
+;5=強引に迫られると断れぬ(素質臆病持ち専用) 6=まんざらでもない　7=駄目　8=論外 98=口上内特殊判定による失敗 99=口上内特殊判定による成功
+;口上内特殊判定は該当するCFLAGが0だと無効
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_350
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_350
+	;Push Down.
+CALL SET_KOJO_COLOR(53)
+SIF !SHIRAHU(53)
+	RETURN 1
+SIF K53_CAN_START_MESUGAKI() || K53_CAN_CONTINUE_MESUGAKI()
+	TCVAR:抱き寄せ初回 = 8
+IF TFLAG:194
+	IF K53_CAN_CONTINUE_MESUGAKI()
+		PRINTFORML 「No way, perrrrvert!」
+		PRINTFORMDW It seems like pushing her down normally won't work. You might have to talk to her and look for a chance.
+		RETURN 1
+	ENDIF
+	SELECTCASE TFLAG:194
+		;人目がある
+		CASE 1
+		;野外は嫌
+		CASE 2
+			PRINTFORML 「Thing is, it's just that― Please pick the location more carefully.」
+			PRINTFORMW 「I might be a rabbit, but that doesn't mean I'm fine with just mating in the open.」
+		;多人数は嫌
+		CASE 3
+		;ムードが足りない
+		CASE 4
+			PRINTFORMW 「Hang on― I know it's a treat to see me like this, but I think you could pick a better time.」
+	ENDSELECT
+ELSEIF GET_TARGETNUM() > 1 && CFLAG:うふふ != 2
+	CALL M_KOJO_DIARYSETTING_K53(25)
+	RESULT = 0
+	CALL K53_3P(TARGET)
+	IF !RESULT
+		IF K53_TSUN()
+			PRINTFORMW 「%SPLIT_G(@"Doing it in a group... You pervert...:As a group... Well... No, it's fine...")%」
+		ELSE
+			SELECTCASE RAND:5
+				CASE 0
+					PRINTFORMW 「Doing it in a group... I can't afford to lose here!」
+				CASE 1
+					PRINTFORMW 「All right! I'll be your number one lover, %CALLNAME:MASTER%!%UNICODE(0x2764)%」
+				CASE 2
+					PRINTFORMW 「Make sure to give me the most attention, %CALLNAME:MASTER%!%UNICODE(0x2764)%」
+				CASE 3
+					PRINTFORMW 「Aah, we're all doing it, huh? Fine with me%UNICODE(0x2764)%」
+				CASE 4
+					PRINTFORMW 「I'm your favorite, right, %CALLNAME:MASTER%?%UNICODE(0x2764)%」
+			ENDSELECT
+		ENDIF
+	ENDIF
+;抱き寄せ初回or合意持ちで成功
+ELSE
+	;抱き寄せ初回
+	IF TCVAR:抱き寄せ初回
+		SELECTCASE TCVAR:抱き寄せ初回
+			;普通に合意ゲット
+			CASE 1
+				CALL M_KOJO_DIARYSETTING_K53(25)
+				IF TALENT:ヤリマン
+					PRINTFORMW 「Eh～? You wouldn't take advantage of a little girl like me, would you～?」
+					PRINTFORMW 「...Well, if it's you, I'll allow it. But make sure it feels good, alright?」
+				ELSEIF TALENT:恋慕 && TALENT:恋人
+					PRINTFORMW 「...Yeah, that's... That's fine.」
+					PRINTFORMW 「Just be gentle with me... all right?」
+					PRINTFORMDW For some reason, it feels like Tewi's about to loose all that meekness in a second... 
+				ELSE
+					PRINTFORMW 「Ee- Ehh? You already want to do it?」
+					PRINTFORMW 「W... Well... Fine... Just don't get greedy, understand?」
+				ENDIF
+			;キスがまだ
+			CASE 2
+				CALL M_KOJO_DIARYSETTING_K53(25)
+				PRINTFORMW 「If we're doing something like this, isn't there something we're supposed to first?」
+				PRINTFORMW 「It's not the mood... Ahh... I don't even care anymore...」
+			;媚薬or発情
+			CASE 3
+				CALL M_KOJO_DIARYSETTING_K53(25)
+				PRINTFORMW 「Fuu―u... Fuu―u... L-Lemme go... N-No, keep going... Ahh...」
+			;時姦刻印
+			CASE 4
+				CALL M_KOJO_DIARYSETTING_K53(25)
+				PRINTFORMW 「Hya! S-Sto... W-Waitamin... W-Waait-aahhh... Nnhh?!」
+				PRINTFORMW （W-What is this... %HIS_HER(PLAYER,1)% scent, when I smell %HIS_HER(PLAYER)% body my body just... I...can't resist...）
+			;強引に迫られると断れない（臆病持ち
+			CASE 5
+			;まんざらでもない
+			CASE 6
+				PRINTFORML 「Hehe～ Sorry, I don't want to!」
+				PRINTFORMDW Though she turns you down, she seems elated by your attention.
+			;駄目
+			CASE 7
+				PRINTFORMDL With the swift reflexes of a prey animal, Tewi darts out of your reach before you can even raise a hand.
+				PRINTFORMW 「What do you think you're trying to do? Don't get cocky with me, buster!」
+			;論外
+			CASE 8
+				IF K53_CAN_START_MESUGAKI()
+					PRINTFORMDW She slips out of your grasp like a bar of soap and darts out of view.
+					CALL K53_MESUGAKI
+				ELSEIF K53_CAN_CONTINUE_MESUGAKI()
+					PRINTFORMDL She avoids your grasp with an uncanny swiftness, laughing and jeering at you the whole time.
+					IF HAS_PENIS(MASTER)
+						PRINTFORMW 「Pervert～ You wish you could stick it in my pussy～」
+					ELSE
+						PRINTFORMW 「Pervert～ You wish you could scissor with my pussy～」
+					ENDIF
+				ELSEIF IS_CHILD(MASTER)
+					PRINTFORMW 「Don't you get near me, pervert! Perverrrrt!」
+				ELSE
+					PRINTFORMW 「Don't you get near me, lolicon! Perverrrrt!」
+				ENDIF
+		ENDSELECT
+	;合意持ち
+	ELSE
+		IF TFLAG:102 == 3 || CFLAG:うふふ == 2
+			IF K53_TSUN()
+				PRINTFORML 「H-huh? No fair...」
+			ELSE
+				SELECTCASE RAND:3
+					CASE 0
+						PRINTFORMW 「Ahh%UNICODE(0x2764)% Turning the tables?」
+					CASE 1
+						PRINTFORMW 「Oh, no%UNICODE(0x2764)%」
+					CASE 2
+						PRINTFORMW 「Wh-What're you gonna do to me?%UNICODE(0x2764)%」
+				ENDSELECT
+			ENDIF
+		ELSEIF ((CFLAG:MASTER:初期位置 == 412 && CFLAG:MASTER:現在位置 == 412) || (CFLAG:MASTER:初期位置 == 428 && CFLAG:MASTER:現在位置 == 428) || (CFLAG:MASTER:初期位置 == 442 && CFLAG:MASTER:現在位置 == 442) || (CFLAG:MASTER:初期位置 == 460 && CFLAG:MASTER:現在位置 == 460)) && !RAND:10
+			PRINTFORMW 「Wah!」
+			PRINTFORMW 「What are we going to do on the bed?」
+		ELSE
+			IF K53_TSUN()
+				PRINTFORML 「Y-You want to... do it again...?」
+				PRINTFORML 「...N-No... It's nothing... Just...」
+			ELSE
+				SELECTCASE RAND:12
+					CASE 0
+						PRINTFORMW 「Y-You want to do it again?」
+						PRINTFORMW 「Geez, you gotta warn me first%UNICODE(0x2764)%」
+					CASE 1
+						PRINTFORMW 「Woah, there! Warn me before you do that%UNICODE(0x2764)%」
+					CASE 2
+						IF TALENT:MASTER:体型 == -5
+							PRINTFORMDW Despite your minuscule size, Tewi seems to instantly understand your intentions when you place your hand on her.
+						ELSEIF TALENT:MASTER:体型 == -2
+							PRINTFORMDW You put your hand on Tewi's shoulder. Your eyes lock with hers, and she grins at you.
+						ELSEIF TALENT:MASTER:体型 == 1
+							PRINTFORMDW Kneeling down, you gaze into Tewi's red eyes, and she grins bashfully.
+						ELSEIF TALENT:MASTER:体型 == 2
+							PRINTFORMDW You feel a shiver of delight when you put your hand on Tewi's body. She looks up at you and smiles.
+						ELSEIF TALENT:MASTER:体型 == 5
+							PRINTFORMDW You wrap your giant fingers gently around Tewi's little body, and are rewarded when she shivers with delight. She looks up at you and smiles.
+						ELSE
+							PRINTFORMDW You reach down towards Tewi, and she gets a cheeky grin.
+							PRINTFORMW 「Come here%UNICODE(0x2764)%」
+						ENDIF
+					CASE 3
+						PRINTFORMW 「Ah, I got caught again...」
+						PRINTFORMW 「Be gentle with me%UNICODE(0x2764)%」
+					CASE 4
+						PRINTFORMW 「Oh? What are you planning on doing?」
+						PRINTFORMDW Tewi holds a straight face for a moment, then a grin spreads across her cheeks.
+					CASE 5
+						PRINTFORMW 「%SPLIT_G(@"Ah, you caught me～:Oh, no～:Wh-What are you doing now?～")%」
+						PRINTFORMDW Playing the part of the trapped rabbit, Tewi squirms in your grasp. If she actually wanted to, she'd escape.
+						IF TALENT:MASTER:体型 == -5
+							PRINTFORMDW Rather, given your size, there's no way she couldn't escape. This fact is obvious to both of you.
+						ELSEIF TALENT:MASTER:体型 == 5
+							PRINTFORMDW Still, your massive hands make for a convincing rabbit trap. She can almost pretend that she's being forced.
+						ENDIF
+					CASE 6
+						PRINTFORMW 「Hehe～」
+						PRINTFORMDW Understanding your intention, Tewi rubs her body against yours...
+					CASE 7
+						PRINTFORMW 「Hmm? You wouldn't lust after my little kid body, would you?」
+						IF TALENT:MASTER:体型 == -2
+							PRINTFORMDW She's one to talk. Besides, her hips are wide enough for children. You prove it by running your hands over them.
+						ELSE
+							PRINTFORMDW Tewi plays the fool, but she can't pretend you're not running your hands all over that little kid body.
+						ENDIF
+						PRINTFORMDW She gives a little sigh...
+					CASE 8
+						PRINTFORMDW No need for words; all it takes to let Tewi know you're in the mood is to massage her ears a little bit.
+						PRINTFORMW 「Mmm... Mmhmhmhm～」
+					CASE 9
+						PRINTFORMW 「What's wrong?」
+						PRINTFORMW 「Ah, I see～」
+						PRINTFORMDW Tewi giggles softly as she understands your intention.
+					CASE 10
+						PRINTFORMW 「Have you fallen for my charms again?～」
+						PRINTFORMDW You sure have. You let Tewi know with your hands, running them up and down her body.
+						PRINTFORMDW She gives a small, pleasurable shiver...
+						PRINTFORMW 「Mmm～」
+					CASE 11
+						IF TALENT:恋人 && TALENT:恋慕
+							PRINTFORMW 「I love the way you get in the mood～」
+							PRINTFORMDW Tewi cooes in your grasp, giving herself to you completely.
+						ELSEIF TALENT:愛欲
+							PRINTFORMW 「About time～ I need it bad～」
+							PRINTFORMDW Tewi throws herself into you...
+						ELSEIF TALENT:セフレ || TALENT:ヤリマン
+							PRINTFORMW 「Come here, sexy %PRINT_MALE("boy", MASTER)%～」
+							PRINTFORMDW Tewi knows what you want as soon as you make a move.
+						ELSE
+							PRINTFORMW 「Ehehe, what's that look for～」
+						ENDIF
+				ENDSELECT
+			ENDIF
+		ENDIF
+	ENDIF
+ENDIF
+RETURN 1
+
+;==================================================
+;351,連れ出す
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_351
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_351
+	;Lead Around.
+PRINTFORMDL
+IF CFLAG:同行 == 60
+	IF MARK:反発刻印 > 1 || CFLAG:ブチギレ
+		SELECTCASE RAND:3
+			CASE 0
+				PRINTFORML 「What, with you?」
+				PRINTFORMDL Tewi gives you a sarcastic look, but acquiesces anyway.
+				PRINTFORML 「Fine, where are we going?」
+			CASE 1
+				CALL PRINT_STRL, @"「Oh, sure～ I'll pick up and go where @ITALIC@you@ want～」"
+				PRINTFORMDL Despite her sarcasm, Tewi comes with you anyway.
+			CASE 2
+				PRINTFORML 「What? Where are you pulling me now?」
+		ENDSELECT
+	ELSEIF IN_HEAT()
+		SELECTCASE RAND:3
+			CASE 0
+				PRINTFORML 「Hmm...? Going where...?」
+			CASE 1
+				PRINTFORML 「Where are we going? Can we... Nah, you pick!」
+			CASE 2
+				PRINTFORML 「W-We're going somewhere private?」
+		ENDSELECT
+	ELSE
+		IF K53_TSUN()
+			PRINTFORML 「%SPLIT_G(@"Huh? ...Going where?:Fine, where are we going?:Hmm? Go where?:Something you wanna show me?:Okay, where?")%」
+		ELSE
+			PRINTFORML 「%SPLIT_G(@"Are we going for an adventure?:Yeah, let's go somewhere fun!:Where are we going? Where are we going?:All right, let's go!:Lead on, brave leader!～:Okaaay～:What? What? Where are we going?～:Let's go!:Okay, where?:Let's goooo―!:What? What is it?:What's our mission for today?")%」
+		ENDIF
+	ENDIF
+ENDIF
+WAIT
+RETURN 1
+
+;==================================================
+;352,告白する
+;FLAG:甲斐性無(1=失敗)
+;TFLAG:193 (1=成功 0=失敗)
+;==================================================
+@M_KOJO_SUCCESS_COM_K53_352
+;成否判定
+;TFLAG:192(-2=コマンド終了、-1＝強制失敗、0=COM依存、1=強制成功or大成功
+TFLAG:192 = 0
+
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_352
+RETURN 1
+
+@M_KOJO_MESSAGE_COM_K53_352
+	;Confess.
+CALL D_LINE
+PRINTFORMDW Now is the time, you've decided. You need to let Tewi know how you feel.
+PRINTFORMW 「Hmm? What's up, %CALLNAME:MASTER%?」
+PRINTFORMDW Gathering your courage, you confess your love for Tewi.
+PRINTL
+PRINTFORMDW .........
+PRINTL
+IF TFLAG:193 == 1
+	IF TALENT:恋慕
+		PRINTFORMW 「...Ehehe～」
+		PRINTFORMDW Tewi shrinks her shoulders in and wiggles her ears nervously. She squirms her whole body, and struggles to maintain a straight face.
+		PRINTFORMDW A smile is invading her countenance.
+		PRINTFORMW 「...I... I mean... Yeah... I, um...」
+		PRINTFORMDW For once, Tewi doesn't seem to know what to say. She can't even crack a joke or play a prank.
+		PRINTL
+		PRINTFORMW 「...Me... Me too.」
+		PRINTFORMDW "Me too?" She also loves herself?
+		PRINTFORMW 「Th-That's not it! I, y'know～ Don't make me say it～」
+		PRINTFORMDW You had to say it. If Tewi feels the same, she should say it, too.
+		PRINTFORMDW It takes her a minute to calm down enough to speak her mind.
+		PRINTL
+		PRINTFORMW 「.........」
+		PRINTFORMW 「It's just... I don't get attached. Rabbits are about strength in numbers, you know? Youkai are different, but...」
+		PRINTFORMW 「Even though the rabbits are my family, it's like they could die any time. I don't want to... get hurt...」
+		PRINTFORMDW She screws up her face with an embarrassed smile.
+		PRINTFORMDW It's rare to hear her speak honestly, so you don't want to ruin it by interrupting. You wait for her to continue.
+		PRINTL
+		PRINTFORMW 「...But I guess it's too late for that, huh?」
+		PRINTFORMW 「Because I already fell in love with you%UNICODE(0x2764)%」
+		PRINTFORMDW Finally, she says it out loud. The vice around your heart is released.
+		IF (TALENT:52:恋人 && TALENT:62:恋人 && TALENT:72:恋人) || (TALENT:52:恋慕 && TALENT:62:恋慕 && TALENT:72:恋慕)
+			PRINTFORMW 「I shouldn't be surprised. You've already charmed everyone else in the house.」
+		ELSEIF TALENT:52:恋人 || TALENT:52:恋慕 || TALENT:100:恋人 || TALENT:100:恋慕
+			PRINTFORMW 「Even though you have Reisen... I guess we're both greedy～」
+		ELSEIF TALENT:62:恋人 || TALENT:62:恋慕
+			PRINTFORMW 「Even though you have Kaguya-sama... I guess we're both greedy～」
+		ELSEIF TALENT:72:恋人 || TALENT:72:恋慕
+			PRINTFORMW 「Even though you have Master... I guess we're both greedy～」
+		ELSE
+			PRINTFORMW 「...To be honest, I didn't think you'd want me, too. It's kinda... turned my world upside down...」
+		ENDIF
+		IF TALENT:52:恋人 || TALENT:100:恋人 || TALENT:107:恋人 || TALENT:108:恋人
+			PRINTFORMDW Tewi giggles.
+			PRINTFORMW 「I guess what they say about chasing two rabbits isn't true～」
+		ENDIF
+		PRINTFORMDW Bit by bit, she seems to regain her composure.
+		PRINTL
+		PRINTFORMW 「...All right, all right. I won't run away. Should I say it again?」
+		PRINTFORMW 「I love you, %CALLNAME:MASTER%. I'm not lying%UNICODE(0x2764)%」
+		CALL M_KOJO_DIARYSETTING_K53(39)
+	ELSE
+		PRINTFORMW 「...Ehehe～」
+		PRINTFORMDW Tewi shrinks her shoulders in and smiles, looking away a bit. You know her well enough by now to know that she's truly pleased.
+		PRINTFORMW 「I don't know... I guess you really fell for me, huh?～」
+		PRINTFORMDW Despite that, the uncertainty of her reply is stressing you out. You ask for a clear answer.
+		PRINTL
+		PRINTFORMW 「Hey, you know, a girl needs to sort out her feelings! Give me a minute, will you?」
+		IF (TALENT:52:恋人 && TALENT:62:恋人 && TALENT:72:恋人) || (TALENT:52:恋慕 && TALENT:62:恋慕 && TALENT:72:恋慕)
+			PRINTFORMW 「...You won't be satisfied until the whole house is in your harem, right? Geez...」
+		ELSEIF TALENT:52:恋人 || TALENT:52:恋慕 || TALENT:100:恋人 || TALENT:100:恋慕
+			PRINTFORMW 「...You already have Reisen, and you still want me? Geez...」
+		ELSEIF TALENT:62:恋人 || TALENT:62:恋慕
+			PRINTFORMW 「...You already have Kaguya-sama, and you still want me? Geez...」
+		ELSEIF TALENT:72:恋人 || TALENT:72:恋慕
+			PRINTFORMW 「...You already have Master, and you still want me? Geez...」
+		ELSE
+			PRINTFORMW 「...You really fell for me? I thought you'd be more into Reisen. It's kinda... turned my world upside down...」
+		ENDIF
+		PRINTFORMW 「...Aw, fine. Why not? Let's be lovers%UNICODE(0x2764)%」
+		CALL M_KOJO_DIARYSETTING_K53(38)
+	ENDIF
+	PRINTFORMDW With that final line, Tewi embraces you.
+	IF TALENT:MASTER:体型 == -5
+		PRINTFORMDW Her body is huge compared to yours, but she hugs you tenderly against her chest, wrapping you in her affection...
+	ELSEIF TALENT:MASTER:体型 == -2
+		PRINTFORMDW Your small bodies are perfectly made for each other. You look like a pair of kids in puppy love, wrapped in each others' arms.
+	ELSEIF TALENT:MASTER:体型 == 1
+		PRINTFORMDW She must look like she's hugging an older relative, but to you, she's your lover.
+	ELSEIF TALENT:MASTER:体型 == 2
+		PRINTFORMDW She's so small compared to you, but she fills your whole body with her affection.
+	ELSEIF TALENT:MASTER:体型 == 5
+		PRINTFORMDW She's tiny compared to you, and you have to be careful not to hurt her by accident.
+		PRINTFORMDW Even so, it feels like she's filling your entire gigantic frame with her affection.
+	ELSE
+		PRINTFORMDW She must look like she's hugging an older relative, but to you, she's your lover.
+	ENDIF
+	PRINTFORMDW From now on, you'll have a lot to share between each other.
+	RETURN 1
+ELSE
+	IF STRLENS(CSTR:ファーストキス喪失履歴)
+		PRINTFORMW 「Eeh... Now that you say it...」
+		PRINTFORMDW Tewi seems mildly surprised at your confession.
+		PRINTFORMW 「...I know we've kissed and all, but still―, when you say it in words, I don't really feel it, you know?」
+		PRINTFORMDW Although she tries to explain her reasons for rejecting you, they're difficult to understand.
+		PRINTFORMDW Still, she isn't being cruel. Normally, Tewi would start mocking you now.
+		PRINTFORMDW Is that hope? Or just a pitiful rationalization?
+	ELSEIF EXP:デート経験 > 0
+		PRINTFORMW 「Ah... You said it, huh?」
+		PRINTFORMDW Tewi's manner becomes deadpan and you feel the temperature go down a few degrees.
+		PRINTFORMW 「Just because we've played around a bit, you think we're in love?」
+		PRINTFORMW 「Are you sure you're not just temporarily excited?」
+		PRINTFORMDW She blows air and swings her arms in agitation, then rests her hands behind her head. It seems like she expected this, somehow.
+		PRINTFORMW 「Geez... You know how embarrassing this is for me, right?」
+		PRINTFORMW 「How am I supposed to keep my cute image like this? Huh?」
+		PRINTFORMDW An unequivocal rejection... It feels like she's even meaner to the people close to her.
+	ELSEIF CFLAG:好感度 < 1000
+		PRINTFORMW 「...Eeh?」
+		PRINTFORMDW Tewi starts giggling and blushing at the same time, covering her mouth with both hands.
+		PRINTFORMW 「Eeh? Eeeeh―? You're joking, aren't you?」
+		PRINTFORMDW She seems to realize that you weren't joking, and begins patting your head.
+		PRINTFORMW 「Ehehe, I see～ You fell for my charms just like that, huh?～ It happens～」
+		PRINTFORMDW She begins reassuring you like it's natural, but this is definitely a rejection...
+	ELSE
+		PRINTFORMW 「...Nah, I don't feel that way.」
+		PRINTFORMDW Tewi rejects you without remorse. Her words are so blunt as to bludgeon the soul.
+		PRINTFORMW 「I mean, it's embarrassing that you even said so―... What were you thinking?」
+		PRINTFORMDW Her ridicule makes it even worse. It seems there was no hope from the start.
+	ENDIF
+ENDIF
+RETURN 1
+
+;==================================================
+;353,イタズラする
+;FLAG:甲斐性無(1=失敗)
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_353
+RETURN 1
+
+@M_KOJO_MESSAGE_COM_K53_353
+	;Molest.
+CALL D_LINE
+IF CFLAG:TARGET:現在位置 == 410
+	PRINTFORMDL Tewi sleeps peacefully under a pile of rabbits.
+	PRINTFORMDL There's no way you can do this with them there, so you carefully remove them without waking them up.
+	PRINTFORMDL Although they sleep with their eyes open, they don't wake up for anything. Seems they're just as lazy as Tewi herself.
+	PRINTFORMDL Right now, that's good news for you...
+ELSE
+	PRINTFORMDL Tewi sleeps peacefully.
+	PRINTFORMDL With no blanket of rabbits to shield her here, she's completely vulnerable, like a prey animal.
+	PRINTFORMDL She doesn't respond at all to noise. It seems like Tewi won't wake up that easily.
+	PRINTFORMDL Right now, that's good news for you...
+ENDIF
+WAIT
+RETURN 1
+;==================================================
+;354,添い寝する（相手は起きて布団に招く感じ）
+;CFLAG:衰弱(1以上=起きない
+;CFLAG:お招き(0以外=起きない
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_354
+RETURN 1
+
+@M_KOJO_MESSAGE_COM_K53_354
+	;Sleep Together.
+CALL D_LINE
+IF CFLAG:53:睡眠
+	IF CFLAG:TARGET:現在位置 == 410
+		PRINTFORMDL You wriggle your way into the pile of rabbits that occupies Tewi's futon, joining her at the bottom...
+		PRINTFORMDW
+		SELECTCASE RAND:4
+			CASE 0
+				PRINTFORMDL 「Don't squish me...」「Don't move me...」「Too loud...」「What time is it...」
+				PRINTFORMDL The rabbits complain, but everyone falls asleep pretty quick. Tewi doesn't wake up at all.
+			CASE 1
+				PRINTFORMDL Tewi stirs a little as you brush against her, but doesn't wake up.
+			CASE 2
+				PRINTFORMDL Tewi's so comforable, she doesn't wake up as you press against her.
+			CASE 3
+				PRINTFORMDL It's so warm and soft, you have no trouble getting comfortable.
+		ENDSELECT
+	ELSE
+		PRINTFORML 「Zzz―...」
+		PRINTFORMDL Tewi doesn't wake up as you slide into bed with her.
+	ENDIF
+ELSE
+	IF CFLAG:TARGET:現在位置 == 410
+		PRINTFORMDL You share a futon with Tewi and an entire pile of rabbits...
+		PRINTFORMDW
+		SELECTCASE RAND:4
+			CASE 0
+				PRINTFORML 「Stop squirming―...」
+				PRINTFORMDL It takes a bit of time for everyone to settle down and sleep.
+			CASE 1
+				PRINTFORML 「Hehe―...」
+				PRINTFORMDL Although you can't see anything, you feel Tewi's body brush up against yours.
+			CASE 2
+				PRINTFORML 「Mmm―...」
+				PRINTFORMDL Tewi's so comforable, she's already half-asleep.
+			CASE 3
+				PRINTFORMDL 「I need to pee―...」
+				PRINTFORMDL Whenever someone rises, the whole pile is woken up. It takes some getting used to.
+		ENDSELECT
+	ELSE
+		IF !RAND:20
+			PRINTFORML 「Spooon―」
+			PRINTFORMDL Despite saying this, Tewi makes no attempt at spooning. Is she just babbling?
+		ELSE
+			PRINTFORMDL Tewi snuggles up close to you to share your body heat.
+		ENDIF
+	ENDIF
+ENDIF
+WAIT
+RETURN 1
+;==================================================
+;355,時止め（地の文の改変程度に留めるべき
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_355
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_355
+	;Time Stop.
+RETURN 1
+;==================================================
+;356,物陰に誘う
+;ABL:露出癖 + TALENT:羞恥心で判定
+;==================================================
+@M_KOJO_SUCCESS_COM_K53_356
+;成否判定
+;TFLAG:192(-1＝強制失敗、0=COM依存、1=強制成功
+TFLAG:192 = 0
+
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_356
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_356
+	;Take To Secluded Spot.
+RETURN 1
+
+;==================================================
+;360,身を任せる
+;TCVAR:20(27=谷間を見せる 32=前から抱きつく 35=スカートの中を見せる 53=パイズリ 73=ぱふぱふ 77=乳を吸わせる 85=Ｖ挿入する 86=だいしゅきホールド 87=Ａ挿入する 88=腰振りＶ 89=腰振りＡ
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_360
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_360
+CALL K53_AUTO_PVOICE
+WAIT
+RETURN 1
+;==================================================
+;361,抵抗する
+;TCVAR:20(27=谷間を見せる 32=前から抱きつく 35=スカートの中を見せる 53=パイズリ 73=ぱふぱふ 77=乳を吸わせる 85=Ｖ挿入する 86=だいしゅきホールド 87=Ａ挿入する 88=腰振りＶ 89=腰振りＡ
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_361
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_361
+CALL M_KOJO_MESSAGE_COM_K53_361_1
+RETURN RESULT
+
+@M_KOJO_MESSAGE_COM_K53_361_1
+;-------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 0
+;-------------------------------------------------
+IF LOCAL
+
+ENDIF
+RETURN 1
+
+;==================================================
+;363,読み聞かせ（[幼稚]持ち専用）
+;TFLAG:193(1=大成功 0=成功 -1=失敗)(地の文分岐無し
+;CFLAG:添い寝中(1=布団orベッドの中で本を読む
+;MASTERがTARGETより大柄の場合、膝の上にTARGETを乗せる
+;==================================================
+@M_KOJO_SUCCESS_COM_K53_363
+;成否判定
+;TFLAG:192(-2=コマンド終了、-1＝強制失敗、0=COM依存、1=強制成功or大成功
+TFLAG:192 = 0
+
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_363
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_363
+IF PREVCOM != 363
+	PRINTFORMW 「Hey, heeeey, %CALLNAME:MASTER%―! Read me thiiis! Read it to me!」
+	SELECTCASE RAND:3
+		CASE 0
+			PRINTFORMDW Tewi's begging you to read her a children's picture book.
+		CASE 1
+			PRINTFORMDW Tewi's begging you to read her a picture book with a Japanese mythological motif. 
+		CASE 2
+			PRINTFORMDL Tewi's begging you to read her a well-known economist's book on game theory. 
+			IF ABL:MASTER:教養 < 3
+			ELSE
+				PRINTFORMDW It's way too difficult for you, though!
+			ENDIF
+	ENDSELECT
+;連続実行
+ELSE
+	PRINTFORML 「Hey! %CALLNAME:PLAYER%, read me the next chapter!」
+	PRINTFORMDW Tewi is urging you so insistently that you can't help but read her some more of the book.
+ENDIF
+LOCAL = FIND_CHILD("53","Learning manners-Independent","Reading",,"Here")
+IF LOCAL
+	PRINTFORMDL %CHILDNAME:53:LOCAL% reads over your shoulder, paying close attention.
+ELSE
+	LOCAL = FIND_CHILD("53","Learning manners-Independent",,,"Here")
+	SIF LOCAL
+		PRINTFORMDL %CHILDNAME:53:LOCAL% sits by you and listens.
+ENDIF
+
+PRINTL
+
+;添い寝中	
+IF CFLAG:TARGET:添い寝中
+	PRINTFORMDW Tewi climbs into \@ INROOM(CFLAG:MASTER:現在位置) == 2 ? bed # the futon \@ beside you with the book.
+	IF TFLAG:193 == 0
+		PRINTFORMDW Although she's rapt with attention at first, Tewi's so comfortable that she gradually fades into sleep as you read.
+	ENDIF
+;膝の上
+ELSEIF TALENT:MASTER:体型 > TALENT:TARGET:体型 && INROOM(CFLAG:MASTER:現在位置)
+	PRINTFORMDW Tewi jumps up and plops her ass onto your knee so you can read to her.
+	PRINTFORML
+	PRINTFORMDL You read slowly and loudly from the book to Tewi.
+	SELECTCASE RAND:3
+		CASE 0
+			PRINTFORMDW Without Tewi noticing, you deeply inhale the clean scent of her hair.
+		CASE 1
+			PRINTFORMDW Without Tewi noticing, you snuggle her a little deeper into your lap.
+		CASE 2
+			PRINTFORMDW Without Tewi noticing, you focus all your attention on the warm little girl's butt on your thigh.
+	ENDSELECT
+	
+	;あなたが勃起
+	IF HAS_PENIS(MASTER) && BASE:MASTER:勃起 > 999
+		PRINTFORML
+		PRINTFORMDL Unfortunately, your friend in your pants decides this is the right time to stand at attention.
+		PRINTFORMDW Your whole lower body ripples with pleasure each time Tewi moves, rubbing her back or her butt against your erect penis.
+		IF TFLAG:193 >= 0
+			PRINTFORMW 「......Something's hitting me in the back...」
+			PRINTFORMDL Tewi looks uncomfortable, and keeps glancing up at you with accusing eyes.
+			PRINTFORMDW Some instinctual feeling reddens her cheeks a little.
+		;失敗
+		ELSEIF TFLAG:193 == -1
+			PRINTFORML 「.................................」
+			PRINTFORMDL A long, hard silence fills the air.
+			PRINTFORMDL Tewi turns and looks you directly in the eyes.
+			PRINTFORMW 「Pervert. \@ IS_CHILD(MASTER) ? Bad kid # Lolicon \@. Lecher. Die.」
+			PRINTFORMDW Tewi seems to know exactly what's going on in your pants...
+			PRINTFORMDW She gives you a dismissive click of the tongue, stands up from your crotch, and separates from you...
+		ENDIF
+	ENDIF
+ENDIF
+RETURN 1
+;==================================================
+;364,豆まき(萃香、勇儀、スカーレット姉妹用
+;TFLAG:193(豆まきに参加してる人数
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_364
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_364
+CALL M_KOJO_MESSAGE_COM_K53_364_1
+RETURN RESULT
+
+@M_KOJO_MESSAGE_COM_K53_364_1
+;-------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 0
+;-------------------------------------------------
+IF LOCAL
+
+ENDIF
+RETURN 1
+;==================================================
+;365,守矢神社へ移動(早苗、神奈子、諏訪子用
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_365
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_365
+CALL M_KOJO_MESSAGE_COM_K53_365_1
+RETURN RESULT
+
+@M_KOJO_MESSAGE_COM_K53_365_1
+;-------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 0
+;-------------------------------------------------
+IF LOCAL
+
+ENDIF
+RETURN 1
+;==================================================
+;368,自由行動に付き合う 
+;技能系の行動は技能レベルが1以上なら発生
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_368
+RETURN 1
+
+@M_KOJO_MESSAGE_COM_K53_368
+CALL M_KOJO_MESSAGE_COM_K53_368_1
+RETURN RESULT
+
+@M_KOJO_MESSAGE_COM_K53_368_1
+	;Join Activity.
+#DIM DYNAMIC ActivityPartner,2
+#DIM DYNAMIC ChildIndex
+IF Activity_Type:53 == 12
+	CALL M_KOJO_MESSAGE_COM_K53_403
+	RETURN 1
+ENDIF
+CALL D_LINE
+IF GET_TARGETNUM() > 1
+	FOR LOCAL,0,20 ;Get someone doing the same activity in the area.
+		ActivityPartner:0 = TARGET:RAND(1,GET_TARGETNUM()+1)
+		SIF ActivityPartner:0 != 53 && !IS_MALE(ActivityPartner:0) && (Activity_Type:53 != 1 || !GROUPMATCH(ActivityPartner:0,52,62,72)) && Activity_Type:(ActivityPartner:0) == Activity_Type:53
+			BREAK
+		ActivityPartner:0 = 0
+	NEXT
+	FOR LOCAL,0,20 ;Get someone in the area who isn't doing the same activity.
+		ActivityPartner:1 = TARGET:RAND(1,GET_TARGETNUM()+1)
+		SIF ActivityPartner:1 != 53 && !IS_MALE(ActivityPartner:0) && (Activity_Type:53 != 1 || !GROUPMATCH(ActivityPartner:1,52,62,72)) && Activity_Type:(ActivityPartner:1) != Activity_Type:53
+			BREAK
+		ActivityPartner:1 = 0
+	NEXT
+ENDIF
+ChildIndex = FIND_CHILD("53","Learning manners-Independent",,,"Here")
+SELECTCASE Activity_Type:53
+	CASE 0
+			;Join Navelgazing.
+			;TFLAG:193, -1 = Brushed off.
+		PRINTFORMDL You ask Tewi what she's thinking about...
+		PRINTFORMDW
+		IF TFLAG:193 > -1
+			SELECTCASE RAND:4
+				CASE 0
+					PRINTFORML 「Huh? ...Nothing you need to know about～」
+					PRINTFORMDL Tewi brushes you off, keeping her plans to herself.
+				CASE 1
+					PRINTFORML 「Don't interrupt me! This one's gonna be a work of genius!」
+					PRINTFORMDL She must be thinking of a prank...
+				CASE 2
+					PRINTFORML 「I'll give you a prize if you can guess.」
+					PRINTFORMDL That sounds tough, but you take a shot anyway.
+					PRINTFORML 「Oh, you need to place your bet first before I'll tell you if you won.」
+					PRINTFORMDL Never mind.
+				CASE 3
+					PRINTFORML 「Nothing...」
+					PRINTFORMDL She continues to stare into space, empty-headed.
+			ENDSELECT
+		ELSE
+			SELECTCASE RAND:5
+				CASE 0
+					IF IS_MASTER(52)
+						PRINTFORML 「Just what I want to do to you next.」
+					ELSE
+						PRINTFORML 「Just what I want to do to Reisen next.」
+					ENDIF
+					PRINTFORML 「I have so many ideas, but it'll be wasted if the moment isn't right...」
+					SIF !IS_MASTER(52)
+						PRINTFORMDL You brainstorm some schemes with Tewi.
+				CASE 1
+					PRINTFORML 「There's a song in my head, but I can't remember what it's called...」
+					PRINTFORML 「If I can't remember it, I'm gonna go crazy!」
+					PRINTFORMDL Tewi sings the tune and to her relief, you help her identify it.
+					PRINTL
+					PRINTFORML 「Thank goodness, I'm saved...」
+				CASE 2
+					PRINTFORML 「Life, the future, where we're going... Just stuff like that.」
+					PRINTFORML 「You know, for M&A operations. Got to expand the business sometime.」
+				CASE 3
+					PRINTFORML 「Hmm... What am I thinking about? I don't really know.」
+					PRINTFORMDL You join Tewi in trying to figure out what she's thinking.
+				CASE 4
+					PRINTFORML 「I'm working on a plan to get out of doing chores.」
+					PRINTFORML 「It'll involve a sneaking operation using an elaborate decoy. I'll need materials and time...」
+					PRINTFORMDL If it's that difficult, why not just do the work?
+					PRINTFORML 「This way's more fun.」
+			ENDSELECT
+		ENDIF
+	CASE 1
+			;Participate in Play.
+			;Only for [Childish] characters.
+			;TFLAG:193, -1 = Not very lively, 1 = Very lively.
+		PRINTFORMDL You play around with Tewi...
+		PRINTFORMDW
+		IF TFLAG:193 > -1
+			PRINTFORMDL However, you can't keep up and the atmosphere becomes awkward.
+			SELECTCASE RAND:4
+				CASE 0
+					PRINTFORML 「You're kind of slow, you know.」
+					PRINTFORMDL It's more like Tewi is too fast.
+				CASE 1
+					PRINTFORML 「I'll catch you with this rabbit snare!」
+					PRINTFORML 「...That was your cue to say, "Why is a rabbit using a snare"...」
+					PRINTFORMDL Was she expecting you to be her tsukkomi?
+					PRINTFORML 「Tch, this is why I can't work with amateurs!」
+				CASE 2
+					PRINTFORML 「Whoops, you fell for it!」
+					PRINTFORMDL She starts playing tricks on you to amuse herself instead.
+				CASE 3
+					PRINTFORML 「Boooring!」
+					PRINTFORMDL Tewi runs off when you try to play and only comes back a few minutes later.
+			ENDSELECT
+		ELSE
+			SELECTCASE RAND:4
+				CASE 0
+					PRINTFORML 「It's time for a rabbit ladder!」
+					IF IS_HERE(52)
+						PRINTFORMDL Tewi jumps on top of Reisen's shoulders.
+						CALL CHARA_TEXT(52,"「This again...」","l")
+						PRINTL
+					ENDIF
+					PRINTFORMDL Rabbits start gathering around and you stack them above Tewi%COND_STR(@" together with %CALLNAME:(ActivityPartner:0)%",ActivityPartner:0)%.
+					PRINTFORML 「Higher, make it go higher!」
+					IF ChildIndex
+						SELECTCASE K53_CHILD_PERSONALITY(ChildIndex)
+							CASE "Cheerful"
+								CALL CHILD_TEXT(@"「Higher, higher, higher, higher!」",53,ChildIndex,"l")
+								PRINTFORMDL %CHILDNAME:53:ChildIndex% joins the ladder and helps the others climb.
+							CASE "Show-off"
+								CALL CHILD_TEXT(@"「Get under me! Everyone come up!」",53,ChildIndex,"l")
+								PRINTFORMDL %CHILDNAME:53:ChildIndex% jumps up the ladder, then keeps jumping to stay on top.
+							CASE "Defiant"
+								CALL CHILD_TEXT(@"「Quit stomping! I'll throw you off!」",53,ChildIndex,"l")
+								PRINTFORMDL Somewhere in the middle, %CHILDNAME:53:ChildIndex% gets into a fight with another rabbit.
+							CASE "Tsundere"
+								CALL CHILD_TEXT(@"「This is stupid. Why are we doing this?」",53,ChildIndex,"l")
+								PRINTFORMDL Though the point remains unclear, %CHILDNAME:53:ChildIndex% jumps to the top of the ladder anyway.
+							CASE "Prideful"
+								CALL CHILD_TEXT(@"「Keep going! I'll hold everyone up!」",53,ChildIndex,"l")
+								PRINTFORMDL %CHILDNAME:53:ChildIndex% heroically bears the weight of all the rabbits from atop Tewi's shoulders.
+							CASE "Devoted"
+								CALL CHILD_TEXT(@"「Everyone pile on, I'll do my best to lift you!」",53,ChildIndex,"l")
+								PRINTFORMDL %CHILDNAME:53:ChildIndex% dutifully bears the weight of all the rabbits from atop Tewi's shoulders.
+								PRINTFORMDL 
+							CASE "Gloomy"
+								CALL CHILD_TEXT(@"「Me, too.」",53,ChildIndex,"l")
+								PRINTFORMDL %CHILDNAME:53:ChildIndex% quietly joins in to make it even taller.
+						ENDSELECT
+					ENDIF
+					IF TALENT:MASTER:動物耳 == 2 ;Bunny Ears.
+						PRINTFORMDL You carefully build the ladder as tall as you can before becoming part of it yourself.
+						PRINTFORMDL As one rabbit among many, you feel a sense of kinship before it collapses and rabbits rain down everywhere.
+					ELSE
+						PRINTFORMDL You carefully build the ladder as tall as you can before it collapses and rabbits rain down everywhere.
+					ENDIF
+					IF IS_HERE(52)
+						CALL CHARA_TEXT(52,"「Aaah, help me―!」","l")
+						PRINTFORMDL Reisen covers her head as she's buried alive beneath the avalanche of fluffy bunnies.
+					ENDIF
+				CASE 1
+					IF IS_HERE(52)
+						PRINTFORML 「We're playing hide-and-seek! Reisen is the oni!」
+						CALL CHARA_TEXT(52,"「H-Huh, me?!」","l")
+						PRINTFORMDL Tewi and her group of rabbits scatter, leaving Reisen alone with the burden of being the seeker.
+					ELSEIF ChildIndex
+						PRINTFORML 「We're playing hide-and-seek! %CHILDNAME:53:ChildIndex% is the oni!」
+						PRINTFORMDL Tewi and her group of rabbits scatter, leaving %CHILDNAME:53:ChildIndex% to count to twenty.
+						SELECTCASE K53_CHILD_PERSONALITY(ChildIndex)
+							CASE "Cheerful"
+								CALL CHILD_TEXT(@"「Ooone, twooo...」",53,ChildIndex,"l")
+							CASE "Show-off"
+								CALL CHILD_TEXT(@"「All right, watch how fast I find everyone!」",53,ChildIndex,"l")
+							CASE "Defiant"
+								CALL CHILD_TEXT(@"「Fine, I'll be the oni.」",53,ChildIndex,"l")
+							CASE "Tsundere"
+								CALL CHILD_TEXT(@"「D-Don't just make me the oni! When did we decide that?!」",53,ChildIndex,"l")
+							CASE "Prideful"
+								CALL CHILD_TEXT(@"「Better hide well, because I know every spot around here!」",53,ChildIndex,"l")
+							CASE "Devoted"
+								CALL CHILD_TEXT(@"「Is everyone hidden yet? I'll come looking soon!」",53,ChildIndex,"l")
+							CASE "Gloomy"
+								CALL CHILD_TEXT(@"「One, two, three...」",53,ChildIndex,"l")
+						ENDSELECT
+					ELSEIF ActivityPartner:0
+						PRINTFORML 「We're playing hide-and-seek! %CALLNAME:(ActivityPartner:0)% is the oni!」
+						PRINTFORMDL Tewi and her group of rabbits scatter, leaving %CALLNAME:(ActivityPartner:0)% to count to twenty.
+						SELECTCASE ActivityPartner:0
+							CASE 5
+									;Sunny.
+								CALL CHARA_TEXT(6,"「Aw, but I'm so good at hiding!」","l")
+							CASE 6
+									;Luna.
+								CALL CHARA_TEXT(5,"「Why me... Am I even gonna find anyone?」","l")
+							CASE 7
+									;Star.
+								PRINTFORML 「Why did I get picked as the oni, I wonder?」
+								PRINTFORMDL Looking a bit sheepish, Star easily finds everyone one by one.
+								PRINTFORMDL Even Tewi's clever hiding place is found...
+								PRINTFORML 「Wow, you really can find anyone!」
+								CALL CHARA_TEXT(7,"「Hehe, you didn't believe me?」","l")
+								WAIT
+								RETURN 1
+							CASE 14
+									;Cirno.
+								CALL CHARA_TEXT(14,"「Hehehe, I'm gonna find you and freeze you right away!」","l")
+							CASE 16
+									;Remilia.
+								CALL CHARA_TEXT(16,"「An『oni』, is it? Very well, then.」","l")
+							CASE 24
+									;Chen.
+								CALL CHARA_TEXT(24,"「I'll do my best at searching!」","l")
+							CASE 38
+									;Koishi.
+								CALL CHARA_TEXT(38,"「Everyone's hiding? I'll find them!」","l")
+							CASE 50
+									;Flandre.
+								CALL CHARA_TEXT(50,"「Well, let's just destroy all the hiding places, then!」","l")
+							CASE 75
+									;Medicine.
+								CALL CHARA_TEXT(75,"「Flushing them out with gas... Is that cheating?」","l")
+							CASE 118
+									;Larva.
+								CALL CHARA_TEXT(118,"「Okay everyone, ready or not!」","l")
+						ENDSELECT
+					ELSE
+						PRINTFORML 「We're playing hide-and-seek! Let's draw for who's the oni!」
+						PRINTFORMDL A group of rabbits huddle around. Once one of them draws the short carrot, everyone else scatters.
+					ENDIF
+					PRINTL
+					SIF IS_HERE(52) && IS_HERE(5)
+						PRINTFORMDL Even though Sunny goes invisible to hide, Reisen finds her easily.
+					SELECTCASE RAND:5
+						CASE 0
+							PRINTFORMDL Tewi is the last to be found, napping far away from the play area...
+						CASE 1
+							IF IS_HERE(52)
+								CALL CHARA_TEXT(52,"「Tewi, come out already... You didn't leave me here to search forever, did you?」","l")
+								PRINTFORMDL Reisen manages to find everyone but Tewi, who nonchalantly strolls over as soon as time is up.
+							ELSEIF IS_HERE(5) && Activity_Type:5 == 1 && ActivityPartner:0 != 1
+								IF IS_HERE(7)
+									PRINTFORMDL After a while, everyone's found but Sunny, who has gone invisible.
+									CALL CHARA_TEXT(7,"「Psst-psst, want to know where she is?」","l")
+									IF ChildIndex
+										PRINTFORMDL %CHILDNAME:53:ChildIndex% promises to give Star her snacks and Star points out Sunny's location.
+									ELSEIF ActivityPartner:0
+										PRINTFORMDL %CALLNAME:(ActivityPartner:0)% promises to give Star her snacks and Star points out Sunny's location.
+									ENDIF
+									CALL CHARA_TEXT(5,"「Awww, come on, Star! I was gonna win that!」","l")
+								ELSE
+									PRINTFORMDL No one manages to find Sunny after she goes invisible and she's declared the winner.
+								ENDIF
+							ELSEIF ChildIndex && ActivityPartner:0
+								PRINTFORMDL %CALLNAME:(ActivityPartner:0)% manages to stay hidden until time is up and is declared the winner.
+							ELSE
+								PRINTFORMDL One of the rabbits manages to find a clever hiding spot and is declared the winner.
+							ENDIF
+						CASE 2
+							PRINTFORMDL No one manages to find your hiding spot and you're declared the winner.
+						CASE 3
+							PRINTFORMDL Although it looks like you might win, you're eventually the last to be discovered.
+						CASE 4
+							PRINTFORMDL Tewi is never found and is declared the winner in the end.
+					ENDSELECT
+				CASE 2
+					SIF IS_HERE(52) ;Reisen is always the target if she's here.
+						ActivityPartner:1 = 52
+					IF ActivityPartner:1
+						PRINTFORML 「Let's play with %CALLNAME:(ActivityPartner:1)%!」
+						PRINTFORMD While you and \@ ActivityPartner:0 ? %CALLNAME:(ActivityPartner:0)% # Tewi's rabbits \@ distract %CALLNAME:(ActivityPartner:1)%, Tewi 
+						SELECTCASE IFRAND("0",TALENT:(ActivityPartner:1):動物耳 == 2,"1",!IS_MALE(ActivityPartner:1) && EQUIP:(ActivityPartner:1):0 && (EQUIP:(ActivityPartner:1):スカート || EQUIP:(ActivityPartner:1):ワンピース || EQUIP:(ActivityPartner:1):着物 || EQUIP:(ActivityPartner:1):ズボン),"2",!GROUPMATCH(ActivityPartner:1,4,91,93,158),"3",1)
+							CASE 0 ;If the target has rabbit ears.
+								PRINTFORMDL ties her ears into a knot.
+								PRINTFORMDL You watch as she tries to untie them, offering advice on where to pull.
+							CASE 1 ;If the target is wearing a skirt.
+								PRINTFORMDL rolls and ties up her skirt.
+								IF EQUIP:(ActivityPartner:1):下半身下着２
+									PRINTFORML 「%PANTSNAME(EQUIP:(ActivityPartner:1):下半身下着２,ActivityPartner:1,1)%! Nice choice!」
+								ELSE
+									PRINTFORML 「Wow, commando! Nice going!」
+									PRINTFORMDL %CALLNAME:(ActivityPartner:1)%'s %SLIT(ActivityPartner:1)% \@ HAS_PENIS(ActivityPartner:1) ? and %TINKO(ActivityPartner:1)% are # is \@ out in the open...
+								ENDIF
+								PRINTFORMDL The red-faced %CALLNAME:(ActivityPartner:1)% chases Tewi around the area while trying to fix her skirt.
+							CASE 2 ;Character has feet.
+								PRINTFORMDL ties her feet together with the ears of a long-eared rabbit.
+								PRINTFORMDL As soon as she takes a step, she and the rabbit faceplant on the ground.
+							CASE 3
+								PRINTFORMDL signs a mortgage in her name.
+								SIF IS_HERE(52)
+									CALL CHARA_TEXT(52,"「Wh-What kind of prank is that?!」","l")
+								PRINTFORML 「It's better to profit from your hobbies, right?」
+								SIF IS_HERE(52)
+									CALL CHARA_TEXT(52,"「You're profiting from my misery!」","l")
+								PRINTFORMDL %CALLNAME:(ActivityPartner:1)% angrily chases Tewi around the area until it's revealed that the contract is fake.
+						ENDSELECT
+					ELSE
+						PRINTFORML 「Let's set an ambush!」
+						PRINTFORMDL You help Tewi and \@ ActivityPartner:0 ? %CALLNAME:(ActivityPartner:0)% # her rabbits \@ lay a trap out in the open.
+						SELECTCASE RAND:2
+							CASE 0
+								PRINTFORMDL Although no one falls for it, everyone has fun setting it up anyway.
+							CASE 1
+								PRINTFORMDL No one comes by to fall for it, so Tewi pushes you into it.
+								PRINTFORMDL You end up tied up on the ground for a while while the others high-five each other above you.
+						ENDSELECT
+					ENDIF
+				CASE 3
+					PRINTFORML 「Let's juggle bunnies!」
+					PRINTFORMDL Using her hands, knees, and head, Tewi can keep as many as three small rabbits in the air at a time.
+					IF IS_HERE(52)
+						CALL CHARA_TEXT(52,"「That's rabbit cruelty! Don't do that!」","l")
+						PRINTFORML 「They like it! Try it out, Reisen!」
+						PRINTFORMDL Tewi throws her rabbits one by one at Reisen, who's forced to juggle just to avoid dropping them.
+					ENDIF
+					SIF ActivityPartner:0
+						PRINTFORMDL She gives %CALLNAME:(ActivityPartner:0)% some pointers, who tries it out as well.
+					PRINTFORMDL You join in and see how many rabbits you can juggle at once.
+			ENDSELECT
+		ENDIF
+	CASE 2
+			;Join Meal.
+			;TFLAG:193, -1 = MASTER isn't hungry.
+		$JOINMEAL
+		PRINTFORMDL You and Tewi share a meal...
+		PRINTFORMDW
+		SELECTCASE RAND:4
+			CASE 0
+				PRINTFORML 「I made all the essentials of a rabbit's diet. Go ahead and have some!」
+				PRINTFORMDL It looks like a carrot salad... with some unidentified meat on the side.
+			CASE 1
+				PRINTFORML 「Make sure you don't leave any.」
+				PRINTFORMDL Tewi arranges your plate with generous portions from every food group.
+			CASE 2
+				PRINTFORML 「R mhd r lrt, sh hv rs mrschs yr wrnt.」
+				PRINTFORMDL Tewi offers you food while huge leaves of lettuce poke out of her mouth.
+			CASE 3
+				PRINTFORML 「Here's a carrot, and another carrot, and another carrot...」
+				PRINTFORMDL There's a giant mound of orange on your plate, but she keeps piling them on.
+		ENDSELECT
+		IF TFLAG:193 > -1
+			IF ABL:53:料理技能 > 2
+				PRINTFORMDL %SPLIT_G(@"She seems to have arranged it carefully.:It tastes like it was prepared with great care.")%
+			ELSE
+				PRINTFORMDL %SPLIT_G(@"The ingredients are fresh and healthy, but it's lazily piled together:Despite the freshness, it's a bit basic")%.
+			ENDIF
+		ELSE
+			IF ABL:53:料理技能 > 2
+				PRINTFORMDL You're not hungry so you only have a little, but it tastes pretty good.
+			ELSE
+				PRINTFORMDL You're not hungry so you only have a little.
+			ENDIF
+		ENDIF
+	CASE 3
+			;Join Snack.
+			;Only for [Fairy] characters, Rumia, Koishi, Yuyuko, and Shion.
+			;TFLAG:193, -1 = MASTER isn't hungry.
+		PRINTFORMDL You and Tewi share a snack in secret...
+		PRINTFORMDL
+	CASE 4
+			;Join Cleaning.
+			;Only for [Cleaner], [Smell Sensitive], and [Clean Freak] characters.
+		PRINTFORMDL You help Tewi clean up...
+		PRINTFORMDW
+		SELECTCASE RAND:4
+			CASE 0
+				PRINTFORML 「Rabbit Team Alpha, sweep sectors one through five!」
+				PRINTFORMDL You're sorted into a task force of rabbits to clean the area while Tewi issues commands.
+			CASE 1
+				PRINTFORML 「Okay, you can take over for me.」
+				PRINTFORMDL Tewi slacks off while you clean in her stead.
+			CASE 2
+				PRINTFORML 「Let's combine and do it even better!」
+				PRINTFORMDL You and Tewi hold the handle of one broom and sweep together.
+				PRINTFORMDL ...This is worse than doing it on your own.
+			CASE 3
+				IF IS_HERE(52)
+					PRINTFORML 「You're going to help? Okay, Reisen, show %HIM_HER(MASTER)% how to do it.」
+					CALL CHARA_TEXT(52,@"「Ah, all right. %K53_REISEN_MASTERNAME()%, come here and we'll tidy up together.」","l")
+					CALL CHARA_TEXT(52,@"「...Wait, why am I doing it for you?!」","l")
+				ELSE
+					PRINTFORML 「This is a big job, so we need more hands.」
+					PRINTFORMDL At Tewi's call, a group of rabbits shows up to help.
+					PRINTFORML 「Hmm... We could use some more.」
+					PRINTFORMDL A larger group of rabbits comes in, armed with brooms and dustpans.
+					PRINTFORML 「More!」
+					PRINTFORMDL Soon, the whole area is covered with rabbits.
+					PRINTFORMDL They make an even bigger mess and you have to clean up after them, too...
+				ENDIF
+		ENDSELECT
+	CASE 5
+			;Join Exercising.
+			;Not for characters with [Musical Knowledge], [Singing Knowledge], or [Dancing Knowledge].
+		PRINTFORMDL You help Tewi test an experimental workout machine...
+		PRINTFORMDW
+		SELECTCASE RAND:5
+			CASE 0
+				PRINTFORML 「To improve your exercise benefits, you need electrolytes!」
+				PRINTFORMDL After the workout, Tewi stuffs her face with lettuce.
+			CASE 1
+				PRINTFORML 「Remember to stretch before and after. And keep a steady pace or you'll get worn out!」
+				PRINTFORMDL Despite her usual attitude, Tewi takes the workout seriously.
+			CASE 2
+				PRINTFORML 「Exercising can be fun. I'll show you!」
+				PRINTFORMDL Tewi brings out a TV and a %SPLIT_G(@"dance mat:weight loss DVD")% and you get a workout together.
+				PRINTFORMDL The rabbit running on the giant wheel to power it gets a workout, too.
+			CASE 3
+				PRINTFORML 「Don't forget your stretches!」
+				PRINTFORMDL Tewi bends over and tucks her head and arms between her legs, showing off her flexibility.
+			CASE 4
+				PRINTFORML 「Now let's do ear exercises!」
+				PRINTFORMDL Tewi curls up the ends of her ears and puts dumbbells in the curves.
+				IF TALENT:MASTER:動物耳 == 2 ;Bunny Ears.
+					PRINTFORMDL You grab a pair for yourself and develop your ear muscles together.
+				ELSE
+					PRINTFORMDL ...Her ears are surprisingly strong.
+				ENDIF
+		ENDSELECT
+	CASE 6
+			;Join Reading.
+			;TFLAG:193, -1 = Too focused to answer.
+		PRINTFORMDL You ask Tewi about what she's reading...
+		PRINTFORMDW
+		IF TFLAG:193 > -1
+			SELECTCASE RAND:4
+				CASE 0
+					PRINTFORML 「Oh, nothing.」
+					PRINTFORMDL Suspicious, you look over her shoulder and check.
+					PRINTFORMDL The book's pages are blank...
+				CASE 1
+					PRINTFORML 「I'm studying so I can improve my knowledge.」
+					PRINTFORMDL It looks like a %SPLIT_G("science:medicine:mathematics")% textbook. Impressed by her diligence, you look over her shoulder.
+					PRINTFORMDL %SPLIT_G(@"She's just been doodling rabbits in the margins:There's a%COND_STR(" hentai",CFLAG:53:K53C_RAPE_ASSISTANT > 0)% manga hidden between the pages")%...
+				CASE 2
+					PRINTFORML 「It's a murder mystery. I already guessed the killer, though.」
+					PRINTFORMDL She's less than halfway through. Tewi must be smart to have figured it out already.
+					PRINTFORML 「Well, it's just that whoever I guess ends up being right.」
+				CASE 3
+					PRINTFORML 「I'm just looking at the pictures.」
+					PRINTFORMDL Looking over her shoulder, you see that it's a \@ CFLAG:53:K53C_RAPE_ASSISTANT > 0 ? gravure album # children's picture book\@.
+			ENDSELECT
+		ELSE
+			SELECTCASE RAND:4
+				CASE 0
+					PRINTFORML 「.........」
+					PRINTFORMDL ...But she ignores you.
+				CASE 1
+					PRINTFORML 「I can't read if you're talking to me...」
+					PRINTFORMDL Maybe now's not a good time.
+				CASE 2
+					PRINTFORML 「Shh, I'm expanding my mind.」
+					PRINTFORMDL Tewi has a focused expression.
+				CASE 3
+					PRINTFORML 「Not now, I'm in a world of my imagination.」
+					PRINTFORMDL Apparently you can't join her there.
+			ENDSELECT
+		ENDIF
+	CASE 7
+			;Join Cooking, Join Eating.
+			;TFLAG:193, 2 = Helping with the cooking, 0 = Eating, -1 = MASTER isn't hungry while eating.
+		SIF TFLAG:193 < 2
+			GOTO JOINMEAL
+		PRINTFORMDL You help Tewi with cooking...
+		PRINTFORMDW
+		SIF IS_HERE(52) ;Reisen is always the helper if she's here.
+			ActivityPartner:0 = 52
+		IF ActivityPartner:0
+			SELECTCASE RAND:4
+				CASE 0
+					PRINTFORML 「%CALLNAME:(ActivityPartner:0)% can handle the sides. %CALLNAME:MASTER%, you take care of the main part.」
+					PRINTFORMDL What is Tewi going to do?
+					PRINTFORML 「Delegate?」
+					SIF IS_HERE(52)
+						CALL CHARA_TEXT(52,@"「At least pretend like you aren't making us do everything!」","l")
+				CASE 1
+					PRINTFORMDL Together with %CALLNAME:(ActivityPartner:0)%, you end up being a big help.
+					PRINTFORMDL So much so that Tewi doesn't do anything at all...
+					SIF IS_HERE(52)
+						CALL CHARA_TEXT(52,@"「%K53_REISEN_MASTERNAME()%, how did we end up like this...?」","l")
+					PRINTFORML 「You guys are so nice to me～」
+			ENDSELECT
+		ELSE
+			SELECTCASE RAND:4
+				CASE 0
+					PRINTFORML 「Now we leave this to cook for thirty minutes.」
+					PRINTFORMDL It's going to be that long before it can be eaten?
+					PRINTFORML 「For that, we prepared one ahead of time!」
+					PRINTFORMDL Some rabbits come forward bearing a finished, nicely cooked dish.
+					PRINTFORMDL ...What was the point of what you just did, then?!
+				CASE 1
+					PRINTFORML 「Okay, now put in the secret ingredient.」
+					PRINTFORMDL You look at the supplies Tewi brought along... Which one's the secret ingredient?
+					PRINTFORML 「It's a secret, of course!」
+					PRINTFORMDL ...You make an educated guess and add some carrots.
+				CASE 2
+					PRINTFORML 「Let's see, we're supposed to add three kilograms of this seasoning.」
+					PRINTFORMDL You ask to see the recipe at once.
+				CASE 3
+						;Azumanga Daioh reference.
+					PRINTFORML 「Let's make something～ Let's make something～」
+					PRINTFORML 「Well then, I wonder what's going to be made?♪」
+					PRINTFORMDL You hope Tewi has an idea of what she's trying to make.
+			ENDSELECT
+		ENDIF
+	CASE 8
+			;Join Jamming, Join Accompaniment.
+			;Only for characters with [Musical Knowledge], [Singing Knowledge], or [Dancing Knowledge].
+			;TALENT:音楽知識, 1 = Playing an instrument, 2 = Singing, 3 = Dancing.
+			;TFLAG:193, 1 = Lively, 0 = Success, -1 = Failure, -2 = No instrument, just watching.
+		PRINTFORMDL You join in with Tewi...
+		PRINTFORMDL
+	CASE 9
+			;Join Gathering.
+		PRINTFORMDL You help Tewi with foraging...
+		PRINTFORMDW
+		PRINTFORML 「%CALLNAME:MASTER%, you search over there and I'll take this spot.%COND_STR(@" %CALLNAME:(ActivityPartner:0)%, you look in that area!",ActivityPartner:0)%」
+		PRINTFORMDL You ask Tewi what exactly it is you're looking for.
+		SELECTCASE RAND:5
+			CASE 0
+				PRINTFORML 「I dropped a contact lens.」
+				PRINTFORMDL Whose?!
+			CASE 1
+				PRINTFORML 「We'll know it when we find it!」
+				PRINTFORMDL She's just bored, apparently.
+			CASE 2
+				IF IS_ENABLED(72)
+					PRINTFORML 「Master wanted some ingredients for an experiment.」
+				ELSE
+					PRINTFORML 「I'm doing an experiment and I need ingredients.」
+				ENDIF
+				PRINTFORMDL If that's the case, you look carefully for anything that might be of use.
+			CASE 3
+				PRINTFORML 「The treasure map says it should be here...」
+				PRINTFORMDL ...Again, what is it you're looking for?
+			CASE 4
+				PRINTFORML 「I dunno, what do you want to look for?」
+		ENDSELECT
+	CASE 10
+			;Join Fishing.
+			;TFLAG:193, -1 = Just watching because you don't have a fishing rod.
+		IF TFLAG:193 > -1
+			PRINTFORMDL You sit down next to Tewi and join her in fishing...
+		ELSE
+			PRINTFORMDL You sit down next to Tewi as she's fishing, just looking on...
+		ENDIF
+		PRINTFORMDW
+		SELECTCASE RAND:4
+			CASE 0
+				PRINTFORML 「Instead of a rod, I'll use these!」
+				PRINTFORMDL Tewi gets out a bundle of bamboo spears and starts hurling them into the water.
+			CASE 1
+				PRINTFORML 「How about I use this?」
+				PRINTFORMDL Tewi has a stick of dynamite in her hand. You suggest just trying the rod for now.
+			CASE 2
+				PRINTFORML 「Nothing's biting, so let's think outside the box!」
+				PRINTFORMDL Tewi draws up a leaflet promising a cash prize for fish brave enough to bite the hook.
+				PRINTFORMDL You ask her not to throw garbage like this in the water.
+			CASE 3
+				PRINTFORML 「I got a bite!」
+				PRINTFORMDL Tewi fishes up a stack of money that had washed away.
+				PRINTFORML 「Wow, fishing sure is profitable!」
+		ENDSELECT
+	CASE 11
+			;Join Experimenting.
+		PRINTFORMDL You assist Tewi with an experiment...
+		PRINTFORMDW
+		SELECTCASE RAND:4
+			CASE 0
+				PRINTFORML 「The time has come for the next stage of the carrot experiment...」
+				PRINTFORML 「Once we've succeeded at genetically modifying them, then...!」
+				PRINTFORMDL Tewi trails off ominously.
+			CASE 1
+				PRINTFORML 「Hmm, let's try this chemical.」
+				PRINTFORMDL By picking ingredients at random, Tewi ends up concocting a potent medicine.
+			CASE 2
+				PRINTFORML 「Here, drink this.」
+				PRINTFORMDL You wind up being put through some suspicious tests.
+			CASE 3
+				PRINTFORML 「All right, we have the test subject.」
+				IF ActivityPartner:0
+					PRINTFORMDL Tewi gives %CALLNAME:(ActivityPartner:0)% something to drink. Is this going to be safe?
+				ELSE
+					PRINTFORMDL Tewi is holding a small rabbit. Is this going to be safe?
+				ENDIF
+				PRINTFORML 「We've got to flavor-test our new recipes, don't we?」
+				PRINTFORMDL So it's that kind of experiment.
+		ENDSELECT
+	CASE 12
+			;Join Relaxing.
+	CASE 13
+			;Join Drinking.
+			;Not for [Nondrinker] or [Weak Drinker] characters.
+		PRINTFORMDL You join Tewi in some evening drinking...
+		PRINTFORMDW
+		SELECTCASE RAND:4
+			CASE 0
+				PRINTFORML 「When it comes to drinking, you've gotta have beer!」
+				PRINTFORMDL Tewi is gulping from a flagon as big as her head.
+			CASE 1
+				PRINTFORML 「Kids shouldn't have alcohol, so just a sip.」
+				PRINTFORMDL You watch as Tewi gulps down a whole flagon of beer.
+			CASE 2
+				PRINTFORML 「The best way to end the day is to forget it ever happened.」
+				PRINTFORMDL How much is Tewi planning to drink?
+			CASE 3
+				PRINTFORML 「Here, have some of mine!」
+				PRINTFORMD Tewi pours you a tall flagon of beer. 
+				SELECTCASE TALENT:MASTER:酒耐性
+					CASE -2
+						PRINTFORMDL You'd black out if you drank even a third this much...
+					CASE -1
+						PRINTFORMDL This is way too much for your alcohol tolerance...
+					CASE 0
+						PRINTFORMDL This is too much for your alcohol tolerance...
+					CASE 1
+						PRINTFORMDL This will definitely make you wasted...
+					CASE 2
+						PRINTFORMD You can't back down from a challenge like this. 
+					CASE 3
+						PRINTFORMD Even this should be nothing for your alcohol tolerance. 
+					CASEELSE
+						PRINTL
+				ENDSELECT
+				SELECTCASE TALENT:MASTER:酒耐性
+					CASE IS < 2
+						PRINTFORML 「Eh―? You won't drink my beer～?!」
+						PRINTFORMDL Despite that, you're pressured into drinking as much as you can.
+					CASEELSE
+						PRINTFORMDL You proudly down the drink while Tewi cheers you on.
+						PRINTFORML 「Ehehehe, go, go, go!～」
+				ENDSELECT
+		ENDSELECT
+	CASE 14
+			;Join Shopping.
+		PRINTFORMDL You join Tewi in shopping...
+		PRINTFORMDW
+		SELECTCASE RAND:2
+			CASE 0
+				PRINTFORML 「Carry this for me, won't you?～」
+				PRINTFORMDL Tewi takes advantage of your presence to load up on purchases.
+			CASE 1
+				PRINTFORML 「You know, the other store sells this for half this much.」
+				PRINTFORMDL Tewi tries to get a deal by lying to the store clerk.
+		ENDSELECT
+	CASE 15
+			;See Eiki's Lecture.
+			;Not for [Divine Spirit] or [Hourai] characters.
+			;TFLAG:193, -1
+		PRINTFORMDL You listen to the lecture...
+		PRINTFORMDW
+		PRINTFORML 「.........」
+		PRINTFORMDL Tewi isn't paying attention at all.
+	CASE 16
+			;Join In A Prank, Check Pitfall
+			;Only for Sunny, Luna, Star, Cirno, Tewi, and Clownpiece.
+			;Others will fall into the pit.
+		PRINTFORMDL You join in and help Tewi...
+		PRINTFORMDW
+		SELECTCASE RAND:4
+			CASE 0
+				PRINTFORML 「Great! With your help, we can make it even deeper!」
+				PRINTFORML 「Let's go for a record with this one!」
+			CASE 1
+				PRINTFORML 「What should we use for bait?」
+				PRINTFORML 「A cooked meal... An injured rabbit... There are a lot of things that would work.」
+			CASE 2
+				PRINTFORML 「Who do you think is gonna fall in?」
+				IF IS_MASTER(52)
+					PRINTFORML 「You'd probably fall in even after digging it yourself...」
+				ELSEIF IS_ENABLED(52) && !RAND:2
+					PRINTFORML 「The best bet is always on Reisen!」
+				ELSE
+					PRINTFORML 「Maybe we could gamble on it...」
+				ENDIF
+			CASE 3
+				PRINTFORML 「Huff... We gotta keep digging until it's even deeper!」
+				PRINTFORML 「Honest labor sure is tough, huh?」
+				PRINTFORMDL There's nothing honest about this.
+		ENDSELECT
+	CASE 17
+			;Make Snowman.
+			;Only during winter.
+		PRINTFORMDL You help Tewi with building the snow rabbit...
+		PRINTFORMDW
+		SELECTCASE RAND:4
+			CASE 0
+				PRINTFORML 「It doesn't stop with one. Where there's one rabbit, there are many!」
+				PRINTFORMDL This might take a while if she's planning on a whole colony.
+			CASE 1
+				PRINTFORML 「A carrot nose isn't right for rabbits. You just can't do it.」
+				PRINTFORML 「Even if you did it, someone will eat it.」
+			CASE 2
+				PRINTFORML 「Standing ears are the lazy way to do a snow rabbit. True artisans can sculpt lop ears, too!」
+				PRINTFORML 「...But that takes a while, so let's just put two stacks of snowballs on the head.」
+			CASE 3
+				PRINTFORML 「What's this rabbit's name? She should have a story.」
+				PRINTFORMDL It'll be sad if you and Tewi make up an identity for the rabbit only to have it melt.
+				PRINTFORML 「Well, that's how it is for rabbits.」
+		ENDSELECT
+	CASE 18
+			;Relax Under Kotatsu.
+			;Only during winter.
+		PRINTFORML You %SPLIT_G(@"warm yourself:cozy up:get all comfortable")% together with Tewi under the kotatsu and %SPLIT_G(@"space out:take it easy:relax:make yourself at home:\@ TALENT:53:恋慕 && !RAND:2 ? cuddle up with her # spend some time doing nothing\@")%...
+		PRINTFORMDW
+		SELECTCASE RAND:4
+			CASE 0
+				PRINTFORML 「My fortress of warmth...」
+				PRINTFORMDL Tewi looks like she doesn't want to leave.
+			CASE 1
+				PRINTFORML 「Nothing like putting your feet into a kotatsu, huh?」
+				PRINTFORMDL That must be a relief for Tewi especially.
+			CASE 2
+				PRINTFORML 「Well, I'm gonna be here for the rest of today.」
+				PRINTFORMDL Tewi lies down and forgets the world...
+			CASE 3
+				PRINTFORML 「We should have some oranges to go with this.」
+				PRINTFORML 「...I don't want to go get some, though.」
+		ENDSELECT
+	CASE 100
+			;Join Swimming.
+		CALL M_KOJO_MESSAGE_CUSTOM_COM_K53_1(1)
+ENDSELECT
+WAIT
+RETURN 1
+;==================================================
+;402,就寝
+;TFLAG:193(0=通常 1=子供と一緒に川の字で寝る)
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_402
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_402
+;就寝にTRAIN_MESSAGEは無い
+CALL M_KOJO_MESSAGE_COM_K53_402_1
+RETURN RESULT
+
+@M_KOJO_MESSAGE_COM_K53_402_1
+;-------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 0
+;-------------------------------------------------
+IF LOCAL
+
+ENDIF
+RETURN 1
+;==================================================
+;403,休憩
+;CFLAG:TARGET:睡眠(1=TARGETが寝てる隣で休憩
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_403
+RETURN 1
+
+@M_KOJO_MESSAGE_COM_K53_403
+	;Rest.
+CALL D_LINE
+SIF !SHIRAHU(53)
+	RETURN 1
+LOCALS = You and Tewi
+LOCALS:1 = 
+IF !RAND:2
+	LOCALS = You
+	LOCALS:1 '= @" with Tewi"
+ENDIF
+PRINTFORMDL %LOCALS% %SPLIT_G(@"laze around for a while:take a break:take a rest:rest for a while:relax together:sit around for a while")%%LOCALS:1%...
+PRINTFORMDW
+SELECTCASE RAND:12
+	CASE 0
+		PRINTFORML 「Ah, I had some chores to do.」
+		PRINTFORMDL Despite saying so, Tewi makes no attempt to get up.
+	CASE 1
+		PRINTFORML 「Booored...」
+		PRINTFORMDL %SPLIT_G(@"Tewi slowly rolls around next to you.:Tewi lies on her back and kicks her legs in the air.:Tewi amuses herself by wiggling her toes.:Tewi rolls around a bit.:Tewi rocks back and forth on her butt.:Tewi amuses herself by wiggling her ears.:While lying on her back, Tewi recites a Buddhist chant, but makes it about rabbits.:Tewi lazes around.")%
+	CASE 2
+		PRINTFORML 「Zzz...」
+		PRINTFORMDL Tewi briefly dozes off.
+	CASE 3
+		PRINTFORML 「Foo!」
+		PRINTFORMDL Tewi lies on her back and keeps a leaf airborne by blowing air at it.
+		PRINTFORML 「Ah, it fell down.」
+	CASE 4
+		PRINTFORML 「Rabbit.」
+		PRINTFORMDL Tarantula.
+		PRINTFORML 「Apricot.」
+		PRINTFORML You and Tewi play a few rounds of shiritori.
+	CASE 5
+		PRINTFORML 「Bweeeeh...」
+		PRINTFORMDL Tewi makes various noises while rolling around.
+	CASE 6
+		PRINTFORMDL Tewi watches two rabbits play a game together.
+		PRINTFORML 「2:1 odds on the short one. Wanna make a bet?」
+		PRINTFORMDL Sensing a scam, you decline to gamble.
+	CASE 7
+		PRINTFORML 「...Hehe...」
+		PRINTFORMDL After dozing off, you open your eyes and see Tewi hovering over you with a wet inkbrush.
+		PRINTFORML 「Ah, you woke up. Good morning～」
+	CASE 8
+		PRINTFORML 「Hmmmmmgnah...」
+		PRINTFORMDL Tewi shuts her eyes and stretches her arms and legs out while lying on the \@ OUTROOF(CFLAG:MASTER:現在位置) ? ground # floor\@.
+		PRINTFORMDL When her body settles, her skirt is pulled up and you can see her \@ EQUIP:53:下半身下着２ ? %PANTSNAME(EQUIP:53:下半身下着２,53)% # pussy\@...
+		PRINTFORMDL It's a few minutes before she notices and fixes it. You pretend not to have noticed.
+	CASE 9
+		PRINTFORML 「Mmgngnrgrr...」
+		PRINTFORMDL While mumbling unintelligibly, Tewi rolls into you and bumps against your side.
+		IF IS_FALLEN(53)
+			PRINTFORMDL She puts her arm around you and stays there for a while.
+		ELSE
+			PRINTFORMDL Then she rolls away like a tiny barrel, bound to bump into something else.
+		ENDIF
+	CASE 10
+		PRINTFORML 「D'you think we should be doing something else?」
+		PRINTFORML 「If not, all this slacking will go to waste...」
+	CASE 11
+		PRINTFORML 「The best thing is to doze off while cuddling a rabbit.」
+		IF TALENT:MASTER:恋人 || GETBIT(CFLAG:53:既成事実,1) || CFLAG:53:ヤラせちゃった
+			PRINTFORMDL Saying this, Tewi snuggles up against you.
+		ELSE
+			PRINTFORMDL So she says while hugging a scared-looking rabbit in a vice grip.
+		ENDIF
+ENDSELECT
+WAIT
+RETURN 1
+
+;==================================================
+;405,出掛ける(同行時デート
+;条件が厄介なので、COMF405 出掛ける.ERBを参照のこと
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_405
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_405
+IF CFLAG:53:同行
+		;Date.
+	IF TALENT:53:恋人 && !RAND:2
+		SELECTCASE RAND:4
+			CASE 0
+				PRINTFORML 「Carry me, I don't wanna walk～」
+				IF TALENT:MASTER:体型 > TALENT:53:体型
+					PRINTFORMDL You grab Tewi's ears and pretend like you're going to pick her up by them.
+					PRINTFORML 「Aaah, wait―! I'll walk, I'll walk!」
+					PRINTFORMDL Seems she found her motivation.
+				ELSEIF TALENT:MASTER:体型 < TALENT:53:体型
+					PRINTFORMDL You're too small for that...
+				ELSE
+					PRINTFORMDL But you're as small as she is... When you say so, Tewi jumps up on your shoulders.
+					PRINTFORML 「The rabbit ladder solves everything!」
+					PRINTFORMDL You can't walk like this.
+				ENDIF
+			CASE 1
+				PRINTFORML 「Are we going to kiss and hold hands?」
+				PRINTFORMDL What would Tewi do if you didn't?
+				PRINTFORML 「I'd cry for eleven days. Just to start.」
+				PRINTFORMDL Looks like you've been saddled with a heavy obligation.
+			CASE 2
+				PRINTFORML 「Okay, let's go!」
+				PRINTFORMDL Tewi seizes you wrist and pulls you ahead. Is she in that much of a hurry?
+				PRINTFORML 「If we don't get there soon, we won't have time for fun!」
+				PRINTFORML 「Hurry up, let's go, go!」
+			CASE 3
+				PRINTFORML 「Ah, so you were planning a date all along...」
+				PRINTFORMDL That's right. What will Tewi do now that you're taking her away?
+				PRINTFORML 「I'll kiss you when you least expect it～」
+		ENDSELECT
+	ELSE
+		SELECTCASE RAND:6
+			CASE 0
+				PRINTFORML 「I feel like lazing around, can I send one of the rabbits with you instead?」
+				PRINTFORMDL There's no point if it isn't with Tewi.
+				PRINTFORML 「Okay, but it'll cost you extra.」
+				PRINTFORMDL You're not going to pay her...
+			CASE 1
+				PRINTFORML 「Little did we know, a great adventure would soon begin!」
+				PRINTFORMDL Tewi narrates your journey as you leave together.
+			CASE 2
+				PRINTFORML 「Hmm～ That's where we're going?」
+				PRINTFORMDL Tewi skips along beside you without a care.
+			CASE 3
+				PRINTFORML 「Let's go somewhere fun.」
+				PRINTFORMDL Tewi comes along casually.
+			CASE 4
+				PRINTFORML 「Okay, I'll go there.」
+				PRINTFORMDL Is there somewhere she wouldn't go?
+			CASE 5
+				PRINTFORML 「Okay, let's race!」
+				PRINTFORMDL Tewi sprints ahead, forcing you to run and catch up.
+		ENDSELECT
+	ENDIF
+ELSEIF CFLAG:MASTER:同行
+		;Date (someone else).
+	IF TALENT:53:恋人 && !VAR_OR_DEFAULT("MORELOVER")
+		PRINTFORML 「Eh, where are you going with %CALLNAME:MASTER%...」
+	ELSE
+		SELECTCASE CFLAG:MASTER:同行
+			CASE 52
+				IF TALENT:52:恋人
+					PRINTFORML 「Be gentle with Reisen, %CALLNAME:MASTER%～」
+				ELSE
+					PRINTFORML 「Reisen's going out with %CALLNAME:MASTER%. What adventures will unfold next?」
+					CALL CHARA_TEXT(52, "「I don't need you to make commentary...」")
+					IF !RAND:2
+						PRINTFORML 「Will they, or won't they...」
+						CALL CHARA_TEXT(52, @"「J-Just ignore her, %CALLNAME:MASTER%...」")
+					ELSE
+						PRINTFORML 「What erotic mishaps will befall her...」
+						CALL CHARA_TEXT(52, "「Y-You'd better not be planning anything weird!」")
+					ENDIF
+				ENDIF
+			CASE 62
+				IF TALENT:62:恋人
+					PRINTFORML 「Stay safe, %CALLNAME:MASTER%! Don't make Kaguya-sama cry!」
+					CALL CHARA_TEXT(62, @"「What will happen if %HE_SHE(MASTER)% makes me cry, I wonder?」")
+					PRINTFORML 「That's when Master's new experiment will happen...」
+				ELSE
+					PRINTFORML 「Kaguya-sama's leaving the house...」
+					PRINTFORMDL Tewi watches you head off in awe.
+				ENDIF
+			CASE 72
+				IF TALENT:72:恋人
+					PRINTFORML 「Have fun, Master～ Try to bring %CALLNAME:MASTER% back alive!」
+				ELSE
+					PRINTFORML 「You're taking Master out, huh?」
+					PRINTFORML 「Better make her happy～...」
+				ENDIF
+			CASEELSE
+				IF TALENT:(CFLAG:MASTER:同行):恋人
+					PRINTFORML 「The lovebirds fly away from the nest...」
+				ELSE
+					PRINTFORML 「Eh, you're going on a date?」
+					PRINTFORML 「It'll be a lucky one for sure!～」
+				ENDIF
+		ENDSELECT
+	ENDIF
+ELSE
+		;Go Out.
+	SELECTCASE IFRAND("0",CFLAG:53:K53C_WINGMAN && ((TALENT:53:恋人 && CFLAG:53:K53C_WINGMAN == 2) || !TALENT:53:恋人),"1",1,"2",1,"3",1,"4",1)
+		CASE 0
+			PRINTFORML 「You're going out? Without Reisen?!」
+			PRINTFORML 「Her poor feelings...」
+		CASE 1
+			PRINTFORML 「Bring me back a present～」
+			PRINTFORMDL Tewi cheerfully waves goodbye as you head out.
+		CASE 2
+			PRINTFORML 「Bye-bye～ Don't get killed～」
+			PRINTFORMDL Tewi waves goodbye at you.
+		CASE 3
+			PRINTFORML 「I'll take care of your things if you aren't back soon!」
+			PRINTFORMDL Tewi cheerfully waves you off.
+		CASE 4
+			PRINTFORML 「Watch out, someone dug a pit trap on the road.」
+			PRINTFORMDL You walk ahead, carefully watching for traps, but you can't find any...
+			PRINTFORMDL ...When you turn around to ask Tewi where exactly it is, she's gone.
+	ENDSELECT
+ENDIF
+WAIT
+RETURN 1
+;==================================================
+;410,掃除
+;FLAG:70(1=時間停止中
+;TFLAG:193(0=見てるだけ 1=一緒に掃除)
+;TFLAG:194(3=汚れ高 2=汚れ中 1=汚れ低 0=汚れ最小
+;OUTROOF(CFLAG:現在位置)(野外掃除（冬は雪かき
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_410
+RETURN 1
+
+@M_KOJO_MESSAGE_COM_K53_410
+	;Cleaning.
+CALL D_LINE
+IF !SHIRAHU(53)
+	PRINTFORMDL You clean up the area around Tewi...
+	PRINTFORMDW
+	RETURN 1
+ENDIF
+PRINTFORMDL You start to clean up the area...
+PRINTFORMDW
+IF TFLAG:193 == 1
+	PRINTFORML 「%SPLIT_G(@"All right, let me help!:I'm going to help!:Want some help?:I guess I'll help, too!")%」
+	IF DAY:2 == 4 && OUTROOF(CFLAG:MASTER:現在位置)
+		PRINTFORMDL At Tewi's command, a group of rabbits march in armed with snow shovels.
+		PRINTFORMDL Although they mainly play around in the snow, their sheer numbers help out a little.
+	ELSE
+		SELECTCASE RAND:3
+			CASE 0
+				PRINTFORMDL At Tewi's command, a group of rabbits descend on the room and begin cleaning it with you.
+				PRINTFORMDL Tewi watches them without lifting a finger... You could say that she helped.
+			CASE 1
+				PRINTFORMDL Tewi starts helping you clean up with her own hands. Is she all right?
+				PRINTFORML 「...I'll put one in here, too...」
+				PRINTFORMDL It seems she's actually setting up a prank. All in all, it's still helpful.
+			CASE 2
+				PRINTFORMDL Tewi deploys a rabbit to gather up trash.
+				PRINTFORML 「Go, Usa-chan! Get it all! You're the cutest!」
+				PRINTFORMDL ...It's not a youkai. It's just a trained rabbit.
+				PRINTFORMDL It's actually pretty helpful...
+		ENDSELECT
+	ENDIF
+ELSEIF TFLAG:193 == 0
+	SELECTCASE RAND:3
+		CASE 0
+			PRINTFORMDL Tewi watches lazily as you work hard at cleaning up all around her. She doesn't even offer to move.
+		CASE 1
+			PRINTFORML 「%SPLIT_G(@"Doing your best?:Do your best～:Thanks for your effort～:Good job～:Don't give up～")%」
+			PRINTFORMDL Tewi watches you clean, throwing out the occasional platitude.
+		CASE 2
+			PRINTFORML 「%SPLIT_G(@"Ooh, nice technique.:Is that fun for you?:You're pretty dedicated...")%」
+			PRINTFORMDL Tewi watches you clean as if it's a spectator sport.
+			PRINTFORML 「%SPLIT_G(@"Hey, you missed a spot!:It'd be more efficient if you...:Don't slow down now, you're almost there!")%」
+			PRINTFORMDL In a way, you could say that she's helping.
+	ENDSELECT
+ENDIF
+LOCAL = FIND_CHILD("53","Learning manners-Independent","Devoted",,"Here")
+IF LOCAL
+	PRINTFORMDL %CHILDNAME:53:LOCAL% lends a skillful hand to your cleaning efforts, smiling as she goes.
+ELSE
+	LOCAL = FIND_CHILD("53","Learning manners-Independent",,,"Here")
+	SIF LOCAL
+		PRINTFORMDL %CHILDNAME:53:LOCAL% lends a hand as well.
+ENDIF
+WAIT
+RETURN 1
+
+;==================================================
+;411,戦闘訓練
+;TFLAG:194(3=夏の昼間 2=ヤバい天気 1=悪天候 0=屋内or通常天気
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_411
+RETURN 1
+
+@M_KOJO_MESSAGE_COM_K53_411
+	;Combat Training.
+CALL D_LINE
+IF !SHIRAHU(53)
+	PRINTFORMDL You exercise for a little while...
+	PRINTFORMDW
+	RETURN 1
+ENDIF
+IF MARK:反発刻印 > 2 || CFLAG:ブチギレ
+	PRINTFORMDL You've started warming up when you hear Tewi's voice nearby...
+	PRINTFORMDW
+	PRINTFORML 「Are you practicing? Let me help～」
+	PRINTFORMDL %BREAKENG(@"Before you can turn to look, something heavy clamps around your wrists and ankles. A pair of metal cuffs as heavy as dumbbells are padlocked onto your arms!")%
+	PRINTFORML 「These are a good way to build up strength! Don't worry, they're extra secure―!」
+	PRINTFORMDL Tewi appears before you with an evil grin...
+	PRINTFORMW 「Now, let's begin the training!」
+	PRINTFORML 
+	PRINTFORMDL ...It was a gruelling gauntlet of bullets, traps, and sneak attacks by rabbits. 
+	IF ABL:MASTER:戦闘能力 > ABL:TARGET:戦闘能力
+		PRINTFORMDL However, you managed to get through it relatively well...
+		EXP:MASTER:戦闘経験 += 2
+		CALL RECOVER(MASTER, -200, "体力", "Ambushed")
+	ELSE
+		PRINTFORMDL However, you somehow feel as if it really made you stronger...
+		EXP:MASTER:戦闘経験 += 2
+		CALL RECOVER(MASTER, -800, "体力", "Ambushed")
+	ENDIF
+	RETURN 1
+ENDIF
+PRINTFORMDL You and Tewi play together while training...
+PRINTFORMDW
+SELECTCASE RAND:7
+	CASE 0
+		PRINTFORML 「Okay, try shooting me!」
+		PRINTFORMDL Tewi darts around the area, attempting to avoid your attacks.
+		IF ABL:MASTER:戦闘能力 < (ABL:TARGET:戦闘能力-1)
+			PRINTFORMDL She's so fast, you can't hit her at all...
+		ELSEIF ABL:MASTER:戦闘能力 < ABL:TARGET:戦闘能力
+			PRINTFORMDL She's so fast, you can only occasionally graze her. Or maybe she's getting close on purpose...
+		ELSEIF ABL:MASTER:戦闘能力 == ABL:TARGET:戦闘能力
+			PRINTFORMDL She's fast, and seems to always go in the direction you don't expect, but you still manage to hit her.
+		ELSEIF ABL:MASTER:戦闘能力 > ABL:TARGET:戦闘能力+1
+			PRINTFORMDL Despite her impressive speed and luck, the difference in skill between you is obvious.
+			PRINTFORMDL You toy with her a little bit, inventing new ways to trap her with your bullets.
+		ELSE
+			PRINTFORMDL Despite her impressive speed and luck, your skilled shooting finds its mark. You're definitely better than her at Danmaku.
+		ENDIF
+	CASE 1
+		PRINTFORML 「Hehe, let's work on your dodging skills!」
+		PRINTFORMDL Tewi starts chasing you, firing bullets in your direction.
+		IF ABL:MASTER:戦闘能力 < (ABL:TARGET:戦闘能力-1)
+			PRINTFORMDL You're quickly overwhelmed...
+		ELSEIF ABL:MASTER:戦闘能力 < ABL:TARGET:戦闘能力
+			PRINTFORMDL You graze through it for a while, but you can't last and are eventually struck down.
+		ELSEIF ABL:MASTER:戦闘能力 == ABL:TARGET:戦闘能力
+			PRINTFORMDL You put up a good resistance to her barrage and manage to come out the other end.
+		ELSEIF ABL:MASTER:戦闘能力 > ABL:TARGET:戦闘能力+1
+			PRINTFORMDL Despite her impressive speed and luck, the difference in skill between you is obvious.
+			PRINTFORMDL You toy with her a little bit, intentionally grazing her bullet patterns to make it more challenging.
+		ELSE
+			PRINTFORMDL Despite her clever tactics, you're one step ahead of her. You manage to dodge everything flawlessly.
+		ENDIF
+	CASE 2
+		PRINTFORML 「Strong magic comes from beauty! Therefore, we have to train your \@ IS_MALE(MASTER) ? masculinity # femininity\@!」
+		IF IS_MALE(MASTER)
+			PRINTFORMDL Saying this, Tewi commands you to dodge her bullets while %SPLIT_G(@"posing shirtless:lifting rabbits like dumbbells:flexing your muscles:eating a cooked steak:complimenting her like a gentleman:roaring with manly passion")%.
+		ELSE
+			PRINTFORMDL Saying this, Tewi commands you to dodge her bullets while %SPLIT_G(@"curtsying:gossiping with her:practicing flower arrangement:sewing a cute accessory:applying makeup:practicing girlish giggles:combing and styling your hair")%.
+		ENDIF
+		IF ABL:MASTER:戦闘能力 < (ABL:TARGET:戦闘能力-1)
+			PRINTFORMDL Doing it this way is hopeless...
+		ELSEIF ABL:MASTER:戦闘能力 < ABL:TARGET:戦闘能力
+			PRINTFORMDL The added difficulty is too much. You can't last for very long before you're hit.
+		ELSEIF ABL:MASTER:戦闘能力 == ABL:TARGET:戦闘能力
+			PRINTFORMDL You put up a good effort in spite of the handicap.
+		ELSEIF ABL:MASTER:戦闘能力 > ABL:TARGET:戦闘能力+1
+			PRINTFORMDL Despite the handicap, the difference in skill between you is obvious.
+			PRINTFORMDL You show her the superior style of a true %PRINT_MALE("man", MASTER)%, causing her to swoon.
+		ELSE
+			PRINTFORMDL You somehow manage to dodge everything despite the handicap.
+		ENDIF
+	CASE 3
+		PRINTFORML 「%SPLIT_G(@"Rabbits have rich martial arts traditions, you know.:The truth is, I'm actually the heir to a secret form of rabbit martial arts!:You may not know this, but most of the world's greatest martial artists have been rabbits!:Kick-based martial arts are the strongest. That's why rabbits are the strongest warriors!")%」
+		PRINTFORMDL You don't think that's true, but you accept Tewi's offer to help you train anyway.
+		PRINTFORMDL Following her advice, you %SPLIT_G(@"meditate beneath a rabbitfall... that is, a succession of rabbits jumping on your head and shoulders:meditate while balancing with one foot on top of a rabbit:pound mochi with a mallet for a while:do push-ups with your fingers while protecting baby rabbits under your palms:practice catching hopping rabbits with your bare hands:practice by striking a giant carrot with your fists:repeatedly lift a stack of rabbits with Tewi on top")%.
+		PRINTFORMDL Somehow, it feels like you got stronger...?
+	CASE 4
+		PRINTFORML 「The secret to dodging bullets is dexterity and reflexes!」
+		PRINTFORML 「Therefore, take this!」
+		PRINTFORMDL Tewi begins throwing a barrage of %SPLIT_G(@"rabbits:carrots:unknown potions:bamboo chunks")% at you.
+		IF ABL:MASTER:戦闘能力 < (ABL:TARGET:戦闘能力-1)
+			PRINTFORMDL You're knocked to the ground and buried before you can react...
+		ELSEIF ABL:MASTER:戦闘能力 < ABL:TARGET:戦闘能力
+			PRINTFORMDL You react quickly enough not to be taken off guard, but some of them still hit you.
+		ELSEIF ABL:MASTER:戦闘能力 == ABL:TARGET:戦闘能力
+			PRINTFORMDL Although it takes you by surprise, you weather the storm of improvised projectiles.
+		ELSEIF ABL:MASTER:戦闘能力 > ABL:TARGET:戦闘能力+1
+			PRINTFORMDL Even with such an ambush, you easily succeed at her trial.
+		ELSE
+			PRINTFORMDL You're ready for her attack, and manage to avoid it all with some effort.
+		ENDIF
+	CASE 5
+		PRINTFORML 「Let's consult the rabbit sage!」
+		PRINTFORMDL Tewi holds up a rabbit sporting a long beard and moustache.
+		PRINTFORMDL 「The secret to greater power is... %SPLIT_G(@"You must collect the seven Rabbit Balls!:a donation to the rabbit sage!:You must collect a thousand million pairs of girls' panties!:a diet entirely of boiled carrots!:lots and lots of energy drinks!:a secret!:You must locate the jeweled branch of Hourai!")%」
+		PRINTFORML 「The sage has spoken―!」
+		PRINTFORMDL ...You decide to do some regular training.
+	CASE 6
+		PRINTDATAL
+			DATAFORM 「Go! Fight! Never give up!」
+			DATAFORM 「Do your best until the very end!」
+			DATAFORM 「You can do it! You can do it―!」
+			DATAFORM 「We're all on your side―!」
+			DATAFORM 「You're not alone! I'm with you all the way―!」
+			DATAFORM 「Go! Go! Go! Go!」
+			DATAFORM 「%CALLNAME:MASTER%, the strongest warrior―! Make it happen―!」
+		ENDDATA
+		PRINTFORMDL Instead of training with you, Tewi watches from one side and cheers you on.
+ENDSELECT
+LOCAL = FIND_CHILD("53","Learning manners-Independent","Martial Arts",,"Here")
+IF LOCAL
+	PRINTFORMDL %CHILDNAME:53:LOCAL% joins your training, giving it %HIS_HER_CHILD(53,,LOCAL)% all.
+ELSE
+	LOCAL = FIND_CHILD("53","Learning manners-Independent",,,"Here")
+	SIF LOCAL
+		PRINTFORMDL %CHILDNAME:53:LOCAL% watches your training.
+ENDIF
+WAIT
+RETURN 1
+
+;==================================================
+;412,勉強
+;ABL:教養(ABL:MASTER:教養より大=MASTERが教えてもらう ABL:MASTER:教養より小=TARGETが教えてもらう
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_412
+RETURN 1
+
+@M_KOJO_MESSAGE_COM_K53_412
+	;Study.
+CALL D_LINE
+IF !SHIRAHU(53)
+	PRINTFORMDL You ignore Tewi while studying...
+	PRINTFORMDW
+	RETURN 1
+ENDIF
+IF MARK:53:反発刻印 || CFLAG:53:ブチギレ
+	PRINTFORMDL You study for a bit while Tewi ignores you...
+	PRINTFORMDW
+	RETURN 1
+ENDIF
+LOCALS = You and Tewi
+LOCALS:1 = 
+IF !RAND:2
+	LOCALS = You
+	LOCALS:1 '= @" with Tewi"
+ENDIF
+IF ABL:MASTER:教養 > ABL:53:教養 && !RAND:2
+		;If you have more Knowledge, you can tutor her.
+	PRINTFORMDL You %SPLIT_G(@"teach Tewi some of what you know:help Tewi study:share some of your knowledge with Tewi")%...
+	PRINTFORMDW
+ELSEIF ABL:MASTER:教養 < ABL:53:教養 && !RAND:2
+		;If she has more Knowledge, she can tutor you.
+	PRINTFORMDL Tewi %SPLIT_G(@"helps you with studying:offers some advice while you're studying:looks over your shoulder while you're studying")%...
+	PRINTFORMDW
+	PRINTFORML 「%SPLIT_G(@"Oh, I know that one. The answer is...」\n「...Buy my tutoring course and I'll tell you～:This is the answer, right?」\n「How did I know that? Lucky guess～:Oh, I remember the answer to that one...:I guess you're supposed to think of it like this...:What, you didn't know that? Eeh―...")%」
+	SIF !RAND:4
+		PRINTFORMDL However, she gets bored and begins slacking off partway through...
+	WAIT
+	RETURN 1
+ELSE
+	PRINTFORMDL %LOCALS% %SPLIT_G(@"study together:crack open a textbook and read it together:try to improve your knowledge")%%LOCALS:1%...
+	PRINTFORMDW
+ENDIF
+SELECTCASE RAND:4
+	CASE 0
+		PRINTFORMW 「Aarh! I don't under-staaaand～」
+	CASE 1
+		PRINTFORMW 「This is so duuu-ll― Let's go play somewhere instead―」
+	CASE 2
+		PRINTFORMW 「Ah, You solve it by doing this, right?」
+	CASE 3
+		PRINTFORMW 「You're so into this... Is it that important?」
+ENDSELECT
+WAIT
+RETURN 1
+
+;==================================================
+;413,料理
+;TFLAG:194(100以上=禁断のメニュー 3=デザート 2=主食 1=軽食
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_413
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_413
+	;Cooking.
+IF !SHIRAHU(53)
+	RETURN 1
+ENDIF
+IF MARK:53:反発刻印 || CFLAG:53:ブチギレ
+	PRINTFORML 「Okay, good luck with that―」
+	PRINTFORMDW Tewi walks out with a passive-aggressive smile.
+	CFLAG:53:同行 = 0
+	CALL GETOUT(53)
+	RETURN 1
+ENDIF
+SELECTCASE RAND:3
+	CASE 0
+		IF ABL:TARGET:料理技能 > 2
+			PRINTFORML 「I'm getting better at cooking. It feels nice～」
+		ELSE
+			PRINTFORML 「%SPLIT_G(@"Cooking is easy. Just add whatever's around, have fun with it～:You can substitute missing ingredients with carrots, right?:If it burns, just throw a bit of salt on it, it'll taste fine～:Why not mix 'em all together and drink it?:Oops, I added the wrong one.:Ahaha, I measured totally wrong～")%」
+			PRINTFORMDL Maybe letting Tewi help was a mistake.
+		ENDIF
+	CASE 1
+		PRINTFORML 「The secret ingredient is %SPLIT_G(@"love:carrots:mochi pounded at night:\@ IS_ENABLED(52) ? Reisen's # my \@ special additive:dango! Dango improves any recipe:the bounty of the forest:mushrooms―")%!」
+		PRINTFORMDL You tell her not to put anything weird in.
+	CASE 2
+		PRINTFORML 「%SPLIT_G(@"Now, invade the recipe!:Where could the secret ingredient be―?:No, don't slice me in half! Aiee―!:Hehe, I made it look kinda like you～:Now we give it rabbit ears～:Come on, make it look cuter!")%」
+		PRINTFORMDL Tewi plays with the food while cooking.
+ENDSELECT
+LOCAL = FIND_CHILD("53","Learning manners-Independent","Cooking",,"Here")
+IF LOCAL
+	PRINTFORMDL %CHILDNAME:53:LOCAL% helps you prepare the food.
+ELSE
+	LOCAL = FIND_CHILD("53","Learning manners-Independent",,,"Here")
+	SIF LOCAL
+		PRINTFORMDL %CHILDNAME:53:LOCAL% watches and waits patiently.
+ENDIF
+WAIT
+RETURN 1
+
+;==================================================
+;414,食事を取る
+;TFLAG:193(1=大成功 0=成功 -1=失敗)
+;TFLAG:194(1=ノーパンしゃぶしゃぶ 2=禁断のメニュー 31=ドーピングコンソメスープ 30=モッツァレラチーズとトマトのサラダ 34=ギンギー料理
+;TCVAR:MASTER:308(bit0=濃い味 bit1=薄味 bit3=激辛 bit4=激甘 bit5=わさび bit6=激酸っぱ
+;==================================================
+@M_KOJO_SUCCESS_COM_K53_414
+;成否判定
+;TFLAG:192(-2=コマンド終了(非TARGET時強制失敗)、-1＝強制失敗、0=COM依存(非TARGET時強制成功)、1=強制成功or大成功
+TFLAG:192 = 0
+
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_414
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_414
+	;Have a Meal.
+SIF CFLAG:睡眠
+	RETURN 0
+SIF FLAG:時間停止
+	RETURN 0
+IF DISHNAME == "にんじんトッポッキ"
+	SELECTCASE RAND:5
+		CASE 0
+			PRINTFORML 「You know what's so good about these? They're easy to make!」
+			PRINTFORMW 「The rabbits don't make complicated dishes well, you see...」
+		CASE 1
+			PRINTFORML 「You know what's so good about these? They're cheap to make!」
+			PRINTFORMW 「Who wants to spend all their money on food?」
+		CASE 2
+			PRINTFORML 「You know what's so good about these? They're crunchy!」
+			PRINTFORMW 「You can nibble 'em %SPLIT_G(@"bit by bit:with your front teeth:while you walk")%～」
+		CASE 3
+			PRINTFORML 「You know what's so good about these? The carrots!」
+			PRINTFORMW 「Obviously, it's a rabbit staple!」
+		CASE 4
+			PRINTFORML 「You know what's so good about these? They're light!」
+			PRINTFORMW 「You can eat 'em anywhere at all, even when you're supposed to be working!」
+	ENDSELECT
+ELSEIF DISHNAME == "紅白なます"
+	PRINTFORML 「Eating this with me, you'll get very lucky～」
+ELSEIF STRCOUNT(DISH_TASTE, "ニンジン/")
+	PRINTFORML 「%SPLIT_G(@"Wow, a carrot dish! How'd you know my taste?～:Ooh, look at all the carrots～:Yaaay, carrots!:Oh, it looks good!:Looks yummy!:Ehehe, gimme!:Gimme, gimme!:Thanks for treating me～:I'm gonna try it～")%」
+ENDIF
+PRINTFORMDW %SPLIT_G(@"Forgoing any semblance of manners, Tewi starts eating as soon as it's in her hands.:Tewi digs in right away.:Tewi doesn't wait to start eating.:Tewi sets upon the food immediately.:Tewi gives it a taste...:Tewi tries the food.:Tewi nibbles on the food with wide eyes, watching her surroundings.")%
+PRINTFORML
+IF TFLAG:193 == 1
+	PRINTFORML 「%SPLIT_G(@"This is good! It's really, really good!:Huh? This tastes great!:I like it! It's really good!")%」
+ELSEIF TFLAG:193 == 0
+	PRINTFORML 「%SPLIT_G(@"Mmm! Not bad～:It's good... It's good!:Mmm!～")%」
+ELSEIF TFLAG:193 == -1
+	PRINTFORML 「.........」
+	IF TALENT:恋人
+		IF TALENT:MASTER:体型 < TALENT:53:体型
+			PRINTFORMDL Tewi looks down at you with teary eyes.
+		ELSEIF TALENT:MASTER:体型 > TALENT:53:体型
+			PRINTFORMDL Tewi looks up at you with teary eyes.
+		ELSE
+			PRINTFORMDL Tewi looks at you with teary eyes.
+		ENDIF
+		PRINTFORML 「If neither of us cook, how is our relationship going to work...?」
+	ELSE
+		PRINTFORML 「%SPLIT_G(@"...This is an act of war.:...Do you hate me?:...So disappointing... Sniff...")%」
+	ENDIF
+	PRINTFORMDL It seems she didn't like it...
+ENDIF
+LOCAL = FIND_CHILD("53","Learning manners-Independent","Cooking",,"Here")
+IF LOCAL
+	PRINTFORMDL %CHILDNAME:53:LOCAL% eats some as well, and savors it carefully.
+ELSE
+	LOCAL = FIND_CHILD("53","Learning manners-Independent",,,"Here")
+	SIF LOCAL
+		PRINTFORMDL %CHILDNAME:53:LOCAL% eats some as well.
+ENDIF
+IF CFLAG:52:現在位置 == CFLAG:53:現在位置 && !RAND:10
+	PRINTFORML 「Hey Reisen, want some of mine?」
+	CALL CHARA_TEXT([[鈴仙]], "「Eh? ...Well, if you don't mind...」")
+	PRINTFORML 「Just kidding～」
+	PRINTFORMDL Tewi shoves more food in her mouth while Reisen presses her lips together and sighs.
+ENDIF
+WAIT
+RETURN 1
+
+;==================================================
+;415,食事をふるまう
+;TFLAG:193(1=大成功 0=成功 -1=失敗)
+;TCVAR:MASTER:308(bit0=濃い味 bit1=薄味 bit3=激辛 bit4=激甘 bit5=わさび bit6=激酸っぱ
+;==================================================
+@M_KOJO_SUCCESS_COM_K53_415
+;成否判定
+;TFLAG:192(-2=コマンド終了、-1＝強制失敗、0=COM依存、1=強制成功or大成功
+TFLAG:192 = 0
+
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_415
+RETURN 1
+
+@M_KOJO_MESSAGE_COM_K53_415
+	;Serve a Meal.
+	;Redirect to Have a Meal.
+CALL M_KOJO_MESSAGE_COM_K53_414()
+RETURN 1
+
+;==================================================
+;416,演奏する
+;TFLAG:193(1=大成功 0=成功 -1=失敗)
+;TFLAG:使用楽器(1=キーボード 2=ピアノ 3=ギター 4=トランペット 5=ヴァイオリン)
+;==================================================
+@M_KOJO_SUCCESS_COM_K53_416
+;成否判定
+;TFLAG:192(-2=コマンド終了、-1＝強制失敗、0=COM依存、1=強制成功or大成功
+IF MARK:53:反発刻印 > 2 || CFLAG:53:ブチギレ
+	TFLAG:192 = -1
+	TFLAG:193 = -1
+ENDIF
+
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_416
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_416
+	;Musical Performance.
+IF MARK:53:反発刻印 > 2 || CFLAG:53:ブチギレ
+	PRINTFORMDL Tewi smiles at your playing.
+	PRINTFORMDW ...Then, without a word, she pitches a large pebble in your direction.
+	CALL THROW_STONE(TARGET)
+ELSEIF TFLAG:193 < 0
+	IF TALENT:恋人
+		PRINTFORML 「%SPLIT_G(@"I think I'm falling out of love...:I'm sorry I pranked you... I'm sorry I was mean to you... Just stop, please...!:...I want to break up.:Is this what they call domestic violence?:I wonder what I see in you...")%」
+		PRINTFORMDL Tewi's words make you lose your will to finish the song.
+	ELSE
+		PRINTFORML 「%SPLIT_G(@"You suck―!:You're really bad at that.:Ahaha, your playing sucks―!:It sounds terrible.:Is that supposed to be music?")%」
+		PRINTFORMDL Without any tact or subtlety, Tewi tells you like it is. You ask her what part sounds bad.
+		PRINTFORML 「%SPLIT_G(@"Well, first of all, it sucks. Second of all, it makes my ears bleed. And third of all, I want to die.:Well, the beginning sucked, the middle was just awful, and it's probably for the best that I didn't hear the end.:The part where you played the instrument, mainly. Oh, and the part where you got my hopes up.:You know the part where it went... um, bad? You know, the whole thing? That part.")%」
+		PRINTFORMDL Her criticsm isn't very constructive...
+	ENDIF
+ELSE
+	LOCAL = FIND_CHILD("53","Learning manners-Independent","Singing",,"Here")
+	IF LOCAL
+		PRINTFORMDL %CHILDNAME:53:LOCAL% sings along.
+	ELSE
+		LOCAL = FIND_CHILD("53","Learning manners-Independent",,,"Here")
+		SIF LOCAL
+			PRINTFORMDL %CHILDNAME:53:LOCAL% cheers for you.
+	ENDIF
+	IF TFLAG:193 == 1
+		PRINTFORMDL Tewi hops up and down, excited by your performance.
+	ELSE
+		PRINTFORMDL Tewi claps along with the song.
+	ENDIF
+ENDIF
+WAIT
+RETURN 1
+
+;==================================================
+;417,昼寝をする
+;TFLAG:193(0=MASTERを抱き枕にして寝ている 1=MASTERの膝を枕にして寝ている 2=寝顔にキスされた 3=寝顔をのぞき込まれた 4=MASTERが膝枕されてる 5=秘処orペニス揉み
+;CFLAG:添い寝中(1=一緒に寝ている
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_417
+RETURN 0
+
+@M_KOJO_SUCCESS_COM_K53_417
+IF MARK:53:反発刻印 > 2 || CFLAG:53:ブチギレ
+	TFLAG:192 = -1
+	TFLAG:193 = -1
+ENDIF
+
+@M_KOJO_MESSAGE_COM_K53_417
+CALL M_KOJO_MESSAGE_COM_K53_417_1
+RETURN RESULT
+
+@M_KOJO_MESSAGE_COM_K53_417_1
+;-------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 0
+;-------------------------------------------------
+IF LOCAL
+
+ENDIF
+RETURN 1
+;==================================================
+;421,願掛けする
+;条件が複雑なので、COMF421 願掛け.ERBおよび、EVENT_MESSAGE_COM400.ERBの願掛けするの項を参照のこと
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_421
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_421
+CALL M_KOJO_MESSAGE_COM_K53_421_1
+RETURN RESULT
+
+@M_KOJO_MESSAGE_COM_K53_421_1
+;-------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 0
+;-------------------------------------------------
+IF LOCAL
+
+ENDIF
+RETURN 1
+
+;==================================================
+;422～430は、特殊コマンドなのでテンプレでは対応しません
+;==================================================
+
+;==================================================
+;431,お風呂でくつろぐ
+;TFLAG:209(4=人里の銭湯で番台ちゃんを怒らせている 1=銭湯に入った
+;TFLAG:211(4=地底の温泉で番台妖怪を怒らせている 1=温泉に入った
+;TFLAG:194(1=連続入浴不可(表示しない可能性あり？
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_431
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_431
+	;Relax in the Bath.
+RETURN 1
+
+;==================================================
+;432,お風呂でくつろぐ
+;表示タイミングは入浴後なので、お風呂上がりでの
+;TFLAG:209(4=人里の銭湯で番台ちゃんを怒らせている 1=銭湯に入った
+;TFLAG:211(4=地底の温泉で番台妖怪を怒らせている 1=温泉に入った
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_432
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_432
+CALL M_KOJO_MESSAGE_COM_K53_432_1
+RETURN RESULT
+
+@M_KOJO_MESSAGE_COM_K53_432_1
+;-------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 0
+;-------------------------------------------------
+IF LOCAL
+
+ENDIF
+RETURN 1
+;==================================================
+;436,読書
+;TFLAG:193(選択肢文学(1=忍殺(文学？) 2=失敗 3=文学),選択肢実用書(4=失敗 5=実用書),選択肢エッチな本(6=薄い高い本 7=保健体育 8=カーマスートラ))
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_436
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_436
+	;Reading.
+RETURN 1
+
+;==================================================
+;440,待つ
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_440
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_440
+CALL M_KOJO_MESSAGE_COM_K53_440_1
+RETURN RESULT
+
+@M_KOJO_MESSAGE_COM_K53_440_1
+;-------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 0
+;-------------------------------------------------
+IF LOCAL
+
+ENDIF
+RETURN 1
+;==================================================
+;441,授業を受ける(慧音専用
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_441
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_441
+CALL M_KOJO_MESSAGE_COM_K53_441_1
+RETURN RESULT
+
+@M_KOJO_MESSAGE_COM_K53_441_1
+;-------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 0
+;-------------------------------------------------
+IF LOCAL
+
+ENDIF
+RETURN 1
+;==================================================
+;442,伐採する（未実装
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_442
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_442
+	;Logging.
+LOCAL = FIND_CHILD("53","Learning manners-Independent","Camping",,"Here")
+IF LOCAL
+	PRINTFORMDL %CHILDNAME:53:LOCAL% picks up an axe and helps out with enthusiasm.
+ELSE
+	LOCAL = FIND_CHILD("53","Learning manners-Independent",,,"Here")
+	SIF LOCAL
+		PRINTFORMDL %CHILDNAME:53:LOCAL% picks up an axe and helps out.
+ENDIF
+SELECTCASE RAND:9
+	CASE 0
+		PRINTFORMDL Tewi leads a company of rabbit lumberjacks, all with little axes.
+		PRINTFORMDL They're not very strong...
+	CASE 1
+		PRINTFORMDL Tewi climbs to the top of the tree and rides it down as it's felled.
+		PRINTFORMDL She jumps off before it lands, laughing...
+	CASE 2
+		PRINTFORMDL After the tree is felled, Tewi offers you a refreshing drink.
+		PRINTFORMDL You make sure it's not spiked before drinking it.
+	CASE 3
+		PRINTFORMDL Although she doesn't do much to help, tree-felling seems much easier with Tewi around.
+		PRINTFORMDL It's like you're dealing critical hits to the trees.
+	CASE 4
+		PRINTFORMDL Tewi plays around the tree while you work.
+		PRINTFORMDL She leaps out of the way as it comes crashing down.
+	CASE 5
+		PRINTFORMDL Tewi plays around the fallen tree while you cut it up, hopping from section to section.
+	CASE 6
+		PRINTFORMDL Tewi lazes around on top of the fallen tree while you cut it up.
+	CASE 7
+		PRINTFORMDL When the tree is felled, Tewi orders a bunch of rabbits to cut it up.
+		PRINTFORMDL They go at it with tiny hacksaws, making progress bit by bit...
+	CASE 8
+		PRINTFORMDW Tewi balances on top of the stump, looking out for further suitable trees...
+		IF HAS_PENIS(MASTER) && BASE:MASTER:勃起 > 999
+			PRINTFORML 「%SPLIT_G(@"Ah, more wood!:Wood spotted!:Found some wood!:Hard wood located!:Stiff wood found!")%」
+			PRINTFORMDL She points at your bulging crotch.
+		ENDIF
+ENDSELECT
+WAIT
+RETURN 1
+
+;==================================================
+;445,採集する
+;TFLAG:193(採集物のID, 0=『何も見つからなかった…』
+;TFLAG:194(今回採集した個数
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_445
+RETURN 1
+
+@M_KOJO_MESSAGE_COM_K53_445
+	;Forage.
+IF !SHIRAHU(53) || MARK:53:反発刻印 || CFLAG:53:ブチギレ
+	CALL TRAIN_MESSAGE
+	RETURN 1
+ENDIF
+PRINTFORML
+SELECTCASE RAND:4
+	CASE 0
+		PRINTFORML 「Rabbit team, %SPLIT_G(@"sweep the area:divide and conquer:take everything not nailed down:search and retrieve:search:take anything that looks useful:move out:go:assemble:pillage the area:find whatever you can:go, go, go:find some good stuff")%!」
+		PRINTFORMDL While Tewi sits back and watches, a swarm of rabbits fans out over the area to help you search!
+		PRINTFORMDL They %SPLIT_G(@"spend most of the time playing around:don't seem to know what they're looking for:all run and hide when a youkai passes by:forget what they're doing halfway through:hardly seem able to find their own feet:spread out way too far and get lost:end up needing to be rescued from wildlife:accidentally ruin half of what they find")%, though...
+	CASE 1
+		PRINTFORML 「I'll help you search %SPLIT_G(@"by using geta divination:with this dowsing rod:with thoughts and prayers:with probabilistic prediction:by letting this stick fall")%!」
+		PRINTFORMDL Tewi's methods are dubious, but her enthusiasm keeps it from getting boring.
+	CASE 2
+		PRINTFORML 「I feel good about... %SPLIT_G(@"over there:that direction:that way:there")%!」
+		PRINTFORMDL Instead of helping, Tewi just points you in random directions. Maybe you'll get lucky?
+	CASE 3
+		PRINTFORML 「%SPLIT_G(@"Where are we going to look?:I'll double-check where you look.:I've got my head on a swivel!:Let's play a game while we search.")%!」
+		PRINTFORMDL Tewi follows you around without really helping.
+ENDSELECT
+LOCAL = FIND_CHILD("53","Learning manners-Independent","Camping",,"Here")
+IF LOCAL
+	PRINTFORMDL %CHILDNAME:53:LOCAL% enthusiastically joins the search.
+ELSE
+	LOCAL = FIND_CHILD("53","Learning manners-Independent",,,"Here")
+	SIF LOCAL
+		PRINTFORMDL %CHILDNAME:53:LOCAL% joins the search.
+ENDIF
+WAIT
+CALL TRAIN_MESSAGE
+IF TFLAG:193 > 0
+	PRINTFORML 「%SPLIT_G(@"Ehehe～:See, I told you it'd work!:Hooray for you!:Anything worth money?:You're welcome～")%」
+	LOCALS '= "Just as you start thinking that's all there is"
+ELSE
+	PRINTFORML 「%SPLIT_G(@"Huh? I thought that'd work...:Well, we can't always be lucky. I mean, you can't.:What a waste of time―!:This is getting boring...")%」
+	LOCALS '= "As you're about to call it quits"
+ENDIF
+IF !RAND:20
+	IF (CFLAG:MASTER:現在位置 / 100) == 4
+		PRINTFORMDL %LOCALS%, Tewi trips over an outcrop of cinnabar! Talk about lucky!
+		PRINTL
+		CALL GET_ITEM("辰砂",RAND(2,6),2)
+	ELSE
+		PRINTFORMDL %LOCALS%, Tewi trips over a tangle of valuable bitter roots! Talk about lucky!
+		PRINTL
+		CALL GET_ITEM("苦い根っこ",RAND(2,6),2)
+	ENDIF
+	PRINTL
+ENDIF
+WAIT
+RETURN 1
+
+;==================================================
+;448,罠を仕掛ける／虫トラップ
+;TFLAG:193,
+;   -1=罠が壊れた
+;    0=罠を仕掛けた
+;    1=獲物が得られた
+;   10=虫トラップを仕掛けた
+;   11=虫トラップを破棄した
+;   12=ムシを捕まえた
+;FLAG:194,獲物の番号
+;ムシの名前は MUSHI_NAME で表示したり判別したりできます
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_448
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_448
+CALL M_KOJO_MESSAGE_COM_K53_448_1
+RETURN RESULT
+
+@M_KOJO_MESSAGE_COM_K53_448_1
+;-------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 0
+;-------------------------------------------------
+IF LOCAL
+
+ENDIF
+RETURN 1
+;==================================================
+;449,虫捕り
+;TFLAG:193,
+;   -2=殺してでもうばいとる（取っ組み合いの末逃がす）
+;   -1=ゆずってくれ！→拒否
+;    0=捕獲失敗
+;    1=MASTERが捕まえた
+;    2=キャラが捕まえたのをMASTERが褒めた
+;    3=ゆずってくれ！→渋々オッケー
+;    4=ゆずってくれ！→オールオッケー
+;TRAINMESSAGEを省略する場合は虫カゴに入れる処理を忘れないように
+;ムシの名前は MUSHI_NAME で表示したり判別したりできます
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_449
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_449
+CALL M_KOJO_MESSAGE_COM_K53_449_1
+RETURN RESULT
+
+@M_KOJO_MESSAGE_COM_K53_449_1
+;-------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 0
+;-------------------------------------------------
+IF LOCAL
+
+ENDIF
+RETURN 1
+;==================================================
+;483,ムシバトル
+;TFLAG:193,
+;    1=１対１の対戦
+;    2=３～４人戦
+;    3=２対２のチーム戦
+;TFLAG:194にMASTERの順位が入っています（MASTERが1ならキャラ負け）
+;バトル中の口上はイベント口上ファイルに入っています
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_483
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_483
+CALL M_KOJO_MESSAGE_COM_K53_483_1
+RETURN RESULT
+
+@M_KOJO_MESSAGE_COM_K53_483_1
+;-------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 0
+;-------------------------------------------------
+IF LOCAL
+
+ENDIF
+RETURN 1
+;==================================================
+;484,スイカ割り
+;TFLAG:193,
+;   -1=失敗
+;    0=成功
+;    1=大成功
+;    2=木刀で大成功（ボーナス点）
+;TFLAG:194
+;    0=正直者
+;    1=ウソつき
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_484
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_484
+CALL M_KOJO_MESSAGE_COM_K53_484_1
+RETURN RESULT
+
+@M_KOJO_MESSAGE_COM_K53_484_1
+;-------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 0
+;-------------------------------------------------
+IF LOCAL
+
+ENDIF
+RETURN 1
+
+;==================================================
+;490,アイテム
+;TFLAG:193(使用アイテムのID
+;TFLAG:194(対象 0=MASTER,1=TARGET
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_490
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_490
+
+
+;==================================================
+;構文を映姫口上からお借りしました。お礼申し上げます
+;491,ホワイトデー
+;TFLAG:193(0=返礼品を制作 1～7=渡した返礼品の種類
+;CFLAG:バレンタイン(1～4= 受け取ったチョコの種類 +100で返礼品贈呈済、周回以外でフラグリセットされない
+;未実装アイテムあり？
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_491
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_491
+	;White Day Gift.
+SIF !SHIRAHU(53) || MARK:53:反発刻印 || CFLAG:53:ブチギレ || !TFLAG:193
+	RETURN 1
+PRINTL
+IF TALENT:恋人
+	PRINTFORMW 「Yaaaay―, it's White Day!」
+	PRINTDATAW
+		DATAFORM 「I'm so glad I have such a responsible lover～」
+		DATAFORM 「You're so sweet～ Smooch%UNICODE(0x2764)%」
+		DATAFORM 「I guess I can't forget about next Valentine's Day now, huh?」
+	ENDDATA
+ELSE
+	PRINTFORMW 「%SPLIT_G(@"Eeh―? You actually remembered White Day?:Wow, a White Day gift?:White Day! I totally forgot―!")%」
+	PRINTFORMW 「%SPLIT_G(@"Hehe, thanks! Really, thanks a lot!:Hehe, thanks for this～:I'm flattered～ Aw～")%」
+ENDIF
+PRINTFORMDW Tewi beams at you with genuine happiness.
+WAIT
+RETURN 1
+
+
+;※※※※※※※※※※※※※※※※※※※※※※※※※
+;デート系コマンド
+;デート系口上は文字通り外出先で発生
+;※※※※※※※※※※※※※※※※※※※※※※※※※
+[SKIPSTART]
+;現状未実装
+;==================================================
+;600,デート会話
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_600
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_600
+CALL M_KOJO_MESSAGE_COM_K53_600_1
+RETURN RESULT
+
+@M_KOJO_MESSAGE_COM_K53_600_1
+;-------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 0
+;-------------------------------------------------
+IF LOCAL
+
+ENDIF
+RETURN 1
+
+;==================================================
+;601,デートスキンシップ
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_601
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_601
+CALL M_KOJO_MESSAGE_COM_K53_601_1
+RETURN RESULT
+
+@M_KOJO_MESSAGE_COM_K53_601_1
+;-------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 0
+;-------------------------------------------------
+IF LOCAL
+
+ENDIF
+RETURN 1
+
+;==================================================
+;602,デートキス
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_602
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_602
+CALL M_KOJO_MESSAGE_COM_K53_602_1
+RETURN RESULT
+
+@M_KOJO_MESSAGE_COM_K53_602_1
+;-------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 0
+;-------------------------------------------------
+IF LOCAL
+
+ENDIF
+RETURN 1
+[SKIPEND]
+;==================================================
+;603,手を繋ぐ
+;TFLAG:193(1=大成功 0=成功 -1=失敗)(失敗でもふりほどかれたりはしません
+;==================================================
+@M_KOJO_SUCCESS_COM_K53_603
+;成否判定
+;TFLAG:192(-2=コマンド終了、-1＝強制失敗、0=COM依存、1=強制成功or大成功
+TFLAG:192 = 0
+
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_603
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_603
+	;Hold Hands.
+IF FIRSTTIME("TewiHoldHands",0,53)
+	PRINTFORML 「H-Hand-holding? I-Isn't that t-too extreme?」
+	PRINTFORMDL Tewi blushes and puts her hands on her cheeks with a sheepish smile. She's joking, right?
+	PRINTFORML 「I didn't know you were such a deviant...」
+	IF TALENT:MASTER:体型 == -5
+		PRINTFORMDL As you ride on Tewi's shoulder, Tewi puts her hand up next to you and when you grasp her fingers, she lets out an indecent moan.
+	ELSEIF TALENT:MASTER:体型 == 5
+		PRINTFORMDL As Tewi rides on your shoulder, you put your hand up next to her and she grasps your fingers, letting out an indecent moan.
+	ELSE
+		PRINTFORMDL You entwine your fingers with Tewi's and she lets out an indecent moan.
+	ENDIF
+	PRINTFORML 「Be gentle...」
+	PRINTFORMDW She's making fun of you...
+	RETURN 1
+ENDIF
+SELECTCASE TFLAG:193
+	CASE -1
+		SELECTCASE RAND:4
+			CASE 0
+				PRINTFORMDW You try to hold Tewi's hand, but she runs ahead without even noticing...
+			CASE 1
+				PRINTFORMDL As soon as you start to lift Tewi's hand, she slips out of your grasp and walks on the other side of you.
+				PRINTFORML 「Beeeh―」
+				PRINTFORMDW She sticks out her tongue at you...
+			CASE 2
+				IF IS_CHILD(MASTER)
+					IF IS_MALE(MASTER)
+						PRINTFORML 「Eek, a boy is touching me!」
+					ELSE
+						PRINTFORML 「Nooo, we're both girls!」
+					ENDIF
+				ELSE
+					PRINTFORML 「Ah, a strange %PRINT_MALE("man", MASTER)%!」
+				ENDIF
+				PRINTFORMDW Tewi runs away from you, pretending to panic...
+			CASE 3
+				PRINTFORML 「Don't wanna!」
+				PRINTFORMDW Tewi walks ahead of you with her hands folded behind her head...
+		ENDSELECT
+	CASE 0
+		SELECTCASE RAND:4
+			CASE 0
+				IF TALENT:MASTER:体型 == -5
+					PRINTFORMDL As you ride on Tewi's shoulder, Tewi puts her hand up next to you and you grasp her fingers.
+					PRINTFORMW 「Hehe, we look weird doing this.」
+				ELSEIF TALENT:MASTER:体型 == -2
+					PRINTFORMW 「Hehe, we're so cute～」
+				ELSEIF TALENT:MASTER:体型 == 5
+					PRINTFORMDL As Tewi rides on your shoulder, you put your hand up next to her and she grasps your fingers.
+					PRINTFORMW 「Hehe, we look weird doing this.」
+				ELSEIF TALENT:MASTER:体型 > -2
+					IF TALENT:MASTER:年齢 == 1
+						IF TALENT:MASTER:動物耳 == 2 ;Bunny Ears.
+							PRINTFORML 「Hehe, you look like you're my dad.」
+							PRINTFORMDW You wonder if that's a good thing...
+						ELSE
+							PRINTFORMDW Tewi hops up and down next to you, swinging your hand.
+						ENDIF
+					ELSEIF TALENT:MASTER:年齢 == 2
+						IF TALENT:MASTER:動物耳 == 2 ;Bunny Ears.
+							PRINTFORML 「Hehe, you look like you're my grandpa.」
+							PRINTFORMDW You wonder if that's a good thing...
+						ELSE
+							PRINTFORMDW Tewi hops up and down next to you, swinging your hand.
+						ENDIF
+					ELSE
+						IF TALENT:MASTER:動物耳 == 2 ;Bunny Ears.
+							PRINTFORML 「Where are we going, big brother?～」
+							PRINTFORMDW You wonder if you really do look like siblings.
+						ELSE
+							PRINTFORMDW Tewi hops up and down next to you, swinging your hand.
+						ENDIF
+					ENDIF
+				ENDIF
+			CASE 1
+				IF TALENT:MASTER:体型 == -5
+					PRINTFORMDL As you ride on Tewi's shoulder, Tewi puts her hand up next to you and you grasp her fingers.
+				ELSEIF TALENT:MASTER:体型 == 5
+					PRINTFORMDL As Tewi rides on your shoulder, you put your hand up next to her and she grasps your fingers.
+				ENDIF
+				PRINTFORMDW Tewi hums to herself, watching the scenery.
+			CASE 2
+				IF TALENT:MASTER:体型 == -5
+					PRINTFORMDL As you ride on Tewi's shoulder, Tewi puts her hand up next to you and you grasp her fingers.
+					PRINTFORMDW She squeezes your tiny hands between her fingers as she walks along.
+				ELSEIF TALENT:MASTER:体型 == 5
+					PRINTFORMDL As Tewi rides on your shoulder, you put your hand up next to her, and she grasps your fingers.
+					PRINTFORMDW She lays her whole body on your hand as you walk along.
+				ELSE
+					PRINTFORMDW Tewi pulls on your arm as you walk along.
+				ENDIF
+			CASE 3
+				IF TALENT:MASTER:体型 == -5
+					PRINTFORMDL As you ride on Tewi's shoulder, Tewi puts her hand up next to you and you grasp her fingers.
+					PRINTFORMDW She skips along the path, making you hold on tighter so you don't fall off.
+				ELSEIF TALENT:MASTER:体型 == 5
+					PRINTFORMDL As Tewi rides on your shoulder, you put your hand up next to her, and she grasps your fingers.
+					PRINTFORMDW She rocks back and forth on your shoulder, steadying herself with your hand while she watches the scenery.
+				ELSE
+					PRINTFORMDW Tewi skips along next to you, jerking you arm around as she goes.
+				ENDIF
+		ENDSELECT
+	CASE 1
+		SELECTCASE RAND:4
+			CASE 0
+				IF TALENT:MASTER:体型 == -5
+					PRINTFORMDL As you ride on Tewi's shoulder, Tewi puts her hand up next to you and you grasp her fingers.
+				ELSEIF TALENT:MASTER:体型 == 5
+					PRINTFORMDL As Tewi rides on your shoulder, you put your hand up next to her and she grasps your fingers.
+				ENDIF
+				IF TALENT:恋人
+					PRINTFORML 「Hehe, we really look like lovers now, right?」
+				ELSEIF TALENT:愛欲
+					IF HAS_PENIS(MASTER)
+						PRINTFORML 「Do you think anyone can tell that you rail me?～」
+					ELSE
+						PRINTFORML 「Do you think anyone can tell how sex-crazy we are?～」
+					ENDIF
+				ELSE
+					PRINTFORML 「Hehe, we look like we're lovers, right?」
+				ENDIF
+			CASE 1
+				IF TALENT:MASTER:体型 == -5
+					PRINTFORMDL As you ride on Tewi's shoulder, Tewi puts her hand up next to you and you grasp her fingers.
+				ELSEIF TALENT:MASTER:体型 == 5
+					PRINTFORMDL As Tewi rides on your shoulder, you put your hand up next to her and she grasps your fingers.
+				ENDIF
+				PRINTFORMDW She hums to herself, enjoying the contact.
+			CASE 2
+				IF TALENT:MASTER:体型 == -5
+					PRINTFORMDL As you ride on Tewi's shoulder, Tewi puts her hand up next to you and you grasp her fingers.
+					PRINTFORMDW She tilts her head and presses it against your body as she walks along.
+				ELSEIF TALENT:MASTER:体型 == 5
+					PRINTFORMDL As Tewi rides on your shoulder, you put your hand up next to her, and she grasps your fingers.
+					PRINTFORMDW She leans her body against your head and neck as you walk along.
+				ELSE
+					PRINTFORMDW Tewi walks close, brushing against you as you go along.
+				ENDIF
+			CASE 3
+				IF TALENT:MASTER:体型 == -5
+					PRINTFORMDL As you ride on Tewi's shoulder, Tewi puts her hand up next to you and you grasp her fingers.
+					PRINTFORMDW She skips gently along the path, making the ride not so bumpy for you.
+				ELSEIF TALENT:MASTER:体型 == 5
+					PRINTFORMDL As Tewi rides on your shoulder, you put your hand up next to her, and she grasps your fingers.
+					PRINTFORMDW She plays with your index finger, moving it up and down with her hands.
+				ELSE
+					PRINTFORMDW Tewi skips along next to you, keeping her hand level with yours and remaining close to your side.
+				ENDIF
+		ENDSELECT
+ENDSELECT
+WAIT
+RETURN 1
+
+;==================================================
+;604,散策する
+;デート中の場合、CFLAG:現在位置に移動先の場所が既に入ってる
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_604
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_604
+;散策するにはTRAIN_MESSAGEが無い
+CALL M_KOJO_MESSAGE_COM_K53_604_1
+RETURN RESULT
+
+@M_KOJO_MESSAGE_COM_K53_604_1
+;-------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 0
+;-------------------------------------------------
+IF LOCAL
+
+ENDIF
+RETURN 1
+;==================================================
+;605,寄り道する
+;TFLAG:193(1=大成功 0=成功 -1=失敗)(地の文無し
+;==================================================
+@M_KOJO_SUCCESS_COM_K53_605
+;成否判定
+;TFLAG:192(-2=コマンド終了、-1＝強制失敗、0=COM依存、1=強制成功or大成功
+TFLAG:192 = 0
+
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_605
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_605
+;寄り道するにはTRAIN_MESSAGEが無い
+CALL M_KOJO_MESSAGE_COM_K53_605_1
+RETURN RESULT
+
+@M_KOJO_MESSAGE_COM_K53_605_1
+;-------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 0
+;-------------------------------------------------
+IF LOCAL
+
+ENDIF
+RETURN 1
+
+;==================================================
+;610,食事に誘う
+;TFLAG:193(1=大成功 0=成功 -1=失敗)
+;==================================================
+@M_KOJO_SUCCESS_COM_K53_610
+;成否判定
+;TFLAG:192(-2=コマンド終了、-1＝強制失敗、0=COM依存、1=強制成功or大成功
+TFLAG:192 = 0
+
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_610
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_610
+SELECTCASE TFLAG:193
+	CASE -1
+		PRINTFORML 「If we go eat there, they're gonna serve me!」
+		PRINTFORMDL Tewi refuses your offer.
+	CASE 0,1
+		SELECTCASE CFLAG:MASTER:現在位置/100
+			CASE 2 ;Human Village. (Restaurant)
+				SELECTCASE RAND:2
+					CASE 0
+						PRINTFORML 「They sure have a lot of different kinds of food here.」
+						PRINTFORML 「%SPLIT_G("I guess I'll try something new this time.:Well, I'm still gonna order a carrot dish.")%」
+					CASE 1
+						PRINTFORML 「That looks good, but it's so fatty... I'll order something a little healthier.」
+						PRINTFORMDL Tewi shows some restraint in the restaurant.
+				ENDSELECT
+			CASE 4 ;Bamboo Forest of the Lost. (Mystia's stall)
+				PRINTFORML 「The greens here are so good, all the rabbits love coming here.」
+				PRINTFORMDL Although she says so, Tewi is surrounded by rabbits hungrily devouring grilled meat.
+			CASE 6 ;Sanzu River～Netherworld. (Road of Liminality stall)
+				PRINTFORML 「Oh, let's eat here.」
+				PRINTFORMDL When Tewi goes up to a food stall, the manager bows obsequiously and rushes to serve her.
+				PRINTFORML 「You want anything? It's my treat this time～」
+			CASE 9 ;Underground. (Restaurant)
+				PRINTFORML 「The atmosphere's pretty intense, isn't it?」
+				PRINTFORML 「Let's see, I'll have a『bloody revenge』steak and \@ TALENT:53:妊娠 ? some extra for the baby # a『river of blood』to drink\@.」
+			CASE 10 ;Dream World～Moon. (Restaurant)
+				PRINTFORML 「Eating in a place like this makes me feel like a moon rabbit.」
+				PRINTFORML 「So for the menu, we have... peach salad, peach cobbler, peach pie...」
+				IF IS_MASTER(52)
+					PRINTFORML 「...You had it really tough here, huh?」
+				ELSEIF IS_ENABLED(52)
+					PRINTFORML 「...Reisen had it really tough here, huh?」
+				ELSE
+					PRINTFORML 「...They have it really tough here, huh?」
+				ENDIF
+		ENDSELECT
+		PRINTL
+		IF TALENT:53:恋人 && !RAND:2
+			PRINTFORML 「Oh, let me have some of that.」
+			PRINTFORMDL After ordering different dishes, Tewi keeps filching from your plate.
+			PRINTFORML 「And a bite of this, oh, and can I have this, too?」
+			PRINTFORML 「Thaaank you%UNICODE(0x2764)%」
+			PRINTFORMDL In payment, she kisses you on the cheek and grins at you.
+		ELSEIF IS_FALLEN(53)
+			PRINTFORML 「Can I have that? I'll trade you one of mine.」
+			PRINTFORMDL Tewi starts nitpicking your plates until you've exchanged a number of side dishes.
+			PRINTFORML 「Since we're here, we've got to try as much as we can!」
+		ELSE
+			PRINTFORML 「Mmm, this stuff's pretty good.」
+			PRINTFORML 「This, too. Maybe I'll have more of this...」
+			PRINTFORMDL For such a little rabbit, Tewi sure can put it away.
+			PRINTFORML 「You've gotta eat well to have enough energy, you know?」
+		ENDIF
+		IF TFLAG:193
+			PRINTFORML 「Hehe, I might end up having too much...」
+			PRINTFORMDL Tewi looks very pleased while eating the meal.
+		ENDIF
+ENDSELECT
+WAIT
+RETURN 1
+
+;==================================================
+;613,お金稼ぎする（オミットされました
+;==================================================
+@M_KOJO_SUCCESS_COM_K53_613
+;成否判定
+;TFLAG:192(-2=コマンド終了、-1＝強制失敗、0=COM依存、1=強制成功or大成功
+TFLAG:192 = 0
+
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_613
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_613
+CALL M_KOJO_MESSAGE_COM_K53_613_1
+RETURN RESULT
+
+@M_KOJO_MESSAGE_COM_K53_613_1
+;-------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 0
+;-------------------------------------------------
+IF LOCAL
+
+ENDIF
+RETURN 1
+;==================================================
+;614,食材の買い出し
+;TFLAG:193(1=購入＆デート経験アップ 0=購入 -1=非購入)
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_614
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_614
+CALL M_KOJO_MESSAGE_COM_K53_614_1
+RETURN RESULT
+
+@M_KOJO_MESSAGE_COM_K53_614_1
+;-------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 0
+;-------------------------------------------------
+IF LOCAL
+
+ENDIF
+RETURN 1
+;==================================================
+;615,お弁当を食べる
+;実行可能場所　お地蔵通り,枝垂れ柳の下,霧の湖,玄武の沢,大蝦蟇の池,絶景の丘,山の湖,天界
+;TFLAG:193(1=大成功 0=成功 -1=失敗)
+;ABL:料理技能(2未満=微妙な出来 4未満=そこそこ美味しい 4以上=絶品)
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_615
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_615
+	;Eat From Lunchbox.
+SELECTCASE TFLAG:193
+	CASE -1
+		PRINTFORMDL ...However, she doesn't have the food. Didn't she say she would pack some?
+		PRINTFORML 「I didn't feel like making it.」
+		PRINTFORML 「Well, I have some carrots with me.」
+		PRINTFORMDL The two of you end up snacking on raw carrots instead.
+	CASE 0,1
+		IF TALENT:53:恋人
+			PRINTFORML 「I picked out some of your favorite foods for this!」
+			PRINTFORMDL It's even arranged with loving care. Looks like she went all out.
+		ELSEIF IS_FALLEN(53)
+			PRINTFORML 「I cooked the main dish myself this time. Well, I supervised it.」
+			PRINTFORMDL Sounds like she put some care into it, at least.
+		ELSE
+			PRINTFORML 「I put this together from some stuff at home.」
+			PRINTFORMDL There's an eclectic assortment of dishes here. Did she just make random recipes from a cookbook?
+			PRINTFORML 「No, I took it from the kitchen while they were preparing it for the rabbits.」
+			PRINTFORMDL That explains that.
+		ENDIF
+		IF TFLAG:193
+			PRINTL
+			PRINTFORMDL Tewi looks pleased when you finish up and tell her you enjoyed it.
+		ENDIF
+ENDSELECT
+WAIT
+RETURN 1
+;==================================================
+;617,甘味処に誘う
+;TFLAG:193(1=大成功 0=成功 -1=失敗)(地の文分岐は大成功のみ追加
+;==================================================
+@M_KOJO_SUCCESS_COM_K53_617
+;成否判定
+;TFLAG:192(-2=コマンド終了、-1＝強制失敗、0=COM依存、1=強制成功or大成功
+TFLAG:192 = 0
+
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_617
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_617
+	;Sweets Shop.
+#DIMS DYNAMIC SweetSelection
+SweetSelection '= SPLIT_G("red bean paste:uiro:dango:amanatto:wagashi")
+SELECTCASE TFLAG:193
+	CASE -1
+		PRINTFORML 「I don't eat junk food.」
+		PRINTFORMDL You're unable to convince her to go in.
+	CASE 0,1
+		IF TALENT:53:恋人 && !RAND:2
+			SELECTCASE RAND:2
+				CASE 0
+					PRINTFORML 「I want... you to pick for me!」
+					PRINTFORMDL Following your instincts, you pick out some %SweetSelection% for Tewi.
+					PRINTFORML 「Ah! That was exactly what I wanted! How did you know?!」
+					PRINTFORMDL Just a lucky guess...
+				CASE 1
+					PRINTFORML 「%SweetSelection%!」
+					PRINTFORMDL Tewi calls out what she wants and runs to the counter as soon as she enters.
+					PRINTFORMDL She bounces on her heels as you get some for her and then kisses you on the cheek when you hand it over.
+			ENDSELECT
+			IF TFLAG:193
+				PRINTL
+				PRINTFORMDL Outside the shop, Tewi finishes her treat with a delighted expression and then looks at you hopefully.
+				PRINTFORMDL Knowing what she's expecting, you pull out a second helping you bought secretly.
+				PRINTFORML 「Oh you, you're gonna spoil me～」
+				PRINTFORMDL Tewi happily accepts it and eats while clinging affectionately to your side.
+			ENDIF
+		ELSEIF IS_FALLEN(53)
+			SELECTCASE RAND:2
+				CASE 0
+					PRINTFORML 「Let's see, what should I get this time...」
+					PRINTFORMDL Tewi's eyes sparkle as she looks at the selection. She only wants a little bit to watch her health, right?
+					PRINTFORML 「Y-Yeah... I'll just have some %SweetSelection%.」
+				CASE 1
+					PRINTFORML 「What should I get? Should I have %SweetSelection%? Or maybe...」
+					PRINTFORMDL For some reason, she asks your opinion on everything in the store before landing back on %SweetSelection%.
+					PRINTFORMDL At least her expression while eating it outside the store it is delighted.
+			ENDSELECT
+			IF TFLAG:193
+				PRINTL
+				PRINTFORMDL After it's gone, she looks sad...
+				PRINTFORML 「Candy and life, such a fleeting fancy...」
+				SELECTCASE RAND:2
+					CASE 0
+						PRINTFORMDL Not wanting her to leave on a sorrowful note, you reveal the second helping of %SweetSelection% that you bought.
+						PRINTFORML 「O-Oh, you really shouldn't have... Thank youuuu―!」
+						PRINTFORMDL Tewi savors the unexpected encore through tears of joy.
+					CASE 1
+						PRINTFORMDL She doesn't need to get that philosophical over sweets...
+						PRINTFORML 「Quick, let's go somewhere else and forget about it! Come on!」
+				ENDSELECT
+			ENDIF
+		ELSE
+			PRINTFORML 「%SPLIT_G("I don't usually eat sweet things:Carrots are like sweets to a rabbit, you know")%...」
+			PRINTFORML 「I guess some %SweetSelection% wouldn't hurt.」
+			PRINTFORMDL You buy a little bit for Tewi and she enjoys it with an expression of guilty pleasure.
+			IF TFLAG:193
+				PRINTL
+				PRINTFORML 「It's sho good...」
+				PRINTFORMDL Tewi eats it so quickly that it's gone almost right away. You offer to buy her more...
+				PRINTFORML 「N-No, don't worry about it, really! A little bit is enough!」
+				PRINTFORMDL Though she turns you down, she walks a bit closer to you after.
+			ENDIF
+		ENDIF
+ENDSELECT
+WAIT
+RETURN 1
+;==================================================
+;618,花屋（口上は表示されない模様？
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_618
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_618
+CALL M_KOJO_MESSAGE_COM_K53_618_1
+RETURN RESULT
+
+@M_KOJO_MESSAGE_COM_K53_618_1
+;-------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 0
+;-------------------------------------------------
+IF LOCAL
+
+ENDIF
+RETURN 1
+;==================================================
+;620,鈴奈庵
+;TFLAG:193(1=貸し出しOK 0=貸し出し不可
+;ITEM:10X (X=1戦術指南書 X=2調理指南書 X=3字引 X=4御伽草子
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_620
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_620
+CALL M_KOJO_MESSAGE_COM_K53_620_1
+RETURN RESULT
+
+@M_KOJO_MESSAGE_COM_K53_620_1
+;-------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 0
+;-------------------------------------------------
+IF LOCAL
+
+ENDIF
+RETURN 1
+;==================================================
+;621,釣りをする
+;COM_STR（釣れたもの　"釣れない","ローター","木片","紙切れ", またはアイテム名、魚の種類）
+;TFLAG:194(1000以上ならTARGETが釣った)
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_621
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_621
+CALL M_KOJO_MESSAGE_COM_K53_621_1
+RETURN RESULT
+
+@M_KOJO_MESSAGE_COM_K53_621_1
+;-------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 0
+;-------------------------------------------------
+IF LOCAL
+
+ENDIF
+RETURN 1
+;==================================================
+;626,土産屋
+;TFLAG:194(行動結果(-2=ひやかし -1=ウィンドウショッピング 1=400点未満（BAD） 2=～699点（NOMAL） 3=700点以上（GOOD）
+;CFLAG:性格傾向による地の文分岐あり
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_626
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_626
+	;Souvenir Shop.
+SELECTCASE TFLAG:194
+	CASE -2 ;Spent too much time and got kicked out.
+		IF (GET_MAPID(CFLAG:MASTER:現在位置) == 5 && GIFTSHOP_NAME(5) == "香霖堂") ;Kourindou.
+			PRINTFORML 「He's getting cranky again! Let's get out of here!」
+		ELSE
+			PRINTFORML 「Run! She's gonna catch us!」
+		ENDIF
+	CASE -1 ;Left without buying anything.
+		PRINTFORML 「Huh, leaving already?」
+		PRINTFORMDL Tewi walks behind you. She doesn't say anything, but you feel her eyes on your back.
+	CASE 1 ;Less than 400 points, bad.
+		PRINTFORML 「Huh, what's this?」
+		IF TALENT:53:恋人
+			PRINTFORML 「...That's not a nice prank for your lover, you know.」
+		ELSE
+			PRINTFORML 「Haha, wow, this sucks. You really bought this?」
+			PRINTFORML 「It's fine, it's fine, I'll throw it out later～」
+		ENDIF
+	CASE 2 ;Less than 700 points, okay.
+		PRINTFORML 「For me? Thaaank youuuu～」
+		PRINTFORML 「At least you know how to be polite to a girl!」
+	CASE 3 ;700 or more points, good.
+		IF TALENT:53:恋人
+			PRINTFORML 「Thanks, I love it so much!」
+			PRINTFORMDL Tewi kisses you on the cheek as she receives your gift, then holds your hand as you leave the store.
+			PRINTFORML 「I have the very best～ lover in the world～♪」
+		ELSE
+			PRINTFORML 「Oh wow, this is great! Thanks so much!」
+			PRINTFORMDL Tewi holds your gift with an expression of honest joy.
+			PRINTFORMDL She skips and trots beside you as you leave the store, clinging to your side.
+		ENDIF
+ENDSELECT
+WAIT
+RETURN 1
+;==================================================
+;660,読書
+;TFLAG:193(選択肢文学(1=忍殺(文学？) 2=失敗 3=文学),選択肢実用書(4=失敗 5=実用書),選択肢エッチな本(6=薄い高い本 7=保健体育 8=カーマスートラ))
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_660
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_660
+CALL M_KOJO_MESSAGE_COM_K53_660_1
+RETURN RESULT
+
+@M_KOJO_MESSAGE_COM_K53_660_1
+;-------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 0
+;-------------------------------------------------
+IF LOCAL
+
+ENDIF
+RETURN 1
+;==================================================
+;698,部屋に入る
+;TARGETの部屋に入る場合のみ表示
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_698
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_698
+CALL M_KOJO_MESSAGE_COM_K53_698_1
+RETURN RESULT
+
+@M_KOJO_MESSAGE_COM_K53_698_1
+;-------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 0
+;-------------------------------------------------
+IF LOCAL
+
+ENDIF
+RETURN 1
+;==================================================
+;699,外に出る
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_COM_K53_699
+RETURN 0
+
+@M_KOJO_MESSAGE_COM_K53_699
+CALL M_KOJO_MESSAGE_COM_K53_699_1
+RETURN RESULT
+
+@M_KOJO_MESSAGE_COM_K53_699_1
+;-------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 0
+;-------------------------------------------------
+IF LOCAL
+
+ENDIF
+RETURN 1
+
+;※※※※※※※※※※※※※※※※※※※※※※※※※
+;派生コマンド
+;※※※※※※※※※※※※※※※※※※※※※※※※※
+;==================================================
+;60,耳かき
+;前ターン膝枕後スキンシップコマンド
+;TFLAG:193(1=大成功 0=成功 -1=失敗)(失敗するのはTARGET
+;==================================================
+@M_KOJO_SUCCESS_SCOM_K53_60
+;成否判定
+;TFLAG:192(-2=コマンド終了、-1＝強制失敗、0=COM依存、1=強制成功or大成功
+TFLAG:192 = 0
+
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_SCOM_K53_60
+RETURN 0
+
+@M_KOJO_MESSAGE_SCOM_K53_60
+SIF !SHIRAHU(53)
+	RETURN 1
+SELECTCASE TFLAG:193
+	CASE -1
+		PRINTFORML 「You should take care of your own health.」
+		PRINTFORMDL Looks like she doesn't want to.
+	CASEELSE
+		SELECTCASE RAND:4
+			CASE 0
+				PRINTFORML 「Wow, it just keeps coming out... It's gonna build a whole mountain!」
+				PRINTFORMDL Tewi greatly exaggerates how much there is to pick.
+			CASE 1
+				PRINTFORMDL Tewi reaches deep inside and pulls an entire rabbit out of your ear.
+				PRINTFORML 「Our long-lost sister, so that's where you were!」
+				PRINTFORML 「Let's get you home, and all of your belongings!」
+				PRINTFORMDL She goes back in and extracts a comb, a carrot, some lipstick...
+			CASE 2
+				PRINTFORMDL You feel something wet in your inner ear.
+				PRINTFORML 「Master's special ear drops can prevent infection.」
+				PRINTFORML 「We take the health of our ears pretty seriously, you know!」
+			CASE 3
+				PRINTFORML 「You can't use a swab or it'll push the wax in. Ear cleaning is a kind of surgery!」
+				PRINTFORMDL You feel some dainty pinpricks in your inner ear.
+		ENDSELECT
+ENDSELECT
+WAIT
+RETURN 1
+;==================================================
+;61,抱きまくら
+;(TARGET睡眠時間or衰弱)添い寝中、前ターン抱きつく後就寝コマンド
+;分岐無し
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_SCOM_K53_61
+RETURN 0
+
+@M_KOJO_MESSAGE_SCOM_K53_61
+CALL M_KOJO_MESSAGE_SCOM_K53_61_1
+RETURN RESULT
+@M_KOJO_MESSAGE_SCOM_K53_61_1
+;-------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 0
+;-------------------------------------------------
+IF LOCAL
+
+ENDIF
+RETURN 1
+;==================================================
+;62,デコちゅー
+;前ターン頭撫で後キスする
+;TFLAG:193(1=大成功 0=成功 -1=失敗)(地の文分岐無し
+;ABL:欲望(5以上=物足りない
+;ABL:親密(5以上=照れる
+;==================================================
+@M_KOJO_SUCCESS_SCOM_K53_62
+;成否判定
+;TFLAG:192(-2=コマンド終了、-1＝強制失敗、0=COM依存、1=強制成功or大成功
+TFLAG:192 = 0
+
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_SCOM_K53_62
+RETURN (!SHIRAHU(53) || TFLAG:193 == -1) ? 2 # 1
+
+@M_KOJO_MESSAGE_SCOM_K53_62
+	;Forehead Kiss.
+SIF !SHIRAHU(53) || TFLAG:193 == -1
+	RETURN 1
+PRINTFORMDL You%COND_STR(" lean down to",TALENT:MASTER:体型 > TALENT:53:体型)% plant a kiss on Tewi's forehead...
+PRINTFORMDW
+SELECTCASE RAND:4
+	CASE 0
+		PRINTFORML 「...!」
+		PRINTFORMDL Tewi doesn't say anything, but she can't hold back a toothy grin.
+	CASE 1
+		IF IS_CHILD(MASTER)
+			PRINTFORML 「H-Hey, don't like you're the bigger kid here.」
+			PRINTFORMDL Tewi rubs her forehead and pouts.
+		ELSE
+			PRINTFORML 「Ehehe, I got praised～」
+			PRINTFORMDL Tewi smiles brilliantly.
+		ENDIF
+	CASE 2
+		PRINTFORML 「Hrmph, I'll show you!」
+		IF TALENT:MASTER:体型 > TALENT:53:体型
+			PRINTFORMDL When you stand up again, Tewi jumps all the way up to your head level and kisses your forehead back.
+			PRINTFORML 「Don't underestimate kids～」
+		ELSE
+			PRINTFORMDL Tewi stands on tiptoe and kisses your forehead back.
+			PRINTFORML 「I'm the one in charge, got that～?」
+		ENDIF
+	CASE 3
+		IF IS_MASTER(52)
+			PRINTFORML 「You still treat me like such a kid, Reisen～」
+			PRINTFORMDL Despite her complaint, Tewi seems pleased.
+		ELSEIF IS_HERE(52)
+			PRINTFORML 「Hehehe～」
+			PRINTFORMDL Tewi turns to Reisen with a smug expression.
+			CALL CHARA_TEXT(52,"「Wh-Why are you looking at me like that?」","l")
+		ELSE
+			PRINTFORML 「\@ IS_ENABLED(52) && !RAND:2 ? Reisen # Other girls\@ will get jealous～」
+			PRINTFORMDL Tewi puts on a smirk and starts giggling.
+		ENDIF
+ENDSELECT
+WAIT
+RETURN 1
+;==================================================
+;63,もっとキスする
+;前ターンキスする後キスする
+;分岐条件はEVENT_MESSAGE_COM500.ERB参照
+;==================================================
+@M_KOJO_SUCCESS_SCOM_K53_63
+;成否判定
+;TFLAG:192(-2=コマンド終了、-1＝強制失敗、0=COM依存、1=強制成功or大成功
+TFLAG:192 = 0
+
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_SCOM_K53_63
+RETURN 0
+
+@M_KOJO_MESSAGE_SCOM_K53_63
+CALL M_KOJO_MESSAGE_SCOM_K53_63_1
+RETURN RESULT
+@M_KOJO_MESSAGE_SCOM_K53_63_1
+;-------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 0
+;-------------------------------------------------
+IF LOCAL
+	IF FLAG:70
+	ELSE
+	ENDIF
+ENDIF
+RETURN 1
+;==================================================
+;80,手を引く
+;デート出発後目的地に着くまでの間
+;TFLAG:193(1=大成功 0=成功 -1=失敗)
+;==================================================
+@M_KOJO_SUCCESS_SCOM_K53_80
+;成否判定
+;TFLAG:192(-2=コマンド終了、-1＝強制失敗、0=COM依存、1=強制成功or大成功
+TFLAG:192 = 0
+
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+@M_KOJO_MESSAGE_MESSAGECHECK_SCOM_K53_80
+RETURN 0
+
+@M_KOJO_MESSAGE_SCOM_K53_80
+CALL M_KOJO_MESSAGE_SCOM_K53_80_1
+RETURN RESULT
+@M_KOJO_MESSAGE_SCOM_K53_80_1
+;-------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 0
+;-------------------------------------------------
+IF LOCAL
+
+ENDIF
+RETURN 1
+
+@M_KOJO_MESSAGE_MESSAGECHECK_CUSTOM_COM_K53_1
+RETURN 1
+
+@M_KOJO_MESSAGE_CUSTOM_COM_K53_1(JoinIn)
+	;Go Swimming.
+#DIM DYNAMIC JoinIn
+CALL D_LINE
+IF CFLAG:MASTER:現在位置/100 != 10 && FIRSTTIME("GoSwimming",0,53) ;No fish in the Lunar Capital.
+	PRINTFORMW 「I don't need to get wet. Watch me!」
+	PRINTFORMDW Tewi jumps towards the water's surface. Just before she reaches it, a huge fish jumps out and she bounces off of it.
+	PRINTFORMDW When she comes back down, another one pops up, and then another... Tewi runs circles around you by stepping on fish.
+	PRINTL
+	PRINTFORMDW ...If she's going to do that, what's the point of the swimsuit?
+	PRINTFORMW 「I'll go in the water when I feel like it, okay?」
+	RETURN 1
+ENDIF
+IF TEQUIP:MASTER:900
+	PRINTFORMDL You swim in the water with Tewi...
+	PRINTW
+	SELECTCASE RAND:4
+		CASE 0
+			PRINTFORML 「Watch the rare and amazing water rabbit's feats of aquatic prowess!」
+			PRINTFORMDL Tewi slowly swims across the surface using the breaststroke.
+		CASE 1
+			PRINTFORMDL Tewi paddles over and holds on to you.
+			PRINTFORML 「Swim fast! Let's go together!」
+			PRINTFORMDL You tow her around so she doesn't have to swim herself.
+		CASE 2
+			PRINTFORMDW You invite Tewi to dive under the surface with you, but she shakes her head.
+			PRINTFORML 「It'll mess up my ears and my hair...」
+			PRINTFORML 「I don't wanna be a wet rabbit!」
+		CASE 3
+			PRINTFORML 「I'll do it this way!」
+			PRINTFORMDL Tewi uses a rabbit as a flutterboard and swims by kicking her legs.
+			PRINTFORMDL The rabbit has to kick and splash around just to stay afloat...
+	ENDSELECT
+ELSE
+	PRINTFORMDL You and Tewi get out of the water...
+	PRINTW
+	SELECTCASE RAND:2
+		CASE 0
+			PRINTFORML 「Sweet land, I missed you...」
+		CASE 1
+			PRINTFORML 「Well, that was fun I guess.」
+	ENDSELECT
+ENDIF
+WAIT
+RETURN 1
+
+@M_KOJO_MESSAGE_MESSAGECHECK_CUSTOM_COM_K53_3
+RETURN 1
+
+@M_KOJO_MESSAGE_CUSTOM_COM_K53_2(JoinIn)
+	;Invite To Join Swimming.
+#DIM DYNAMIC JoinIn
+CALL M_KOJO_MESSAGE_CUSTOM_COM_K53_1(JoinIn)
+RETURN 1
+
+@M_KOJO_MESSAGE_MESSAGECHECK_CUSTOM_COM_K53_2
+RETURN 1
+
+@M_KOJO_MESSAGE_CUSTOM_COM_K53_3(JoinIn)
+	;Swim In The Water.
+#DIM DYNAMIC JoinIn
+CALL M_KOJO_MESSAGE_CUSTOM_COM_K53_1(JoinIn)
+RETURN 1

@@ -1,0 +1,162 @@
+;if there's ever an Akyuu request created in the original, adjust the id and merge this into that, if necessary 
+@固有依頼80(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+#DIM  REQUEST_TARGET
+
+IF CFLAG:[[阿求]]:依頼状況 > 1 && CFLAG:[[阿求]]:依頼状況 < 100
+    REQUEST_TARGET = IRAI_SLOT_TO_PERSON(SEARCH_IRAI_SLOT(CFLAG:[[阿求]]:依頼内容))
+ELSE
+    REQUEST_TARGET = 0
+ENDIF
+SELECTCASE ARG % 1000
+;ID101：Interview
+CASE 101
+    SELECTCASE O_DATA
+    CASE "依頼名"
+        CALLF MAKE_STR(V_NAME, "AKYUU_INTERVIEW")
+    CASE "依頼内容表示"
+        IF CFLAG:[[阿求]]:依頼状況 > 1
+            CALLF MAKE_STR(V_NAME, @"Help %CALLNAME:[[阿求]]% secure an interview with %CALLNAME:REQUEST_TARGET%")
+        ELSE
+            CALLF MAKE_STR(V_NAME, @"Help %CALLNAME:[[阿求]]% secure an interview for the Gensokyo Chronicles")
+        ENDIF
+    CASE "依頼報酬表示"
+        CALLF MAKE_STR(V_NAME, @"%金額表示(5000)%")
+    CASE "依頼実行コマンド名"
+    IF IS_HERE([[阿求]])
+        CALLF MAKE_STR(V_NAME, @"Begin Interview With %CALLNAME:REQUEST_TARGET%")
+    ELSEIF !IS_HERE([[阿求]]) && !CFLAG:REQUEST_TARGET:神社在住
+        CALLF MAKE_STR(V_NAME, @"Set Up Interview With %CALLNAME:REQUEST_TARGET%")
+    ENDIF
+    CASE "依頼内容"
+        CALLF MAKE_INT(V_NAME, MAKE_IRAI_DATA(固有依頼80_Select_Target(), "meeting")); decided not to implement unused 面会 (meeting) case but create a new one to prevent issues in the future and retain complete control over how it functions
+    CASE "依頼サブ"
+        CALLF MAKE_INT(V_NAME, 0)
+    CASE "依頼期限"
+        CALLF MAKE_INT(V_NAME, 15)
+    CASE "依頼発生率"
+        CALLF MAKE_INT(V_NAME, 20)
+    CASE "依頼発生条件"
+        ;only happens if living on same map as akyuu and have 5+ intimacy
+        SIF CFLAG:[[阿求]]:神社在住 && ABL:[[阿求]]:親密 >= 5 && 固有依頼80_Has_Valid_Targets()
+            CALLF MAKE_INT(V_NAME, 1)
+    CASE "依頼受託可能条件"
+        CALLF MAKE_INT(V_NAME, 1)
+    CASE "依頼実行可能条件"
+        IF !IS_HERE([[阿求]]) && GET_MAPID(CFLAG:TARGET:現在位置) == MAIN_MAP
+        ELSEIF FLAG:70
+        ELSE
+            CALLF MAKE_INT(V_NAME, 1)
+        ENDIF
+    CASE "依頼消滅条件"
+        SIF Add_Request_Should_Discard(ARG) || !CFLAG:[[阿求]]:神社在住 || !固有依頼80_Has_Valid_Targets() ;canceled when moving out or disabling all possible targets
+            CALLF MAKE_INT(V_NAME, 1)
+    CASE "依頼人連れ出し可能"
+        CALLF MAKE_INT(V_NAME, 1)
+    CASE "MEETINGPOINT_ALLOWED"
+        SIF !TCVAR:ARG:REQUEST_SUMMONS
+            CALLF MAKE_INT(V_NAME, 1)
+	ENDSELECT
+ENDSELECT
+
+@固有依頼80_Is_Valid
+#FUNCTION
+RETURNF 0
+
+;固有依頼の実処理用
+;この関数は実行/成功/失敗時の
+;報酬とペナルティと地の文のみを扱います
+;各キャラのメッセージは別所にて
+@IRAI_固有80(CHARA, IRAI_ID, SCENE)
+#DIM  CHARA
+#DIM  IRAI_ID
+#DIMS SCENE
+#DIM  CLIENT_ID
+#DIM  REQUEST_TARGET
+CLIENT_ID = IRAI_ID_TO_CLIENT(IRAI_ID)
+SELECTCASE STR_DATA_IRAI(IRAI_ID, "依頼名", CLIENT_ID)
+CASE "AKYUU_INTERVIEW"
+    REQUEST_TARGET = IRAI_SLOT_TO_PERSON(SEARCH_IRAI_SLOT(IRAI_ID))
+	SELECTCASE SCENE
+	CASE "依頼条件表示"
+	CASE "依頼実行時"
+        IF IS_HERE([[阿求]]) ;perform interview
+            IF TALENT:[[阿求]]:恋人
+                PRINTFORML You are seated next to %CALLNAME:[[阿求]]% as %HE_SHE([[阿求]])% conducts the interview.
+                PRINTFORML %HE_SHE([[阿求]], 1)% enthusiastically includes you into the proceedings, and the two of you work together in perfect harmony.
+            ELSEIF TALENT:[[阿求]]:恋慕
+                PRINTFORML You are seated next to %CALLNAME:[[阿求]]% as %HE_SHE([[阿求]])% conducts the interview.
+                PRINTFORML %HE_SHE([[阿求]], 1)% occasionally squeezes your hand while asking %HIS_HER([[阿求]])% questions.
+            ELSEIF TALENT:[[阿求]]:思慕
+                PRINTFORML You are seated in a corner while %CALLNAME:[[阿求]]% conducts the interview.
+                PRINTFORML %HE_SHE([[阿求]], 1)% occasionally steals glances at you.
+            ELSE
+                PRINTFORML You are seated in a corner while %CALLNAME:[[阿求]]% conducts the interview.
+                SIF TALENT:REQUEST_TARGET:妖精
+                    PRINTFORML You feel as if %CALLNAME:[[阿求]]% has a mildly disgusted expression on %HIS_HER([[阿求]])% as %HE_SHE([[阿求]])% talks to %CALLNAME:REQUEST_TARGET%.
+            ENDIF
+            TIME += 55
+            RETURN IRAI_CONST_RESULT("実行して成功")
+        ELSE ;set up interview
+            IF TCVAR:REQUEST_TARGET:REQUEST_SUMMONS
+                PRINTFORML You already asked %HIM_HER(REQUEST_TARGET)% today, and %HE_SHE(REQUEST_TARGET)% promised to visit tomorrow.
+		 	    RETURN IRAI_CONST_RESULT("実行して未解決")
+            ENDIF
+            PRINTFORMW %BREAKENG(@"You request to set up a meeting with %CALLNAME:REQUEST_TARGET%, and %HE_SHE(REQUEST_TARGET)% tells you that %HE_SHE(REQUEST_TARGET)%'ll visit the %GET_MAPNAME(MAIN_MAP)% tomorrow.")%
+
+            CFLAG:REQUEST_TARGET:翌日来訪 = 1
+            TCVAR:REQUEST_TARGET:REQUEST_SUMMONS = 1
+            TIME += 10
+		 	RETURN IRAI_CONST_RESULT("実行して未解決")
+        ENDIF
+	CASE "依頼実行時_MEETINGPOINT"
+        PRINTFORML You write a letter requesting a meeting with %CALLNAME:REQUEST_TARGET% tomorrow and deposit it into the mailbox.
+        CALL PAY_MONEY_YEN(100, 1)
+        CFLAG:REQUEST_TARGET:翌日来訪 = 1
+        TCVAR:REQUEST_TARGET:REQUEST_SUMMONS = 1
+        TIME += 5
+        RETURN IRAI_CONST_RESULT("実行して未解決")
+	CASE "依頼成功時"
+		SOURCE:歓楽 += 1000
+		CALL CHANGE_CFLAG(2, [[阿求]], 100)
+		CALL CHANGE_CFLAG(4, [[阿求]], 50)
+        CALL GET_MONEY_YEN(5000, 2)
+
+        PRINTFORMDL %CALLNAME:[[阿求]]% thanks you for your assistance with the interview.
+        IF GET_MAPID(CFLAG:MASTER:現在位置) != MAIN_MAP
+            CALL CHARA_TEXT([[阿求]], "「Now that we're here, why don't we enjoy the sights a little?」")
+        ENDIF
+        RESETCOLOR
+	CASE "依頼失敗時"
+		CALL CHANGE_CFLAG(2, [[阿求]], -5)
+		CALL CHANGE_CFLAG(4, [[阿求]], -3)
+	ENDSELECT
+ENDSELECT
+
+@固有依頼80_Has_Valid_Targets()
+#FUNCTION
+FOR LOCAL, 1, CHARANUM
+    SIF CFLAG:LOCAL:出禁
+        CONTINUE
+    SIF LOCAL != [[阿求]]
+        RETURNF 1
+NEXT
+RETURNF 0
+
+;should never be able to be called if there are no valid targets
+@固有依頼80_Select_Target()
+#FUNCTION
+DO
+    LOCAL = RAND:CHARANUM
+    SIF LOCAL == 0
+        CONTINUE
+    SIF LOCAL == [[阿求]]
+        CONTINUE
+    SIF CFLAG:LOCAL:出禁
+        CONTINUE 
+    RETURNF LOCAL
+LOOP 1

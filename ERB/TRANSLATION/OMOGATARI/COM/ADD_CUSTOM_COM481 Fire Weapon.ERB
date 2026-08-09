@@ -1,0 +1,420 @@
+@ADD_CUSTOM_COM481
+#DIM AimedShot
+#DIM nDMG
+#DIM nDmgType
+#DIM COM481_PREV_PAIN
+#DIM ShotCount
+#DIM DYNAMIC DebugEnabled
+;#; DebugEnabled = 1
+
+[IF_NDEBUG]
+SIF TARGET == MASTER
+    GOTO FIRE_AT_AIR
+[ENDIF]
+
+PRINTFORML What are you shooting at?
+{
+CALL ASK_M(
+    @"Cancel", 1,
+    @"%CALLNAME:TARGET%", TARGET != MASTER,
+    @"The air", 1,
+    COND_STR("[DEBUG] Armor Testing", DebugEnabled), DebugEnabled,
+    )
+}
+COM481_PREV_PAIN = PALAM:TARGET:苦痛
+SELECTCASE RESULT
+CASE 3
+    CALL FireWeaponArmorTest
+CASE 2
+    $FIRE_AT_AIR
+    PRINTFORMW You fire your weapon at the air.
+    ;ShotCount = GET_INT((MASTER), "Weapon", EQUIP:MASTER:Weapon, "Burst")
+    ShotCount = 1
+CASE 1
+    ShotCount = 1
+    FOR LOCAL:8,0,9
+        SIF !LOCAL:8
+            CONTINUE
+        LOCAL:10 = EffectivePenetration(TARGET, AimedShotTranslate:(LOCAL:8), MASTER)
+        LOCAL:9 = RESULT:1
+        PRINTFORM [{LOCAL:8}] - %AimedShotParts:(LOCAL:8),10,LEFT%
+        PRINTFORM (
+        IF LOCAL:10
+        SIF LOCAL:9
+        LOCALS '= @"\@ CLOTHES_TR(CLOTHNAME(LOCAL:9,EQUIP:TARGET:(LOCAL:9))) != "" ? %CLOTHES_TR(CLOTHNAME(LOCAL:9,EQUIP:TARGET:(LOCAL:9)))%  # Natural Armor\@" 
+        PRINTFORM  %LOCALS,15,LEFT%: 
+        PRINTFORM %SoilStr(TARGET,3,1,LOCAL:9), 10% 
+        RESETCOLOR
+        PRINTFORM (PM {EffectivePenetration(TARGET, (AimedShotTranslate:(LOCAL:8)), MASTER)/100,2,RIGHT}, {ArmorCharges:TARGET:(LOCAL:9):0,5,RIGHT}/{ArmorCharges:TARGET:(LOCAL:9):1,5,LEFT}kJ)
+        ENDIF
+        PRINTFORML )
+    NEXT
+    PRINTFORML [99] - Back
+    INPUT
+    IF RESULT <= 8
+    AimedShot = RESULT
+    ELSE
+    RETURN
+    ENDIF
+    PRINTFORMW You fire at %CALLNAME:TARGET%'s %AimedShotParts:AimedShot%.
+    VARSET lcDamageDeal
+    CALL HIT_BY_CHARACTER(MASTER,TARGET,charaWeaponInts:MASTER:WeaponInventory ? charaWeaponInts:MASTER:WeaponInventory # EQUIP:MASTER:Weapon,0,AimedShot,0,1,1)
+    DOWNBASE:TARGET:0 += lcDamageDeal:TARGET:0
+    
+    LOCAL = PALAM:TARGET:苦痛-COM481_PREV_PAIN
+    PALAM:TARGET:苦痛 = COM481_PREV_PAIN
+    LOCAL = LOCAL*30/100
+    SOURCE:苦痛 = LOCAL
+    SOURCE:反感 = GetWeaponScore(EQUIP:MASTER:Weapon, MASTER)
+    SOURCE:Terror = GetWeaponScore(EQUIP:MASTER:Weapon, MASTER)
+CASEELSE
+RETURN -1
+ENDSELECT
+FOR LOCAL,1,ShotCount+1
+    charaWeaponInts:(MASTER):Ammo --
+    SIF charaWeaponInts:(MASTER):Ammo <= 0
+        BREAK
+    CALL PlayFireSound(MASTER)
+    firedWeapon:MASTER:0 = charaWeaponInts:MASTER:Loudness
+    FOR LOCAL:1,1,GET_TARGETNUM()+1
+        SIF TARGET:(LOCAL:1) == MASTER
+            CONTINUE
+        ;SOURCE:(TARGET:(LOCAL:1)):Terror += (GetWeaponScore(EQUIP:MASTER:Weapon, MASTER)/10)
+    NEXT
+    CALL FIRE_WEAPON_CHECK(MASTER)
+    LOCAL:17 = MIN(500/(charaWeaponInts:(MASTER):Burst+1),50)
+    TWAIT LOCAL:17, 1
+NEXT
+CALL CrippleEffects(TARGET)
+TIME ++
+RETURN 1
+
+@FIRE_WEAPON_CHECK_ALL
+;loudness
+FOR LOCAL,0,CHARANUM
+    CALL FIRE_WEAPON_CHECK(LOCAL)
+NEXT
+
+@FIRE_WEAPON_CHECK(ARG)
+SIF !firedWeapon:ARG:0
+    RETURN
+CALL LOUDNESS_CHECK_ALL(CFLAG:ARG:300,ARG,firedWeapon:ARG:0,@"a %GET_STR(ARG, "Weapon", EQUIP:ARG:Weapon, "名前")% shot", "firearm")
+firedWeapon:ARG:0 = 0
+
+
+@LOUDNESS_CHECK_ALL(nNoiseLocation,ARG,nNoiseLevel,nNoiseReason, nNoiseType)
+#DIM nNoiseLevel
+#DIMS nNoiseReason
+#DIMS nNoiseType
+#DIM nNoiseLocation
+#DIM investigator
+#DIM controlLossMultiplier
+#DIM runAwayMultiplier
+SIF GET_MAPID(nNoiseLocation) != MAIN_MAP
+    RETURN
+SIF GROUPMATCH(nNoiseLocation,ROAD_TO(MAIN_MAP),SUKIMA(),MAXROOM,MAXROOM-1,OMANEKIBEYA(),0)
+    RETURN
+SIF SaveIsEZB
+    RETURN
+SIF nNoiseLocation == 0
+    nNoiseLocation = MINROOM()
+SELECTCASE nNoiseType
+CASE "firearm"
+runAwayMultiplier = 200
+controlLossMultiplier = 150
+CASE "death"
+runAwayMultiplier = 150
+controlLossMultiplier = 100
+CASEELSE
+runAwayMultiplier = 100
+controlLossMultiplier = 100
+ENDSELECT
+
+FOR investigator,0,CHARANUM
+    SIF investigator == ARG && investigator != MASTER
+        CONTINUE
+    ; SIF investigator == MASTER
+    ;     CONTINUE
+    SIF GROUPMATCH(CFLAG:(investigator):300,ROAD_TO(MAIN_MAP),SUKIMA(),MAXROOM,MAXROOM-1,0)
+        CONTINUE
+    SIF GET_MAPID(CFLAG:(investigator):300) != MAIN_MAP
+        CONTINUE
+    SIF !SHIRAHU(investigator)
+        CONTINUE
+    SIF DT_EXIST(@"Movement_{investigator}")
+        CONTINUE
+    CALL NAS_CALC_MOVE(investigator,nNoiseLocation)
+    SIF RESULT > nNoiseLevel
+        CONTINUE
+    IF investigator == MASTER
+		CALL COLORMESSAGE(@"You hear %nNoiseReason%!",C_YELLOW,2)
+        CONTINUE
+    ENDIF
+    LOCAL:6 = 0
+    LOCAL:7 = 0
+    SELECTCASE COMBAT_BRAVERY(investigator)
+    CASE 1000
+        $InvestigateShots
+        SIF GROUPMATCH(CFLAG:(investigator):300,nNoiseLocation)
+            CONTINUE
+        PRINTFORML %CALLNAME:(investigator)% hears %nNoiseReason% and decides to investigate.
+        CALL ForceGoAndMove(investigator, nNoiseLocation)
+    CASE IS < 166
+        $RunAway
+        IF COMBAT_BRAVERY(investigator) < 300
+            ;piss self
+            SIF RAND(1000) < ((200-COMBAT_BRAVERY(investigator))+(75*PeeBarStage(investigator))) && PeeBarStage(investigator) >= 2
+                LOCAL:6 = 1
+            SIF RAND(1000) < ((150-COMBAT_BRAVERY(investigator))+(35*PeeBarStage(investigator))) && PooBarStage(investigator) >= 2
+                LOCAL:7 = 1
+            ;have accident
+            IF LOCAL:6 || LOCAL:7
+                PRINTFORML %CALLNAME:(investigator)% hears %nNoiseReason% but loses control of %HIS_HER(LOCAL)% %PeeAndPoo(LOCAL:6,LOCAL:7,"bladder","bowels")%...
+                IF CFLAG:(investigator):300 == CFLAG:MASTER:300
+                    CALL CAUSE_OMORASHI(investigator,LOCAL:6,LOCAL:7)
+                ELSE
+                    CALL OMORASHI_END(investigator,LOCAL:6,LOCAL:7)
+                ENDIF
+                RETURN
+            ENDIF
+        ENDIF
+        PRINTFORML %CALLNAME:(investigator)% hears %nNoiseReason% and begins to run away.
+        LOCAL:9 = GET_MAPID(CFLAG:(investigator):358) != MAIN_MAP || CFLAG:(investigator):311 == SUKIMA() ? ENTRANCE # CFLAG:(investigator):311
+        CALL ForceGoAndMove(investigator, LOCAL:9) 
+    CASEELSE
+        IF RAND(1000) < COMBAT_BRAVERY(investigator)
+            GOTO InvestigateShots
+        ELSEIF RAND(1000) > COMBAT_BRAVERY(investigator)*100/runAwayMultiplier
+            GOTO RunAway
+        ENDIF
+    ENDSELECT
+NEXT
+
+
+@ADD_CUSTOM_COM_PRINT481
+#DIM CONST COM_ID = 481
+CALL MAKE_HARMFUL_COMMAND_COLOR(TARGET, 9481)
+LOCALS '= "Fire"
+PRINTFORMC %LOCALS% ({charaWeaponInts:MASTER:Loudness,2,LEFT} radius)[{Add_Custom_COM_To_Number(COM_ID),3}]
+RESETCOLOR
+RETURN 1
+
+@ADD_CUSTOM_COM_ABLE481
+;勉強実行判定
+SIF !TFLAG:100
+	RETURN 0
+[IF_NDEBUG]
+SIF SaveIsEZB
+    RETURN 0
+SIF !charaWeaponInts:MASTER:Loudness && TARGET == MASTER
+    RETURN 0
+[ENDIF]
+SIF charaWeaponInts:(MASTER):Ammo <= 0 && charaWeaponInts:(MASTER):MagSize
+    RETURN 0
+SIF GET_MAPID(CFLAG:MASTER:300) != MAIN_MAP
+    RETURN 0
+RETURN 1
+
+@FireWeaponArmorTest
+#DIMS selectionInfo
+#DIM protectionItem
+#DIM DYNAMIC shotsToKill,5
+#DIM DYNAMIC headShots
+#DIM DYNAMIC oneTappedBody
+#DIM DYNAMIC oneTappedHead
+#DIM STATIC ArmorSuits = 0, 18028, 13103, 18038, 18024
+#DIM mobChar
+#DIM armorLevel
+#DIM gunShots
+#DIM fwLineCount
+#DIM ArmorSuitSlot
+#DIM ArmorSuitID
+#DIM nNecroOld
+#DIM pelletCount
+
+selectionInfo '= "intro"
+mobChar = FREE_MOB_SLOT()
+armorLevel = -1
+fwLineCount = LINECOUNT
+nNecroOld = nNecro
+nNecro = MAX(nNecro,1)
+VARSET shotsToKill
+
+$NextResult
+CLEARLINE LINECOUNT - fwLineCount
+SELECTCASE selectionInfo
+CASE "intro"
+    PRINTFORML =====Armor Testing=====
+    PRINTFORML This will test your weapon and its potential damage against a Touhou with Normal resistances against increasing levels of armor.
+    PRINTL
+    PRINTFORML Current Weapon: %PrintWeaponName(MASTER,,1)%
+    PRINTL
+    PRINTFORML [0] - Test
+    PRINTFORML [1] - Get me out of here!
+    PRINTFORML [2] - Help!
+    INPUT
+    SELECTCASE RESULT
+    CASE 0
+        selectionInfo '= "testing"
+        GOTO NextResult
+    CASE 2
+        selectionInfo '= "help"
+        GOTO NextResult
+    CASEELSE
+        nNecro = nNecroOld
+        RETURN 0
+    ENDSELECT
+CASE "result"
+    PRINTFORML ==Results==
+    PRINTFORML %PrintWeaponName(MASTER,,1)% (Pen {CharaWeaponInts:MASTER:Penetration})
+    IF charaWeaponAtts:MASTER:9
+        PRINTFORMSL GET_STR(MASTER, "WeaponAmmo", charaWeaponAtts:MASTER:9, "名前")
+    ELSE
+        PRINTFORML %CharaWeaponStrs:MASTER:Ammo% Regular
+    ENDIF
+    PRINTL
+    PRINTFORM %"Head",17,LEFT%: 
+    IF oneTappedHead
+        SETCOLOR C_D_RED
+        PRINTL 1+
+        RESETCOLOR
+    ELSEIF headShots
+        SETCOLOR Color_Gradient_PER(C_GREEN,C_RED,MAX(0,100 - ((headShots-1)*10)))
+        PRINTVL headShots
+        RESETCOLOR
+    ELSE
+        PRINTL -
+    ENDIF
+    FOR armorLevel, 0, 5
+        IF !armorLevel
+            PRINTFORM %"Unarmored",17,LEFT%: 
+        ELSE
+            PRINTFORM Level {armorLevel} (VPAM {GET_INT(mobChar, CLOTHES_PARTS_TO_CATEGORY(EQUIPNAME:(ArmorSuits:armorLevel/1000)), ArmorSuits:armorLevel%1000, "Armor"),2}): 
+        ENDIF
+        IF GETBIT(oneTappedBody,armorLevel)
+            SETCOLOR C_D_RED
+            PRINTL 1+
+            RESETCOLOR
+        ELSEIF shotsToKill:armorLevel
+            SETCOLOR Color_Gradient_PER(C_GREEN,C_RED,MAX(0,100 - ((shotsToKill:armorLevel-1)*6)))
+            PRINTVL shotsToKill:armorLevel
+            RESETCOLOR
+        ELSE
+            PRINTL -
+        ENDIF
+    NEXT
+    PRINTL
+    PRINTFORML [0] - Exit
+    PRINTFORML [1] - Change Weapon
+    PRINTFORML [2] - Retest
+    INPUT
+    SELECTCASE RESULT
+    CASE 1
+        CALL Weapon_Chose_State(MASTER)
+        GOTO NextResult
+    CASE 2
+        selectionInfo '= "testing"
+        CALL DELETE_CHARA(mobChar)
+        ADDCHARA RANDOM_CHARANUM
+        GOTO NextResult
+    CASEELSE
+    nNecro = nNecroOld
+    CALL DELETE_CHARA(mobChar)
+    ADDCHARA RANDOM_CHARANUM
+    RETURN 1
+    ENDSELECT
+CASE "help"
+    PRINTFORML =====Armor Testing=====
+    PRINTFORML This will test your weapon and its potential damage against a 1500 (2000 true) STA Touhou with Normal resistances.
+    PRINTFORML 200 shots to penetrate each level of armor.
+    PRINTFORML Testing is done at point blank range at the Torso of the Touhou.
+    PRINTL
+    PRINTFORML ==Rated level of penetration==
+    PRINTFORML Lvl 0 cannot defeat any armor type.
+    PRINTFORML Lvl 1 can penetrate the %UNDIES_NAME_WITH_BRAND(mobChar,ArmorSuits:1%1000,1,ArmorSuits:1/1000)% (VPAM {GET_INT(mobChar, CLOTHES_PARTS_TO_CATEGORY(EQUIPNAME:(ArmorSuits:1/1000)), ArmorSuits:1%1000, "Armor")}).
+    PRINTFORML Lvl 2 can penetrate the %UNDIES_NAME_WITH_BRAND(mobChar,ArmorSuits:2%1000,1,ArmorSuits:2/1000)% (VPAM {GET_INT(mobChar, CLOTHES_PARTS_TO_CATEGORY(EQUIPNAME:(ArmorSuits:2/1000)), ArmorSuits:2%1000, "Armor")}).
+    PRINTFORML Lvl 3 can penetrate the %UNDIES_NAME_WITH_BRAND(mobChar,ArmorSuits:3%1000,1,ArmorSuits:3/1000)% (VPAM {GET_INT(mobChar, CLOTHES_PARTS_TO_CATEGORY(EQUIPNAME:(ArmorSuits:3/1000)), ArmorSuits:3%1000, "Armor")}).
+    PRINTFORML Lvl 4 can penetrate the %UNDIES_NAME_WITH_BRAND(mobChar,ArmorSuits:4%1000,1,ArmorSuits:4/1000)% (VPAM {GET_INT(mobChar, CLOTHES_PARTS_TO_CATEGORY(EQUIPNAME:(ArmorSuits:4/1000)), ArmorSuits:4%1000, "Armor")}). This is the rarest armor type.
+    PRINTL
+    PRINTFORML Head = Shots to kill on the unarmored head.
+    PRINTFORML   < 1 represents how many potential headshots it takes to down a Touhou.
+    PRINTFORML   1+ means it only takes 1 shot to destroy the head.
+    PRINTFORML
+    PRINTFORML Body Lvl 0 -> 4 = Shots to kill on the torso, armored according the the Body Lvl.
+    PRINTFORML  < 1 represents how many potential bodyshots it takes to down a Touhou.
+    PRINTFORML  1+ means it only takes 1 shot to destroy the torso.
+    PRINTL
+    PRINTFORML [0] - Okay
+    INPUT
+    selectionInfo '= "intro"
+    GOTO NextResult
+CASE "testing"
+    CALL SpawnMobEnemy(mobChar,1)
+    ;normalize resistances
+    FOR LOCAL, 0, VARSIZE("DamageResist")
+        DamageResist:mobChar:LOCAL:0 = 0
+        DamageResist:mobChar:LOCAL:1 = 0
+    NEXT
+    ;reset
+    VARSET oneTappedBody
+    VARSET oneTappedHead
+    VARSET shotsToKill
+    VARSET headShots
+    
+    FOR armorLevel, -1, 5
+        IF armorLevel == -1
+            CALL ANIMATION_LOAD_NAS(0, 0, 6, @"Testing armor level: Head"); nas loading
+        ELSE
+            CALL ANIMATION_LOAD_NAS(armorLevel+1, 0, 6, @"Testing armor level: {armorLevel}"); nas loading
+        ENDIF
+
+        ;initialize
+        CALLF HESOYAM(mobChar)
+        CALLF NudeMe(mobChar)
+        gunShots = 0
+
+        ;give armor
+        IF armorLevel >= 0
+            ArmorSuitID = ArmorSuits:armorLevel%1000
+            ArmorSuitSlot = ArmorSuits:armorLevel/1000
+
+            CFLAG:mobChar:(200+ArmorSuitSlot) = ArmorSuitID
+            CFLAG:mobChar:(240+ArmorSuitSlot) = ArmorSuitID
+            EQUIP:mobChar:ArmorSuitSlot = ArmorSuitID
+            CALLF ArmorStats(mobChar, ArmorSuitID,1,,ArmorSuitSlot)
+        ENDIF
+
+        ;begin the shooting
+        WHILE gunShots<200
+            VARSET lcDamageDeal
+            FOR pelletCount, 1, charaWeaponInts:(MASTER):Pellets+1
+                CALL HIT_BY_CHARACTER(MASTER,mobChar,charaWeaponInts:MASTER:WeaponInventory ? charaWeaponInts:MASTER:WeaponInventory # EQUIP:MASTER:Weapon,0,armorLevel == -1 ? 1 # 2,0,1,1)
+                CALL CREATE_HIT_FRAGMENTS(MASTER,mobChar,armorLevel == -1 ? 1 # 2)
+                CALL CREATE_HIT_EXPLOSION(MASTER,mobChar,armorLevel == -1 ? 1 # 2)
+                CALL HIT_BY_FRAGMENT(mobChar,1,armorLevel == -1 ? 1 # 2)
+                CALL HIT_BY_EXPLOSION(mobChar,1,armorLevel == -1 ? 1 # 2)
+                BASE:mobChar:0 -= lcDamageDeal:mobChar:0
+            NEXT
+            CALL CrippleEffects(mobChar)
+            gunShots++
+            ;check if they're dead
+            IF BASE:mobChar:0 < 500 || IsDead:mobChar:0
+                IF armorLevel < 0
+                    SIF BodyPartHealth:mobChar:1:0 <= -BodyPartHealth:mobChar:1:1 && gunShots == 1
+                        oneTappedHead = 1
+                    headShots = gunShots
+                ELSE
+                    SIF BodyPartHealth:mobChar:40:0 <= -BodyPartHealth:mobChar:40:1 && gunShots == 1
+                        SETBIT oneTappedBody,armorLevel
+                    shotsToKill:armorLevel = gunShots
+                ENDIF
+                BREAK
+            ENDIF
+        WEND
+    NEXT
+    ;give result
+    selectionInfo '= "result"
+    GOTO NextResult
+ENDSELECT
+
+; Properties or functions of the ammo type

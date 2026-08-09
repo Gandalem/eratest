@@ -1,0 +1,2451 @@
+;稼ぐ手段の紅魔カジノに対して雰囲気+ロールプレイ用な感じで差別化したいなあ
+;ほとんどのコードをカジノから引っ張ってきてます
+@賭場_導入
+#DIM 退店フラグ
+退店フラグ = 0
+DRAWLINE
+CALL 賭場_台詞("入店中")
+DRAWLINE
+PRINTFORML 
+PRINTFORML ～Komakusa Gambling Den～
+PRINTFORML 　Current holdings: %金額表示(MONEY), 13, RIGHT%
+PRINTFORML 　Current Chips   : %三桁区切(KOMAFUDA:MASTER), 13, RIGHT%
+;qol custom code
+PRINTFORML 　Total Wins      : %金額表示(nGamblingDenProfit), 13, RIGHT%
+PRINTFORML 
+PRINTFORML [1] - Play Cho-Han (Even-Odds)
+PRINTFORML [2] - Play Cee-lo (The Three Dice)
+;PRINTFORML [3]おいちょかぶで遊ぶ-札表示のスクリプト組めたらやりたい
+;PRINTFORML [4]ナンパする-お金で即セフレになるモブ子を湧かせる、とか
+;PRINTFORML [5]酒を頼む-酔っ払うとダイス判定に極小メリット＆強烈なデバフをつける、とか
+;PRINTFORML [6]おだいじん-モブ子も酔うとクリファン率上がる、とか
+PRINTFORML 
+PRINTFORML [8] - Chips exchange
+PRINTFORML [9] - Explanation
+PRINTFORML [0] - Leave
+DO
+	INPUT
+	SELECTCASE RESULT
+		CASE 0
+			退店フラグ = 1
+			BREAK
+		CASE 1
+			CALL CHIPS_REQ(100) ;custom code
+			SIF RESULT
+				BREAK
+			CALL COLORMESSAGE("「Right on, now choose an appropriate setting you think will fit you the best.」", 0xD37CD0, 1, 0)
+			{
+			 CALL ASK_M("Children's Playground      :Max Bet= 200", KOMAFUDA:0 >= 100,
+						"Ladies and Gentlemen's Club:Max Bet= 500", KOMAFUDA:0 >= 250,
+						"Hardcore Gambling Den      :Max Bet=1000", KOMAFUDA:0 >= 500,
+						"ULTIMATE SURVIVOR          :Max Bet= ???（TBD）", 0,
+						"Cancel", 1)
+			}
+			LOCAL = RESULT
+			IF RESULT == 4
+				CALL COLORMESSAGE(@"「Fair nuff, holler at me again whenever you're feeling up to it.」", 0xD37CD0, 2, 0)
+			ELSE
+				CALL COLORMESSAGE(@"「Alright, I'll be shaking the jar so get set!」", 0xD37CD0, 1, 0)
+				CALL COLORMESSAGE(@"「Game'll start as soon as we get enough people at the table!」", 0xD37CD0, 2, 0)
+				RESULT = 0
+				CALL 丁半博打_メイン(LOCAL)
+				退店フラグ = RESULT
+			ENDIF
+		CASE 2
+			CALL CHIPS_REQ(40) ;custom code
+			SIF RESULT
+				BREAK
+			CALL COLORMESSAGE("「Right on, now choose an appropriate setting for you to go enjoy yourself at.」", 0xD37CD0, 1, 0)
+			;custom code, enabled 2000 bet
+			{
+			 CALL ASK_M("Children's Playground      :Max Bet=  20", KOMAFUDA:0 >= 40,
+						"Ladies and Gentlemen's Club:Max Bet= 200", KOMAFUDA:0 >= 400,
+						"Hardcore Gambling Den      :Max Bet=2000", KOMAFUDA:0 >= 4000,
+						"ULTIMATE SURVIVOR          :Max Bet= ???（TBD）", 0,
+						"Cancel", 1)
+			}
+			LOCAL = RESULT
+			LOCALS:0 '= "Right-o, have a good one with each other!", "Gotcha, better get your money's worth, then!", "My-my-my, we got ourselves a brave one, huh? Try your best not to go broke!", "...Well, I ain't stopping ya. Go get 'em!", "Huh, changed your mind already?"
+			RESULT = 0
+			CALL COLORMESSAGE(@"「%LOCALS:LOCAL%」", 0xD37CD0, 2, 0)
+			SIF LOCAL < 4
+				CALL チンチロリン_メイン(LOCAL)
+			退店フラグ = RESULT
+		CASE 8
+			CALL 賭場_コマ札交換
+		CASE 9
+			CALL 賭場_台詞("へるぷ")
+		CASEELSE
+			CLEARLINE 1
+			CONTINUE
+	ENDSELECT
+	SIF NEMUKE() >= 700
+		退店フラグ = 2
+	BREAK
+LOOP 1
+IF 退店フラグ
+	CALL 賭場_台詞("退店", 退店フラグ)
+	RETURN
+ENDIF
+RESTART
+
+@CHIPS_REQ(ARG) ;custom code
+IF KOMAFUDA:0 < ARG ;custom code fix
+	CALL COLORMESSAGE(@"「Dear Customer, you can't play this game if you ain't got enough chips!」", 0xD37CD0, 1, 0)
+	CALL COLORMESSAGE(@"「Go ahead and turn your cash in first, then come back.」", 0xD37CD0, 2, 0)
+	PRINTFORMW ※This game requires at least {ARG} Chips to play.
+	RETURN 1
+ENDIF
+
+;賭場システムメッセージ部分
+;@CASINO_CHECK_EVENTをだいたい流用
+@賭場_台詞(ARGS, ARG)
+#DIM 賭場入店
+#DIM 賭場退店
+#DIM DYNAMIC 人物 ;custom code
+#DIM メッセージ
+#DIM ラッキー
+#DIMS モブ
+#DIMS 自称
+#DIMS 台詞
+#DIMS 表情
+#DIM nPersonality ;custom code
+;custom code - set to target in case there's kanako hanging around for example
+;replace with a loop once more characters are added
+IF !FLAG:デート相手
+	SIF TOBA_PLACE(CFLAG:32:現在位置)
+		人物 = 32
+	SIF TOBA_PLACE(CFLAG:33:現在位置)
+		人物 = 33
+	SIF TOBA_PLACE(CFLAG:129:現在位置)
+		人物 = 129
+	SIF	TOBA_PLACE(CFLAG:138:現在位置)
+		人物 = 138
+	SIF TOBA_PLACE(CFLAG:140:現在位置)
+		人物 = 140
+ELSE
+	人物 = FLAG:デート相手
+ENDIF
+表情 = 通常
+メッセージ = 0
+SELECTCASE ARGS
+	CASE "入店中"
+		;初回
+		IF !FLAG:賭場訪問日
+			SELECTCASE 人物
+				;神奈子/諏訪子/久侘歌/魅須丸/龍
+				CASE 32, 33, 129, 138, 140
+					{
+					台詞 = 「Well, well, well... Look who's here!」
+						/「To think we'd have a %\@ 人物 == 138 ? Great Tengu # Goddess \@% bless us with her presence, it's a great honor to have you come all the way to visit us.」
+						/「This is a social meeting place for both ladies and gentlemen alike.」
+						/「If not for a moment, you can forget all your worldly affairs and simply enjoy yourself!」
+					}
+				;典 
+				CASE 139
+					{
+					台詞 = 「My, my...」
+						/「What do folks like the Kuda-Gitsune %HIM_HER(138)%self have in store for us, stepping in here?」
+						/「This is a social meeting place for both ladies and gentlemen alike.」
+						/「Spare us the trouble of the distasteful tricks, would you?」
+					}
+				CASEELSE
+					;山頂/山麓住まい
+					;addition custom code, duplicated characters
+					IF GROUPMATCH(CSVCFLAG(NO:人物, GETNUM(CFLAG, "自宅位置")) / 100 , 7, 8)
+						{
+						台詞 = 「Glad to see you finally made it here. I welcome you.」
+							/「This is a social meeting place for both ladies and gentlemen alike.」
+							/「A perfect place to kick back and unwind, so to speak.」
+							/「Well, have a good time! Try not to get too into it, though.」
+						}
+					ELSEIF !人物
+						{
+						台詞 = 「Hmm? You look new here...」
+							/「Welcome to our humble gambling den of the forest!」
+							/「You can call it a social meeting place for both ladies and gentlemen alike.」
+							/「Well, now that you're here, go on ahead and take your time to enjoy yourself!」
+						}
+					ELSE
+						{
+						台詞 = 「Hmm? This must be the first time we've met here...」
+							/「Welcome to our humble gambling den of the forest!」
+							/「This is a social meeting place for both ladies and gentlemen alike, a place for everyone to have fun.」
+							/「So let's not get into any wild ideas about carelessly using your abilities or anything like that.」
+						}
+					ENDIF
+			ENDSELECT
+			賭場入店 = 1
+			賭場退店 = 0
+			FLAG:賭場訪問日 = DAY
+			メッセージ = 1
+		;その日初めての入店
+		ELSEIF DAY - FLAG:賭場訪問日
+			SELECTCASE 人物
+				;神奈子/諏訪子/久侘歌/魅須丸/龍
+				CASE 32, 33, 129, 138, 140
+					台詞 = 「Welcome!」/「Are you and your companion here for a breather?」/「By all means, have a great time!」
+				;典
+				CASE 139
+					台詞 = 「Well well... A Kuda-Gitsune is snooping around in here.」/「Leaving %HIS_HER(138)% master's side to indulge in some *fun*, I see.」
+				CASEELSE
+					台詞 = 「Heya, come on in!」/「Have you grown fond of this place?」/「In any case, take your time and have fun.」
+			ENDSELECT
+			賭場入店 = 1
+			賭場退店 = 0
+			FLAG:賭場訪問日 = DAY
+			メッセージ = 1
+		;当日再来店
+		ELSEIF 賭場入店 == 賭場退店
+			SELECTCASE 人物
+				;神奈子/諏訪子/久侘歌/魅須丸/龍
+				CASE 32, 33, 129, 138, 140
+					台詞 = 「Oh, you're back again?」/「Come on in, please, enjoy your stay to your heart's content.」
+				;典
+				CASE 139
+					台詞 = 「You kept sneaking around like that...」/「Just what kind of mischief do you have in mind?」/「Please don't try anything strange.」
+				CASEELSE
+					台詞 = 「My oh my... I see you haven't had enough fun yet?」/「Go right ahead, indulge yourself as much as you want.」
+			ENDSELECT
+			賭場退店 ++
+			メッセージ = 1
+	;にぎやかし
+		ELSEIF !RAND:3
+			モブ = %TEXTR("Yamawaro/Kappa/Crow Tengu/Bakedanuki/Bakegitsune/Bakeneko/Youkai Rabbit/")%
+			自称 = %TEXTR("わたし/私/あたい/あたし/")%
+			SIF !RAND:4
+				自称 = %TEXTR("ボク/僕/")%
+			;custom code
+			nPersonality = RAND:4 ;%SPLIT_G("normal:child:girly:tomboy")%
+			SIF FLAG:口上色
+				SETCOLOR GET_CN_WORD_COLOR(STR:(RAND:13 + 2050))
+			;しょーもないネタは低確率
+			IF !RAND:25
+				;some kind of obscure jp meme https://dic.nicovideo.jp/a/%E3%82%B8%E3%83%A5%E3%83%BC%E3%82%B9%E9%A3%B2%E3%82%93%E3%81%A7%E3%82%93%E3%81%98%E3%82%83%E3%83%8D%E3%83%BC%E3%83%A8%E3%81%AF%E3%81%92%21%21
+				PRINTFORMDL You spot a greatly perplexed %モブ% by the entrance...
+				PRINTFORML 
+				PRINTFORML 「Uuuhhh, my precious money... I blew it, I blew it all... Even the money I borrowed %TEXTR("from my friend/from that girl/from the shop/from the dealer/from the boss/")%...」
+				PRINTFORMW 「I only have 200 yen to my name...」
+				PRINTFORMDL ...Click! Pa-chink!
+				PRINTFORML 「Only 80 yen left now... Oh, I'm sooo screwed...!」
+				PRINTFORMDL ...Don't just spend it on juice, you damn baldy!!!
+			ELSEIF RAND:2
+				PRINTDATADL
+					DATAFORM %CAPITALIZE(ARTICLE(モブ))% is making a scene over what appears to be a spectacular win...
+					DATAFORM %CAPITALIZE(ARTICLE(モブ))% is jumping around and yelling after prevailing at a winner-take-all game of her life...
+					DATAFORM %CAPITALIZE(ARTICLE(モブ))% seems very content with herself, sitting next to a huge pile of Chips by her side...
+					DATAFORM %CAPITALIZE(ARTICLE(モブ))% is laughing heartily after making it big in a single decisive win...
+				ENDDATA
+				PRINTFORML 
+				PRINTDATAL LOCAL
+					DATAFORM 「%SPLIT_SINGLE(@"Oh dear me, what a thrill this is to win to this extent!:Ahaha, wowee! Look at me, I'm a huge winner! Feels good～:My my, who would've thought that winning a jackpot would feel so great?:Oh maaan, winning an entire mountain of cash is the greatest feeling there is!", nPersonality)%」\n「%SPLIT_SINGLE(@"It sure is tough to keep winning all the time, let me tell you～:Owie, it hurts! I can't stop laughing, it hurts!:Ahh, that is tough, carrying all this cash I've won is so hard!:Aww geez, I feel bad now, I won so much I feel like a villain!", nPersonality)%♪」
+					DATAFORM 「%SPLIT_SINGLE(@"Look at that! Oh, I can't believe it!:Lookie, lookie!:Did you witness me yet? I know it's hard to believe～:How's that, huh?! Get a load of this!!!", nPersonality)%」\n「%SPLIT_SINGLE(@"All that effort finally paid off, and I made it happen!:I'm soooo lucky! I'm basically rich now!:Naturally a refined lady like me would have an impeccable luck to match, fufu～:This is all thanks to my incredible skills, I'm telling ya!", nPersonality)%」
+					DATAFORM 「%SPLIT_SINGLE(@"I'm so sorry, but looks like this is my win once again.:See ya, losers! Bring more cash next time!:Fufu, I almost feel bad for you lot～:Aww man, sucks to be you!", nPersonality)%」\n「%SPLIT_SINGLE(@"I suppose it's truly my day today, with all those wins and all:I just can't stop winning, and I can't stop winning! Bring me another one!:Try your best next time when I'm not around, maybe then you'll win for once:It ain't my fault that I just keep winning all the time!", nPersonality)%♪」
+					DATAFORM 「%SPLIT_SINGLE(@"That sure puts a smile on my face, hehehe...:What's that?! Did I win again? Ahyahyahya! No big surprise!:Mfufu, splendid, simply gorgeous～:Ahahahaha! Heeeell yeah, that feels GOOD!", nPersonality)%」\n「%SPLIT_SINGLE(@"I need some good drink, I've earned it!:Hey bartender! Gimme the strongest stuff you got! Yes, I'm old enough, shush!:I suppose that calls for some wine, go get it for me please～:Ooooi, someone bring me some booze!", nPersonality)%」\n「%SPLIT_SINGLE(@"Oh yeah, that's the stuff! I suppose you guys can have some too, go on!:I'm not sharing though, nuh-huh!:Slrrrrp... Haaah～ So this is what a win tastes like... Oh yes, I'm rubbing it in, how could you tell?:Lemme at least show some mercy to these losers, it's on the house!", nPersonality)%♪」
+					DATAFORM 「%SPLIT_SINGLE(@"Another round?:Hey-hey, wanna play again?:Ooh, you dare challenge me?:Am I gonna go for another match?", nPersonality)%」\n「%SPLIT_SINGLE(@"Of course, why not?:Aww yiss! Your ass is grass!:Haven't you had enough yet? Very well, it's on you～:Sure, let's go! I'll take you on any time!", nPersonality)%」\n「%SPLIT_SINGLE(@"Something just tells me that I'm on top of my game today!:No way I'm gonna lose any time soon, watch this!:The luck is on my side, it's crystal clear!:I don't feel like I'm gonna lose now!", nPersonality)%」
+					DATAFORM 「%SPLIT_SINGLE(@"Of course I didn't cheat, what are you saying?:You calling me a cheater?! ME?!:Oh, that was no sleight of hand, I assure you～:Did I cheat? Oi-oi, what's with the accusations?", nPersonality)%」\n「%SPLIT_SINGLE(@"I would've never done any of that sort, you know it.:You're just mad cuz you're bad, nuff said!:There's simply no need to cheat when it comes to beating you lot.:There ain't no way I'm doin' any of that, nope!", nPersonality)%」\n「%SPLIT_SINGLE(@"Now stop distracting me and hand over my cash:Shaddap and gimme my money! Hmph, serves you right:Now then, I believe you guys are yet to pay your dues, so go on, make my day:C'mon now, quit yappin' and pay up already you losers", nPersonality)%♪」
+				ENDDATA
+				IF !LOCAL && !RAND:5 && ラッキー != DAY
+					WAIT
+					ラッキー = DAY
+					PRINTFORML 
+					PRINTFORML 「%SPLIT_SINGLE(@"Hey, you there, yes you! How are you feeling today?:Yo, %PRINT_MALE("pops:miss", MASTER)%! 'Sup!:Mm～? Oh, what a splendid %PRINT_MALE("gentleman:lady", MASTER)% you are～ Do you mind if I take a moment of your time?:Oooi, %PRINT_MALE("dude:ma'am", MASTER)%! How's it going? Enjoying yourself yet?", nPersonality)%」
+					PRINTFORMDL Suddenly the %モブ% approaches you with a conversation...
+					PRINTFORML 「%SPLIT_SINGLE(@"I feel like I could take on the world right now... And I feel like sharing some of it with you, how about that?:Doing great? I see, I see～ Well, I'm about to bounce, so I'll leave it to you to make 'em cough up some of that dosh in my stead!:I'm feeling ve～eery generous right now, so why don't you have some fun? I'll help you out～:Y'know, I'm feeling real good right now! Here, lemme share some of my good fortune with you.", nPersonality)%」
+					PRINTFORML 「%SPLIT_SINGLE(@"It's not much, but it's the gesture that matters, right? Hope it'll do you some good.:Here ya go, now go get 'em!:Don't worry, it's simply a little karmic investment for the day～:Here, keep it!", nPersonality)%」
+					PRINTFORMDL You receive 100 Chips from the %モブ% you just met!
+					KOMAFUDA:MASTER += 100
+				ENDIF
+			ELSE
+				PRINTDATADL
+					DATAFORM You spot a greatly perplexed %モブ% by the entrance...
+					DATAFORM You spot %ARTICLE(モブ)% mumbling something repeatedly with a vacant stare in her eyes...
+					DATAFORM You spot %ARTICLE(モブ)% sitting by the wall with a dismayed look on her face...
+					DATAFORM You spot %ARTICLE(モブ)% standing there in a daze, her face is completely devoid of color...
+					;added
+					DATAFORM You spot %ARTICLE(モブ)% trembling and depressed, about to cry...
+				ENDDATA
+				PRINTFORML 
+				PRINTDATAL
+					DATAFORM 「Uuuhhh, my precious money... I blew it, I blew it all... Even the money I borrowed %TEXTR("from my last savings/from my friend/from that girl/from the shop/from the dealer/from the boss/")%...」\n「What do I do... What the heck am I gonna do now...?」
+					DATAFORM 「My money, my money, my money, my money... My precious, precious cash...!」\n「It's gone... it's aaaall gone...」
+					DATAFORM 「If only I %SPLIT_G("guessed differently:didn't roll one there")%... I would've won, easily...!」\n「%SPLIT_SINGLE(@"This can't be... I was so close...:No, no, no... Not like this...:Why, why me...:Why, why did it have to be this way...", nPersonality)%」
+					DATAFORM 「.........」\n「............」\n「%SPLIT_SINGLE(@"I'm doomed...:I'm sooo getting punished...!:I messed up, bad...:I'm so screwed...", nPersonality)%」
+					DATAFORM 「%SPLIT_SINGLE(@"I need to find someone I can grab and take with me at the village...:Uuughhh, I'll have to kidnap a human again...:It's okay, I can still recover... I just need to snatch a human, that's what the village is for...:I guess I gotta head over to the village... see if I can find a humie or two...", nPersonality)%」\n「%SPLIT_SINGLE(@"I'm so sorry... I really don't want to do this, but... mommy needs cash to win back...:I hope that nasty red or green won't bother me though...:All I need to do is to watch out for that pesky shrine maiden, and...:...But then the shrine maiden might find out...", nPersonality)%」\n「%SPLIT_SINGLE(@"I may not come back from this... but what am I supposed to do, sell myself again? No, never...:No, no, that's too risky! I just need to peddle some rocks and herbs instead, they sell well...:Yeah, that should work... The rate's nearly double the usual for them at that bathhouse after all...:...Guess my only other option is that Underworld bathhouse...", nPersonality)%」
+				ENDDATA
+			ENDIF
+		ELSE
+			PRINTFORML 
+			PRINTDATAL
+				DATAFORM The gambling den is engulfed in a peculiarly frenzied atmosphere...
+				DATAFORM You hear a loud laughter followed with a faint click of tongues...
+				DATAFORM There's a corner where things are getting particularly heated.\nIt appears that the all-or-nothing showdown is on...
+				DATAFORM There's some kind of argument going on.\nBut before you know it, things are awfully quiet again...
+				DATAFORM You can hear someone crying and apologizing repeatedly.\nBut immediately after that, the source of noise gets dragged outside...
+				DATAFORM No one seems to pay any attention to you.\nEveryone seems to be focused on the game at hand...
+			ENDDATA
+		ENDIF
+	CASE "退店"
+		;神奈子/諏訪子/久侘歌/魅須丸/龍
+		IF GROUPMATCH(人物, 32, 33, 129, 138, 140)
+			台詞 = 「Are you leaving already?」/「I hope you had a great time today, thank you very much for coming!」
+			;典
+		ELSEIF 人物 == 139
+			台詞 = 「Sure, well, the exit is right there.」/「Please just leave.」
+		ELSE
+			台詞 = 「Have you had your fun?」/「Be sure to swing by any time!」
+		ENDIF
+		賭場退店 ++
+		メッセージ = 1
+	CASE "へるぷ"
+		SIF FLAG:口上色
+			SETCOLOR 0xD37CD0
+		PRINTFORML 「Sure, lemme briefly explain how the things go down here.」
+		PRINTFORML 
+		PRINTFORML 「First, you gotta have some of our Chips on you. No Chips - no game, simple as.」
+		PRINTFORML 「So I suggest you go and exchange your hard earned cash for some Chips here before anything.」
+		PRINTFORML 「Each Chip costs %金額表示(105)% yen to purchase. We hate dealing with fractions, so you must take at least 10 Chips, hope you understand.」
+		PRINTFORML 「We'll purchase those Chips from you for %金額表示(100)% yen each. Naturally, we'll account for fractions this time, so you don't have to worry.」
+		PRINTFORML 
+		PRINTFORML 「Sounds like a bad ratio? Tough luck, but that's the house cut. We gotta get our share somehow, y'know?」
+		PRINTFORML 「It's a very important source of our income to earn that food on the table. Don't take it personally.」
+		PRINTFORML 「What else we got... Right, if you happen to run out of Chips in the middle of the game, that's the end of it.」
+		PRINTFORML 「We'll have you buy the missing Chips at a higher rate with fees included, so watch out.」
+		PRINTFORML 「Well, just be careful not to run out of Chips and you should be golden, right?」
+		$EXP_LOOP
+		RESETCOLOR
+		{
+		 CALL ASK_M("Return",1,
+		 			"Tell me more about Cho-Han", 1,
+					"Tell me more about Cee-lo", 1)
+		}
+		SIF FLAG:口上色
+			SETCOLOR 0xD37CD0
+		SELECTCASE RESULT
+			CASE 0
+			CASE 1
+				PRINTFORML 「Odds or even... Does it even need an explanation?」
+				PRINTFORML 「All you need to do is guess whether the roll is odd or even, and that's it.」
+				PRINTFORML 「The betting is in increments of 10, and the limit is set by the setting, so make sure you follow the rules.」
+				PRINTFORML 「And, right... I guess the Chips exchange gets a little complicated.」
+				PRINTFORML 
+				PRINTFORML 「If you guess wrong, your wager is forfeit... That part is pretty straightforward.」
+				PRINTFORML 「Buuut, if you guess right, you won't just get a double of your wager all of a sudden.」
+				PRINTFORML 「The winners get a split of the losing bet in proportion to their percentage of the wager.」
+				PRINTFORML 
+				PRINTFORML 「Let's say, for example, there's four bets for Even, three for Odds, and everyone bets 100 Chips.」
+				PRINTFORML 「If the result is Odds, the 400 Chips on Even will be split between the three players who bet on Odds.」
+				PRINTFORMW 「In this case, it's an even split, with a profit of 166 Chips.」
+				PRINTFORML 
+				PRINTFORML 「I keep yapping about all that at length, but it still might be tough to understand until you actually play it...」
+				PRINTFORML 「Anyhow, it's a game where you can go all out with stakes as big as your wallet, or just play small at your leisure.」
+				PRINTFORMW 「Whatever you do, be sure to have a great time!」
+				GOTO EXP_LOOP
+			CASE 2
+				PRINTFORML 「Alrighty, let's go over some of the rules and regulations of our humble establishment.」
+				PRINTFORML 「Hifumi (1-2-3) loses double, Shigoro (4-5-6) wins double, Trips (three of the same) wins triple, Snake Eyes (1-1-1, Ace Out) wins quintuple.」
+				PRINTFORML 「If you happen to be established as the banker, it doesn't matter if you win or lose since the role of the dealer keeps changing.」
+				CALL PRINT_DIALOGUE, @"But if you roll any of the instant loss combos such as Hifumi (1-2-3), 1-point, or Missed the Pot (pisser, die lands outside of the pot)/go Bust (no combos for three throws), you're supposed to stay as the dealer."
+				PRINTFORML 「Oh and be careful, you can't just call it quits until everyone got their turn at being the dealer at least once.」
+				PRINTFORML 「That's right, quitting while you're ahead after a single roll of the dice is not an option.」
+				PRINTFORMW 「After all everyone wants to do it, and that'd be terrible if you don't get a chance to win back, am I right?」
+				PRINTFORML 
+				PRINTFORML 「What else is there to say... You still wanna know more? Heh, I'll let you figure out the rest on your own.」
+				PRINTFORML 「Isn't it a bit of a fool's errand to expect someone to teach you every trick in the book? I'd be digging my own grave here!」
+				PRINTFORML 「Well, simplicity is the name of the game. Just keep going at it and you'll learn in time, trust me.」
+				GOTO EXP_LOOP
+		ENDSELECT
+ENDSELECT
+SIF メッセージ
+	CALL SPTALK, 0, 表情, 95, 台詞, 1, "0xD37CD0"
+RESETCOLOR
+RETURN
+
+;やっぱりCASINOから構文お借りしてます
+@賭場_コマ札交換
+#DIM 閾値 = 0, 1050, 2100, 10500, 105000
+LOCAL = LINECOUNT
+LOCAL:9 = MONEY ;qol custom code
+PRINTFORML %"Current ￥", 36, LEFT%%金額表示(MONEY), 13, RIGHT%
+PRINTFORML %"Current Chips", 36, LEFT%%三桁区切(KOMAFUDA:MASTER), 13, RIGHT%
+PRINTFORML [1]Purchase Chips （105 Yen＝1 Chip）※10 Chips Minimum
+PRINTFORML [2]Sell Chips     （1 Chip＝100 Yen）
+PRINTFORML [0]Return
+DO
+	INPUT
+	SELECTCASE RESULT
+		CASE 0
+			CLEARLINE 1
+			RETURN 0
+		CASE 1
+			CALL COLORMESSAGE(@"「How much you want?」", 0xD37CD0, 1, 0)
+			SIF MONEY >= 1050
+				PRINTFORML [1]Exchange all your money（{MONEY / 105} Chips） 
+			SIF MONEY >= 2100
+				PRINTFORML [2]Exchange half your money（{MONEY / 210} Chips）
+			SIF MONEY >= 10500
+				PRINTFORML [3]Get 100 Chips（%金額表示(10500)%）
+			SIF MONEY >= 105000
+				PRINTFORML [4]Get 1000 Chips（%金額表示(105000)%）
+			PRINTFORML [0]Cancel
+			PRINTFORML （You can input the number of Chips you want directly or select a button）
+			$BUY_LOOP
+			INPUT
+			IF INRANGE(RESULT, 1, 4) && (MONEY < 閾値:RESULT)
+				CLEARLINE 1
+				GOTO BUY_LOOP
+			ENDIF
+			SELECTCASE RESULT
+				CASE 0
+					CLEARLINE LINECOUNT - LOCAL
+					RESTART
+				CASE 1
+					KOMAFUDA:MASTER += MONEY / 105
+					MONEY = MONEY % 105
+				CASE 2
+					KOMAFUDA:MASTER += MONEY / 210
+					MONEY /= 2
+				CASE 3, 4
+					MONEY -= 閾値:RESULT
+					KOMAFUDA:MASTER = RESULT == 3 ? KOMAFUDA:MASTER + 100 # KOMAFUDA:MASTER + 1000
+				CASE IS < 0, 5 TO 9
+					CLEARLINE 1
+					GOTO BUY_LOOP
+				CASEELSE
+					IF RESULT * 105 > MONEY
+						CLEARLINE 1
+						GOTO BUY_LOOP
+					ENDIF
+					MONEY -= RESULT * 105
+					KOMAFUDA:MASTER += RESULT
+			ENDSELECT
+			PRINTFORML Money: %金額表示(LOCAL:9)% → %金額表示(MONEY)%
+			;qol custom code
+			nGamblingDenProfit -= LOCAL:9 - MONEY
+			CALL COLORMESSAGE(@"「There ya go, take 'em!」", 0xD37CD0, 2, 0)
+		CASE 2
+			IF !KOMAFUDA:MASTER
+				CLEARLINE LINECOUNT - LOCAL
+				RESTART
+			ENDIF
+			CALL COLORMESSAGE(@"「How much you wanna sell?」", 0xD37CD0, 1, 0)
+			PRINTFORML [ 0]Redeem all of your Chips for cash（%金額表示(KOMAFUDA:MASTER * 100)%） 
+			PRINTFORML （You can input the number of Chips you want to redeem directly or select a button）
+			PRINTFORML [-1]Cancel
+			$SELL_LOOP
+			INPUT
+			SELECTCASE RESULT
+				CASE IS < -1
+					CLEARLINE 1
+					GOTO SELL_LOOP
+				CASE -1
+					CLEARLINE LINECOUNT - LOCAL
+					RESTART
+				CASE 0
+					MONEY += KOMAFUDA:MASTER * 100
+					KOMAFUDA:MASTER = 0
+				CASEELSE
+					IF RESULT > KOMAFUDA:MASTER
+						CLEARLINE 1
+						GOTO SELL_LOOP
+					ENDIF
+					MONEY += RESULT *100
+					KOMAFUDA:MASTER -= RESULT
+			ENDSELECT
+			PRINTFORML Money: %金額表示(LOCAL:9)% → %金額表示(MONEY)%
+			;qol custom code
+			nGamblingDenProfit += MONEY - LOCAL:9
+			CALL COLORMESSAGE(@"「Here you are, you can count 'em if you want.」", 0xD37CD0, 2, 0)
+	ENDSELECT
+	CLEARLINE LINECOUNT - LOCAL
+	RESTART
+LOOP 1
+
+;ここから試行錯誤のオリジナル
+@チンチロリン_メイン(レート)
+#DIM 回数
+#DIM 増減
+#DIM 胴元
+#DIM レート
+#DIM 判定
+#DIM プール
+#DIM 賭駒, 5
+#DIM 強さ, 5
+#DIM 親継続, 6
+#DIM L_COUNT
+#DIM TGT
+#DIM 表示色
+#DIM 眠い
+#DIM レート指数 = 1, 10, 100 ,500
+#DIM DYNAMIC 役倍率 = 5, 3, 3 ,3, 3, 3, 2 ;bugfix custom code, reset to normal stakes
+;custom code
+#DIMS strMag = "", "", "double", "triple", "quadruple", "quintuple", "sextuple", "septuple", "octuple", "nonuple", "decuple"
+眠い = 0
+VARSET 親継続
+FOR COUNT, 1, 5
+	IF KOMAFUDA:COUNT < レート指数:レート * 40
+		PRINTFORMW ...Some players don't have enough Chips to match the rate. You leave.
+		RETURN 0
+	ENDIF
+NEXT
+回数 = 0
+DRAWLINE
+PRINTFORML 
+PRINTFORML ～Cee-lo～
+PRINTFORML 
+PRINTFORML Rolling the die to decide the order for the Dealer role.
+PRINTFORMW 
+CALL TOBA_FILL_DICE(強さ, 5)
+FOR COUNT, 6, 1, -1
+	胴元 = FINDELEMENT (強さ, COUNT)
+	SIF 胴元 == -1
+		CONTINUE
+	BREAK
+NEXT
+FOR COUNT, 0, 5
+	PRINTFORML %BAKUTO_NAME_TR:COUNT, 16, LEFT%%NUM_COUNT(強さ:COUNT, , 1)%
+NEXT
+PRINTL
+PRINTFORMW First Dealer: %BAKUTO_NAME_TR:胴元%
+PRINTFORML 
+親継続:胴元 = 1
+$GAME_LOOP
+IF NEMUKE() >= 540 && !眠い
+	眠い = 1
+	PRINTFORML Your drowsiness makes it hard for you to concentrate well...
+	PRINTFORMW The probability of not being able to throw the dice as intended is increased.
+	PRINTFORML 
+ENDIF
+SIF レート > 1
+	役倍率 = 10, 6, 5 ,4, 3, 2, 2
+回数 ++
+CALL PRINT_TOBA_STATE(回数, レート, !胴元)
+LOCAL = LINECOUNT
+
+;COMの賭けゴマを適当に決める
+FOR COUNT, 1, 5
+	IF KOMAFUDA:COUNT >= レート指数:レート * 50 && RAND:4
+		TGT = 20
+	ELSEIF KOMAFUDA:COUNT >= レート指数:レート * 20
+		TGT = 10
+	ELSEIF KOMAFUDA:COUNT <= レート指数:レート * 10
+		TGT = KOMAFUDA:COUNT / レート指数:レート
+	ELSE
+		TGT = 5
+	ENDIF
+	賭駒:COUNT = レート指数:レート * TGT
+NEXT
+賭駒:胴元 = 0
+
+IF 胴元
+	PRINTFORML Decide the initial stake for this turn（1＝%PRINT_PLUR("Chip", レート指数:レート)%）
+	PRINTFORML [20]Max   %PRINT_PLUR("Chip", 20 * レート指数:レート)%
+	PRINTFORML [10]Half  %PRINT_PLUR("Chip", 10 * レート指数:レート)%
+	PRINTFORML Or you may input 1-19 directly.
+	$INPUT_LOOP
+	INPUT
+	IF !INRANGE(RESULT, 1, 20) || (レート指数:レート * RESULT > KOMAFUDA:MASTER)
+		CLEARLINE 1
+		GOTO INPUT_LOOP
+	ENDIF
+	賭駒:MASTER = レート指数:レート * RESULT
+ENDIF
+CLEARLINE LINECOUNT - LOCAL
+FOR COUNT, 0, 4
+	TGT = TOBA_ROTATE:胴元:COUNT
+	PRINTFORML %BAKUTO_NAME_TR:TGT + "'s Wager", 26, LEFT%%三桁区切(賭駒:TGT)%
+	TWAIT 200, 0
+NEXT
+PRINTFORML 
+;親の処理
+PRINTFORML Dealer's Turn
+LOCAL = LINECOUNT
+PRINTFORML 
+PRINTFORML %BAKUTO_NAME_TR:胴元% rolls the dice!
+TWAIT 1000, 0
+CALL THROW_CHINCHIRO_DICE(胴元, -1)
+強さ:胴元 = RESULT
+CLEARLINE LINECOUNT -LOCAL
+;その場で勝ち負け確定判定
+IF !INRANGE(強さ:胴元, 4, 7)
+	IF 強さ:胴元 > 7
+		CALL COLORMESSAGE(@"Dealer rolls %CHIN_PRIZE_TR:(強さ:胴元)%!", C_YELLOW, 1, 1)
+		PRINTFORML %BAKUTO_NAME_TR:胴元% %\@ 強さ:胴元 > 8 ? wins %strMag:(役倍率:(15 - 強さ:胴元))% the wager # takes all \@%!
+	ELSE
+		CALL COLORMESSAGE(@"Dealer rolls %CHIN_PRIZE_TR:(強さ:胴元)%...", C_YELLOW, 1, 1)
+		PRINTFORML %BAKUTO_NAME_TR:胴元% pays out \@ 強さ:胴元 == 0 ? double the # the amount of the \@ wager for each player.
+		親継続:5 = 1
+	ENDIF
+	RESULT = 0
+	TGT = !胴元 ? RAND(1, 5) # 胴元
+	IF (TGT != 胴元 && RAND:2) || !胴元
+		CALL TOBA_GAMBLER_TWEET(TGT, "一投目", 強さ:胴元)
+	ELSE
+		CALL TOBA_GAMBLER_TWEET(胴元, "親で振った後", 強さ:胴元)
+	ENDIF
+	GOTO PAY
+ENDIF
+PRINTFORML %"Dealer's Roll：", 26, LEFT%%CHIN_PRIZE_TR:(強さ:胴元)%
+PRINTFORML 
+CALL TOBA_GAMBLER_TWEET(胴元, "親で振った後", 強さ:胴元)
+;子の処理
+PRINTFORML Players Turn
+FOR L_COUNT, 0, 4
+	TGT = TOBA_ROTATE:胴元:L_COUNT
+	LOCAL = LINECOUNT
+	PRINTFORML 
+	PRINTFORML %BAKUTO_NAME_TR:TGT% rolls the dice!
+	TWAIT 1000, 0
+	CALL THROW_CHINCHIRO_DICE(TGT, 強さ:胴元)
+	強さ:TGT = RESULT
+	TWAIT 600, 0
+	CLEARLINE LINECOUNT - LOCAL
+	PRINTFORML %BAKUTO_NAME_TR:TGT + "'s Roll：", 26, LEFT%%COND_STR(@"%UNICODE(0x3000)%", STRLENS(BAKUTO_NAME_TR:TGT) <= 4)%%CHIN_PRIZE_TR:(強さ:TGT)%
+NEXT
+PRINTFORML Settling Bets...
+$PAY
+PRINTFORML 
+増減 = 0
+プール = 0
+;親と勝負・出目判定処理
+IF INRANGE(強さ:胴元, 4, 7)
+	FOR COUNT, 0, 4
+		TGT = TOBA_ROTATE:胴元:COUNT
+		SELECTCASE 強さ:TGT
+			CASE 0
+				判定 = 2
+				増減 = -(賭駒:TGT * 2)
+			CASE 1, 2, 3
+				判定 = 0
+				増減 = -(賭駒:TGT)
+			CASE 4 TO 8
+				判定 = 1
+				IF 強さ:TGT == 強さ:胴元
+					増減 = 0
+				ELSEIF 強さ:TGT > 強さ:胴元
+					増減 = 賭駒:TGT
+				ELSE
+					増減 = -(賭駒:TGT)
+				ENDIF
+			CASEELSE
+				判定 = 役倍率:(15 - 強さ:TGT)
+				増減 = 賭駒:TGT * 判定
+		ENDSELECT
+		PRINTFORM %BAKUTO_NAME_TR:TGT%'s Roll：%CHIN_PRIZE_TR:(強さ:TGT)%　＝　
+		IF 増減 < 0
+			PRINTFORML Dealer Wins!
+			SIF 判定 > 1
+				CALL COLORMESSAGE(@"Rolling 1-2-3 means %BAKUTO_NAME_TR:TGT% has to pay double...", C_YELLOW, 1, 1)
+		ELSEIF 増減 > 0
+			PRINTFORML Player Wins!
+			SIF 判定 > 1
+				CALL COLORMESSAGE(@"Rolling %CHIN_PRIZE_TR:(強さ:TGT)% means %BAKUTO_NAME_TR:TGT% wins %strMag:判定% the wager!!!", C_YELLOW, 1, 1)
+		ELSE
+			PRINTFORML Draw!
+			PRINTFORML Wager is given back.
+		ENDIF
+		TWAIT 500, 0
+		;親のコマ変動を一時保存
+		プール -= 増減
+		;子のコマ変動を表示
+		KOMAFUDA:TGT = KOMAFUDA:TGT + 増減
+		SIF 増減
+			CALL TOBA_RESULT_PRINT(TGT, 増減)
+		PRINTFORML 
+	NEXT
+;親の総取り/総付け処理
+ELSE
+	FOR L_COUNT, 0, 4
+		TGT = TOBA_ROTATE:胴元:L_COUNT
+		SELECTCASE 強さ:胴元
+			;ヒフミ
+			CASE 0
+				プール -= 賭駒:TGT * 2
+				KOMAFUDA:TGT += 賭駒:TGT * 2
+				増減 = 賭駒:TGT * 2
+			;ションベン目無しピン
+			CASE 1, 2, 3
+				プール -= 賭駒:TGT
+				KOMAFUDA:TGT += 賭駒:TGT
+				増減 = 賭駒:TGT
+			;ロッポウ
+			CASE 8
+				プール += 賭駒:TGT
+				KOMAFUDA:TGT -= 賭駒:TGT
+				増減 = -賭駒:TGT
+			;倍付以上
+			CASEELSE
+				プール += 賭駒:TGT * 役倍率:(15 - 強さ:胴元)
+				KOMAFUDA:TGT -= 賭駒:TGT * 役倍率:(15 - 強さ:胴元)
+				増減 = -(賭駒:TGT * 役倍率:(15 - 強さ:胴元))
+		ENDSELECT
+		CALL TOBA_RESULT_PRINT(TGT, 増減)
+		TWAIT 500, 0
+	NEXT
+	PRINTFORML 
+ENDIF
+KOMAFUDA:胴元 += プール
+IF プール
+	表示色 = プール > 0 ? C_GREEN # C_D_RED
+	PRINTFORM %BAKUTO_NAME_TR:胴元 + "'s Balance", 26, LEFT%%COND_STR(@"%UNICODE(0x3000)%", STRLENS(BAKUTO_NAME_TR:TGT) <= 4)%
+	CALL COLORMESSAGE(@"%\@ プール > 0 ? ＋ # － \@%{ABS(プール)}", 表示色, 1, 1)
+	SIF ABS(プール) >= レート指数:レート * 80
+		CALL TOBA_GAMBLER_TWEET(胴元, @"%\@ プール > 0 ? 得 # 失 \@%意", 強さ:胴元)
+	PRINTFORML 
+ENDIF
+
+TIME += 5
+;タネ銭足りないと終了
+FOR COUNT, 0, 5
+	SIF KOMAFUDA:COUNT >= レート指数:レート * 2
+		CONTINUE
+	PRINTFORML 
+	IF COUNT > 0 || KOMAFUDA:0 >= 0
+		PRINTFORML %BAKUTO_NAME_TR:COUNT% \@ KOMAFUDA:COUNT > 0 ? can no longer cover the rate # ran out of Chips \@.
+		PRINTFORMW Game over.
+		RETURN 0
+	ELSE
+		SIF FLAG:口上色
+			SETCOLOR 0xD37CD0
+		PRINTFORML 「Uh oh, dear... What, out of Chips already? I suggest it's time for you to cut your losses, maybe?」
+		PRINTFORML 「...Hang on, whaddya mean you ain't got enough to cover your losses?! Is this some kind of joke?!」
+		PRINTFORMW 「I'm gonna have you pay every penny you've got, just you wait!」
+		PRINTFORMDL ...You were forced to buy Chips (at a premium rate) to cover the portion that went into red.
+		PRINTFORMDW You feel like stepping out for a moment.
+		RESETCOLOR
+		LOCAL:9 = MONEY
+		MONEY = MONEY + KOMAFUDA:MASTER * 125
+		;qol custom code
+		nGamblingDenProfit -= LOCAL:9 - MONEY
+		KOMAFUDA:MASTER = 0
+		RETURN 0
+	ENDIF
+NEXT
+;親の目がショボいときは親を続行
+IF 親継続:5 == 1
+	PRINTFORMW %BAKUTO_NAME_TR:胴元% remains as a Dealer!
+	親継続:5 = 0
+	GOTO GAME_LOOP
+;親交代
+ELSEIF SUMARRAY(親継続, 0, 5) < 5
+	胴元 = 胴元 == 4 ? 0 # 胴元 + 1
+	親継続:胴元 = 1
+	PRINTFORMW %BAKUTO_NAME_TR:胴元% is the new Dealer!
+	GOTO GAME_LOOP
+ENDIF
+IF NEMUKE() >= 700
+	PRINTFORMW You're getting too drowsy to continue. You're forced to leave.
+	RETURN 2
+ENDIF
+;一周したら一区切り
+PRINTFORML 
+PRINTFORML Each player has assumed the role of a Dealer at least for one round, so you can leave now.
+PRINTFORML [0]Continue the game
+PRINTFORML [1]Quit
+DO
+ 	INPUT
+ 	IF !INRANGE(RESULT, 0, 1)
+ 		CLEARLINE 1
+ 		CONTINUE
+ 	ELSEIF !RESULT
+ 		VARSET 親継続
+ 		胴元 = 胴元 == 4 ? 0 # 胴元 + 1
+ 		親継続:胴元 = 1
+ 		PRINTFORML The game goes on.
+		PRINTFORMW %BAKUTO_NAME_TR:胴元% is the new Dealer!
+ 		GOTO GAME_LOOP
+ 	ENDIF
+ 	RETURN 0
+LOOP 1
+
+
+;紅魔館のとなんとか差別化しようとして結構頑張ってます
+@丁半博打_メイン(レート)
+#DIM CH_TURN, 7
+#DIM CH_BET, 7
+#DIM BET_POOL, 3
+#DIM CH_PROFIT, 7
+#DIM CH_COUNT,2
+#DIM DICE, 2
+#DIM TGT
+#DIM L_COUNT
+#DIM PL_BET
+#DIM 賭駒, 7
+#DIM 連勝, 7
+#DIM 回数
+#DIM 結果
+#DIM レート
+#DIM レート指数 = 20, 50, 100 ,1000
+回数 = 0
+VARSET 連勝
+FOR L_COUNT, 1, 7
+	IF KOMAFUDA:L_COUNT < レート指数:レート * 5
+		PRINTFORMW ...Some players don't have enough Chips to match the rate. You leave.
+		RETURN 0
+	ENDIF
+NEXT
+DRAWLINE
+PRINTFORML 
+PRINTFORML ～Cho-Han～
+PRINTFORML 
+CALL TOBA_DEALER_TWEET(3, "挨拶")
+
+$GAME_LOOP
+回数 ++
+CALL PRINT_TOBA_STATE(回数, レート, 0)
+TWAIT 1200, 0
+VARSET CH_BET
+VARSET CH_COUNT
+VARSET BET_POOL
+REDRAW 0
+CALL TOBA_FILL_DICE(DICE, 2)
+LOCAL = LINECOUNT
+CALL TOBA_DEALER_TWEET(0, "スタート口上",0, 0, 回数)
+TWAIT 3000, 0 ;custom code
+CLEARLINE LINECOUNT-LOCAL
+
+LOCAL = LINECOUNT
+CALL TOBA_DEALER_TWEET(0, "構え口上", DICE:0, DICE:1)
+TWAIT 1500, 0
+CLEARLINE LINECOUNT-LOCAL
+
+CALL TOBA_DEALER_TWEET(0, "被り口上")
+TWAIT 1200, 0
+PRINTFORML 
+REDRAW 1
+CALLF FUNC_FISHER_YATES_SHAFFLE(CH_TURN, 7)
+;予想ターン
+FOR L_COUNT, 0, 7
+	TGT = CH_TURN:L_COUNT
+	IF !TGT
+		REDRAW 0
+		PL_BET = 0
+		$BET_LOOP
+		LOCAL = LINECOUNT
+		PRINTPLAIN Place your wager after selecting either [Even] or [Odds].
+		PRINTFORML 
+		PRINTFORML 1＝10 Chips　Max: %三桁区切(レート指数:レート * 10)%
+		PRINTFORML Current Chips  : %三桁区切(KOMAFUDA:MASTER)%
+		CALL PRINTBUTTON_EX("　　　[Even]", -1, 0, (PL_BET == -1))
+		CALL PRINTBUTTON_EX("　　　[Odds]", -2, 0, (PL_BET == -2))
+		PRINTFORML 
+		PRINTBUTTON @"[{レート指数:レート * 10} - Max Bet]", レート指数:レート
+		PRINTFORML 
+		PRINTBUTTON @"[{レート指数:レート * 5} - Half Bet]", レート指数:レート / 2
+		PRINTFORML 
+		PRINTBUTTON @"[{レート指数:レート / 4 * 10} - Low-Key]", レート指数:レート / 4
+		PRINTFORML 
+		PRINTFORML Or you may input 1-{レート指数:レート - 1} directly.
+		INPUT
+		CLEARLINE LINECOUNT - LOCAL
+		SELECTCASE RESULT
+			CASE IS < -2, 0, IS > レート指数:レート
+				GOTO BET_LOOP
+			CASE -1, -2
+				PL_BET = RESULT
+				GOTO BET_LOOP
+			CASEELSE
+				SIF !PL_BET || RESULT * 10 > KOMAFUDA:MASTER
+					GOTO BET_LOOP
+				賭駒:MASTER = RESULT * 10
+				CH_BET:MASTER = PL_BET == -1 ? 0 # 1
+		ENDSELECT
+		PRINTFORML You place {賭駒:MASTER} Chips on %\@ CH_BET:MASTER == 0 ? Even # Odds \@%!
+		TWAIT 350, 0
+		REDRAW 1
+	ELSE
+		;NPCの丁半予想と賭けゴマ数を決定
+		CH_BET:TGT = RAND:2
+		賭駒:TGT = BET_CHOHAN(TGT, レート指数:レート, 連勝:TGT)
+		CALL TOBA_GAMBLER_TWEET(TGT, "丁半選択", CH_BET:TGT, 連勝:TGT)
+		IF !RESULT && TGT != 4
+			CALL COLORMESSAGE(@"「\@ CH_BET:TGT ? Odds # Even \@%"!"*RAND(1,4)%」", BAKUTO_WORDCOLOR:TGT, 1, 0)
+			TWAIT 300, 0
+		ENDIF
+		PRINTFORML %BAKUTO_NAME_TR:TGT% places {賭駒:TGT} Chips on %\@ CH_BET:TGT == 0 ? Even # Odds \@%!
+		TWAIT 600, 0
+	ENDIF
+	PRINTFORML 
+	CH_COUNT:(CH_BET:TGT) ++
+	;BET_POOL:第一引数 0=丁の賭けゴマ 1=半の賭けゴマ 2=賭けゴマ総数
+	BET_POOL:(CH_BET:TGT) += 賭駒:TGT
+	SIF L_COUNT == 6
+		BREAK
+	CALL TOBA_DEALER_TWEET(0, "煽り", CH_COUNT:0, CH_COUNT:1, CH_BET:TGT)
+	PRINTFORML 
+	TWAIT 350 + RAND(3, 7) * 50, 0
+NEXT
+PRINTFORML 　　Betting Pool
+PRINTFORML 　　Even:%PRINT_PLUR("Player", CH_COUNT:0), 7, LEFT%　　{BET_POOL:0} Chips
+PRINTFORMW 　　Odds:%PRINT_PLUR("Player", CH_COUNT:1), 7, LEFT%　　{BET_POOL:1} Chips
+BET_POOL:2 = BET_POOL:0 + BET_POOL:1
+
+;ツボを開くターン
+CALL TOBA_FILL_DICE(DICE, 2)
+結果 = (DICE:0 + DICE:1) % 2
+CALL TOBA_CREATE_DICEIMAGE(DICE:0, 0, DICE:1, 2)
+LOCAL = LINECOUNT
+TGT = (ABS(CH_COUNT:0 - CH_COUNT:1) == 7) * 3
+REDRAW 0
+CALL TOBA_DEALER_TWEET(TGT, "予想終了", CH_COUNT:0, CH_COUNT:1)
+SIF TGT
+	CALL COLORMESSAGE(@"「No more bets. Now then... Let's see it!」\n「GO!」", 0xD37CD0, 1, 0)
+TWAIT 1600 + (RAND(2, 5) * 200), 0
+CLEARLINE LINECOUNT - LOCAL
+CALL TOBA_DEALER_TWEET(0, "勝負！", DICE:0, DICE:1, 結果)
+TWAIT 1200, 0
+REDRAW 1
+;コマ札やり取りのターン
+VARSET CH_PROFIT
+;丁半コマ揃って勝負
+IF CH_COUNT:0 && CH_COUNT:1
+	FOR L_COUNT, 0, 7
+		IF CH_BET:L_COUNT == 結果
+			CH_PROFIT:L_COUNT = (BET_POOL:(!結果) * ((10000 * 賭駒:L_COUNT) / BET_POOL:結果)) / 10000
+		ELSE
+			CH_PROFIT:L_COUNT = -(賭駒:L_COUNT)
+		ENDIF
+		KOMAFUDA:L_COUNT += CH_PROFIT:L_COUNT
+	NEXT
+;全員同じ方に賭けて当たった
+ELSEIF CH_BET:MASTER == 結果
+	FOR L_COUNT, 0, 7
+		CH_PROFIT:L_COUNT = (BET_POOL:2 * ((4500 * 賭駒:L_COUNT) / BET_POOL:2)) / 10000
+		KOMAFUDA:L_COUNT += CH_PROFIT:L_COUNT
+	NEXT
+;皆ハズレ
+ELSE
+	FOR L_COUNT, 0, 7
+		CH_PROFIT:L_COUNT = -(賭駒:L_COUNT)
+		KOMAFUDA:L_COUNT += CH_PROFIT:L_COUNT
+	NEXT
+ENDIF
+;ランダムで誰か一言
+TGT = RAND(1, 7)
+CALL TOBA_GAMBLER_TWEET(TGT, @"%\@ CH_BET:TGT == 結果 ? 安堵 # 失望 \@%", 0, 0, 7)
+
+;結果表示
+FOR L_COUNT, 0, 7
+	TGT = CH_TURN:L_COUNT
+	CALL TOBA_RESULT_PRINT(TGT, CH_PROFIT:TGT)
+	IF CH_PROFIT:TGT > 0
+		連勝:TGT ++
+	ELSE
+		連勝:TGT = 0
+	ENDIF
+	TWAIT 250, 0
+NEXT
+
+;BET最大値より儲けるとツボ振りとのサシ勝負提案
+IF CH_PROFIT:MASTER > レート指数:レート * 10
+	REDRAW 0
+	CALL TOBA_DEALER_TWEET(0, "サシ持ちかけ")
+	CALL ASK_YN
+	IF RESULT
+		CALL TOBA_DEALER_TWEET(3, "サシお断り")
+		REDRAW 1
+	ELSE
+		REDRAW 0
+		LOCAL = LINECOUNT
+		CALL TOBA_DEALER_TWEET(0, "スタート口上",0, 0, 0)
+		TWAIT 1500, 0
+		CLEARLINE LINECOUNT-LOCAL
+
+		LOCAL = LINECOUNT
+		CALL TOBA_DEALER_TWEET(0, "構え口上", DICE:0, DICE:1, 1)
+		TWAIT 1800, 0
+		CLEARLINE LINECOUNT-LOCAL
+		
+		CALL TOBA_DEALER_TWEET(0, "被り口上", 0, 0, 1)
+		CALL ASK_YN("Even", "Odds")
+		CH_BET:MASTER = RESULT
+		CALL TOBA_FILL_DICE(DICE, 2)
+		結果 = (DICE:0 + DICE:1) % 2
+		CALL TOBA_CREATE_DICEIMAGE(DICE:0, 0, DICE:1, 2)
+		LOCAL = LINECOUNT
+		CALL TOBA_DEALER_TWEET(0, "予想終了", CH_BET:MASTER, 0, 1)
+		TWAIT 2000 + (RAND(2, 5) * 200), 0
+		CLEARLINE LINECOUNT - LOCAL
+		CALL TOBA_DEALER_TWEET(0, "勝負！", DICE:0, DICE:1, 結果)
+		TWAIT 1200, 0
+		IF CH_BET:MASTER == 結果
+			CALL TOBA_DEALER_TWEET(3, "サシで負け")
+			KOMAFUDA:MASTER += CH_PROFIT:MASTER
+			連勝:MASTER ++
+		ELSE
+			CALL TOBA_DEALER_TWEET(3, "サシで勝ち")
+			KOMAFUDA:MASTER -= CH_PROFIT:MASTER
+			連勝:MASTER = 0
+			CH_PROFIT:MASTER = -(CH_PROFIT:MASTER)
+		ENDIF
+		REDRAW 1
+		CALL TOBA_RESULT_PRINT(MASTER, CH_PROFIT:MASTER)
+		PRINTFORML Current Chips  : %三桁区切(KOMAFUDA:MASTER)%
+	ENDIF
+ENDIF
+
+TIME += 5
+;継続/終了チェック
+PRINTFORML 
+FOR L_COUNT, 0, 7
+	SIF KOMAFUDA:L_COUNT >= レート指数:レート * 5
+		CONTINUE
+	PRINTFORML %BAKUTO_NAME_TR:L_COUNT% ran out of Chips.
+	PRINTFORMW Game over.
+	RETURN 0
+NEXT
+IF NEMUKE() >= 700
+	PRINTFORMW You're getting too drowsy to continue. You're forced to leave.
+	RETURN 2
+ENDIF
+
+CALL TOBA_DEALER_TWEET(0, "継続口上", (CH_BET:MASTER == 結果), (連勝:MASTER > 1))
+CALL ASK_YN("Continue", "Stop")
+SIF !RESULT
+	GOTO GAME_LOOP
+CALL COLORMESSAGE(@"「%TEXTR("Huh, is that so.../I see, I see.../Oh well, that's too bad./My my, that's a pity./Well, suit yourself I guess.")%」\n「Thanks for joining us in any case, well played.」", 0xD37CD0, 2, 0)
+RETURN 0
+
+
+;丁半博打で賭けゴマの枚数を決める式中関数
+;評価値とか重み付けとか難しいことはよくわからんので乱数頼み
+@BET_CHOHAN(TGT, MAX_BET, WINS)
+#FUNCTION
+#DIM TGT
+#DIM MAX_BET
+#DIM BASE_BET
+#DIM ADD
+#DIM WINS
+#DIM BET
+;勝っていると稀に全ツッパ
+SIF RAND:100 + 1 < MIN(WINS, 3)
+	RETURNF MIN(KOMAFUDA:TGT / 10, MAX_BET) * 10
+BASE_BET = MAX_BET / 4
+ADD = RAND(3 + WINS) > 1 ? RAND(BASE_BET) # -(RAND(BASE_BET))
+SELECTCASE RAND:15 + MIN(WINS, 4) 
+	CASE IS > 11
+		BASE_BET = BASE_BET * 3 + (ADD / 4)
+	CASE 5 TO 11
+		BASE_BET = BASE_BET * 2 + (ADD / 3)
+	CASE IS < 5
+		BASE_BET = BASE_BET + (ADD / 2)
+ENDSELECT
+BASE_BET = LIMIT(BASE_BET, 1, KOMAFUDA:TGT / 100 * 8) * 10
+RETURNF BASE_BET
+
+;チンチロリンダイス表示＆判定関数
+@THROW_CHINCHIRO_DICE(振り手, ARG)
+#DIM 出目
+#DIM L_COUNT
+#DIM D_COUNT
+#DIM 賽, 3
+#DIM DICE, 3
+#DIM 失敗率
+#DIM ファンブル
+#DIM 振り手
+;ファンブル率2％、あなたのみ眠気ありで+2％
+失敗率 = 1 + (!振り手 && NEMUKE() >= 540) * 2
+ファンブル = 0
+CALL TOBA_GAMBLER_TWEET(振り手, "一投目", ARG)
+FOR L_COUNT, 1, 4
+	LOCAL = LINECOUNT
+	CALL TOBA_FILL_DICE(賽, 3)
+	VARSET DICE
+	ARRAYCOPY "賽", "DICE"
+	;昇順に並び替え
+	ARRAYSORT DICE, FORWARD
+	;値が同じ=ゾロ目
+	IF ALLSAMES(DICE:0, DICE:1, DICE:2)
+		IF DICE:0 == 1
+			出目 = 15
+		ELSE
+			出目 = 15 - (7 - DICE:0)
+		ENDIF
+	;値が全て異なる=目無し/ヒフミ/シゴロ
+	ELSEIF !((DICE:0 == DICE:1) || (DICE:1 == DICE:2) || (DICE:0 == DICE:2))
+		IF DICE:0 == 1 && DICE:2 == 3
+			出目 = 0
+		ELSEIF DICE:0 == 4 && DICE:2 == 6
+			出目 = 9
+		ELSE
+			出目 = 2
+		ENDIF
+	;XXYパターン=Yの値で判定
+	ELSEIF DICE:0 == DICE:1
+		出目 = 2 + DICE:2
+	;XYYパターン=Xの値で判定
+	ELSE
+		出目 = 2 + DICE:0
+	ENDIF
+	;ファンブル判定
+	ファンブル = RAND:100 <= 失敗率 ? 1 # 0
+	PRINTFORML ～%NUM_COUNT(L_COUNT, "pos", 1)% Roll～
+	REDRAW 0
+	IF FLAG:画像表示
+		CALL TOBA_CREATE_DICEIMAGE(賽:0, 賽:1, 賽:2, ファンブル)
+		CALL PRINT_IMAGE_ANIMATION("SAI_",0 ,13, 1, 0, 33)
+		CALL PRINT_IMAGE("SAI_RESULT")
+		TWAIT 250, 0
+	ELSE
+		FOR D_COUNT, 0, 3
+			PRINTFORM %NUM_COUNT(賽:D_COUNT, "pos", 1)%　%COND_STR(@"!", D_COUNT == 2)%
+			TWAIT 30 + RAND(25, 50 + D_COUNT * 20), 0
+		NEXT
+	ENDIF
+	IF ファンブル
+		PRINTFORML What the?!
+		PRINTFORML %BAKUTO_NAME_TR:振り手%'s roll of the dice ends up %TEXTR("flying elsewhere/disappearing before everyone's eyes in a flash/being taken away by the sudden appearance of a gap/landing on the floor as if being rejected by the pot")%...
+		SIF !振り手
+			TWAIT 1000, 0
+		出目 = 1
+		BREAK
+	ELSEIF 出目 == 2
+		PRINTFORML \@ L_COUNT < 3 ? Re-rolling because of an indeterminate outcome. # Failed to get a combination within three rolls, unlucky... \@
+		CALL TOBA_GAMBLER_TWEET(振り手, "n投目", L_COUNT, 0, (3 + (L_COUNT == 3) * 4))
+		SIF !RESULT
+			TWAIT 1000, 0
+		REDRAW 0
+		CLEARLINE LINECOUNT - LOCAL
+		SIF L_COUNT < 3 
+			CONTINUE
+		REDRAW 1
+	ENDIF
+	BREAK
+NEXT
+RESULT = 0
+IF 出目 == 2 || !振り手
+;出目が極端なら必ずつぶやく
+ELSEIF 出目 == 0 || (INRANGE(ARG, 0, 4) && ARG > 出目)
+	CALL TOBA_GAMBLER_TWEET(振り手, "悲鳴", 出目, 0, 7)
+ELSEIF 出目 == 1
+	CALL TOBA_GAMBLER_TWEET(振り手, "罵声", 出目, 0, 7)
+ELSEIF 出目 > 8 || (ARG > 6 && 出目 > ARG)
+	CALL TOBA_GAMBLER_TWEET(振り手, "歓声", 出目, 0, 7)
+;通常の勝ち負け/出目
+ELSEIF (ARG < 0 && INRANGE(出目, 3, 4)) || ARG > 出目
+	CALL TOBA_GAMBLER_TWEET(振り手, "失望", 出目)
+ELSEIF (ARG < 0 && INRANGE(出目, 7, 8)) || (ARG >= 0 && ARG < 出目)
+	CALL TOBA_GAMBLER_TWEET(振り手, "安堵", 出目)
+ENDIF
+SIF !RESULT
+	TWAIT 600, 0
+REDRAW 1
+RETURN 出目
+
+;博徒の呟きを表示する関数
+;CHARA:1=山童 2=河童 3= 鴉天狗, 4=蟒蛇 5=ランダムモブ子Ａ 6=ランダムモブ子Ｂ
+;L_FEED：表示分類=BIT0 ONでウエイトあり BIT1 ONでCLEARLINE BIT2 ONで必ず表示
+@TOBA_GAMBLER_TWEET(CHARA, 状況, 分類, SUB = 0, L_FEED = 3)
+#DIM CHARA
+#DIM 分類
+#DIM L_FEED
+#DIM SUB
+#DIM EFFECT
+#DIM L_COUNT
+#DIM 表示CID = 0, 91, 92, 93, 94, 25, 26
+#DIMS エフェクト = "", "顔絵_ざわ", "顔絵_ぐにゃあ"
+#DIMS 状況
+#DIMS 表情
+#DIMS MESSAGE
+#DIMS FONTCOLOR
+#DIMS MESSAGE_PRINT, 50
+;ペラペラ喋ると発言すぐ被るので発生抑えめ
+SIF !(!RAND:3 || 分類 == 15 || GETBIT(L_FEED, 2)) || CHARA == MASTER
+	RETURN 0
+EFFECT = 0
+MESSAGE = %BAKUTO_TALK_STRINGS(CHARA, 状況, 分類, SUB)%
+DEBUGPRINTFORML {CHARA} %MESSAGE%
+SIF MESSAGE == ""
+	RETURN 0
+表情 = %RESULTS%
+LOCAL = LINECOUNT
+;表示部分は@SP_TALKのカスタム
+IF 顔絵付きメッセージ
+	キャラ画像表示サイズ比 = 100
+	FONTCOLOR = %TOSTR(BAKUTO_WORDCOLOR:CHARA, "X")% 
+	VARSET MESSAGE_PRINT
+	SIF FLAG:マルチサイズ
+		デフォルトキャラ画像横幅 = 180
+	CALL IMAGE_SET(@"顔絵_服_%表情%_MOB_{表示CID:CHARA}", 0, 0, キャラ画像表示サイズ比, 0)
+	SIF EFFECT
+		CALL IMAGE_SET(エフェクト:EFFECT, 0, 0, キャラ画像表示サイズ比, 1)
+	MESSAGE = %SPTALK整形(MESSAGE)%
+	SPLIT MESSAGE, "/", MESSAGE_PRINT
+	FOR L_COUNT, 0, RESULT
+		SIF L_COUNT != 0 || EFFECT
+			CALL DUMMY_SET(0, 0, キャラ画像表示サイズ比, L_COUNT)
+		TEMP_HTML:L_COUNT += @"<font color='#%FONTCOLOR%'>%MESSAGE_PRINT:L_COUNT%</font>"
+	NEXT
+	CALL SIMULTANEOUS_IMAGE_DISPLAY(0, 0, 1, -1)
+	IF GETBIT(L_FEED, 0)
+		PRINTW 
+	ELSE
+		PRINTL
+	ENDIF
+ELSE
+	SIF FLAG:口上色
+		SETCOLOR BAKUTO_WORDCOLOR:CHARA
+	SPLIT MESSAGE, "/", MESSAGE_PRINT
+	FOR L_COUNT, 0, RESULT
+		PRINTFORML %MESSAGE_PRINT:L_COUNT%
+	NEXT
+	RESETCOLOR
+	SIF GETBIT(L_FEED, 0)
+		WAIT
+ENDIF
+REDRAW 0
+SIF GETBIT(L_FEED, 1)
+	CLEARLINE LINECOUNT - LOCAL
+REDRAW 1
+RETURN 1
+
+;博徒の呟きと表情を決める式中関数
+;キャラ:1=山童 2=河童 3=鴉天狗 4=蟒蛇 5=ランダムモブ子１ 6=ランダムモブ子２
+@BAKUTO_TALK_STRINGS(キャラ, 状況, 分類, SUB = 0)
+#FUNCTIONS
+#DIM キャラ
+#DIM 分類
+#DIM SUB
+#DIM 初回
+#DIM 定義済
+#DIM L_COUNT
+#DIMS 賭け = "Even", "Odds"
+#DIMS 自称, 2
+#DIMS 状況
+#DIMS 台詞
+#DIMS 候補
+#DIM nPersonality, 2 ;custom code
+RESULTS = 通常
+台詞 = 
+IF 定義済 != DAY
+	定義済 = DAY
+	FOR L_COUNT, 0, 2
+		自称:L_COUNT = %TEXTR("わたし/私/あたい/あたし/")%
+		SIF !RAND:4
+			自称:L_COUNT = %TEXTR("ボク/僕/")%
+		nPersonality:L_COUNT = RAND:4 ;%SPLIT_G("normal:child:girly:tomboy")%
+	NEXT
+ENDIF
+SELECTCASE 状況
+	;チンチロリン台詞
+	;親・子の一投目：分類 = 親の出目
+	CASE "一投目" ;rolling the dice, 分類 sets their reaction according to dealer's roll
+		SELECTCASE 分類
+			;親がピン以下勝ち確時の煽り
+			CASE 0 TO 3 ;if dealer rolled very poorly and instalost
+				SELECTCASE キャラ
+					CASE 1
+						STRDATA 台詞
+							DATAFORM 「My my, could it be that you're one of those who throws their money around like it's birdseed?」/「Well then, don't mind me! I'll help myself to it, thank you very much♪」
+							DATAFORM 「I can't believe I can just sit here doing nothing, and still get more Chips.」/「Truly... what a fine gambling den this is♪」
+							DATAFORM 「Well now, if it's any consolation, I'm sure something good will come out of this later on.」/「But while you're here, stay as you are and keep us well-fed♪」
+							DATAFORM 「They say that sometimes it takes losing to gain victory.」/「So I don't see the problem as long as you win at the end of the day, do you?」/「That's why... you should concede more wins for us♪」
+						ENDDATA
+					CASE 2
+						STRDATA 台詞
+							DATAFORM 「It sure is a great turnout when you get richer by the minute,」/「Giving out those Chips to everyone in a flash like that!」/「Ain't that right, our dear benefactor?♪」
+							DATAFORM 「%SPLIT_G("Thanks for all the cash:Looks like we're gonna have a goood time here!")%♪」
+							DATAFORM 「Say, I know you just lost a whole lot of money, but what are you going through right now?」/「Heey, tell me, tell me! How does it feel, hmm?」
+							DATAFORM 「Pfft! Pu-pu... Pupupu!」/「...Lol, lmao even♪」
+							DATAFORM 「Oh no no no no...」/「Oooohhhh...」/「(Wheeze) Pffthahaha!」
+							DATAFORM 「Ouch town, population - you, buddy♪」
+						ENDDATA
+					CASE 3
+						STRDATA 台詞
+							DATAFORM 「Ahaha! Even the Chips say they don't feel at home in your hands!」/「But worry not, I'll graciously take the responsibility and take them in♪」
+							DATAFORM 「Maan, look at you, using your money to make everyone smile.」/「You are one hell of a saint, my dear!」/「I'm beginning to see some kind of halo hovering over you, even♪」
+							DATAFORM 「Whoa, what kind of magic is this?! Did I just get more Chips without even lifting a finger?」/「Aww dear, you shouldn't have! What a great way to make a profit♪」
+							DATAFORM 「It's said people's misfortune tastes like honey♪」/「And man, I could've licked it forever!」
+						ENDDATA
+					CASE 4
+						RESULTS = 笑顔
+						STRDATA 台詞
+							DATAFORM （The Big Snake is coiling around in circles...）
+							DATAFORM （The Big Snake opens its mouth wide with delight...）
+							DATAFORM （The Big Snake coils itself before bouncing like a spring...）
+							DATAFORM （The Big Snake is licking its lips with a predatory glint in its eyes...）
+						ENDDATA
+				ENDSELECT
+			CASE 4 ;2-pointer
+				SELECTCASE キャラ
+					CASE 1
+						STRDATA 台詞
+							DATAFORM 「Looks like my victory is settled.」/「I mean, there's no way for me to lose with this one!」
+							DATAFORM 「Fufufu! Thank you kindly for going so easy on me.」
+							DATAFORM 「This is a serious game after all. Hence no one can afford holding back!」
+							DATAFORM 「I'll be securing a proper victory from here.」
+							DATAFORM 「It's not looking good... Ohh, you're sooo screwed!」
+						ENDDATA
+					CASE 2
+						STRDATA 台詞
+							DATAFORM 「Whoa there, are you holding back on us?」/「Guess I'll go all out at my leisure, then!」
+							DATAFORM 「Aww, you're sooo generous! I think I'm about to fall for you, even!」/「But I don't think I'll be following your example though♪」
+							DATAFORM 「I apologize in advance, don't take it personal～」/「But this is a match, and I gotta do what I gotta do♪」
+							DATAFORM 「Ahaha! I'm soo sorry, I feel soo bad for you♪」/「Don't worry, I'll finish you off with my roll in just a sec～」
+							DATAFORM 「Better hope it'll fit the bill for ya, 'cause I feel like it won't!」
+						ENDDATA
+					CASE 3
+						STRDATA 台詞
+							DATAFORM 「Sorry, but I'll be making a play from here on out.」
+							DATAFORM 「Well, you know how it goes, these things just happen sometimes!」/「Don't let it get you down so much!」
+							DATAFORM 「If you can win then go for it, pretty much.」
+							DATAFORM 「Ahaha, you're so charitable!」/「Well, I won't turn down such a generous sponsorship!」
+							DATAFORM 「Fair play. Now it's my turn to effortlessly defeat you♪」
+						ENDDATA
+					CASE 4
+						STRDATA 台詞
+							DATAFORM （The Big Snake picks up the dice with its mouth and tosses them.）
+							DATAFORM （The Big Snake dexterously uses its tongue to roll the dice.）
+							DATAFORM （The Big Snake makes a dice roll with its tail.）/（The dice soar into the air and land squarely in the cup...）
+						ENDDATA
+				ENDSELECT
+			CASE -1, 5, 6 ;3,4 pointer, dealer's first roll
+				LOCALS:9 = %SPLIT_G("Shoot:Go:Rolling:Here goes:Heave-ho:Let's go")%!
+				SIF !RAND:10
+					LOCALS:9 = Come on, come on, baby needs a new pair of shoes!
+				SELECTCASE キャラ
+					CASE 1
+						STRDATA 台詞
+							DATAFORM 「Okay, time to roll the dice!」
+							DATAFORM 「Here I come... There!」
+							DATAFORM 「Well then, here we go.」
+							DATAFORM 「Carefully, carefully... There!」
+							DATAFORM 「%LOCALS:9%」
+							DATAFORM 「Very well, let's do this!」
+						ENDDATA
+					CASE 2
+						STRDATA 台詞
+							DATAFORM 「%LOCALS:9%」
+							DATAFORM 「Ayup!」
+							DATAFORM 「Roly-poly, let's get a volley!」
+							DATAFORM 「Alright... bring it on!」
+							DATAFORM 「Hoorah!」
+							DATAFORM 「Come ooon, Ace Out, Ace Out...」/「Here, boom!」
+						ENDDATA
+					CASE 3
+						STRDATA 台詞
+							DATAFORM 「%LOCALS:9%」
+							DATAFORM 「Let's get rolling, nice and easy!」
+							DATAFORM 「Here I come!」
+							DATAFORM 「God and Buddha... please guide this roll of mine!」
+							DATAFORM 「I have a light hand, you know... It's all in the wrist!」
+							DATAFORM 「Ace Out... give it to me!」
+						ENDDATA
+					CASE 4
+						STRDATA 台詞
+							DATAFORM （The Big Snake picks up the dice with its mouth and tosses them.）
+							DATAFORM （The Big Snake dexterously uses its tongue to roll the dice.）
+							DATAFORM （The Big Snake makes a dice roll with its tail.）/（The dice soar into the air and land squarely in the cup...）
+						ENDDATA
+				ENDSELECT
+			CASE 7 ;5-pointer
+				RESULTS = 泣き
+				SELECTCASE キャラ
+					CASE 1
+						RESULTS = 怒り
+						STRDATA 台詞
+							DATAFORM 「Hmmm, that's a tough one...」
+							DATAFORM 「If I give it my best, then maybe...」
+							DATAFORM 「If there's even the slightest chance, then...」
+							DATAFORM 「I-It... doesn't mean I've... lost yet, so...」
+						ENDDATA
+					CASE 2
+						STRDATA 台詞
+							DATAFORM 「Ack, oof... this is gonna hurt...」
+							DATAFORM 「I'm just gonna go out on a limb and give it my best shot...」/「There's no other way anyhow...」
+							DATAFORM 「I might just surprise everyone with a good combo if I try... maybe?」
+							DATAFORM 「This looks like a bust, but I might as well give it a try... I'll take my chances!」＠通常
+						ENDDATA
+					CASE 3
+						RESULTS = 通常
+						STRDATA 台詞
+							DATAFORM 「Wouldn't it be cool if I won this? Watch!」
+							DATAFORM 「Don't be so full of yourself just yet, dear! You never know until I make a move, you know?」
+							DATAFORM 「I bet it'd feel great if I manage to overcome this hurdle and win!」
+							DATAFORM 「Channel my motivation! Motivation is all I need! I can handle it, here we go!!!」
+						ENDDATA
+					CASE 4
+						STRDATA 台詞
+							DATAFORM （The Big Snake rolls the dice, brimming with confidence...）
+							DATAFORM （The Big Snake ponders over something before rolling the dice...）
+							DATAFORM （The Big Snake rolls the dice much more carefully than usual...）
+						ENDDATA
+				ENDSELECT
+			CASE 8 TO 15 ;dealer instawon
+				SELECTCASE キャラ
+					CASE 1
+						RESULTS = 怒り
+						STRDATA 台詞
+							DATAFORM 「...I'm only parting with these momentarily.」/「I swear it on my name, I'll definitely have them back!」
+							DATAFORM 「Sometimes the best gain is to lose...」/「Sometimes the best gain is to lose...」/「Sometimes the best gain is to lose...」/「Yes, I will get it all back, no doubt about it!」
+							DATAFORM 「This is... indescribably frustrating.」/「It's like, you know, it was over before it even began...」/「And just like that, my bet is gone... It was out of my control...」
+						ENDDATA
+					CASE 2
+						RESULTS = 泣き
+						STRDATA 台詞
+							DATAFORM 「What a simple job this is! Just watch over the dice roll, and it's all finished!」/「Except, of course, they take your money away instead of paying your wages.」/「Man, now that I think of it, it sucks!」
+							DATAFORM 「Wuh?! That was just a test roll you did there, right?」/「Come on then, don't keep us waiting! Make a real roll, go on!」/「...Oh, you're not gonna fall for it, huh? A-Are you sure?」
+							DATAFORM 「Aww shucks, this isn't exciting at all!」/「You gotta give everyone a chance to roll the dice, at least!」/「How else am I supposed to fulfill my fantasy with me being the only one who wins at the end?!」
+						ENDDATA
+					CASE 3
+						RESULTS = 怒り
+						STRDATA 台詞
+							DATAFORM 「Aww dear, suddenly this game just got very dull.」/「Do you think this is a joke?!」/「How are you gonna go about fixing this situation, huh?」
+							DATAFORM 「Oh, I know this situation very well.」/「After something like this, there's always some kind of painful comeback!」＠通常
+							DATAFORM 「And just like that, it's all over before I can even do anything...」/「Sigh, how boring.」
+						ENDDATA
+					CASE 4
+						RESULTS = 泣き
+						STRDATA 台詞
+							DATAFORM （The Big Snake looks very depressed...）
+							DATAFORM （The Big Snake bends to the side listlessly...）
+							DATAFORM （The Big Snake looks rather glum...）
+							DATAFORM （The Big Snake hangs its head in sadness...）
+						ENDDATA
+				ENDSELECT
+		ENDSELECT
+	;親子共通n回目の賽振り:分類 = 振り終わった回数
+	CASE "n投目" ;re-rolling the dice if failed to get a combo, check for number of attempts
+		SELECTCASE 分類
+			CASE 1
+				SELECTCASE キャラ
+					CASE 1
+						STRDATA 台詞
+							DATAFORM 「Let's just give it another go.」
+							DATAFORM 「Oh my, I didn't get a thing this time.」
+							DATAFORM 「Let me throw them one more time!」
+							DATAFORM 「Alright-alright, there we go!」
+							DATAFORM 「I just wanna make a nice quick roll, come on!」
+						ENDDATA
+					CASE 2
+						STRDATA 台詞
+							DATAFORM 「Okay, here we go again.」
+							DATAFORM 「One more throw, please!」
+							DATAFORM 「I guess I'm back to square one. Here!」
+							DATAFORM 「Yes-yes, let's just get to it.」
+							DATAFORM 「I'm sure the next one will be good! Probably...」
+						ENDDATA
+					CASE 3
+						STRDATA 台詞
+							DATAFORM 「%SPLIT_G("I'd rather have that than something weird:Still better than rolling some yucky thing")%... Here goes!」
+							DATAFORM 「Yeah, whatever, I'll just roll another one!」
+							DATAFORM 「I guess I'll go one more time, here!」
+							DATAFORM 「Alright, I'm fired up now... Come on!」
+							DATAFORM 「I'll make it right next time, don't you worry!」
+						ENDDATA
+					CASE 4
+						STRDATA 台詞
+							DATAFORM （The Big Snake picks up the dice with its mouth and tosses them again.）
+							DATAFORM （The Big Snake dexterously uses its tongue to roll the dice.）
+							DATAFORM （The Big Snake makes a dice roll with its tail.）/（The dice soar into the air and land squarely in the cup...）
+						ENDDATA
+				ENDSELECT
+			CASE 2
+				SELECTCASE キャラ
+					CASE 1
+						STRDATA 台詞
+							DATAFORM 「Come oooon now... Pleaaase, I'm begging you here...」
+							DATAFORM 「Geez... I'm really just trying to roll a nice quick combo...」
+							DATAFORM 「Wha-What...? I'm not doing so hot right now...」
+							DATAFORM 「Well, it all comes down to a third time, it seems... It better be a charm!」
+							DATAFORM 「Now that I made my opponents lower their guard, it's time to make a play...」/「Right now!」
+						ENDDATA
+					CASE 2
+						STRDATA 台詞
+							DATAFORM 「All my saved up luck and energy... Gonna get unleashed NOW!」
+							DATAFORM 「Aww shucks, I just wanna make it quick and easy!」
+							DATAFORM 「Maaaaybe I'm getting a liiiiittle nervous...」
+							DATAFORM 「Huuuh... That's kinda weird. Again?」
+							DATAFORM 「I saved the best for last for a reason after all...」/「There, BOOM!」
+						ENDDATA
+					CASE 3
+						STRDATA 台詞
+							DATAFORM 「%SPLIT_G("Gotta keep my cool, gotta keep my cool:No sweat, no sweat")%... Here goes!」
+							DATAFORM 「I got it right here, the winning strat is within my grasp... The real deal starts here!」/「Let's gooo!」
+							DATAFORM 「All the necessary steps before I pull a win out of this, am I right?」
+							DATAFORM 「Alright, I'm done messing around, here I come!」
+							DATAFORM 「Don't mind me, I'm just setting up the highlight of this scene-Ayup!」
+						ENDDATA
+					CASE 4
+						STRDATA 台詞
+							DATAFORM （The Big Snake tries to roll the dice one more time.）
+							DATAFORM （The Big Snake is starting to panic a little...）＠泣き
+							DATAFORM （The Big Snake is tilting its head in confusion...）
+						ENDDATA
+				ENDSELECT
+			CASEELSE
+				RESULTS = 泣き
+				SELECTCASE キャラ
+					CASE 1
+						RESULTS = 怒り
+						STRDATA 台詞
+							DATAFORM 「S-Sometimes... this is just the way it is... nothing more.」
+							DATAFORM 「Man, today is just not my lucky day...」
+							DATAFORM 「H-Huh? I just can't seem to do it right...」
+							DATAFORM 「Not being able to even set the stage for a win after all this, I'm a little disappointed in myself...」
+							DATAFORM 「Hmm, y-yeah...」/「I gotta switch gears on this one, it seems...」
+						ENDDATA
+					CASE 2
+						STRDATA 台詞
+							DATAFORM 「O-Oh, umm... Th-This is just one of those things that happens sometimes, you know?」
+							DATAFORM 「Awww, unluckyyy!」
+							DATAFORM 「Uwaaah, I messed up big time...!」
+							DATAFORM 「Fiiine, I lost, I lost this one! Here, I said it!」/「Aaauughhhh, DANG IT!!!」＠怒り
+							DATAFORM 「Ah, dice, dice, my dear dice...」/「I wish you had just a liiiitle bit more determination and gave me a good roll!」
+						ENDDATA
+					CASE 3
+						STRDATA 台詞
+							DATAFORM 「Aaahh, sheesh... Is this what I have to roll with right now...?」
+							DATAFORM 「I'm *really* out of luck right now...」
+							DATAFORM 「Siiigh, what a mess... Honestly, what a blunder indeed!」
+							DATAFORM 「Yeah-yeah, I know! I lost, I lost this one, alright?!」＠怒り
+							DATAFORM 「Next time... Next time, for sure! I'll turn it around!」＠怒り
+							DATAFORM 「Now this is a thing that just happened... Neeext!」
+						ENDDATA
+					CASE 4
+						STRDATA 台詞
+							DATAFORM （The Big Snake sits straight with a serious look on its face...）＠通常
+							DATAFORM （The Big Snake looks very depressed...）
+							DATAFORM （The Big Snake is tilting its head in confusion...）
+						ENDDATA
+				ENDSELECT
+		ENDSELECT
+	CASE "親で振った後" ;dealer's reaction to the roll, check roll combo
+		SELECTCASE 分類
+			CASE 0 ;1-2-3
+				RESULTS = 泣き
+				SELECTCASE キャラ
+					CASE 1
+						RESULTS = 怒り
+						STRDATA 台詞
+							DATAFORM 「This is just... way too painful to bear...」
+							DATAFORM 「I already knew where this is going without you showing up...」/「Siiiigh...」
+							DATAFORM 「Ooohh, ow... this loss is a direct hit to my wallet...」
+						ENDDATA
+					CASE 2
+						STRDATA 台詞
+							DATAFORM 「Nooo, stoooop! %SPLIT_G("What the hell's this:Are you serious right now")%?!」
+							DATAFORM 「This is just too much pain for poor little me!」
+							DATAFORM 「Heeey, wait a minute!」/「What's going on?! What do you mean?!」＠怒り
+						ENDDATA
+					CASE 3
+					RESULTS = 怒り
+						STRDATA 台詞
+							DATAFORM 「This can't be real, geez!」/「Did I ever do anything to you, huh?! Why are you treating me like this?!」
+							DATAFORM 「Of all outcomes, it just had to be THIS?!」/「Aaaghhh dammit, I'M PIIIIIIISSED!!!」
+							DATAFORM 「Go ahead, laugh it up while you still can!」/「You guys might end up just like this!」
+						ENDDATA
+					CASE 4
+						STRDATA 台詞
+							DATAFORM （The Big Snake is frozen in shock...）
+							DATAFORM （The Big Snake is so confused that it started dancing for some reason...）＠通常
+							DATAFORM （The Big Snake is trembling all over...）
+						ENDDATA
+				ENDSELECT
+			CASE 1 TO 3 ;missed, bust or 1-point
+				RESULTS = 泣き
+				SELECTCASE キャラ
+					CASE 1
+						RESULTS = 怒り
+						STRDATA 台詞
+							DATAFORM 「Maaaan～! I guess I had it coming～」
+							DATAFORM 「Well, whatever... I'll just do better next time! There's always next time, right?」
+							DATAFORM 「It's better to get this out of the way like this, or I won't be able to bounce back even if I win.」/「Yeah, let's just start over.」
+							DATAFORM 「Wooow... This is kinda harsh, not gonna lie...」
+						ENDDATA
+					CASE 2
+						STRDATA 台詞
+							DATAFORM 「Okay, next! Let's just go next!」＠怒り
+							DATAFORM 「I guess I would get one of these before long, maaan...」
+							DATAFORM 「If only I got a roll that could put up a fight...」/「But this? Yeah, no chance...」
+							DATAFORM 「It happens, you know, once in a while!」/「But it's out of my system now!」/「Here we go, let's move on to the next one!」＠怒り
+						ENDDATA
+					CASE 3
+						STRDATA 台詞
+							DATAFORM 「I can't even get my foot in the door with this, let alone compete.」/「Ohh dear, this is most upsetting...」
+							DATAFORM 「That's just a fluke, an unlucky one. That's all there is to it.」/「But make no mistake, my next roll is gonna be a surprise to everybody!」＠怒り
+							DATAFORM 「Let me just start over from scratch, yup, just gonna do that.」
+							DATAFORM 「Hah! I certainly can't win with that one.」/「Okaaaaay, moving on then! Let's get to it!」＠怒り
+							DATAFORM 「Hopefully my unlucky streak ends here...」/「Well, it better!」＠怒り
+						ENDDATA
+					CASE 4
+						台詞 = （The Big Snake %TEXTR("looks somewhat disheartened/looks disappointed/hangs its head in sadness")%...）
+				ENDSELECT
+			CASE 4 ;2-point
+				RESULTS = 泣き
+				SELECTCASE キャラ
+					CASE 1
+						RESULTS = 怒り
+						STRDATA 台詞
+							DATAFORM 「Go easy on me if you will... pretty please...」
+							DATAFORM 「Now I'm in deep...」
+							DATAFORM 「%SPLIT_G("This is... pretty... baaaad?:This... probably... won't spell good for me...")%」
+							DATAFORM 「You know, it'd be great if everyone suddenly...」/「Started messing up and making bad rolls... or something...」
+						ENDDATA
+					CASE 2
+						STRDATA 台詞
+							DATAFORM 「Umm... I'd like it if you didn't go too hard on me... hopefully...」
+							DATAFORM 「Uwaaah, I'm making it too easy for you lot...」
+							DATAFORM 「Uh-oh... this isn't good at all...」
+							DATAFORM 「N-Not sure what's gonna happen next, but...」/「No way I end up winning this... or maybe?」
+						ENDDATA
+					CASE 3
+						STRDATA 台詞
+							DATAFORM 「I-It's too early to celebrate yet...」/「I mean, the outcome's still isn't clear, and all... right?」
+							DATAFORM 「Oh boy, I guess that's it for me, then...」
+							DATAFORM 「Wow, this miiiight be bad...」
+							DATAFORM 「Oh, but, uhh... You can still do worse than this, right?」/「So I'm not gonna... give up just yet!」＠通常
+						ENDDATA
+					CASE 4
+						台詞 = （The Big Snake %TEXTR("looks somewhat disheartened/looks disappointed/hangs its head in sadness")%...）
+				ENDSELECT
+			CASE 5 ;3-point
+				RESULTS = 泣き
+				SELECTCASE キャラ
+					CASE 1
+						RESULTS = 怒り
+						STRDATA 台詞
+							DATAFORM 「Yeesh... Not exactly reassuring.」
+							DATAFORM 「Not quite there, I think...?」
+							DATAFORM 「This is kind of making me feel uneasy...」
+							DATAFORM 「Yet another one of those instances where anything can happen...」
+						ENDDATA
+					CASE 2
+						STRDATA 台詞
+							DATAFORM 「This miiiight be baaaad...?」
+							DATAFORM 「Might be a little short, but we'll see...」
+							DATAFORM 「This is a bit iffy, not gonna lie...」
+							DATAFORM 「Hmm, well, what can I say about this one...」
+						ENDDATA
+					CASE 3
+						STRDATA 台詞
+							DATAFORM 「I wish it was a tier higher, at least...」
+							DATAFORM 「Uugh, so close...」/「%SPLIT_G("Just a tad more, and that would've been it:I only needed this much")%...」
+							DATAFORM 「Oh, dear... this is rather tenuous.」
+							DATAFORM 「I'm surprised that everyone makes a mockery of such a situation.」/「Me? I think it's fine, really.」＠通常
+						ENDDATA
+					CASE 4
+						RESULTS = 通常
+						STRDATA 台詞
+							DATAFORM （The Big Snake looks somewhat unsatisfied...）
+							DATAFORM （The Big Snake is coiling itself...）
+							DATAFORM （The Big Snake makes a loud shrieking sound.）
+						ENDDATA
+				ENDSELECT
+			CASE 6 ;4-point
+				SELECTCASE キャラ
+					CASE 1
+						STRDATA 台詞
+							DATAFORM 「These odds... should be in my favor, I suppose?」
+							DATAFORM 「Well, I can't complain %SPLIT_G("about that:too much")%.」
+							DATAFORM 「This... might actually work out.」
+							DATAFORM 「Maybe this could give me a fighting chance...」
+						ENDDATA
+					CASE 2
+						STRDATA 台詞
+							DATAFORM 「Well! I guess that should do it, right?」
+							DATAFORM 「This isn't so bad, right?」
+							DATAFORM 「Alright! This'll work, I think.」
+							DATAFORM 「Surely you guys... won't ruin the mood for me, right?」
+						ENDDATA
+					CASE 3
+						STRDATA 台詞
+							DATAFORM 「Alriiiight, we're gaming now!」/「Well, it's decent enough in any case.」
+							DATAFORM 「Alright! Now this I can get behind...」/「Bring it on!」
+							DATAFORM 「Yup, cool, that has to work!」
+							DATAFORM 「Yeaaah, this has to be quite the big obstacle for you guys as far as I'm concerned, no?」/「Honestly, you can't get much more than that.」
+						ENDDATA
+					CASE 4
+						RESULTS = 笑顔
+						STRDATA 台詞
+							DATAFORM （The Big Snake looks very happy with itself...）
+							DATAFORM （The Big Snake nods its head in satisfaction...）
+							DATAFORM （The Big Snake makes a loud shrieking sound.）
+							DATAFORM （The Big Snake flicks its tongue in and out of its mouth...）
+						ENDDATA
+				ENDSELECT
+			CASE 7 ;5-point
+				SELECTCASE キャラ
+					CASE 1
+						STRDATA 台詞
+							DATAFORM 「...Yup, I pretty much won with this♪」
+							DATAFORM 「Hey-hey! Just look at this one right here!」/「Beating that... will be quite challenging for you guys♪」
+							DATAFORM 「Alriiight, please go ahead and roll your dices, folks♪」
+							DATAFORM 「Fufu, now I can sit back and take a breather♪」
+						ENDDATA
+					CASE 2
+						STRDATA 台詞
+							DATAFORM 「Maaan, I'm sooo sorry～」/「Sooo sorry for practically securing my win, I mean♪」
+							DATAFORM 「Ahaha!♪ Lookie-lookie! How's that?」
+							DATAFORM 「Aha! I'm golden - I can just sit back and relax now!」
+							DATAFORM 「Pupupu...! It probably won't amount to much, but...」/「Go ooon, give it a try♥ Try your best♥」
+						ENDDATA
+					CASE 3
+						STRDATA 台詞
+							DATAFORM 「I did it!♪ This is what you call a certain victory, indeed!」
+							DATAFORM 「Haha! Did you see THIS?! What do you think of that, huh?」
+							DATAFORM 「Come on, come on! Go ahead and show me what futile resistance looks like♪」
+							DATAFORM 「AHAHAHA! Looks like you're gonna have a *hard* time beating this, huuuh?」/「If I were you, I'd give up. Just a friendly advice♪」
+						ENDDATA
+					CASE 4
+						RESULTS = 笑顔
+						STRDATA 台詞
+							DATAFORM （The Big Snake looks very happy with itself...）
+							DATAFORM （The Big Snake nods its head in satisfaction...）
+							DATAFORM （The Big Snake makes a loud shrieking sound.）
+							DATAFORM （The Big Snake flicks its tongue in and out of its mouth...）
+						ENDDATA
+				ENDSELECT
+			CASE 8 ;6-point
+				SELECTCASE キャラ
+					CASE 1
+						STRDATA 台詞
+							DATAFORM 「Weeell then, looks like I'll be taking the pot♪」
+							DATAFORM 「Yup, let's just settle up in a hurry♪」
+							DATAFORM 「Ahh... This is why the winner-takes-all system... feels so orgasmic♪」
+							DATAFORM 「Ahaha!」/「Aaaall your Chips are belong to *us*!♪」
+						ENDDATA
+					CASE 2
+						STRDATA 台詞
+							DATAFORM 「In short, it's my guaranteed win unless you guys pull a fast one♪」
+							DATAFORM 「Yaaaay, I did iiiit!!!」
+							DATAFORM 「Alriiight, time to hand over those Chipsies for me to yoink♪」
+							DATAFORM 「Wooow, this is a real shame you guys!」/「All of your Chips are getting drawn to me, you see～」/「But don't worry, I'm gonna take *real* good care of 'em!♪」
+						ENDDATA
+					CASE 3
+						STRDATA 台詞
+							DATAFORM 「Ohh man, now that's a good pointer right there, don't you agree?」/「%SPLIT_G("As expected of myself, of course:No big surprise, it's me we're talking about after all:I'm soooo proud of myself")%!」
+							DATAFORM 「The best kind of twist is what this is!」
+							DATAFORM 「Jackpot for days, oh yes yesss!」/「And it's aaaall mine!♪」
+							DATAFORM 「The elite is always on top...」/「That's right, all of your Chips are coming to me...」/「AAAHAHAHA!!!」
+						ENDDATA
+					CASE 4
+						RESULTS = 笑顔
+						STRDATA 台詞
+							DATAFORM （The Big Snake is performing a joyous dance...）
+							DATAFORM （The Big Snake is happily crawling in circles...）
+							DATAFORM （The Big Snake wiggles its body from side to side in rhythm.）/（It's easy to see that it's overjoyed...）
+						ENDDATA
+				ENDSELECT
+			CASE 15 ;ace out
+				SELECTCASE キャラ
+					CASE 1
+						台詞 = 「...%MOAN()%♥」/「W, Wait just a moment, please...」/「I think I actually... came a little, just now... so, umm...♥」/「If you'd excuse me... I need a change of panties, one sec...♥」
+					CASE 2
+						台詞 = 「Ha-ha-ha! They don't call *me* Goddess of Cee-lo for nothing!」/「Come, all you mortals of the lower order, offer up all you have!」
+					CASE 3
+						台詞 = 「WHOAAA?!?! HO-HOLY SHIT!!! WHAT'S THIS???」/「How cool is that?! Huh...」/「I mean seriously, isn't it a bit too crazy?」/「...Like, straight up super nutty?」
+					CASE 4
+						台詞 = （The Big Snake coils itself before... hopping up and down on the spot?!）/（Boing-boing-boing!）/（It just keeps bouncing again and again!）/（It's just that happy, it seems...）
+				ENDSELECT
+			CASEELSE ;instawin combos
+				SELECTCASE キャラ
+					CASE 1
+						STRDATA 台詞
+							DATAFORM 「Fufufu, I'm soooo sorry for this♪」
+							DATAFORM 「Aaahhh... This is soo good...」/「Like... it's the greatest high you'll ever get♪」
+							DATAFORM 「Fufu!」/「Even the %CHIN_PRIZE_TR:分類% is just a stepping stone for my greatness... I'm gonna aim even higher and higher♪」
+							DATAFORM 「Oh yes, good game! You know it's a good game because it's my win!」
+						ENDDATA
+					CASE 2
+						STRDATA 台詞
+							DATAFORM 「AHAHAHAHAHA!」/「Seeing you all collectively go "grrr" is sooo hilarious!」/「Oh I'm laffin♪」
+							DATAFORM 「C'MON-C'MON-C'MON!!!」/「I'm gonna squeeze aaaaall of you dry!♪」
+							DATAFORM 「%CHIN_PRIZE_TR:分類%... That has a great sound to it!」/「Hopefully I'll keep this streak going all the way to the end♪」
+							DATAFORM 「Awww, poor you... Guess it's time for you to cry about it, boo-hoo-hooo!♪」
+						ENDDATA
+					CASE 3
+						STRDATA 台詞
+							DATAFORM 「There we go, finally...」/「I guess my time to shine... has come♪」
+							DATAFORM 「Yup, go on! Time to pay up your dues, my adorable little piggies!」/「This measly little amount we have here isn't neaaaarly enough♪」
+							DATAFORM 「Fufufu... I'm a woman who always aims for the top, y'see...」/「And to prove it, my next target will be the %CHIN_PRIZE_TR:(分類 + 1)%...」/「It's official now!♪」
+							DATAFORM 「Like the saying goes, there's a sucker born every minute...」/「Did you really think you'd come here and get rich?」/「Hah! Hahahaha!」
+						ENDDATA
+					CASE 4
+						RESULTS = 笑顔
+						STRDATA 台詞
+							DATAFORM （The Big Snake looks very happy with itself...）
+							DATAFORM （The Big Snake nods its head in satisfaction...）
+							DATAFORM （The Big Snake makes a loud shrieking sound, looking very happy with itself.）
+						ENDDATA
+				ENDSELECT
+		ENDSELECT
+	;after rolling the dice, reactions
+	CASE "悲鳴" ;instaloss, or you having a good roll
+		;親子共通ヒフミ/子が親のニゾウに負けた/親あなたがシゴロ以上
+		RESULTS = 泣き
+		SELECTCASE キャラ
+			CASE 1
+				RESULTS = 怒り
+				STRDATA 台詞
+					DATAFORM 「...Eh, wha-- %CHIN_PRIZE_TR:分類%?」/「EEEEEEEEEEHHHHHHHHHH?!?!」
+					DATAFORM 「NOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO!!!」
+					DATAFORM 「Now you just WAIT A MINUTEEEEEEEEEE?!?!?!」
+					DATAFORM 「EEEEEEEEEHHHHHHH?! NO WAAAAAAAAY!!!!!!!」
+				ENDDATA
+			CASE 2
+				STRDATA 台詞
+					DATAFORM 「UEEEEHHHHHHHHHHH?!?! NO MORE, PLEASE MAKE IT STOOOOOOOOOOOP!!!」/「I WOULD'VE LIKED YOU NOT GETTING %TOUPPER(CHIN_PRIZE_TR:分類)% RIGHT NOW!!!」
+					DATAFORM 「HIEEEEEEEEEEEEEHHH?! Wh-What is happeniiiiing?!」
+					DATAFORM 「AAAAGUASXCBJIODFaSET0ZIKW0E9V3409G5W0ESDS!!!」
+					DATAFORM 「NOOO WAAAAAAAAAAAAAYYYY!!!!!!!!!」
+				ENDDATA
+			CASE 3
+				STRDATA 台詞
+					DATAFORM 「Wait, WHAAAAAAAATTTT?!」/「%SPLIT_G("I didn't ask you to roll:Don't tell me you actually rolled")% %CHIN_PRIZE_TR:分類%!!!」
+					DATAFORM 「UWAAAAAAAAAAAAAHHHHHH!!! ARE YOU SERIOUS RIGHT NOOOW?!?!」
+					DATAFORM 「WHAAAAAAAAAAAAAAAAAAAAAAAAAAATTTTT?!?!?!」
+					DATAFORM 「EEEEEEEEEEEEEEEEEEHHHHHHHHHHHH?!?!?!」
+				ENDDATA
+			CASE 4
+				STRDATA 台詞
+					DATAFORM （The Big Snake stares sadly at the dice...）
+					DATAFORM （The Big Snake looks shook up, even sobbing a little...）
+					DATAFORM （The Big Snake makes a loud shrieking sound.）
+				ENDDATA
+		ENDSELECT
+		;random chance
+		SIF キャラ != 4 && !RAND:10
+			台詞 = 「FFFFFFFFFFFUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUCCCCCCCKKKKKKKKKKKK!!!!!!!!」
+	;親子共通シゴロ以上/子が親のゴケに勝った
+	CASE "歓声" ;instawin, ace out or six-point
+		SELECTCASE キャラ
+			CASE 1
+				STRDATA 台詞
+					DATAFORM 「%CHIN_PRIZE_TR:分類%?!」/「Amazing, this is totally %SPLIT_G("NUTS:AWESOOOME")%!!!」
+					DATAFORM 「Yaaaaay, I did it!!!」
+					DATAFORM 「Yippieeee, hooray! %SPLIT_G("I can hardly believe it myself:It's like I'm dreaming right now")%!!!」
+					DATAFORM 「Kyaaaahhh! Incredibleee!」/「%SPLIT_G("I hope I'm not dreaming right now, 'cause this is seriously impressive!!!:Is this real?! Lemme check, did I actually do this?!")%」
+				ENDDATA
+			CASE 2
+				STRDATA 台詞
+					DATAFORM 「%TOFULL(TOUPPER(CHIN_PRIZE_TR:分類 + " IS HERE"))%―――(ﾟ∀ﾟ)――――!!!」
+					DATAFORM 「Aaahhh!!! There we go, there we flippin' goooo!!!」/「It's finally here you guys, woo!!!」
+					DATAFORM 「AAAHA-HA-HA-HA-HA!!!」/「This is why %SPLIT_G("I keep coming back:I'll never quit gambling:I can't stop gambling")%!」
+					DATAFORM 「I DID IT, YAAAAAAAAAY!!!」
+				ENDDATA
+			CASE 3
+				STRDATA 台詞
+					DATAFORM 「Oooohhhh?! %CHIN_PRIZE_TR:分類%!!!」/「FOR REAL?!?! IS THIS HAPPENING?! AAAAAAAAAAAAHHHHHH!!!」
+					DATAFORM 「There we go, we're back babyyyyyyyy!!!」
+					DATAFORM 「AHAHAHAHA!!! Did you see that?! That's what I'm talking about!!!」
+					DATAFORM 「Yoooo-hoooooooooooiii!!!」
+				ENDDATA
+			CASE 4
+				RESULTS = 笑顔
+				STRDATA 台詞
+					DATAFORM （The Big Snake looks very happy with itself...）
+					DATAFORM （The Big Snake nods its head in satisfaction...）
+					DATAFORM （The Big Snake is undulating its body.）/（Perhaps it's trying to do the fabled Wave move all by itself...?）
+					DATAFORM （The Big Snake just goes ahead, and... winks at everyone?!）/（You could've sworn it even made a "SPARKLE!☆" sound effect...）
+				ENDDATA
+		ENDSELECT
+	;親子共通ションベン
+	CASE "罵声" ;missed the pot
+		RESULTS = 怒り
+		SELECTCASE キャラ
+			CASE 1
+				STRDATA 台詞
+					DATAFORM 「Eeeehhhh?! Now just wait a second!!!」
+					DATAFORM 「No no no no, this can't be!」/「Is this even fair?! Hey!」
+					DATAFORM 「Wait, no! Give me a break, please!」/「What kind of joke is this?!」
+				ENDDATA
+			CASE 2
+				STRDATA 台詞
+					DATAFORM 「UoooOOOOIIII?!」/「What is this?! What the heck is happening?! Are you guys kidding me right now?!」
+					DATAFORM 「Umm, excuuuuse me?! No, I'm not okay with it! I don't care, this doesn't count!」
+					DATAFORM 「WHAAAAAAATTT?! I don't even know what's going on anymore!!!」
+				ENDDATA
+			CASE 3
+				STRDATA 台詞
+					DATAFORM 「Hey, wait a minute! Everybody just hold still!!!」/「Are you serious right now, how is this possible?!」
+					DATAFORM 「Wh-Wh-Wh-WHAAAAAAAAAAAATTTT?!?!」/「No, seriously, isn't this a bit too crazy to be true?!」
+					DATAFORM 「Hey, HEY!!! Let's slow down a little, c'mon!」/「Are we just gonna go with it?!」
+				ENDDATA
+			CASE 4
+				RESULTS = 泣き
+				STRDATA 台詞
+					DATAFORM （The Big Snake is searching around for missing dice...）
+					DATAFORM （The Big Snake looks completely startled and frozen in place...）
+					DATAFORM （The Big Snake looks very depressed...）
+				ENDDATA
+		ENDSELECT
+	;親収支マイナスがレートの80倍以上
+	CASE "失意" ;despair
+		RESULTS = 泣き
+		SELECTCASE キャラ
+			CASE 1
+				RESULTS = 怒り
+				STRDATA 台詞
+					DATAFORM 「Can I really... ever recover from this?」
+					DATAFORM 「Aww shucks... You guys done cleaned me up...」
+					DATAFORM 「Aagh, I can't believe I sank so low...」
+					DATAFORM 「Even if you work your ass off your entire life, saving up one coin at a time...」/「All it takes is one screw up before it's aaall gone.」/「...But it works both ways too, and I'm gonna take it all back at once!」＠怒り
+				ENDDATA
+			CASE 2
+				STRDATA 台詞
+					DATAFORM 「Oooi...」/「My little Chipsies... surely you'll come back to me in a flash, right?」/「I'll make it happen, no worries! That's a promise, alright?」
+					DATAFORM 「Yikes... I'm kinda running outta chips, aren't I...?」
+					DATAFORM 「Eeh?! Isn't there some kind of insurance I can get for this kind of situation?!」/「...My bad, obviously it doesn't work like that, figures.」
+				ENDDATA
+			CASE 3
+				STRDATA 台詞
+					DATAFORM 「Wooow, I really got ripped off this time...」/「This game's been rough all around, alright...」
+					DATAFORM 「Aaghh, that's it, I've had enough!」/「I'm gonna Ace Out ten times in a row from here on out, just you wait!」＠怒り
+					DATAFORM 「Aww man, this is really really baaad...」/「Huh? Wait a minute... How many more Chips do I have again?」
+				ENDDATA
+			CASE 4
+				STRDATA 台詞
+					DATAFORM （The Big Snake is threatening to coil over on top of the Chips pile...）/（But as soon as the other players start staring it down in unison, it quickly moves out of the way.）
+					DATAFORM （The Big Snake makes a loud shrieking sound.）/（You never thought that reptiles could look this miserable before...）
+					DATAFORM （The Big Snake is crawling all over the place.）/（It's obvious that it's going through a lot of headache right now...）
+				ENDDATA
+		ENDSELECT
+	;親収支プラスがレートの80倍以上
+	CASE "得意" ;satisfied
+		SELECTCASE キャラ
+			CASE 1
+				STRDATA 台詞
+					DATAFORM 「Aahh... That's what I'm talking about, it's this feeling, you know...」/「No matter how many times I experience it... I just can't have enough...♥」
+					DATAFORM 「Mmm, now that's what I'd like to call a very good turn of events.」/「Can we just... keep it coming... and cumming... and cumming...♥」
+					DATAFORM 「Fu-fu-fu...」/「Fufufufufu!♪」/「FUFUFU!♥」
+				ENDDATA
+			CASE 2
+				STRDATA 台詞
+					DATAFORM 「Oooh, great haul, how nice♪」/「Naturally I'm gonna go for another one of those next!」
+					DATAFORM 「Ahaha, look at me, succeeding when it really counts...」/「Wait, could it be that...」/「I'm actually a pretty competent gal...?」
+					DATAFORM 「Awright, it's looking good! Let's keep it going, shall we?」/「There's no stopping this train where I'm headin'!♪」
+				ENDDATA
+			CASE 3
+				STRDATA 台詞
+					DATAFORM 「Oh yes, this sure puts me into a good mood!」/「I'd appreciate it if you'd keep me entertained just like that all the way♪」
+					DATAFORM 「Better watch out you guys! Don't think your remaining Chips are safe either!」/「They might all just end up in my pocket before you know it♪」
+					DATAFORM 「As a matter of fact...」/「I was actually shooting for this roll all along♪」/「No, really! It's true!」/「That's right, just watch me! Next time... I'll go for %CHIN_PRIZE_TR:分類%, too♪」
+				ENDDATA
+			CASE 4
+			RESULTS = 笑顔
+				STRDATA 台詞
+					DATAFORM （The Big Snake is undulating with joy.）/（Could this move be... a wave?!）
+					DATAFORM （The Big Snake is performing a joyous dance...）
+					DATAFORM （The Big Snake is swaying its tail(?) from side to side...）
+				ENDDATA
+		ENDSELECT
+	;丁半博打
+	;丁半博打選択台詞
+	CASE "丁半選択" ;placing bets on odd-even
+		IF RAND:2
+			SIF キャラ == 4
+				RETURNF @"（The Big Snake places its wager on %賭け:分類% with the help of the cup, slinging the Chips.）"
+			RETURNF @"「%賭け:分類%%"!"*RAND(1,4)%」"
+		ENDIF
+		SELECTCASE キャラ
+			CASE 1
+				STRDATA 台詞
+					DATAFORM 「No reason to dwell on all those little distracting things.」/「...Let's go with %賭け:分類%, I guess.」
+					DATAFORM 「I'm just gonna follow my intuition here...」/「%賭け:分類%!」
+					DATAFORM 「You really gotta make a break for it here...」/「I choose... %賭け:分類%!」
+				ENDDATA
+			CASE 2
+				STRDATA 台詞
+					DATAFORM 「You need to go all in if you wanna follow the rhythm!」/「That's why I go with %賭け:分類%!」
+					DATAFORM 「...It's a little faint, but I can almost see it.」/「It's a number... {RAND(1, 5) * 2 + !分類}, I'm pretty sure.」/「...%賭け:分類%!」
+					DATAFORM 「If you stray too far, you'll regret it.」/「So without thinking twice, I'll just go with %賭け:分類%.」
+				ENDDATA
+			CASE 3
+				STRDATA 台詞
+					DATAFORM 「Ooh, I saw it! It just came to me suddenly!」/「It's gonna be %賭け:分類% this time, no doubt about it! It's gotta be %賭け:分類%, I'm telling you guys!」
+					DATAFORM 「Aaaghhh geez, I'm racking my brain here and I still can't decide...」/「%賭け:分類%, maybe? Yeah, let's just go with %賭け:分類%!」
+					DATAFORM 「...Alright, I made up my mind!」/「%SPLIT_G(@"I'm going with %賭け:分類% this time:I call %賭け:分類%")%!」
+				ENDDATA
+			CASE 4
+				DO 
+					LOCAL = RAND(1, 7)
+				LOOP  LOCAL == 4
+				STRDATA 台詞
+					DATAFORM （The Big Snake puts a great deal of effort to place its wager on %賭け:分類%...）
+					DATAFORM （The Big Snake is busily placing its Chips with its mouth.）/（After a while, there's a number of Chips piled towards %賭け:分類%.）
+					DATAFORM （The Big Snake pulls on %BAKUTO_NAME_TR:LOCAL%'s sleeve for attention.）/（%BAKUTO_NAME_TR:LOCAL% then helps the Snake to place its chips on %賭け:分類%.）
+				ENDDATA
+			CASE 5, 6
+				STRDATA 台詞
+					DATAFORM 「%SPLIT_SINGLE(@"This is my test of luck!:I'm feeling lucky today!:Shall I put my luck to the test, hmm～?:Time to try my own luck, I guess.", nPersonality:(キャラ - 5))%」/「%SPLIT_SINGLE(@"I'll just go ahead and put everything on %賭け:分類%, I know it'll win!:It's gonna roll %賭け:分類% next, I can feel it!:%賭け:分類%... Oh yes, I'm certain of it.:It's gonna be... yes, %賭け:分類%! No regrets!", nPersonality:(キャラ - 5))%」
+					DATAFORM 「%SPLIT_SINGLE(@"The more you hesitate, the worse it gets...:I'm not gonna overthink it! I'm bad at thinking stuff anyways!:Hmm... No, I can't afford wasting time thinking too much, that's how you lose after all.:No use shaking in my boots here, I gotta make a decision...", nPersonality:(キャラ - 5))%」/「%SPLIT_SINGLE(@"That's it, this time I choose %賭け:分類%, why not?:But if I gotta choose... %賭け:分類%, yup!:Let's make it %賭け:分類%. It'll be fine, I'm sure～:I'm gonna go with %賭け:分類%, let's go!", nPersonality:(キャラ - 5))%」
+					DATAFORM 「Even? Odds? %SPLIT_SINGLE(@"H-Huh? Which is it, really...?:Why can't I just choose both, ugh...:Hmm... Fifty-fifty is all that separates me from comfortable life, isn't it～?:Oh maaan, this is so tough...", nPersonality:(キャラ - 5))%」/「Mmmm, nnghh... Uuuhhh...」/「...%賭け:分類%!」
+				ENDDATA
+		ENDSELECT
+	;共通台詞
+	;チンチロリン親子共通ピン・ニゾウ/子負け/丁半博打負け
+	CASE "失望" ;losing
+		RESULTS = %\@ キャラ > 4 || キャラ == 1 ? 怒り # 泣き \@%
+		候補 = %SPLIT_G("Ugh:Wow:Uwaaah:Yikes:Ack:Oof")%.../...%SPLIT_G("Eeeh:Wha-:Huh")%?!/%SPLIT_G("No way:It can't be")%.../...%SPLIT_G("Make it stop:No more:Please, don't:Not me, not me:No, no, nooo")%.../Hmm? Mmmmm?! Huuuuuhhhh?!?!/Wha, whaaaaaaaatttt...?!/...%SPLIT_G("Dammit:Drat:Damn:Darn:Crap:Oh no")%!/
+		SELECTCASE キャラ
+			CASE 1
+				候補 = %候補%Nooooo...! Not like thiiiissss...!/Huh... Wha?/...Don't do this to me... not me, nooo...!/Aaaghhh...! It hurts... it hurts so much...!/Eh?! Wait, you mean, I.../What...? You telling me... I lost?
+			CASE 2
+				候補 = %候補%...Make it shtoooopppp!/...For real?/You gotta be joking.../Aahh great, this is just great.../...Achaa, siiigh./...I'm beat. I really blew it this time, huh./K-Kappa sisters...? H-How could this be?
+			CASE 3
+				候補 = %候補%Oi-oi-oi, oiii...!/...Oh snap!/Uwaaahh, ughhh.../Uheee.../Yuck...!/Wooow... I just went and lost it all.../T-Tengu sisters... Hold me, please...
+			CASE 4
+				STRDATA 台詞
+					DATAFORM （The Big Snake looks downright disheartened...）
+					DATAFORM （The Big Snake looks very depressed...）
+					DATAFORM （The Big Snake stares sadly at the dice...）
+					DATAFORM （The Big Snake is wiggling side to side, looking exhausted...）
+				ENDDATA
+			CASE 5, 6
+				候補 = %候補%%SPLIT_SINGLE(@"Wait, what?! How?!:Eehhh?! But... but... whyyyy?!:Wh-Wh-Wh-WHAAAAAAAAAAAAAAAAATTTT?! Excuse me?! That's total hogwash, is what it is!:No way it just happened...", nPersonality:(キャラ - 5))%/%SPLIT_SINGLE(@"Ugh, I messed up...:Whoaaa... That's, like... baaaad...:If I close my eyes it's not real, if I close my eyes it's not real, if I...:...Yeah, okay. Screw me, I guess.", nPersonality:(キャラ - 5))%/%SPLIT_SINGLE(@"Aaaghh, get out of here with this crap!:Uuuu, uwaaahhh! I really wanna go home so bad...:Fu-fu-fu... You miserable sack of...:Aaaghhh, dammit!!!", nPersonality:(キャラ - 5))%/%SPLIT_SINGLE(@"Can we just get to the next game please?:Th-This doesn't count! I'll get back up and win in the next one, you'll see!:Let's just promise to each other to never mention this ever again, okay?～:Aaaghhh, whatever! Let's just keep going!", nPersonality:(キャラ - 5))%/%SPLIT_SINGLE(@"Ugh, what a joke...:Yikes... Sooo lame...:Awful, simply awful... Eugh.:Maaan, this blows!", nPersonality:(キャラ - 5))%/%SPLIT_SINGLE(@"Aaghh sheesh, that's it, I lost!:I can't believe I lost just like that!:It's... my loss, no big deal. I'm fine, really. (Sob):Oh man, I guess I lost this one...", nPersonality:(キャラ - 5))%/%SPLIT_SINGLE(@"How could this happen to me?! There's just no way!:Ouch, ow, oww... It hurts... everything... huuuurts...!:I'm sinking... sinking deeper... all the way down into the debt hell!:Why... Why me?! Why does it only happen to me?! It's not fair...", nPersonality:(キャラ - 5))%
+		ENDSELECT
+		SIF キャラ != 4
+			台詞 = 「%TEXTR(候補)%」
+	;チンチロリン親子共通ゴケ・ロッポウ/子勝ち/丁半博打勝ち
+	CASE "安堵" ;winning
+		RESULTS = %\@ キャラ > 3 ? 笑顔 # 通常 \@%
+		SELECTCASE キャラ
+			CASE 1
+				候補 = Yaaay!/...I win♪/Ufufu!♪/...There it is!/...Aha!♪/Kyaah, I'm so happy♪/Theeere we go, that's what I'm talking about♪/Fufu, just as I predicted it♪
+			CASE 2
+				候補 = Hip-hip, hooray!/...Well, looks like I won♪/ ( ΦωΦ)σ　Awright!/I did it!/...Awesome!/...Go me, am I right?/Well-well... I got it in the bag♪/I'm pretty good at this, it turns out♪
+			CASE 3
+				候補 = ...Oh? I got it, yesss!♪/...Winner-winner, chicken dinner♪/Hehe-n!/That's it, keep it coming!♪/Yippie!/Victory is mine!/Nice and clean, as expected♪/Booya! Got some cash money, let's go♪
+			CASE 4
+				STRDATA 台詞
+					DATAFORM （The Big Snake stretches out, standing tall.）
+					DATAFORM （The Big Snake is waving around happily...）
+					DATAFORM （The Big Snake is crawling all over the place in excitement...）
+					DATAFORM （The Big Snake looks like it has a big smile on its face...?）/（That's some very well-developed facial muscles for a snake, indeed...）
+				ENDDATA
+			CASE 5, 6
+				候補 = ...Alright, there we go♪/Good, good, veeery good♪/I did it♪/I won, I won♪/%SPLIT_SINGLE(@"Yaaay!:Yippieee!:Hooray～:Awesome!", nPersonality:(キャラ - 5))%/I got it!♪/Alright, just as I expected♪/Alright, that's another victory under my belt♪/%SPLIT_SINGLE(@"Don't blame the game, blame the player! In this case, yourself!:Hehe, you better watch out now, I'm on a roll!:Fufufu... This is but a fraction of my girl power. Impressed yet?～:Heh, fat chance any of you wins after this!", nPersonality:(キャラ - 5))%
+		ENDSELECT
+		SIF キャラ != 4
+			台詞 = 「%TEXTR(候補)%」
+ENDSELECT
+IF STRFIND(台詞, "＠") > -1
+	VARSET LOCALS
+	SPLIT 台詞, "＠", LOCALS
+	台詞 = %LOCALS:0%
+	RESULTS = %LOCALS:1%
+ENDIF
+RETURNF 台詞
+
+;ツボ振りの呟きを表示する関数
+@TOBA_DEALER_TWEET(L_FEED, 状況, NUM_A, NUM_B, SUB = 0)
+;L_FEED：表示分類 BIT0 ONでウエイトあり BIT1 ONでCLEARLINE BIT2 ONで必ず表示
+#DIM NUM_A
+#DIM NUM_B
+#DIM SUB
+#DIM L_FEED
+#DIM EFFECT
+#DIM L_COUNT
+#DIMS エフェクト = "", "顔絵_ざわ", "顔絵_ぐにゃあ"
+#DIMS 状況
+#DIMS 表情
+#DIMS MESSAGE
+#DIMS MESSAGE_PRINT, 50
+#DIMS RESOURCE
+EFFECT = 0
+MESSAGE = %DEALER_TALK_STRINGS(状況, NUM_A, NUM_B, SUB)%
+SIF MESSAGE == ""
+	RETURN 0
+表情 = %RESULTS%
+LOCAL = LINECOUNT
+;表示部分は@SP_TALKのカスタム
+IF !顔絵付きメッセージ || STRFIND(状況, "煽り") > -1
+	SIF FLAG:口上色
+		SETCOLOR 0xD37CD0
+	SPLIT MESSAGE, "/", MESSAGE_PRINT
+	FOR L_COUNT, 0, RESULT
+		PRINTFORML %MESSAGE_PRINT:L_COUNT%
+	NEXT
+	RESETCOLOR
+	SIF GETBIT(L_FEED, 0)
+		WAIT
+ELSE
+	キャラ画像表示サイズ比 = 100
+	VARSET MESSAGE_PRINT
+	SIF FLAG:マルチサイズ
+		デフォルトキャラ画像横幅 = 180
+	RESOURCE = %\@ 状況 == "勝負！" ? SAI_RESULT # 顔絵_はだけ_%表情%_MOB_95 \@%
+	CALL IMAGE_SET(RESOURCE, 0, 0, キャラ画像表示サイズ比, 0)
+	SIF EFFECT
+		CALL IMAGE_SET(エフェクト:EFFECT, 0, 0, キャラ画像表示サイズ比, 1)
+	MESSAGE = %SPTALK整形(MESSAGE)%
+	SPLIT MESSAGE, "/", MESSAGE_PRINT
+	FOR L_COUNT, 0, RESULT
+		SIF L_COUNT != 0 || EFFECT
+			CALL DUMMY_SET(0, 0, キャラ画像表示サイズ比, L_COUNT)
+		TEMP_HTML:L_COUNT += @"<font color='#0xD37CD0'>%MESSAGE_PRINT:L_COUNT%</font>"
+	NEXT
+	CALL SIMULTANEOUS_IMAGE_DISPLAY(0, 0, 1, -1)
+	IF GETBIT(L_FEED, 0)
+		PRINTW 
+	ELSE
+		PRINTL
+	ENDIF
+ENDIF
+SIF GETBIT(L_FEED, 1)
+	CLEARLINE LINECOUNT - LOCAL
+RETURN 1
+
+;ツボ振りの呟きと表情を決める式中関数
+@DEALER_TALK_STRINGS(状況, NUM_A, NUM_B, SUB)
+#FUNCTIONS
+#DIM NUM_A
+#DIM NUM_B
+#DIM BIAS
+#DIM SUB
+#DIM POS
+#DIM 初回
+#DIMS 賭け = "Even", "Odds"
+#DIMS 状況
+#DIMS 台詞
+#DIMS 候補
+#DIMS 呼称
+呼称 = %\@ TALENT:MASTER:性別 == 2 ? fella # darling \@%
+POS = NUM_A - NUM_B
+RESULTS = 通常
+台詞 = 
+SELECTCASE 状況
+	;チンチロリン台詞
+	;ツボ振り挨拶
+	CASE "挨拶"
+		STRDATA 台詞
+			DATAFORM 「Looks like all the players are in...」/「I see %BAKUTO_NAME_TR:5% and %BAKUTO_NAME_TR:6% will be joining us as well. \@ 初回 == DAY ? You feel like you wanna keep going, eh ladies?」/「Let's all have fun together once again, shall we?」 # First time here, ladies?」/「Make sure you have lots of fun today, y'hear?」\@
+			DATAFORM 「Alrighty, guess we can get started now.」/「\@ 初回 == DAY ? I'll act as your humble dealer today and shake the cup for ya lot.」/「We ain't got enough people here to do it, anyhow.」 # I'll be acting as your dealer once again... I'm not much of a celebrity, so I think there's no need to introduce myself.」/「After all, I'm but another resident of the mountain.」/「Pleased to meet y'all.」 \@
+			DATAFORM 「Well then fellas, you ready to game?」/「Before we begin, lemme make this clear - %SPLIT_G("set your feelings aside no matter the result:win or lose, no hard feelings:we bear no grudges here whether you win or lose")%. Alright?」/「What matters is that we all get our share of fun, that's what counts!」
+		ENDDATA
+		初回 = DAY
+	;ツボ振り直前
+	CASE "スタート口上"
+		SELECTCASE SUB
+			CASE 0 ;showdown accepted
+				STRDATA 候補
+					DATAFORM 「That's the spirit!」
+					DATAFORM 「Now we're talking!」
+					DATAFORM 「Alright! I'm already chomping at the bit!」
+					DATAFORM 「I was sure you would take me up on it, %呼称%!」
+					DATAFORM 「I knew you had it in you, %呼称%!」
+					DATAFORM 「Now the fun part begins!」
+				ENDDATA
+				台詞 = %候補%/「Well then, you ready? Best of luck!」
+			CASE 1 ;first speech on subsequent rounds
+				候補 = %TEXTR(@"「...Well, enough with the pleasantries now.」/「...I guess you all had enough of my smack talk by now, so I'll make it short.」/「...Now, who's up for some more?」/「Are we up for another game? That's what I thought.」")%
+				台詞 = %候補%/「Without further ado, let's get the fun started!」
+			CASEELSE
+				STRDATA 台詞
+					DATAFORM 「Alright, let's %\@ RAND:2 ? give it another go # keep that party going \@%!」
+					DATAFORM 「Yup-yup, %\@ RAND:2 ? the fun's just about to begin # there's still plenty of games to be had \@%!」
+					DATAFORM 「Great, I think we're all starting to get up to speed, ain't we?」
+					DATAFORM 「Come now, why don't we have another game?」
+					DATAFORM 「Let's keep it rollin', eh?」
+					DATAFORM 「That's it, that's it, onto the next game!」
+					DATAFORM 「Come on now guys, place your bets and guess it right, don't be shy!」
+					DATAFORM 「Dear, I can keep playing with you as much as your heart desires!」
+					DATAFORM 「Now-now, who's ready for more? All in? Great!」
+				ENDDATA
+		ENDSELECT
+	CASE "構え口上" ;rolling the dice
+		STRDATA 台詞
+			DATAFORM 「The cup's down, ready?」
+			;not sure about these two, but I think she's spoiling the result pretty much
+			DATAFORM 「%CH_PRIZE_TR:NUM_A:NUM_B%, going in...」
+			DATAFORM 「Rolling with %CH_PRIZE_TR:NUM_A:NUM_B%...」
+			DATAFORM 「The dice are in!」
+		ENDDATA
+	;ツボかぶり
+	CASE "被り口上" ;ask to make a bet on even or odds
+		;RESULTS =  賽振り
+		台詞 = 「There it is%\@ SUB ? , Even or Odds, call it # ! They're in, place your bets \@%!」
+	;丁半選択時合いの手
+	;NUM_A=丁選択人数 NUM_B=半選択人数 SUB=張り方 0=丁 1=半
+	CASE "煽り" ;dealer hype, placing the bets
+		BIAS = ((POS > 0 && !SUB) || (POS < 0 && SUB))
+		IF ABS(POS) > 2 && BIAS
+			台詞 = 「Huuuh?! A bet on %賭け:SUB%%COND_STR(@", agaiiin", ABS(POS) > 3)%?!」/
+		ELSE
+			台詞 = 「%SPLIT_G("I see a bet on:We got a bet on")% %賭け:SUB%, I repeat, a bet on %賭け:SUB%!」/
+		ENDIF
+		SELECTCASE ABS(POS)
+			CASE 0
+				STRDATA 候補
+					DATAFORM 「Even or Odds, Odds or Even?! Come on, come on, make your choice!」
+					DATAFORM 「Go on, choose either or both!」/「Any bets on %賭け:(!SUB)%? %賭け:SUB%, anyone?」
+					DATAFORM 「Would someone bet on %賭け:(!SUB)%? Or maybe %賭け:(!SUB)%? Don't make me wait!」
+					DATAFORM 「Even or Odds, place your bets RIGHT NOW!」
+				ENDDATA
+			CASE 1, 2
+				STRDATA 候補
+					DATAFORM 「Any more bets on %賭け:(POS > 0)%? What about %賭け:(!SUB)%? You decide!」
+					DATAFORM 「Good bets, good bets! Would anybody put some on %賭け:(POS > 0)%?」/「Even or Odds, Odds or Even?! Come on, come on, make your choice!」
+					DATAFORM 「Come on come on, keep the bets coming! Place some on %賭け:(!SUB)% too, it might win!」
+					DATAFORM 「Even or Odds, call it, come on!」/「Any bets on %賭け:(POS > 0)%? %賭け:(!SUB)%, anyone?」
+				ENDDATA
+			CASE 3, 4, 5
+				STRDATA 候補
+					DATAFORM 「Everyone just gonna ignore %賭け:(POS > 0)% like that? %賭け:(POS > 0)%, folks!」/「%賭け:(POS > 0)% is sitting all lonely out there!」
+					DATAFORM 「Oi-oi, %\@ BIAS ? no one's gonna bet on %賭け:(POS > 0)% or something? # we finally got a bet going on %賭け:(POS > 0)%, is that all you got? \@%!」/「Come on folks, come on, anyone wants to bet on %賭け:(POS > 0)%? %賭け:(POS > 0)%, hurry up folks!」
+					DATAFORM 「What the heck, whaaaat?! %\@ BIAS ? No one likes %賭け:(POS > 0)% or what? # %賭け:(POS > 0)% just got its first bet, at last! \@%」/「Do I hear a bet on %賭け:(POS > 0)%? No? C'mon, someone please place a big fat bet on %賭け:(POS > 0)%!」
+					DATAFORM 「Hey hey, wait a sec! %賭け:(POS > 0)% ain't got enough bets yet! See?」/「Come on folks, %\@ BIAS ? it's no fun if everybody chooses the same # %賭け:(POS > 0)% can use some more bets, keep it coming \@%!」/「Are we going to bet on %賭け:(POS > 0)% or what?! I can't hear you!」
+				ENDDATA
+			CASE 6
+				RESULTS = 怒り
+				STRDATA 候補
+					DATAFORM 「Hey now, hey, hey! What's the big idea, what the hell's this?!」/「You guys conspiring with each other or something? 'Cos it certainly looks like it to me!」
+					DATAFORM 「Oi-oi, you gotta be kidding me right now!」/「If it ain't the saddest state of the betting pool, I don't know what this is!」/「Is that the kind of game you wanna play? Huh?!」/「You call this gambling? This dull farce?!」
+					DATAFORM 「Oh, come on you guys! Gimme a break already, geez!」/「How on earth did it get so lop-sided?!」
+					;added
+					DATAFORM 「Come on guys, stop screwing around, seriously...」/「This ain't betting, this is just... a clown show, is what it is!!!」
+				ENDDATA
+		ENDSELECT
+		台詞 = %台詞%%候補%
+	;ツボを開く直前
+	CASE "予想終了" ;bets are in
+		LOCALS:9 = %SPLIT_G("Here we go!:Let's see it!:Let the game begin!:It's show time!:The game is on!")%
+		;サシ勝負
+		IF SUB
+			台詞 = 「%TEXTR(@"%賭け:NUM_A%, is that right?/%賭け:NUM_A%, you sure?/The bets are all in. %賭け:NUM_A%, then?/%賭け:NUM_A%... Looks like we've made a decision here, folks.")%」
+			STRDATA 候補
+				DATAFORM 「Who will win, me or you, %呼称%?」/「...%LOCALS:9%!」
+				DATAFORM 「Is that so, %呼称%? So that's gonna be your move, huh.../「Very well, %TOLOWER(LOCALS:9)%!」
+				DATAFORM 「You seem fully determined, %呼称%, I sure love to see it...」/「Alrighty, %TOLOWER(LOCALS:9)%!」
+			ENDDATA
+			台詞 = %台詞%/%候補%
+		;通常
+		ELSEIF ABS(POS) < 7
+			台詞 = 「Looks like we got equal bets between Even and Odds.」/「...%LOCALS:9%!」
+		;全員同じ張り方
+		ELSE
+			RESULTS = 怒り
+			台詞 '= @"「Aww man... Things just went out of hand, but what can you do.」/"
+			;not sure about these two
+			台詞 += @"「This ain't gonna match the rate of this setting at all, but so be it.」/"
+			台詞 += @"「Payout from %賭け:(POS > 0)% will be taken from our establishment's budget.」/"
+			台詞 += @"「HOWEVER... It doesn't mean you can just game the system willy-nilly.」/"
+			台詞 += @"「The rules will be upheld, and there's that.」/"
+			台詞 += @"「So even if you manage to win you ain't gonna break the bank, so forget about it!」"
+		ENDIF
+	;賽の目表示
+	CASE "勝負！" ;reveal
+		台詞 = 「%CH_PRIZE_TR:NUM_A:NUM_B%!!!」
+		LOCALS:9 = %\@ !SUB ? Even # Odds \@%
+		SIF RAND:2
+			台詞 = %台詞%/「We got %LOCALS:9% everyone%COND_STR(@", I repeat, we got %LOCALS:9%", !RAND:4)%!」
+	CASE "継続口上" ;ask to continue
+		IF NUM_A
+			STRDATA 候補
+				DATAFORM 「Hey %呼称%, you ain't just gonna quit on us while you're ahead, right?」
+				DATAFORM 「Hey %呼称%, you ain't one of those who runs away after a single win, right?」
+				DATAFORM 「Hey %呼称%, %\@ NUM_B ? it just got you all excited, didn't it # I see you're getting into the swing of things, ain't that right \@%?」
+				DATAFORM 「%\@ NUM_B ? You're on a roll today, ain'tcha # Looks like you still got it, eh \@% %呼称%?」
+			ENDDATA
+		ELSE
+			STRDATA 候補
+				DATAFORM 「It wouldn't be pleasant to just quit here, now would it?」
+				DATAFORM 「Ohh %呼称%, %呼称%... Don't you think it's time for you to change gears and win back?」
+				DATAFORM 「I know what you're thinking... "I gotta turn the game around and come back from this", ain't that right %呼称%?」
+				DATAFORM 「Gonna get 'em next time, right?」/「That kind of mindset is key when it comes to gambling, you know.」
+				DATAFORM 「Bad luck, but what can you do... Doesn't mean you're stopping now, right?」/「It takes a lot of spunk to take a gamble like that.」/「So come on, show it to us!」
+			ENDDATA
+		ENDIF
+		台詞 = %候補%/「%TEXTR("Surely you wanna keep going, I take it/How about another game/One more... How about it")%?」
+	;サシ勝負持ちかけ
+	CASE "サシ持ちかけ"
+		;showdown offer
+		STRDATA 候補
+			DATAFORM 「Nothing beats the high after blowing everyone out of the water, am I right %呼称%?」
+			DATAFORM 「My my, looks like our %呼称% made it big this time!」
+			DATAFORM 「Looks like fortune smiles upon you today, my %呼称%. Lucky you!」
+		ENDDATA
+		台詞 = %候補%/「Say, how about you wager that prize money in a showdown with me?」/「Double your prize, or lose it all.」
+		STRDATA 候補
+			DATAFORM 「Bet it all on a single roll of the dice, plain and simple, right?」
+			DATAFORM 「Sounds like an exciting gamble, don'tcha think?」
+			DATAFORM 「There's your chance! Smells like a big profit, doesn't it?」
+		ENDDATA
+		台詞 = %台詞%/%候補%/「What say you?」
+	;	ハハ
+	;（ ﾟωﾟ ）お断りします
+	CASE "サシお断り" ;refuse showdown
+		RESULTS = 泣き
+		候補 = 「Oh... Huh.」/「%TEXTR("That's a shame./What a pity./Oh well, that's good reasoning, I guess./Heh, giving me a cold shoulder, eh?/Looks like I got turned down, dear me.")%」
+		STRDATA 台詞
+			DATAFORM 「It is what it is.」
+			DATAFORM 「No matter, I'll be looking forward to the next one.」
+			DATAFORM 「Fair enough, there's always a next one.」
+			DATAFORM 「You're one sly %呼称% to refuse a woman's offer, you know that?」
+		ENDDATA
+		台詞 = %候補%/%台詞%
+	;サシ勝負あなたの勝ち
+	CASE "サシで負け" ;player wins, dealer loses
+		SELECTCASE RAND:4
+			CASE 0, 1
+				STRDATA 台詞
+					DATAFORM 「Aww dear, that's my defeat, fair and square.」/「I'm no match for you it seems, %呼称%.」
+					DATAFORM 「Grats, well done!」/「It's your win this time, my %呼称%.」/「Here, you've earned it!」
+					DATAFORM 「Woow, it's been a while since I got smashed to pieces like this...」/「That was really good, %呼称%. The thrill alone was well worth it.」
+					DATAFORM 「Ahahaha, you reaaaally don't pull your punches, do you %呼称%?」/「Treat me to something with that prize money you got sometime, alright?」
+				ENDDATA
+			CASE 2, 3
+				RESULTS = 泣き
+				STRDATA 台詞
+					DATAFORM 「...Ohh man.」/「I got beaten to the punch, eh?」
+					DATAFORM 「Ahaha...」/「It's my loss, it seems...」/「I done goofed it all up!」
+					DATAFORM 「Ouch, oof...」/「And I really wanted some extra pocket money, too...」
+				ENDDATA
+			CASE 4
+				RESULTS = 怒り
+				STRDATA 台詞
+					DATAFORM 「...Tsk!」/「I screwed up big time, sure I did.」
+					DATAFORM 「...Dammit!」/「%SPLIT_G("I'm getting rusty:I'm losing my touch:My luck is running out")%, alright.」
+				ENDDATA
+		ENDSELECT
+	;サシ勝負あなたの負け
+	CASE "サシで勝ち" ;dealer wins, player loses
+		STRDATA 台詞
+			DATAFORM 「So sorry about that!」/「But that's the game for ya, and we had a deal, so I'll eagerly help myself to it!」
+			DATAFORM 「Yesss!!!」/「...All the money I win here goes straight into my pocket.」/「It's the reason why I'm so fired up, y'see.」
+			DATAFORM 「You were so close, too bad!」/「It's my payday this time!」
+			DATAFORM 「Shame, shame. %SPLIT_G("Looks like your luck ran out at the worst possible moment,:No one's luck lasts forever, remember that")% %呼称%.」
+			DATAFORM 「Ahaha, you sure missed out on some big prize money.」/「That gotta hurt, my bad.」
+			DATAFORM 「Ahaha, easy moneyyy, lucky me!」/「Now I feel like going for a nice expensive drink♪」
+			;added
+			DATAFORM 「Easy come, easy go, as they say.」/「Well, cheer up, it's no reason to feel down!」/「I'm sure you'll come back from this eventually.」
+			DATAFORM 「When the deck is stacked so far in your favor, and you still lose, that must be very painful.」/「I really am sorry, %呼称%♪」
+		ENDDATA
+ENDSELECT
+RETURNF 台詞
+
+;ダイス画像を一個一個丁寧に手作りする関数
+;標準でダイス３個、ARGが真ならダイス２個の画像をセット
+;ARG == 2なら丁半用背景画像をセット
+@TOBA_CREATE_DICEIMAGE(DICE:0, DICE:1 = 0, DICE:2 = 0, ARG = 0)
+#DIM DICE,3
+#DIM GID
+#DIM L_COUNT
+#DIM POS_X, 3 = 14, 67, 114
+#DIM POS_Y, 3 = 109, 125, 91
+#DIM RAND_X
+#DIM RAND_Y
+IF GID
+	SPRITEDISPOSE "SAI_RESULT"
+	GDISPOSE GID
+ENDIF
+GID= 0
+CALL COMPOSE_IMAGE(GID, @"%\@ ARG == 2 ? CH_BASE # ダミー \@%")
+FOR L_COUNT, 0, 3
+	SIF L_COUNT == 1 && ARG
+		CONTINUE
+	;表示位置にばらつきを持たせる
+	RAND_X = ARG == 2 ? RAND(1, 16) - 9 # RAND(1, 7) - 4 
+	RAND_Y = ARG == 2 ? RAND(1, 16) - 9 # RAND(1, 7) - 4
+	CALL COMPOSE_IMAGE(GID, @"D_SURF_{DICE:L_COUNT}", POS_X:L_COUNT + RAND_X, POS_Y:L_COUNT + RAND_Y, 46, 55)
+NEXT
+SPRITECREATE "SAI_RESULT", GID
+RETURN
+
+;コマ札変動を表示位置揃えて表示する関数
+@TOBA_RESULT_PRINT(TGT, BP, ARG = 0)
+#DIM BP
+#DIM NUM
+#DIM TGT
+#DIM COLOR
+#DIMS STRINGS
+COLOR = BP > 0 ? C_GREEN # C_D_RED
+STRINGS = %BAKUTO_NAME_TR:TGT% \@ BP > 0 ? wins%" "% # loses \@%" "%
+;custom code
+;NUM = (26 + ARG) - STRLENSU(BAKUTO_NAME_TR:TGT)
+;STRINGS = %STRINGS%%UNICODE(0x3000) * NUM%
+STRINGS = %STRINGS, 26 + ARG, LEFT%
+PRINTFORM %STRINGS%
+CALL COLORMESSAGE(@"%\@ BP > 0 ? ＋ # － \@%{ABS(BP)}", COLOR, 1, 1)
+RETURN
+
+;持ちゴマと遊戯回数を表示する関数
+@PRINT_TOBA_STATE(回数, レート, ウエイト)
+#DIM 回数
+#DIM レート
+#DIM ウエイト
+#DIM レート色 = C_AQUA, C_WHITE, C_YELLOW, C_D_PINK
+#DIMS レート表示 = "Low", "Default", "High", "Max"
+DRAWLINE
+PRINTFORML ～%NUM_COUNT(回数, "pos", 1)% Round～　　　　　　Current Time - %時刻表示(TIME)% 
+PRINTFORML 
+SIF ウエイト
+	TWAIT 750, 0
+PRINTFORML %"Your Chips:", 26, LEFT%%三桁区切(KOMAFUDA:MASTER)%
+PRINTFORM Current Rate: 
+CALL COLORMESSAGE(レート表示:レート, レート色:レート, 1, 1)
+PRINTFORML 
+RETURN
+
+;配列を{ARG}個のダイス目で埋める参照関数
+@TOBA_FILL_DICE(ダイス目, ARG)
+#DIM REF ダイス目, 0
+#DIM L_COUNT
+FOR L_COUNT, 0, ARG
+	ダイス目:L_COUNT = RAND(1, 7)
+NEXT
+RETURN
+
+;賭場セッティング関数
+@TOBA_SETUP
+#DIM 設定済
+#DIM 代入済
+#DIM L_COUNT
+#DIM KOMA
+#DIMS 種族, 3
+#DIMS 呼び名
+;一日一回所持金確認,モブ子博徒定義
+SIF 設定済 == DAY
+	RETURN
+設定済 = DAY
+;NPC持ちゴマはあなた所持金の４割に設定
+;パッチ取り込まれたらもう少しきちんと処理したい
+KOMA = MONEY / 1000 * 4
+KOMA = MAX(KOMA, 500) 
+VARSET KOMAFUDA, KOMA, 1, 7
+
+VARSET 種族
+FOR L_COUNT, 0, 2
+	DO
+		種族:L_COUNT = %TEXTR("イナバ/妖精/白狼天狗/鬼/化け狸/化け猫/化け狐/茨たぬき/販売員")%
+	LOOP 種族:0 == 種族:1
+	CALL モブ店員画像作成(25 + L_COUNT, 種族:L_COUNT)
+	BAKUTO_WORDCOLOR:(5 + L_COUNT) = モブ子店員口上色:(25 + L_COUNT)
+	BAKUTO_NAME_TR:(5 + L_COUNT) '= 種族:L_COUNT
+NEXT
+FOR L_COUNT, 0, 2
+	;custom code
+	IF BAKUTO_NAME_TR:(5 + L_COUNT) == "茨たぬき"
+		BAKUTO_NAME_TR:(5 + L_COUNT) = Tanuki Henchman
+	ELSE
+		BAKUTO_NAME_TR:(5 + L_COUNT) '= RACE_TR(BAKUTO_NAME_TR:(5 + L_COUNT))
+	ENDIF
+	;set the player name
+	BAKUTO_NAME_TR:0 = %CALLNAME:MASTER%
+NEXT
+;ゲーム中に１回ニ次元配列変数を定義
+SIF 代入済
+	RETURN
+代入済 = 1
+;丁半博打出目の呼称定義
+CH_PRIZE:1:0 '= "", "ピンゾロの丁", "イチニの半", "サンミチの丁", "ヨイチの半", "グイチの丁", "イチロクの半"
+CH_PRIZE:2:0 '= "", "イチニの半", "ニゾロの丁", "サニの半", "シニの丁", "グニの半", "ニロクの丁"
+CH_PRIZE:3:0 '= "", "サンミチの丁", "サニの半", "サンゾロの丁", "シソウの半", "グサンの丁", "サブロクの半"
+CH_PRIZE:4:0 '= "", "ヨイチの半", "シニの丁", "シソウの半", "シゾロの丁", "グシの半", "シロクの丁"
+CH_PRIZE:5:0 '= "", "グイチの丁", "グニの半", "グサンの丁", "グシの半", "ゴゾロの丁", "ゴロクの半"
+CH_PRIZE:6:0 '= "", "イチロクの半", "ニロクの丁", "サブロクの半", "シロクの丁", "ゴロクの半", "ロクゾロの丁"
+;custom code
+CH_PRIZE_TR:1:0 '= "", "1-1 Even", "1-2 Odds", "1-3 Even", "1-4 Odds", "1-5 Even", "1-6 Odds"
+CH_PRIZE_TR:2:0 '= "", "2-1 Odds", "2-2 Even", "2-3 Odds", "2-4 Even", "2-5 Odds", "2-6 Even"
+CH_PRIZE_TR:3:0 '= "", "3-1 Even", "3-2 Odds", "3-3 Even", "3-4 Odds", "3-5 Even", "3-6 Odds"
+CH_PRIZE_TR:4:0 '= "", "4-1 Odds", "4-2 Even", "4-3 Odds", "4-4 Even", "4-5 Odds", "4-6 Even"
+CH_PRIZE_TR:5:0 '= "", "5-1 Even", "5-2 Odds", "5-3 Even", "5-4 Odds", "5-5 Even", "5-6 Odds"
+CH_PRIZE_TR:6:0 '= "", "6-1 Odds", "6-2 Even", "6-3 Odds", "6-4 Even", "6-5 Odds", "6-6 Even"
+;回り胴順番の定義：第一引数 0=あなた 1=山童 2=河童 3=鴉天狗 4=蟒蛇が親、第二引数 FOR構文ループカウント
+TOBA_ROTATE:0:0 = 1, 2, 3, 4
+TOBA_ROTATE:1:0 = 2, 3, 4, 0
+TOBA_ROTATE:2:0 = 3, 4, 0, 1
+TOBA_ROTATE:3:0 = 4, 0, 1, 2
+TOBA_ROTATE:4:0 = 0, 1, 2, 3
+RETURN

@@ -1,0 +1,177 @@
+;custom function to add a menu with pages for the panty collection + ZUN order compatibility
+@QoL_Display_Collection_Formatted
+#DIM C_ID
+#DIM 総数
+#DIM 着用可能数
+#DIM 未所持数
+;本当は999ではなくCHARANUM使いたい
+#DIM 未所持数配列,キャラクタ数上限
+#DIM キャラ配列,キャラクタ数上限
+#DIM SortedCharas,キャラクタ数上限
+#DIM PAGE_START,500
+#DIM PAGE_COUNT = 0
+#DIM NEXT_START = 1
+#DIM ENTRYLINESTART
+#DIM SortLeastObtained
+
+#DIM nPageLength
+
+未所持数配列:0 = -1
+VARSET RESULT
+総数 = 0
+着用可能数 = 0
+PAGE_COUNT = 0
+PAGE_START:0 = 0
+REDRAW 0
+
+IF FLAG:並び替え
+	CALLF CHARASORT_EX_TR
+	ARRAYCOPY "RESULT", "SortedCharas"
+ENDIF
+
+FOR LOCAL,0,CHARANUM
+	IF FLAG:並び替え
+		C_ID = SortedCharas:LOCAL
+	ELSE
+		C_ID = LOCAL
+	ENDIF
+	IF CFLAG:C_ID:出禁 == 2 || CFLAG:C_ID:IS_DUPLICATE
+		キャラ配列:LOCAL = -1
+		未所持数配列:LOCAL = MAXPANTS
+		CONTINUE
+	ENDIF
+	FOR LOCAL:1,0,MAXPANTS	
+		SIF GET_INT(C_ID, "下半身下着_ずらし可能", LOCAL:1, "コレクション表示可能")
+			着用可能数++
+	NEXT
+	CALL CHECK_COLLECTION(C_ID)
+    ;FLAG:獲得パンツ種数 += RESULT:1 
+	未所持数 = RESULT:2 - RESULT:1
+	総数 += RESULT:0
+	;0入ってるとARRAYMSORTが機能しないので-1を代わりに入れる
+	未所持数配列:LOCAL = 未所持数 ? MAXPANTS - 未所持数 # MAXPANTS
+	キャラ配列:LOCAL = C_ID
+NEXT
+SIF SortLeastObtained && FLAG:パンツ収集状況タイプB
+	ARRAYMSORT 未所持数配列,キャラ配列
+	
+;get the page length
+LOCAL:9 = LINECOUNT
+nPageLength = 0
+DO
+	LINESTART = LINECOUNT
+	PRINTL
+	PRINTL
+	FOR C_ID, PAGE_START:PAGE_COUNT, CHARANUM
+		NEXT_START = C_ID + 1
+		SIF キャラ配列:C_ID <= 0
+			CONTINUE
+		ENTRYLINESTART = LINECOUNT
+		PRINTL
+		PRINTL
+		IF FLAG:パンツ収集状況タイプB
+			CALL DISPLAY_COLLECTION_B(キャラ配列:C_ID)
+		ELSE
+			CALL DISPLAY_COLLECTION(キャラ配列:C_ID)
+			IF !RESULT:1
+				PRINTL
+			ENDIF
+		ENDIF
+		IF LINECOUNT - LINESTART > 45 ;if the last chara printed doesn't fit delete it and push it to the next page
+			NEXT_START -= 1
+			CLEARLINE LINECOUNT - ENTRYLINESTART
+			BREAK
+		ENDIF
+	NEXT
+	PAGE_START:(PAGE_COUNT + 1) = NEXT_START ;index the first entry each page so we know where to start when going backwards
+	PAGE_COUNT ++
+	SIF NEXT_START == CHARANUM
+		BREAK
+	nPageLength ++
+LOOP 1
+
+CLEARLINE LINECOUNT - LOCAL:9
+PAGE_COUNT = 0
+
+DO
+	LINESTART = LINECOUNT
+	PRINTL
+	PRINTFORM %@"Total: {総数}    Types: {FLAG:獲得パンツ種数}\@FLAG:パンツ収集状況タイプB ?/{着用可能数}#\@　　Duplicates: {総数 - FLAG:獲得パンツ種数} "%
+PRINTFORM %COND_STR(@"   Dirtiness: {PANTY_REWORK_DIRTY()}/{PANTY_REWORK_MAX_DIRTY()} ",PANTY_REWORK_DIRTY())%
+	SIF 総数 - FLAG:獲得パンツ種数
+		PRINTBUTTON "[Sell]", 11
+	PRINTL
+
+	FOR C_ID, PAGE_START:PAGE_COUNT, CHARANUM
+		SIF キャラ配列:C_ID <= 0
+			CONTINUE
+		NEXT_START = C_ID + 1
+		ENTRYLINESTART = LINECOUNT
+		PRINTL
+		PRINTFORML 【%CALLNAME:(キャラ配列:C_ID)%】
+		IF FLAG:パンツ収集状況タイプB
+			CALL DISPLAY_COLLECTION_B(キャラ配列:C_ID)
+		ELSE
+			CALL DISPLAY_COLLECTION(キャラ配列:C_ID)
+			IF !RESULT:1
+				SETCOLOR C_GRAY
+				PRINTFORML None
+				RESETCOLOR
+			ENDIF
+		ENDIF
+		IF LINECOUNT - LINESTART > 45 ;if the last chara printed doesn't fit delete it and push it to the next page
+			NEXT_START -= 1
+			CLEARLINE LINECOUNT - ENTRYLINESTART
+			BREAK
+		ENDIF
+	NEXT
+	;PAGE_START:(PAGE_COUNT + 1) = NEXT_START ;index the first entry each page so we know where to start when going backwards
+	FOR LOCAL, (LINECOUNT - LINESTART), 46
+		PRINTL
+	NEXT
+	DRAWLINE
+
+	PRINTFORM %@" Page {PAGE_COUNT + 1}/{nPageLength + 1}",8, LEFT%
+	PRINTFORML %@"({PAGE_START:PAGE_COUNT}-{NEXT_START - 1})",10,LEFT%
+	PRINTFORM %" " * 2%
+	
+	PRINTBUTTON @"%"Prev page",15,LEFT%", 888
+	PRINTBUTTON @"%"Next page",15,LEFT%", 222
+	
+	IF FLAG:パンツ収集状況タイプB
+		PRINTBUTTON @"%@"[997] Sort by \@SortLeastObtained ? default order # least owned\@",75,RIGHT%", 997
+		SETCOLOR C_L_GREEN
+	ELSE
+		PRINTFORM %" "*75%
+	ENDIF
+	PRINTBUTTON @"%"[998] Show Unobtained",25,RIGHT%", 998
+	RESETCOLOR
+	PRINTBUTTON @"%"[999] Return",15,RIGHT%", 999
+	INPUT
+
+	SELECTCASE RESULT
+	CASE 11
+	IF RESULT == 11 && (総数 - FLAG:獲得パンツ種数) != 0
+	;CALL SPEND_COLLECTION
+	CALL PANTY_REWORK_SPEND_COLLECTION
+	;PRINTFORMW Pairs Sold: {RESULT:0} for {RESULT:1}.
+	HTML_PRINT @"Paris Sold: {RESULT:0} for %MONEYSTR_HTML(RESULT:1)%"
+	WAIT
+	MONEY += RESULT:1
+		総数 -= RESULT:0
+	ENDIF
+	CASE 222, 888
+		PAGE_COUNT = PAGE_HANDLE(RESULT, 888, PAGE_COUNT, 0, nPageLength)
+	CASE 997
+		IF FLAG:パンツ収集状況タイプB
+			SortLeastObtained = !SortLeastObtained
+			RESTART
+		ENDIF
+	CASE 998
+		FLAG:パンツ収集状況タイプB = !FLAG:パンツ収集状況タイプB
+		RESTART
+	CASE 999
+		RETURN 総数
+	ENDSELECT
+	CLEARLINE LINECOUNT - LINESTART
+LOOP 1

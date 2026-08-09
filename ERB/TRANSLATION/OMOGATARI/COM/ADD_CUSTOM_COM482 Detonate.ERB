@@ -1,0 +1,110 @@
+@ADD_CUSTOM_COM482
+#DIM nInput
+PRINTFORML Who do you want to explode?
+
+FOR LOCAL,0,CHARANUM
+    SIF CFLAG:LOCAL:300 == SUKIMA()
+        CONTINUE
+    SIF HasBionicPart(LOCAL,132)
+        PRINTFORMLC [{LOCAL,3}] - %CALLNAME:LOCAL%
+NEXT
+PRINTL
+PRINTFORML [-1] - Cancel
+INPUT
+nInput = RESULT
+SELECTCASE RESULT
+CASE IS < 0, IS >= CHARANUM
+    RETURN
+CASEELSE
+    SIF !HasBionicPart(nInput,132)
+        RETURN
+    PRINTFORMW You detonate the bomb inside %CALLNAME:nInput%
+    CALL SUICIDE_BOMB(nInput,232)
+ENDSELECT
+TIME ++
+RETURN 1
+
+@SUICIDE_BOMB(ARG,nBomb=0)
+#DIM COM481_DMG
+#DIM nBomb
+#DIM COM481_PREV
+COM481_PREV = EQUIP:ARG:Weapon
+CALLF EquipWEapon(ARG,269)
+IF nBomb
+    DT_SELECT "Hediff", @"chara = {ARG} and type = {nBomb}"
+    DT_ROW_REMOVE "Hediff", RESULT:1
+ENDIF
+
+COM481_DMG = 8000
+PLAYSOUND "firearms/Frag Grenade.wav"
+VARSET lcDamageDeal
+FOR LOCAL,0,CHARANUM
+    IF DT_EXIST("lcCombatants")
+        SIF !GetCombatant(LOCAL)
+            CONTINUE
+        SIF DT_CELL_GET("lcCombatants", GetCombatant(LOCAL), "side", 1) != DT_CELL_GET("lcCombatants", GetCombatant(ARG), "side", 1)
+            CONTINUE
+    ELSE
+        SIF CFLAG:LOCAL:300 != CFLAG:ARG:300
+            CONTINUE
+    ENDIF
+    SIF IsDead:LOCAL:0
+        CONTINUE
+    SELECTCASE LOCAL
+    CASE ARG
+        lcDamageDeal:LOCAL:0 += COM481_DMG
+    CASEELSE
+        SELECTCASE RAND(100)
+        CASE IS < 5
+        ;no damage
+        COM481_DMG = 0
+        CASE IS < 25
+        ;quarter
+        COM481_DMG = COM481_DMG*RAND(25,51)/100
+        CASE IS < 40
+        ;half
+        COM481_DMG = COM481_DMG*RAND(50,101)/100
+        CASEELSE 
+        ;50% of getting full damage
+        ENDSELECT
+        lcDamageDeal:LOCAL:0 += COM481_DMG
+    ENDSELECT
+    CALLF BroadDamage((LOCAL),"fullbody",COM481_DMG,3,(ARG),"bomb")
+    CALLF BroadDamage((LOCAL),"fullbody",COM481_DMG,6,(ARG),"bomb")
+    DOWNBASE:LOCAL:0 += lcDamageDeal:LOCAL:0
+NEXT
+
+; LOCAL = PALAM:TARGET:苦痛-COM481_PREV_PAIN
+; PALAM:TARGET:苦痛 = COM481_PREV_PAIN
+; LOCAL = LOCAL*30/100
+; SOURCE:苦痛 = LOCAL
+; SOURCE:反感 = GetWeaponScore(EQUIP:MASTER:Weapon, MASTER)
+; SOURCE:Terror = GetWeaponScore(EQUIP:MASTER:Weapon, MASTER)
+firedWeapon:ARG:0 = 18
+FOR LOCAL,0,CHARANUM
+    CALL CrippleEffects(LOCAL)
+    IF IsDead:LOCAL:0 && HasBionicPart(LOCAL,132)
+        PRINTFORMW The bomb inside %CALLNAME:LOCAL% explodes into a chain reaction!
+        CALL SUICIDE_BOMB(LOCAL,232)
+    ENDIF
+NEXT
+CALLF EquipWEapon(ARG,COM481_PREV)
+CALL FIRE_WEAPON_CHECK_ALL
+
+@ADD_CUSTOM_COM_PRINT482
+#DIM CONST COM_ID = 482
+PRINTFORMC Detonate[{Add_Custom_COM_To_Number(COM_ID),3}]
+RESETCOLOR
+RETURN 1
+
+@ADD_CUSTOM_COM_ABLE482
+#DIM DYNAMIC COM482_COUNT
+;勉強実行判定
+SIF !TFLAG:100
+	RETURN 0
+
+FOR LOCAL,0,CHARANUM
+    SIF HasBionicPart(LOCAL,132)
+        COM482_COUNT++
+NEXT
+RETURN COM482_COUNT

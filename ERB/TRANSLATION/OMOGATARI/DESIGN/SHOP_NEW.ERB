@@ -1,0 +1,1379 @@
+;FileName_SHOP.ERB -------------------------------- Rev1.00
+;起床前メニュー画面表示
+;CALL		SYSTEM
+;ARG		VOID
+;RETURN		VOID
+;COMMENT	
+;----------------------------------------------------------
+@SHOP_NAS
+#DIMS DYNAMIC html ; NAS custom code, html printing for tooltips
+
+;NAS custom code
+;we should not call shop if we are in custom character menu
+IF inSaveTransfer
+	;transfer
+	CALL SaveTransferMenu()
+ELSEIF inCharaCreator
+	PRINTFORMW Due to Eramaker limitations, you will be booted back to the custom character import screen.
+	PRINTFORMW You will then be able to import your characters by going to the Touhou section.
+	inCharaCreator = 2
+	CLEARLINE 99999
+	BEGIN TITLE
+ELSEIF inTrain == 1 || inTrain == 3 || benchMarkStart
+	BEGIN TRAIN
+ELSEIF inTrain == 2
+	;character ID swap
+	CALL UPDATE_TR
+	inTrain = 0
+ENDIF
+
+;NAS: Save transfer
+IF GetSaveType() != SAVE_TRANSFER_CURRENT_BRANCH()
+	SETCOLOR C_RED
+	PRINTFORML WARNING: This save is from %SaveTypeSTR(GetSaveType())% and may not work properly on %SaveTypeSTR(SAVE_TRANSFER_CURRENT_BRANCH())%!
+	PRINTFORML It is recommended to use the【Save Data Transfer】tool before continuing
+	RESETCOLOR
+	FORCEWAIT
+	CALL SaveTransferMenu()
+ENDIF
+
+;mod custom code - turn off
+THIRD_PERSON = 0
+;起床前画面表示中フラグ
+TFLAG:100 = 0
+;---------------------
+;モブ店員画像を一度だけ作成。スマートなやり方ではない。もっといい場所はないだろうか
+;SIF !SPRITECREATED("顔絵_服_通常_MOB_0")
+;	CALL モブ店員画像作成
+;SPTALKで呼ばれたとき、画像がなければ作成にしました
+;---------------------
+;起床時間自動補正、最低睡眠時間は4時間
+;LOCAL:1 = CFLAG:MASTER:就寝時間 - DAY * 1440
+IF 睡眠時間予測(TIME:3) < 240 ;(TIME:3 >= LOCAL:1 && (TIME:3 - LOCAL:1) < 240) || (TIME:3 < 240 && (1440 + TIME:3 - LOCAL:1) < 240) ;bug fix - attempt to fix faulty sleeping time clock
+	PRINTL The sleeping period is too short. At least 4 hours of sleep is needed.
+	CALL 最低睡眠時間設定()
+	PRINTFORMW Waking time has been set to (%時刻表示(TIME:3)%).
+ENDIF
+;---------------------
+CUSTOMDRAWLINE ━
+;qol custom code, playthrough count + current year
+LOCAL:15 = (DAY:0 / 125) + 1
+html '= @"\@ FLAG:周回数 ? NG:{FLAG:周回数},%" "%#\@Day {DAY}, %PRINT_DATE_F(DAY,1)% (Year {LOCAL:15}) (%GET_DAY_TR()%)"
+html += @"　Funds: %MONEYSTR_HTML(MONEY)%\@ MONEY:2 ? %" "%(Charisma: %CHARISMA_HTML(MONEY:2)%)#\@"
+html += @"<br>B.A.D. Name: %EZB_BAD_NAME()%"
+HTML_PRINT html
+
+CALL Add_STAMINA_BAR(MASTER, 28, 1) ;custom code: replaced bars with one that shows true stamina
+PRINTFORM 　　
+CALL BASE_BAR(MASTER, "気力", 28, "青")
+SIF HAS_PENIS(MASTER)
+	CALL BASE_BAR(MASTER, "精力", 28, "黄")
+PRINTFORML
+IF HasAnyYoujutsu(MASTER)
+CALL BASE_BAR(MASTER, "法力", 28, "オレンジ") 
+PRINTFORM 　　
+ENDIF
+SIF MAXBASE:MASTER:TSP
+CALL BASE_BAR(MASTER, "TSP", 28, "水色")
+PRINTFORM 　　
+PRINTL
+
+;poo bar
+;moved to a new function since multiple scripts need it now
+IF GETBIT(nPee,1)
+CALL PeeBar(MASTER,21)
+ENDIF
+PRINTFORM 　　
+
+IF GETBIT(nScat,2)
+CALL PooBar(MASTER,21)
+ENDIF
+
+PRINTFORML 
+
+IF NOTICE_LUST(MASTER)
+	;記述が整理できるという理由で微妙に閾値変更
+	SELECTCASE CFLAG:MASTER:溜まってる度
+	CASE IS >= 900
+		SETCOLOR C_RED
+	CASE IS >= 750
+		SETCOLOR C_ORANGE
+	CASE IS >= 500
+		SETCOLOR C_YELLOW
+	ENDSELECT
+	PRINTFORMD %"Sexual Frustration:",20% 
+	CALL PRINT_COLORBAR(CFLAG:MASTER:溜まってる度, 1000, 28, UNICODE(0x2585), UNICODE(0x2585), C_PINK, 0x4f414e)
+	PRINTFORM %" "%{CFLAG:MASTER:溜まってる度 / 10}
+	PRINTFORMD ％
+	RESETCOLOR
+	PRINTFORML
+ENDIF
+
+;PRINT 体力
+;CALL PRINT_COLORBAR, BASE:MASTER:0,MAXBASE:MASTER:0,28, UNICODE(0x2585), UNICODE(0x2585), BARCOLORSET("赤"), RESULT:1
+;PRINTFORML  ({BASE:MASTER:体力,5}/{MAXBASE:MASTER:体力,5})  
+;PRINT 気力
+;CALL PRINT_COLORBAR, BASE:MASTER:1,MAXBASE:MASTER:1,28, UNICODE(0x2585), UNICODE(0x2585), BARCOLORSET("緑"), RESULT:1
+;PRINTFORML  ({BASE:MASTER:1,5}/{MAXBASE:MASTER:1,5})  
+;custom code QoL
+PRINTBUTTON "[Character]", 121
+PRINTFORM : %NAME:MASTER% ({CharaAge:MASTER:0}%ShortGender(MASTER)%) 
+IF !SaveIsEZB
+PRINTBUTTON "[Home]", 120
+PRINTFORM : %STR_TR(8000 + CFLAG:MASTER:初期位置)% at %GET_MAPNAME(MAIN_MAP)%
+IF inTrain
+	PRINTFORML  (Mid-Day)	
+ELSEIF FLAG:気絶中断
+	PRINTFORML  (Fainted)	
+ELSE
+	PRINTFORML 
+ENDIF
+ENDIF
+;custom code QoL
+IF CFLAG:MASTER:初期位置 != CFLAG:MASTER:現在位置
+	IF inTrain == 4
+		PRINTFORM Currently in: %NAME_FROM_PLACE(CFLAG:MASTER:現在位置)%・
+	ELSE
+		PRINTFORM Currently sleeping at: %NAME_FROM_PLACE(CFLAG:MASTER:現在位置)%・
+	ENDIF
+ENDIF
+;end custom code QoL
+;PRINTFORML Waking Time: %時刻表示(TIME:3)%
+PRINTBUTTON "[Waking Time]", 2400
+;qol custom code
+PRINTFORM : %時刻表示(TIME:3)%・
+PRINTBUTTON "[Calendar]", 3333
+SIF FLAG:PottyChart
+PRINTBUTTON "・[Potty Chart]", 3334
+PRINTFORML
+SETCOLOR C_GRAY
+CUSTOMDRAWLINE ━
+RESETCOLOR
+;---------------------------
+;CALL INFO_CLOCK_IMAGE(TIME:3, 500, "left")
+CALL TIPS_DISPLAY
+PRINTFORML 
+
+SETCOLOR 103,228,126
+PRINTL 【Main Menu】
+RESETCOLOR
+SIF LoG_TutorialProgress < 10 && SaveIsEZB
+	SETCOLOR C_GRAY
+PRINTLC [100] - Wake Up
+RESETCOLOR
+SIF FLAG:気絶中断
+	SETCOLOR C_GRAY
+PRINTLC [102] - Home Settings
+RESETCOLOR
+;IF CFLAG:MASTER:現在位置 != OMANEKIBEYA() && (nStartingBackstory > 20 || DAY > YearLength || MASTER)
+IF CFLAG:MASTER:現在位置 != OMANEKIBEYA() && !SaveIsEZB
+	SIF FLAG:気絶中断
+		SETCOLOR C_GRAY
+	PRINTLC [120] - Change Home
+ENDIF
+RESETCOLOR
+PRINTLC [121] - Change Character
+PRINTL
+PRINTL
+
+PRINTLC [101] - Abilities
+SIF FLAG:気絶中断
+	SETCOLOR C_GRAY
+IF (nMaxTech >= 5 && GET_YEAR() >= 2010) || SaveIsEZB
+	IF ITEM:Computer || SaveIsEZB
+	PRINTLC [103] - Internet
+	ELSE
+	SETCOLOR C_GRAY
+	PRINTLC [103] - Internet (No Computer)
+	RESETCOLOR
+	ENDIF
+ENDIF
+RESETCOLOR
+PRINTLC [104] - List Items
+PRINTLC [113] - List of mobs
+PRINTL
+IF SaveIsEZB
+	PRINTL
+	CALL EZB_BEFOREDAY
+	PRINTL
+ENDIF
+IF FLAG:700
+	SIF FLAG:気絶中断
+		SETCOLOR C_GRAY
+	PRINTLC [105] - Panty Collection
+	RESETCOLOR
+ENDIF
+PRINTLC [106] - Music Collection
+PRINTLC [107] - Gift Collection
+PRINTLC [108] - Fish Collection
+PRINTL
+PRINTLC [109] - List of animals
+PRINTLC [110] - List of bugs hunted
+PRINTLC [111] - List of special dishes
+PRINTLC [112] - List of spell cards
+PRINTL 
+PRINTLC [130] - Lucid Dream Recol.
+SIF nFactions
+PRINTLC [131] - List of factions
+;PRINTLC [132] - List of religions
+PRINTL
+PRINTL
+SIF FLAG:気絶中断
+	SETCOLOR C_GRAY
+PRINTLC [150] - Achievements
+PRINTLC [151] - Farm Settings
+PRINTLC [152] - Statistics
+SIF CFLAG:MASTER:子供人数
+	PRINTLC [153] - Child List
+RESETCOLOR
+PRINTL
+PRINTL
+
+SETCOLOR 103,228,126
+PRINTL 【System Menu】
+RESETCOLOR
+SIF FLAG:気絶中断
+	SETCOLOR C_GRAY
+;addition custom code
+PRINTLC [160] - Request Config
+RESETCOLOR
+PRINTLC [161] - Reset Clothing
+PRINTL
+PRINTLC [400] - Options
+;NAS: Dev Quicktest
+;#; PRINTLC [999] - Debug
+PRINTL
+; This line break is needed for parity with NAS' version
+;=========================
+
+PRINTLC [410] - Foraging Spots
+;qol custom code
+PRINTLC [411] - Fishing Spots
+;NAS: This line was removed to make space for the debug option
+;PRINTL
+;=========================
+PRINTLC [412] - Locations Table
+;NAS: Line break due to debug menu option
+;=========================
+PRINTLC [420] - Tutorial
+[IF_DEBUG]
+PRINTL
+PRINTLC [430] - Timeline
+[ENDIF]
+RESETCOLOR
+
+PRINTL
+PRINTL
+
+PRINTLC [200] - Save
+PRINTLC [300] - Load
+SIF SAVESTR:本体バージョン != eraTW_Version || SAVESTR:NAS_SAVE_VER != NAS_VERSION
+	SETCOLOR C_RED
+PRINTLC [500] - Update
+RESETCOLOR
+PRINTL
+
+SIF MONEY:2 && FLAG:会員ランク ;custom code, added membership req
+	PRINTFORML [600] - Sell Charisma
+
+CUSTOMDRAWLINE ━
+
+CALL LoG_AdvanceTutorial(1)
+SIF RESULT
+	RESTART
+
+;FileName_SHOP.ERB -------------------------------- Rev1.00
+;起床前メニューRESULT処理
+;CALL		SYSTEM
+;ARG		VOID
+;RETURN		VOID
+;COMMENT	
+;----------------------------------------------------------
+@USERSHOP_NAS
+PLAYSOUND "se/キー音.m4a"
+;起床
+IF RESULT == 100
+	IF SaveIsEZB
+		IF LoG_TutorialProgress >= 30
+			CALL SET_MAINHOME
+			SIF RESULT == -1; 
+				RETURN
+		ELSE
+			RETURN
+		ENDIF
+	ENDIF
+
+	BEGIN TRAIN
+	RETURN 1
+;住環境設定
+ELSEIF RESULT == 102 && !FLAG:気絶中断
+	CALL SCHEDULE
+;自宅引っ越し
+ELSEIF RESULT == 120 && CFLAG:MASTER:現在位置 != OMANEKIBEYA()&& !FLAG:気絶中断
+	CALL SET_MAINHOME
+;能力表示
+ELSEIF RESULT == 101
+	DEBUGCLEAR
+	CALL SHOW_CHARA_LIST("存在するキャラリスト", "体力気力", "「情報表示」「条件変更」")
+;	CALL SHOW_CHARADATA
+;通信販売
+ELSEIF RESULT == 103 && !FLAG:気絶中断
+	IF ITEM:Computer || SaveIsEZB
+	CurrentSite = 0
+	CALL Internet_Home
+	ELSE
+	PRINTFORMW Go to %CALLNAME:51% (in the Youkai Mountain Foot) to get a computer.
+	ENDIF
+;所持アイテム一覧
+ELSEIF RESULT == 104
+	CALL SHOW_ALLITEM
+;コレクション
+ELSEIF RESULT == 105 && FLAG:700 && !FLAG:気絶中断
+	CALL SHOW_COLLECTION
+;手に入れた楽譜
+ELSEIF RESULT == 106
+	CALL SHOW_COLLECTION_SCORE
+;貰った贈り物
+ELSEIF RESULT == 107
+	CALL SHOW_COLLECTION_GIFT
+;釣った魚リスト
+ELSEIF RESULT == 108
+	CALL SHOW_COLLECTION_FISH
+;狩った鳥獣リスト
+ELSEIF RESULT == 109
+	CALL SHOW_COLLECTION_HUNTED
+;捕った虫リスト
+ELSEIF RESULT == 110
+	CALL SHOW_COLLECTION_MUSHI
+ELSEIF RESULT == 111
+	CALL SHOW_SP_DISH_LIST
+ELSEIF RESULT == 112
+	CALL SHOW_COLLECTION_SPELLCARD
+ELSEIF RESULT == 113 ;added, check mob list
+	CALL PRINT_SAVED_GIRL_STATS
+ELSEIF RESULT == 130
+	CALL LucidDreamRecollection
+ELSEIF RESULT == 131
+	CALL AllFactionList(MASTER,,,"「Change Conditions」「Display Info」「Faction Status」")
+;実績解除
+ELSEIF RESULT == 150 && !FLAG:気絶中断
+	CALL AL_LIST
+;農家設定
+ELSEIF RESULT == 151 && !FLAG:気絶中断
+	CALL RESTART_NOUMIN
+ELSEIF RESULT == 152
+	CALL FullStatistics
+;子供一覧
+ELSEIF RESULT == 153 && CFLAG:MASTER:子供人数 ;qol custom code, replaced with our version
+	;CALL SHOW_ALLCHILDLIST
+	CALL Qol_MC_CHILD_LIST
+	IF INRANGE(RESULT, 10000, 11000)
+		RESULT -= 10000
+		SIF EXISTCSV(RESULT)
+			CALL SINGLE_CHARA_STATE_TR(RESULT)
+	ENDIF
+;依頼リセット
+ELSEIF RESULT == 160 && !FLAG:気絶中断
+	;addition custom code
+	CALL Add_RequestTweaks
+;衣装リセット
+ELSEIF RESULT == 161
+	CALL RESET_ALL_CLOTHES
+;LoG Danmaku World
+ELSEIF RESULT == 256 && SaveIsEZB
+	CurrentSite = 19
+	WebSitesKnown:19 = 1
+	SiteSubpage = 1000
+	CALL Internet_Home
+;LoG Weapon Shop
+ELSEIF RESULT == 257 && SaveIsEZB
+	SIF LoG_TutorialProgress >= 10
+	CALL LoG_WeaponShop
+ELSEIF RESULT == 258 && SaveIsEZB
+	SIF LoG_TutorialProgress >= 90
+	CALL ADD_CUSTOM_COM635
+ELSEIF RESULT == 259 && SaveIsEZB
+	SIF LoG_TutorialProgress >= 90
+	CALL ITEM_BUY
+;OPTION
+ELSEIF RESULT == 400
+	CALL NAS_SETTINGS
+	;CALL OPTION
+;採集リスト
+ELSEIF RESULT == 410
+	CALL SHOW_GATHERING_LIST
+ELSEIF RESULT == 411 ;qol custom code
+	CALL SHOW_FISHING_LIST
+;出現場所リスト
+ELSEIF RESULT == 412 ;qol custom code
+	CALL SHOW_APPEAR_LIST
+;UPDATE
+ELSEIF RESULT == 500
+	CALL Update_Menu
+;チュートリアル
+ELSEIF RESULT == 420
+	CALL TUTORIAL_MAIN
+;SAVE
+ELSEIF RESULT == 200
+	;Custom code for load-save menu
+	CALL LOAD_SAVE(1)
+;LOAD
+ELSEIF RESULT == 300
+	;Custom code for load-save menu
+	CALL LOAD_SAVE(0)
+;カリスマ売却
+ELSEIF RESULT == 600
+	;custom code
+	CALL TODAYS_CHARISMA(1)
+	PRINTFORML %"Current ￥", 36 + 3 + STRLENS(三桁区切(CM_LIMIT)), LEFT%%金額表示(MONEY), 13, RIGHT%
+	PRINTFORML %"Current Charisma", 36, LEFT%%三桁区切(MONEY:2), 13, RIGHT% / %三桁区切(CM_LIMIT)%
+	PRINTFORML %"Current ￥/Charisma exchange rate", 36 + 3 + STRLENS(三桁区切(CM_LIMIT)), LEFT%%金額表示(CHARISMA_NOW()), 13, RIGHT%
+	DRAWLINE
+	CALL CM_BALANCE
+;custom shop button use
+ELSEIF RESULT == 797
+	CALL choiceButtonTarget()
+ELSEIF RESULT == 798
+	IF ShopButtonTargetId > 0
+		ShopButtonTargetId --
+		ShopButtonTarget = ShopButtonTargetList:ShopButtonTargetId
+	ENDIF
+ELSEIF RESULT == 799
+	IF ShopButtonTargetId + 1 < ShopButtonTargetNum
+		ShopButtonTargetId ++
+		ShopButtonTarget = ShopButtonTargetList:ShopButtonTargetId
+	ENDIF
+ELSEIF INRANGE(RESULT, 800, 800 + MAX_CUSTOM_SHOP)
+	CALL useKojoShopButton(RESULT - 800)
+;起床時間設定
+ELSEIF RESULT == 2400
+	CALL 起床時間設定()
+ELSEIF RESULT == 3333 ;qol custom code
+	CALL CALENDAR()
+ELSEIF RESULT == 3334 ;qol custom code
+	CALL PottyChart()
+ELSEIF RESULT == 121
+	CALL IdentityCrsis()
+[IF_DEBUG]
+ELSEIF RESULT == 999
+	CALL DEBUG_MENU
+ELSEIF RESULT == 430
+	CALL NAS_TIMELINE
+[ENDIF]
+ENDIF
+
+
+
+@NAS_TIPS
+#DIMS theTips, 10000
+#DIM tipPick,3
+SETCOLOR C_YELLOW
+
+IF !STRLENS(theTips)
+FOR LOCAL, 0, 1000
+SELECTCASE LOCAL
+	CASE 0
+	theTips:LOCAL '= @"There are some commands that can't be executed unless they're in the spot."
+	CASE 1
+	theTips:LOCAL '= @"If you click the【★】next to someone's name, the【Follow】command will take you to them."
+	CASE 2
+	theTips:LOCAL '= @"Some maps lack gardening and training facilities. Move if you need to."
+	CASE 3
+	theTips:LOCAL '= @"To get better at stopping time, practice a lot."
+	CASE 4
+	theTips:LOCAL '= @"To find lost items, ask someone who is good at it."
+	CASE 5
+	theTips:LOCAL '= @"Alcohol can be bought at the liquor store."
+	CASE 6
+	theTips:LOCAL '= @"Depending on the results of fortune telling or omikuji, some things change. Lottery, Casino, and skills like Foraging are influenced to some extent."
+	CASE 7
+	theTips:LOCAL '= @"Snow makes crops grow slower."
+	CASE 8
+	theTips:LOCAL '= @"Charisma is a currency that can be used at the Scarlet Devil Mansion's casino."
+	CASE 9
+	theTips:LOCAL '= @"Paying with money rather than Charisma is generally sounder."
+	CASE 10
+	theTips:LOCAL '= @"Some characters have unique commands."
+	CASE 11
+	theTips:LOCAL '= @"If Combat and Knowledge are low, raising Favor will be hard."
+	CASE 12
+	theTips:LOCAL '= @"Pray to god and everything will turn alright in the end."
+	CASE 13
+	theTips:LOCAL '= @"Random characters can be found at the square in the Human Village."
+	CASE 14
+	theTips:LOCAL '= @"Random characters' stats raise quickly but only on the first day."
+	CASE 15
+	theTips:LOCAL '= @"A forgotten random character will never come back."
+	CASE 16
+	theTips:LOCAL '= @"When a random character comes back, they will no longer improve as fast and they won't get pregnant."
+	CASE 17
+	theTips:LOCAL '= @"No more than %NUM_COUNT(MAX_MOBS)% random characters can exist at once."
+	CASE 18
+	theTips:LOCAL '= @"Information about random characters is stored in the dat folder."
+	CASE 19
+	theTips:LOCAL '= @"A random character will not appear again unless it's the same location as last time."
+	CASE 20
+	SIF nSex
+	theTips:LOCAL '= @"When abstinence becomes too much to bear, let it all out and find peace."
+	CASE 21
+	theTips:LOCAL '= @"As some characters are nocturnal, changing the alarm clock is important to meet them."
+	CASE 22
+	theTips:LOCAL '= @"Is a command not displaying? It may be filtered."
+	CASE 23
+	SIF nSex
+	theTips:LOCAL '= @"Incompetent mode blocks some actions, but it is much easier to be pushed down."
+	CASE 24
+	theTips:LOCAL '= @"Before some characters can be helped during work, certain conditions must be fulfilled. But for some it may be impossible."
+	CASE 25
+	theTips:LOCAL '= @"Ingredients are needed to cook stuff."
+	CASE 26
+	theTips:LOCAL '= @"Put water in the jar with the sake bug to create sake."
+	CASE 27
+	theTips:LOCAL '= @"Rotors can be grown in gardens."
+	CASE 28
+	theTips:LOCAL '= @"If smell resistance is too high it'll become hard to clean."
+	CASE 29
+	theTips:LOCAL '= @"Membership rank rises by playing and losing lots at the casino."
+	CASE 30
+	SIF GETBIT(nRape,0)
+	theTips:LOCAL '= @"When TIME or FORCE marks are on the same level as pleasure- and lewd marks, they have a special effect. Even hard-to-get characters will melt."
+	CASE 31
+	theTips:LOCAL '= @"Collector's gaps are replenished over time, but there is an upper limit on how many can be carried at once. Make sure to use them."
+	CASE 32
+	theTips:LOCAL '= @"There are places that cannot be entered without fulfilling certain conditions, like abilities and relations."
+	CASE 33
+	theTips:LOCAL '= @"Training and studying with others is more effective."
+	CASE 34
+	SIF nSex
+	theTips:LOCAL '= @"Denial mode suppresses climax, this is to help triggering stronger and multiple ones."
+	CASE 35
+	theTips:LOCAL '= @"After borrowing books at Suzunaan, experience increases faster depending on the book. "
+	CASE 36
+	SIF nSex
+	theTips:LOCAL '= @"The Stone of Mirada makes it easier to get lust and pushing people down. Intimacy and reliance become difficult to increase however."
+	CASE 37
+	theTips:LOCAL '= @"If you play for more than a year, you can 【Bite the Dust】 to start over while keeping some things."
+	CASE 38
+	SIF nSex
+	theTips:LOCAL '= @"Reaching climax at the same time multiplies the pleasure by the strength of the ejaculation."
+	CASE 39
+	SIF nSex
+	theTips:LOCAL '= @"3 days of abstinence gives【Thick Semen】, but the day following ejaculation【Thick Semen】will be lost."
+	CASE 40
+	SIF nSex
+	theTips:LOCAL '= @"Abstinence makes you stressed and gives you wet dreams."
+	CASE 41
+	theTips:LOCAL '= @"Getting a score greater than 80 when cooking increases their mood, lower than 35 lowers it."
+	CASE 42
+	SIF nSex
+	theTips:LOCAL '= @"Increasing desire for Tsukumogami is hard, but the impregnation chance increases the more you use tools."
+	CASE 43
+	theTips:LOCAL '= @"It's hard to increase Favor when Trust is low. This limitation does not apply during dates."
+	CASE 44
+	SIF nSex
+	theTips:LOCAL '= @"During childcare, sexual frustration is capped. But if the child goes to school or is sleeping..."
+	CASE 45
+	theTips:LOCAL '= @"Even without mixing supplies, it can still be done in a few places."
+	CASE 46
+	theTips:LOCAL '= @"Crafting Lv along with Knowledge increases mixing success rate."
+	CASE 47
+	theTips:LOCAL '= @"Please stop playing instruments when people are working."
+	CASE 48
+	theTips:LOCAL '= @"Some materials can only be foraged during certain seasons."
+	CASE 49
+	theTips:LOCAL '= @"Foraging with higher foraging level gives better materials."
+	CASE 50
+	theTips:LOCAL '= @"Performing at a banquet can give be quite rewarding, but if the performance is poor, then... "
+	CASE 51
+	theTips:LOCAL '= @"Praying for characters means they will visit the next day."
+	CASE 52
+	theTips:LOCAL '= @"Work schedules can be checked from the abilities screen and the calendar."
+	CASE 53
+	theTips:LOCAL '= @"Some characters can have their images changed in the ability screen or image settings."
+	CASE 54
+	theTips:LOCAL '= @"If you click on the person you are targeting, it will switch between the face and body pictures."
+	CASE 55
+	theTips:LOCAL '= @"Some materials can be bought from certain characters."
+	CASE 56
+	theTips:LOCAL '= @"【Fairies】like「Nature」gifts."
+	CASE 57
+	theTips:LOCAL '= @"Those who are【Childish】like「Namesake」gifts."
+	CASE 58
+	theTips:LOCAL '= @"Most like「Spell Card」gifts aside from those without fighting ability."
+	CASE 59
+	theTips:LOCAL '= @"【Youkai】and【Ghosts】generally hate「Divination」and「Buddhist」gifts."
+	CASE 60
+	theTips:LOCAL '= @"No one likes「Inferior」gifts."
+	CASE 61
+	theTips:LOCAL '= @"「Black Magic」,「Bone」,「Blood」, and「Poison」gifts are usually disliked by everyone who isn't a Youkai."
+	CASE 62
+	theTips:LOCAL '= @"During holidays, the sales and profit margin of street vendors go up."
+	CASE 63
+	theTips:LOCAL '= @"Vegetables sell well in the Underworld."
+	CASE 64
+	theTips:LOCAL '= @"Fish sell well at the Youkai Mountain Summit."
+	CASE 65
+	theTips:LOCAL '= @"【Rich】dishes keep you full for longer, while 【Light】dishes do the opposite."
+	;The following are added by the omogatari mod.
+	CASE 66
+	theTips:LOCAL '= @"Endurance skills have 12 ranks: Phantasm (6) > Extra (5) > SS (4) > S (3) > A (2) > B (1) > C (0) > D (-1) > E (-2) > F (-3) > G (-4) > H (-5). Phantasm ranks mean they are not affected by said attributes."
+	CASE 67
+	SIF GETBIT(NASFeature,10)
+	theTips:LOCAL '= @"Be careful what you do near others, or you might just get a bad 【Reputation】.	"
+	;If nPee
+	CASE 68
+		SIF nPee
+			theTips:LOCAL '= @"Very strong orgasms are able to break through characters without 【Peeing Habits】 or even those with 【Strengthened Bladders】."
+	CASE 69
+	theTips:LOCAL '= @"Make sure to pee before going to sleep, or else you'll wake up leaking piss or wetting the bed."
+	CASE 70
+		SIF nPee
+			theTips:LOCAL '= @"Pee, poo, and blood will dirty up a place extremely quickly."
+	CASE 71
+		SIF nPee
+			theTips:LOCAL '= @"Low【Pee Holding】ability will make you more prone to accidents."
+	CASE 72
+		SIF nPee
+			theTips:LOCAL '= @"Pee and poo fill up on their own. Failing to go to the bathroom will result in debuffs and eventually, accidents..."
+	CASE 73
+		SIF nPee
+			theTips:LOCAL '= @"Having an accident will give less favorability and give you a rash until you take a bath."
+	CASE 74
+		SIF nPee
+			theTips:LOCAL '= @"Drinking water replenishes stamina and energy but increases the rate pee fills up and makes pee less yellow."
+	CASE 75
+		SIF nPee
+			theTips:LOCAL '= @"Train your pee holding abilities by not going to the bathroom until the very end."
+	CASE 76
+		SIF nPee
+			theTips:LOCAL '= @"Camping at the toilet may force other characters to go to the bathroom in more indecent ways..."
+	CASE 77
+		SIF nPee
+			theTips:LOCAL '= @"You can't see when you need to pee if your 【Incontinent】."
+	CASE 78
+		SIF nPee
+			theTips:LOCAL '= @"Having more than {UniversalRank("B")} intelligence allows you to see how full your and other's bladders are."
+	CASE 79
+		SIF nPee
+			theTips:LOCAL '= @"The lower your【Pee Holding】ability is, the less warning signs you get before you start leaking or wetting..."
+	CASE 80
+		SIF nPee
+			theTips:LOCAL '= @"If you have an accident, you might just get visited by a god..."
+	CASE 81
+		SIF nPee
+			theTips:LOCAL '= @"If you're horny and need to pee when you sleep, you'll have a lucid dream..."
+	CASE 82
+		SIF nPee
+			theTips:LOCAL '= @"You'll have an accident during sex if your bladder gets full..."
+	CASE 83
+		SIF nPee
+			theTips:LOCAL '= @"Your body can digest up to 1000ml/1000g an hour. Consume more than this and you'll pay the consequences of a constantly filling bladder..."
+	CASE 84
+		SIF nPee
+			theTips:LOCAL '= @"High wetting addiction will make you horny if you are wearing wet underwear."
+	CASE 85
+		SIF nPee
+			theTips:LOCAL '= @"You may just forget the most important step of going potty if your potty training is low and accident addiction is high..."
+	CASE 86
+		SIF nPee
+			theTips:LOCAL '= @"The【Play Mat】is also great at absorbing pee when you wet the bed. "
+	CASE 87
+		SIF nPee
+			theTips:LOCAL '= @"If you hold it for too long, you'll urinate involuntarily, and if this happens too many times you'll become incontinent, unable to control when you pee. So, overall the best way to urinate is to find a body of water or a room with toilets - doing this also gradually recovers lost continence		"
+	;ENDIF
+	;IF nScat
+	CASE 88
+		SIF nScat
+			theTips:LOCAL '= @"Eating too much is not only inefficient, it also makes you want to poop more."
+	CASE 89
+		SIF nScat
+			theTips:LOCAL '= @"Eating rotten food may give you the runs."
+	;ENDIF
+	;IF nOmutsu
+	CASE 90
+		SIF nOmutsu
+			theTips:LOCAL '= @"Characters with 【Peeing Habits】will start wearing diapers to prevent themselves from leaks."
+	CASE 91
+		SIF nOmutsu
+			theTips:LOCAL '= @"Diapers can hold a couple of wettings. Forgetting to change may result in your diaper leaking..."
+	CASE 92
+		SIF nOmutsu
+			theTips:LOCAL '= @"There are four ways of protecting yourself from accidents: Pads, catheters, pull-up diapers, and taped diapers."
+	CASE 93
+		SIF nOmutsu
+			theTips:LOCAL '= @"Make sure you check your diaper often so you can time your changes."
+		;CASE
+	;theTips:LOCAL '= @"This game is sponsored by Gensou-chan! \@ (PeeHold:MASTER:0 <= -3 || PooHold:MASTER:0 <= -3 || TALENT:MASTER:幼児／幼児退行) && nOmutsu ?Unfortunately for you- and fortunately for Gensou-chan- you're going to be a lifelong customer for the diaper company.# Who are they again? \@ \@ PeeHold:MASTER:0 >= 3 || PooHold:MASTER:0 >= 3 ? Wait, but you don't need their underwear. # \@ \@ ABL:72:親密 >= 5 ? (Don't tell Eirin. Please!) #\@"
+	;ENDIF
+	CASE 94
+		SIF nRapeAnywhere
+		theTips:LOCAL '= @"You can %PeeAndPoo(nPee, nSex, "pee", "have sex")% anywhere if you're desperate enough."
+	;The following are added by the omogatari mod.	
+	; CASE 95
+	; theTips:LOCAL '= @"Low【Orgasm Denial】can snowball into constant orgasm loops, and shortly after, a【Broken Soul】"
+	;literal title
+	; CASE 96
+	; theTips:LOCAL '= @"This work of fiction contains content of a sexual \@ nSJW < 4 ? (and violent)#\@ nature and is inappropriate for snowflakes. "
+	; theTips:LOCAL += @"All characters depicted are at least \@ nSJW < 2 ? who gives a fuck# 21\@ years of age. "
+	; theTips:LOCAL += @"\@ nSJW < 4 ? Nothing # Everything \@ is consensual role play, "
+	; theTips:LOCAL += @"any animals are \@ nSJW < 2 ? simply data # actually people in fursuits\@, "
+	; theTips:LOCAL += @"and any excretions are fake (they're just numbers)."
+	;Hypnosis	
+	CASE 97
+	SIF nHypno
+	theTips:LOCAL '= @"High knowledge and speech will make hypnosis more effective."
+	CASE 98
+	SIF nHypno
+	theTips:LOCAL '= @"Low hypnosis addiction means high hostility gain."
+	CASE 99
+	SIF nHypno
+	theTips:LOCAL '= @"Change your mantra in the【Home Settings】, in case you get tired of your current phrase."
+	CASE 100
+	SIF nHypno
+	theTips:LOCAL '= @"Hypnosis fades away over time, make sure you continuously do either consecutive actions or use a coin to keep it up."
+	CASE 101
+	SIF nHypno
+	theTips:LOCAL '= @"Drugged, drunk, and hypno sex aren't consensual."
+	CASE 102
+	SIF nHypno
+	theTips:LOCAL '= @"Higher hypnosis levels can decrease hostility gain to the point it's nearly non existent"
+	;E-Stim
+	CASE 103
+	theTips:LOCAL '= @"You can't do anything with electrodes without a【E-Stim Control Box】"
+	CASE 104
+	theTips:LOCAL '= @"You need to upgrade your control box if you want to use more electrodes at once."
+	CASE 105
+	theTips:LOCAL '= @"Vibrators, strap-ons, anal-beads, plugs, and electrodes will take a character's virginity."
+	;Death
+	CASE 106
+	SIF nNecro
+	theTips:LOCAL '= @"You can resurrect any dead body with the 【Elixir】, or by going to Eirin. "
+	CASE 107
+	SIF nNecro
+	theTips:LOCAL '= @"Killing, raping, and committing crimes will raise Gensokyo's 【State of Emergency】, which affects how paranoid the residents are."
+	CASE 108
+	SIF nNecro
+	theTips:LOCAL '= @"Hiding dead bodies will make it harder for authorities to find them. It also only gives the fifth of paranoia than if it was discovered."
+	CASE 109
+	SIF nNecro
+	theTips:LOCAL '= @"Dead bodies can be given to Orin or Komachi to be burned or dumped, making them extremely hard to find."
+	CASE 110
+	theTips:LOCAL '= @"Be aware that if Gensokyo sees you as a threat, the hounds will come..."
+	CASE 111
+	SIF nFactions
+	theTips:LOCAL '= @"If you have high 「Infamy」 with a faction, assassins may come and start fighting you..."
+	CASE 112
+	theTips:LOCAL '= @"If a character has 『Hate Mark』2 or 3, steal their panties repeatedly and offer them while【Praying】, this will always remove one degree of hate mark."
+	CASE 113
+	locals '= ""
+	SIF nNecro
+		LOCALS += "kill、"
+	SIF nRape
+		LOCALS += "enslave、"
+		LOCALS += "mentally break、"
+	theTips:LOCAL '= @"Characters with 『Hate Mark』4 are permanently hostile. You must either %LIST_IN_STRING(LOCALS,," or",)% them to stop being hostile."
+	CASE 114
+	SIF nRaids
+	theTips:LOCAL '= @"Characters with 『Hate Mark』5 will equip themselves with better equipment and body armor, as well as contributing to raids."
+	CASE 115
+	SIF nRape
+	theTips:LOCAL '= @"Slavery removes all hostility gain and hate marks, but will lock you out of the love route."
+	;CASE 116
+	;theTips:LOCAL '= @"Urethral sex requires one urination module to be enabled and【Forbidden Knowledge】."
+	CASE 117
+	theTips:LOCAL '= @"Go to the【Fetish Settings】menu to enable and disable content you want and don't want to see."
+	CASE 118
+	SIF nRyona
+	theTips:LOCAL '= @"Use cover! It can stop danmaku as well as pistol and intermediate rifle calibers."
+	CASE 119
+	theTips:LOCAL '= @"TW is a skill test, not a dating simulator. A hate mark is a sign of failure, and you're a dramatic tragedy"
+	CASE 120
+	theTips:LOCAL '= @"Armor can be bought in clothing stores."
+	CASE 121
+	theTips:LOCAL '= @"Your clothing selection is limited. Pickpocket from others to steal their clothes or buy them in the clothing store."
+	CASE 122
+	theTips:LOCAL '= @"You need 200 Danmaku Experience to make use of【Danmaku】. Alternatively, there's a motherly demon and a \@ nSJW > 1? college student # high schooler\@ who's willing to teach you magic at a cost."
+	CASE 123
+	theTips:LOCAL '= @"Change often! It keeps your armor and underwear in peak condition!"
+	CASE 124
+	theTips:LOCAL '= @"The Makai God can give you quite a lot of free stuff, but is the cost of being experimented on worth it?"
+	CASE 125
+	theTips:LOCAL '= @"Your progress is automatically saved every 3 in-game hours."
+	CASE 126
+	theTips:LOCAL '= @"You can save your game during a day by pressing the 『Mid Day Save』 command. This same command will also allow you to load a save if anything goes wrong."
+	CASE 127
+	theTips:LOCAL '= @"There are two types of autosaves: Mid day saves, which are saved during a day, and End of Day saves, which saves your game at the end of a day. Slot 300 is for end of day saves, and slot 301 is for mid-day saves"
+	CASE 128
+	theTips:LOCAL '= @"QuadUltra (QU/50) > TriUltra (TU/40) > OverDrive (OD/30) > Phantasm (Ph/20) > Extra (Ex/17) > SS (16) > S (14) > A (11) > B (8) > C (5) > D (3)"
+	;The following are original ones
+	CASE 129
+	theTips:LOCAL '= @"A good date can take care of hate marks."
+	CASE 130
+	theTips:LOCAL '= @"Struggling to fish or forage? Your personal luck score may be too low. Perhaps a certain someone can help collect your misfortune..."
+	CASE 131
+	theTips:LOCAL '= @"If you feel unwell, ask Eirin at Eientei to help you, or even relieve you. Sometimes her services go a bit too far however..."
+	CASE 132
+	theTips:LOCAL '= @"Your skills can make a big difference if you decide to help someone with their job."
+	CASE 133
+	theTips:LOCAL '= @"Think twice if you want to play an instrument with poor skill in front of someone who can kick your ass."
+	CASE 134
+	theTips:LOCAL '= @"If you want to learn how to cook better and fast, consider helping Miyoi in Geidontei at Human Village, or Mystia with her food stall."
+	CASE 135
+	theTips:LOCAL '= @"There's two types of luck - daily fortune, and personal luck. Both provide benefits, but may also spell certain doom."
+	CASE 136
+	theTips:LOCAL '= @"Every day starts with a different stroke of personal luck. Perhaps the rabbit that favors fortune has an item that will help you sense it..."
+	CASE 137
+	theTips:LOCAL '= @"What is luck if not a little special something for every single thing you do? One must not underestimate it..."
+	CASE 138
+	theTips:LOCAL '= @"Fortune remains neutral until you try to poke into it more. It can be good, yet also devastating..."
+	CASE 139
+	theTips:LOCAL '= @"Turning down girls when they confess can be heartbreaking. Perhaps letting them go away when they're sleepy is a better way...?"
+	CASE 140
+	theTips:LOCAL '= @"Being good friends with certain characters can bring about all sort of useful perks."
+	CASE 141
+	theTips:LOCAL '= @"Rumor has it that you gain special privileges at Suzunaan if you get along with its mistress... She may even let you borrow a special book."
+	CASE 142
+	theTips:LOCAL '= @"Foraging for ingredients and selling them at Eientei is a great way to make some money."
+	CASE 143
+	theTips:LOCAL '= @"Opening a stall during festivals and holidays can be quite lucrative."
+	CASE 144
+	theTips:LOCAL '= @"Make sure to track the Charisma market every now and then. Buy high, sell low!"
+	CASE 145
+	theTips:LOCAL '= @"When helping other characters, some works can be accomplished during Time Stop. Use it to your advantage to practice your skills!"
+	CASE 146
+	theTips:LOCAL '= @"The more you read the tutorial, the better your sleep will become if you have the [Sweet Sleep Pillow]... Most of the time."
+	CASE 147
+	theTips:LOCAL '= @"Rumor has it there's a high-stakes winner-takes-all gambling den located somewhere in the Mountain forest..."
+	;Title tips
+	CASE 148
+	theTips:LOCAL '= @"Remember to train your Time Stop abilities, even for trivial things."
+	CASE 149
+	theTips:LOCAL '= @"Helping the girls at their jobs is a good source of income."
+	CASE 150
+	theTips:LOCAL '= @"There is no entirely private place."
+	CASE 151
+	theTips:LOCAL '= @"Remember to always water your crops."
+	CASE 152
+	theTips:LOCAL '= @"Check the calendar to know the girls' work hours and general locations, you can click on their names!"
+	CASE 153
+	theTips:LOCAL '= @"A good date can help to remove hate marks."
+	CASE 154
+	theTips:LOCAL '= @"Don't let the girls know you have stolen panties or they will take them back."
+	CASE 155
+	SIF nSex
+	theTips:LOCAL '= @"You need to have an erection to penetrate."
+	CASE 156
+	SIF nSex
+	theTips:LOCAL '= @"Vigor is how much cum and virility you still have."
+	CASE 157
+	SIF !GROUPMATCH(nSJW,2,4)
+	theTips:LOCAL '= @"Big is not always better in a little girls' world."
+	CASE 158
+	SIF nSex
+	theTips:LOCAL '= @"Always carry some lotion."
+	CASE 159
+	SIF nSex
+	theTips:LOCAL '= @"Consensual unsafe sex is more difficult than you think."
+	CASE 160
+	theTips:LOCAL '= @"The food you carry can get cold or stolen by the girls."
+	CASE 161
+	SIF nSex
+	theTips:LOCAL '= @"Impregnation is almost a myth unless you empty a gallon of cum into her."
+	CASE 162
+	theTips:LOCAL '= @"Buying things through the internet is expensive. Search proper shops to get a discount."
+	CASE 163
+	SIF nRaids
+	theTips:LOCAL '= @"Be careful when time is stopped, a raiding party can appear and try to kill you."
+	CASE 164
+	theTips:LOCAL '= @"Remember to draw water before tending your crops as a peasant."
+	CASE 165
+	SIF GETBIT(NASFeature,10)
+	theTips:LOCAL '= @"There is a little chance that they can learn about your powers if you are not careful."
+	CASE 166
+	theTips:LOCAL '= @"You can live in the same room as your lover after you two go steady (if they have their own house)."
+	CASE 167
+	SIF !GROUPMATCH(nSJW,2,4)
+	theTips:LOCAL '= @"Sexual activity may cause a child to start menstruating."
+	CASE 168
+	SIF nSex
+	theTips:LOCAL '= @"Orgasm denial may cause your partner to take a more active role."
+	CASE 169
+	SIF nSex
+	theTips:LOCAL '= @"Girls taking the initiative may lead to an endless night of sex with your lifeless body."
+	CASE 170
+	SIF nSex
+	theTips:LOCAL '= @"You can try to slip away if your partner pushes you down."
+	CASE 171
+	SIF GETBIT(nRape,1)
+	theTips:LOCAL '= @"Always use a sleeping pill before a sleep rape."
+	CASE 172
+	SIF GETBIT(nRape,1)
+	theTips:LOCAL '= @"Be careful on a drunk or sleep rape, they may wake up and they'll never forget."
+	CASE 173
+	theTips:LOCAL '= @"There is only one garden per home zone, be smart *some may not even have one."
+	CASE 174
+	SIF nRape
+	theTips:LOCAL '= @"Watch out when raping Yuuka!"
+	CASE 175
+	SIF nRape
+	theTips:LOCAL '= @"Depending on how frustrated they are, they may be more into rape."
+	CASE 176
+	theTips:LOCAL '= @"Awoo♥Wan Wan♥"
+	CASE 177
+	theTips:LOCAL '= @"Punch-free zone."
+	CASE 178
+	theTips:LOCAL '= @"Depending on the traits a person has, they may be easier to conquer, or more proactive."
+	CASE 179
+	theTips:LOCAL '= @"For the last time, Wriggle is not a boy."
+	CASE 180
+	theTips:LOCAL '= @"Food is a good way to the heart of a person."
+	CASE 181
+	theTips:LOCAL '= @"Music can be a good hobby to make some friends and to court your lover."
+	CASE 182
+	theTips:LOCAL '= @"Wan mind, Wan world."
+	CASE 183
+	theTips:LOCAL '= @"When submitting a bug, submit the error text. A screenshot of the error is useless."
+	CASE 184
+	theTips:LOCAL '= @"There's your fucking tutorial. Happy?"
+	CASE 185
+	theTips:LOCAL '= @"Make sure to launch Wishmaster.exe alongside EE to enable ABDL and more!"
+	CASE 186
+	theTips:LOCAL '= @"Children become independent at 18 yeas of biological age, or {YearLength} days"
+	CASE 187
+	theTips:LOCAL '= @"Pregnancy take 100 days. You'll only know that they're pregnant until 20 days in."
+	CASE 188
+	theTips:LOCAL '= @"The actions you do to your child will determine how they'll grow up."
+	CASE 189
+	theTips:LOCAL '= @"You get hypnosis once your max ESP hits 1500."
+	CASE 190
+	theTips:LOCAL '= "Parsee gets mad easily, but she'll calm down on her own if you avoid her for long enough. Or you could lose to her in Danmaku..."
+	CASE 191
+	theTips:LOCAL '= "Wriggle goes into heat every Spring. Maybe she'll ask you to help satisfy her if she likes you enough..."
+	CASE 192
+	SIF nRape && !GROUPMATCH(nSJW,2,4)
+	theTips:LOCAL '= "Try raping Suwako when time is stopped. It's not like she can do anything about it... right?"
+	CASE 193
+	theTips:LOCAL '= "Marisa has a complex about her small breasts. Maybe something special will happen if you stimulate them enough?"
+	CASE 194
+	theTips:LOCAL '= "Daiyousei becomes a force to be reckoned with when she's horny."
+	CASE 195
+	theTips:LOCAL '= "Kaguya gets jealous when she sees you with other women. Very jealous..."
+	CASE 196
+	theTips:LOCAL '= "If you're having a streak of bad luck, try asking Hina to take your misfortune away."
+	CASE 197
+	theTips:LOCAL '= "Byakuren? Who's that? You mean Boob Lady, right?"
+	CASE 198
+	theTips:LOCAL '= "A few residents go in heat at winter, have fun getting your end of day masturbation scene filled by them"
+	CASE 199
+	theTips:LOCAL '= "Shinki will occasionally meet you once you start her questline."
+	CASE 200
+	theTips:LOCAL '= "Hourai Doll can't get hate marks... Mostly because she always acts like she has 3"
+	CASE 201
+	theTips:LOCAL '= "Don't ask me why Cirno's ID isn't 9."
+	CASE 202
+	theTips:LOCAL '= "If you defeat Yuuka in Danmaku, you can get special rewards."
+	CASE 203
+	theTips:LOCAL '= "Aunn is a good girl. Make sure to give her a headpat whenever you see her."
+	CASE 204
+	theTips:LOCAL '= "Wakasagihime always had dialogue. Anyone who tells you otherwise is lying. Lying!"
+	CASE 205
+	theTips:LOCAL '= "No, Rinnosuke isn't going to NTR you. He's a bro."
+	CASE 206
+	theTips:LOCAL '= "Junko is always calm... Until you say you like the moon people"
+	CASE 207
+	SIF nOmutsu
+	theTips:LOCAL '= "Shinki loves to see Touhous in \"alternative\" underwear. Don't ask her why."
+	CASE 208
+	theTips:LOCAL '= "Sometimes Parsee forgets to take her contraceptive pill. Especially if she's in heat..."
+	CASE 209
+	theTips:LOCAL '= "Even if you can't push Parsee down, she can still push you down."
+	CASE 210
+	theTips:LOCAL '= "Wriggle goes into heat every Spring. Maybe she'll ask you to help satisfy her if she likes you enough..."
+	CASE 213
+	theTips:LOCAL '= "Feeling pity for Wakasagihime? Try gaining her affection, and maybe she won't even care if it's another one of her kind!"
+	CASE 214
+	theTips:LOCAL '= "You can pay your way through Shinki's questline if you aren't into what she's into"
+	CASE 215
+	theTips:LOCAL '= "Eiki has a stick up her ass at first, but maybe she'd like something else in there?"
+	CASE 216
+	SIF nSex
+	theTips:LOCAL '= "Yuuma is struggling to get pregnant because of her Ability."
+	CASE 217
+	theTips:LOCAL '= "What would happen if you repeatedly pour semen into Yuuma during Time Stop...?"
+	CASE 218
+	theTips:LOCAL '= "There is hardly any food that Yuuma doesn't like."
+	CASE 219
+	theTips:LOCAL '= "Yuuma likes evil stuff like chaos and blood-related things, as well as sheep-related motifs."
+	CASE 220
+	theTips:LOCAL '= "Yuuma controls the oil in Old Hell."
+	CASE 221
+	theTips:LOCAL '= "Yuuma doesn't mind crowds, she just prefers to work alone."
+	CASE 222
+	theTips:LOCAL '= "Right click to skip all lines that can be skipped."
+	CASE 223
+	theTips:LOCAL '= "Nitori sells upgrades to your tools."
+	CASE 224
+	theTips:LOCAL '= "Don't forget to check the Mod Options."
+	CASE 225
+	theTips:LOCAL '= "If you can't find a lost item, or a lost item's owner, try asking Nazrin."
+	CASE 226
+	theTips:LOCAL '= "Don't try to grope a girl unless she's at least at Yearning. Skinshipping is fine if you have a couple hundred Favorability."
+	CASE 227
+	theTips:LOCAL '= "If you get high enough Intimacy with a girl, she might teach you a new drug recipe."
+	CASE 228
+	theTips:LOCAL '= "You can only earn Pleasure Marks through strong and/or simultaneous orgasms."
+	CASE 229
+	theTips:LOCAL '= "You can learn a girl's special dish by cooking it with her enough times. Collect them all!"
+	CASE 230
+	SIF nSex
+	theTips:LOCAL '= "Using an Ovulation Drug on a Dangerous Day will actually LOWER your odds of impregnating a girl."
+	CASE 231
+	theTips:LOCAL '= "Girls can give you their first kiss or confess to you after a date, but only if you end the date manually."
+	CASE 232
+	theTips:LOCAL '= "The game becomes less grindy if you train your skills while leading your waifu around."
+	CASE 233
+	theTips:LOCAL '= "The Grocer in the Human Village sells gardening plots."
+	CASE 234
+	theTips:LOCAL '= "Iä! Iä! YuugenMagan fhtagn!"
+	CASE 235
+	theTips:LOCAL '= "A day in eratohoTW is just a really big training session."
+	CASE 236
+	theTips:LOCAL '= "New features mean new bugs. Report bugs to the bug tracker, or making an issue in the Git page."
+	CASE 237
+	theTips:LOCAL '= @"You. Can. Disable. Fetishes. If. You. Don't. Like. Them."
+	CASE 238
+	theTips:LOCAL '= @"Movement from one location to another takes 2 in-game minutes"
+	CASE 239
+	theTips:LOCAL '= @"Some tips are actually helpful"
+	CASE 240
+	SIF nSex
+	theTips:LOCAL '= @"You can teach a sexually ignorant person sex if the Touhou has C {UniversalRank("C")} knowledge and you are more intelligent than them."
+	CASE 241
+	theTips:LOCAL '= @"There's a piece of land near the Human Village that you can buy and customize."
+	CASE 242
+	SIF nPee
+		{
+		theTips:LOCAL '= @"There's are two main types of lucid dream: Pee dreams, and sex dreams.\n
+		Pee dreams are when you have to relieve yourself in the dream, often causing you to pee for real.\n
+		Sex dreams are like pee dreams, but they're often more genuinely sexual and often end in an ejaculation in your pants."
+		}
+	CASE 243
+		theTips:LOCAL '= @"Be protected before going to bed. You'll never know when a lucid dream may flare up."
+	CASE 244
+	SIF nSex
+		theTips:LOCAL '= @"Fingering a touhou with a too tight vagina won't take virginity if Lubrication is at level 5 or higher."
+	CASE 245
+	SIF nSex
+		theTips:LOCAL '= @"The dilator set can make stretching the vagina easier. It's essential if you want to train up a Touhou for insertion."
+	CASE 246
+		theTips:LOCAL '= @"Lube is your friend when it comes to sex."
+	CASE 247
+		theTips:LOCAL '= @"Music takes a long time to master, but the rewards are great."
+	CASE 248
+		theTips:LOCAL '= @"Foraging, Speech, and Knowledge are all important skills to have."
+	CASE 249
+		theTips:LOCAL '= @"A few residents go into heat during the winter. Have fun skipping through their masturbation text every day."
+	CASE 250
+		theTips:LOCAL '= @"If Wakasagihime likes you enough, she'll look the other way when you go fishing in the Misty Lake."
+	CASE 251
+		theTips:LOCAL '= @"Eiki has a real stick up her ass, huh? Maybe she'd like something else in there?"
+	CASE 252
+		SIF nRaids
+		theTips:LOCAL '= @"NAS has a 31 day grace period for raids. This is to prevent new characters from being killed by raiding parties due to being unprepared."
+	CASE 253
+		theTips:LOCAL '= @"There's a plot that's just begging for someone to buy it. Maybe you can build a house once the land is yours?"
+	CASE 254
+		SIF nSex
+		theTips:LOCAL '= @"As a virtuous woman who values her chastity, Eiki is hesitant to give up her virginity. Perhaps another hole is more acceptable to her."
+	CASE 255
+		SIF nSex
+		theTips:LOCAL '= @"Wriggle goes into heat every Spring. Maybe she'll ask you to help satisfy her if she likes you enough..."
+	CASE 256
+		theTips:LOCAL '= @"While Suwako is typically cheerful and outgoing, remember that she is a curse goddess and will not hesitate to use her power against anyone who tries to harm her."
+	CASE 257
+		SIF nSex
+		theTips:LOCAL '= @"Marisa has a complex about her small breasts. Maybe something special will happen if you stimulate them enough?"
+	CASE 258
+		theTips:LOCAL '= @"It would be pretty mean to go all-out when fighting a big fairy who's struggling with strong desires."
+	CASE 259
+		theTips:LOCAL '= @"Having lived such a sheltered life for so long, Kaguya tends to get a little too attached to the people she likes. Be careful not to make her worry so much that she ends up doing something drastic."
+	CASE 261
+		theTips:LOCAL '= @"Music takes long to master, but the rewards are great."
+	CASE 262
+		theTips:LOCAL '= @"The beginning might be tough, but it quickly snowballs from there."
+	CASE 263
+		theTips:LOCAL '= @"Various foods and drugs can provide a bonus to danmaku."
+	CASE 264
+		theTips:LOCAL '= @"Banquets and other events may be canceled due to bad weather. Look for ways to change it if you want to ensure it goes as scheduled."
+	CASE 265
+		theTips:LOCAL '= @"People will often need help with procuring supplies for banquets."
+	CASE 266
+		theTips:LOCAL '= @"Happy wife, happy life."
+	CASE 267
+		theTips:LOCAL '= @"Drug Synthesis and other specialty crafting techniques allows you to create many useful items, but some forbidden recipes can only be made by those with the required knowledge."
+	CASE 268
+		theTips:LOCAL '= @"Binge drinking is a popular pastime at banquets, but join in at your own risk..."
+	CASE 269
+		theTips:LOCAL '= @"Banquets and other events can happen even when you don't know of them."
+	CASE 270
+		theTips:LOCAL '= @"Completing music albums will help you while performing at banquets."
+	CASE 271
+		theTips:LOCAL '= @"There's a central drop-off point in the Human Village for when you need to deliver something to someone who's hard to find."
+	CASE 272
+		theTips:LOCAL '= @"To be able to consensually get a Touhou's panties, they need to have 6 %ABL_TR(9)% and %ABL_TR(10)%"
+	CASE 273
+		theTips:LOCAL '= @"The more you buy %ITEMNAME_TR(130)%, the more expensive it becomes. Perhaps you could reset the price with some divine intervention?"
+	CASE 274
+		theTips:LOCAL '= @"Buy %PLURALIZER(TOLOWER(ITEMNAME_TR(915)),3)% to be able to store more dirty \@ nOmutsu ? diapers # panties\@ discretely."
+	CASE 275
+		theTips:LOCAL '= @"Though a bit time consuming, washing panties keeps their value while removing their dirtiness."
+	CASE 276
+		theTips:LOCAL '= @"Don't just buy more bins, upgrade them! They'll make it easier for you to store more \@ nOmutsu ? diapers # panties\@."
+	CASE 277
+		SIF nScat
+		theTips:LOCAL '= @"If you are wearing panties, trunks, briefs, or other basic underwear, be warned. They aren't designed for very messy accidents, so they all only hold a messing's worth, the same amount for each."
+	CASE 278
+		SIF nScat
+		theTips:LOCAL '= @"Most underwear can hold a messy accident, but changing should be done immediately due to the risks of a rash."
+	CASE 279
+		SIF nScat && nOmutsu
+		theTips:LOCAL '= "Diapers, be it pull-ons or tabbed, can handle varying capacities of messy accidents, due to their structure and leak guards."
+	CASE 280
+		SIF nScat && nOmutsu
+		theTips:LOCAL '= "Bulkier diapers have more room for solid messes, as there's more priority on containment than discretion."
+	CASE 281
+		SIF nScat && nOmutsu
+		theTips:LOCAL '= "A common misconception is that leak guards are just for pee, but they also help against messy accidents as well."
+	CASE 282
+		SIF nScat && nOmutsu
+		theTips:LOCAL '= "Tall leak guards are better than normal leak guards, and any leak guards is better than no leak guards."
+	CASE 283
+		SIF nFactions
+		theTips:LOCAL '= "Doing some dirty work for factions is a good way gain【Fame】and【Money】."
+	CASE 284
+		SIF nFactions
+		theTips:LOCAL '= "Be aware that being associated with some factions will make you hostile to other factions. Resign if you need to."
+	CASE 285
+		SIF nFactions
+		theTips:LOCAL '= "Resigning from a faction will not wipe the progress you have made with them. You will still keep your rank if you join back."
+	CASE 286
+		SIF nFactions
+		theTips:LOCAL '= "Infamy with a faction is lost with time."
+	CASE 287
+		SIF nFactions
+		theTips:LOCAL '= "A dating truce prevents other factions from attacking the character in question, but this makes them unable to fight against other factions as well."
+	CASE 288
+		SIF nFactions
+		theTips:LOCAL '= "Truces stops factions from fighting other factions. Alliances ensures that the two factions help each-other in battle."
+	CASE 289
+		SIF nFactions
+		theTips:LOCAL '= "Factions are destroyed once all officers are lost and they don't control any territory"
+	CASE 290
+		SIF nFactions
+		theTips:LOCAL '= "Most faction has a recruiter which you can talk to get recruited. For factions without a recruiter, you can go to the entrance of your home area and use the recruitment board."
+	CASE 291
+		SIF nFactions
+		theTips:LOCAL '= "Factions have a limited amount of units. Running out of units means they cannot deploy for raids or missions."
+	CASE 292
+		theTips:LOCAL '= "Danmaku and Youjutsu weapons use MP. Run out of MP and you'll instantly lose the battle."
+	CASE 293
+		SIF nFactions
+		theTips:LOCAL '= "Faction recruiters will have occasional missions that you have to do. These give you fame and promotion points in said faction."
+	CASE 294
+		SIF nFactions
+		theTips:LOCAL '= "Factions with low relations or very high control on a territory can cause a war to happen."
+	CASE 295
+		SIF nResearchSystem
+		theTips:LOCAL '= "Use your technical and general knowledge to contribute to researching."
+	CASE 296
+		SIF nResearchSystem
+		theTips:LOCAL '= "Research allows you to make better units and armor. Keep in mind that you can only research in areas you can study in."
+	CASE 297
+		SIF nFactions && nResearchSystem
+		theTips:LOCAL '= "Completing 50% of all research of that tier will bump the faction into that tech level."
+	CASE 298
+		SIF nFactions
+		theTips:LOCAL '= @"Doing combat work such as destroying bandit camps or patrolling areas is a death sentence for those with low Combat skills."
+	CASE 299
+		SIF nSex
+		theTips:LOCAL '= @"Tired of being the only one with a penis? Craft \"Futa Medicine\" to give other characters a penis. You can always remove their penis if you don't like it afterward."
+	CASE 300
+		theTips:LOCAL '= @"Overall Youjutsu level increases the more skills you learn and the higher level they are."
+	CASE 301
+		theTips:LOCAL '= @"Exploiting weaknesses %COND_STR(@"and killing your enemies",nNecro)%gets you 『One-Mores』, which allow you to do more actions on your turn. Be careful though, as your enemies can also get 『One-Mores』."
+	CASE 302
+		theTips:LOCAL '= "Increase your Youjutsu levels to get more powerful spells."
+	CASE 303
+		theTips:LOCAL '= "【Tetrakarn】 creates a barrier on all allies that lasts for a single turn, which protects them from physical attacks, subsequently reflects them back to the attacker."
+	CASE 304
+		theTips:LOCAL '= @"Buffs and debuffs are king in combat! Even a low-level combatant can be effective with the right buffs!"
+	CASE 305
+		theTips:LOCAL '= @"Passives are very important as they allow you to resist damage from certain types"
+	CASE 306
+		theTips:LOCAL '= @"You can learn a character's unique spell by befriending them. Keep in mind you will need to know the Youjutsu type the spell is in"
+	CASE 307
+		theTips:LOCAL '= @"Self learning Youjutsu will require you to solve a puzzle relating to said Youjutsu."
+	CASE 308
+		theTips:LOCAL '= @"Some are trainers in Youjutsu and can train you in certain Youjutsu types. You might have to make them fall for you to be willing to train you though."
+	CASE 309
+		SIF nNecro
+		theTips:LOCAL '= "Not even Eirin can resurrect a Touhou when Permadeath is on."
+	CASE 310
+		theTips:LOCAL '= "An aggressive Touhou is more inclined on attacking over a Passive touhou"
+	CASE 311
+		SIF nPee
+		theTips:LOCAL '= "Loud sounds and a full bladder don't mix."
+	CASE 312
+		SIF nHypno
+		theTips:LOCAL '= "Getting a Critical Success when hypnotizing someone guarantees that the hypnosis will succeed."
+	CASE 313
+		SIF nHypno
+		theTips:LOCAL '= "Leveling up your Hypnosis Youjutsu increases the odds of you getting a Critical Success."
+	CASE 314
+		SIF nHypno
+		theTips:LOCAL '= "You can raise a character's Hypno Addiction by trying to hypnotize them. The higher it is, the lower their resistance to hypnosis will be."
+	CASE 315
+		SIF nHypno
+		theTips:LOCAL '= "If you're having trouble hypnotizing someone, wait a day and try again."
+	CASE 316
+		SIF nHypno
+		theTips:LOCAL '= "You can't hypnotize people if other people can see you do it. Unless you hypnotize them first..."
+	CASE 317
+		SIF nHypno
+		theTips:LOCAL '= "Having Fake Consent active on a character when the day ends will ensure one of their morning events will trigger, if they have them."
+	CASE 317
+		SIF nHypno
+		theTips:LOCAL '= "The power of Targeted Common Sense Alteration depends on your hypnosis power vs. the target's resistance. The more powerful it is, the more things you can get away with."
+	CASE 317
+		SIF nHypno
+		theTips:LOCAL '= "If you alter a character's common sense enough, it enables Free Use mode. This lets you have sex with them anytime, anywhere (as long as nobody else can see you)."
+	CASE 317
+		SIF nHypno
+		theTips:LOCAL '= "You can hypnotize characters into going on a date with you even if they're working."
+	CASE 318
+		SIF nHypno
+		theTips:LOCAL '= "Hypno-Orgasm Denial doesn't wear off until you dispel it."
+	CASE 319
+		SIF nHypno
+		theTips:LOCAL '= "Seija has the power to reverse anything... including your hypnosis."
+	CASE 320
+		SIF nHypno
+		theTips:LOCAL '= "Characters with the Hypnosis Youjutsu hypnotize people. Try matching your powers against theirs."
+	CASE 321
+		SIF nHypno
+		theTips:LOCAL '= "Hypnotizing characters into being nudists and/or exhibitionists will increase the odds of them forgetting to put clothes on at the beginning of the day."
+	CASE 322
+		SIF nRyona && nWeapons
+		theTips:LOCAL '= "Having certain attachments on may rename your gun to a different model."
+	CASE 323
+		SIF nRyona && nWeapons
+		theTips:LOCAL '= "Damage and Loudness is determined by ammo, barrel, and barrel extension."
+	CASE 324
+		SIF nRyona && nWeapons
+		theTips:LOCAL '= "Penetration is determined by ammo and barrel."
+	CASE 325
+		SIF nRyona && nWeapons
+		theTips:LOCAL '= "Accuracy is determined by all attachments except for magazine."
+	CASE 326
+		SIF nRyona && nWeapons
+		theTips:LOCAL '= "After picking up a character's weapon, you will gain all attachments that they had on their gun."
+	CASE 327
+		SIF nRyona && nWeapons
+		theTips:LOCAL '= "Attachments affect your weapon's rank, which determines raid strength and intimidation power! The highest level a weapon can be is QU 63."
+	CASE 328
+		SIF nRyona && nWeapons
+		theTips:LOCAL '= "Every weapon is a platform for different attachments."
+	CASE 329
+		SIF nRyona && nWeapons
+		theTips:LOCAL '= "Commands are sorted into different risk categories.\nWhite: Safe to execute\nYellow: May cause physical or relationship harm.\nOrange: Will cause physical or relationship harm.\nRed: Will cause severe physical or relationship harm, can be fatal\nDark Red: Will either kill the Touhou or cause her to become hostile."
+	CASE 330
+		theTips:LOCAL '= @"When you buy a pair of underwear, you will get a gap that allows you to create infinite copies of that underwear."
+	CASE 331
+		SIF nPee
+		TheTips:LOCAL '= "Onesho (おねしょ) is an abbreviated and honorific form of Neshouen (寝小便), which means bedwetting. Now you know"
+	CASE 332
+		SIF nPee || nScat
+		TheTips:LOCAL '= "Omaru (おまる) means potty chair. Not to be confused with Maru (丸) which means circle and the kanji for it can be used to mean potty chair. Now you know"
+	CASE 333
+		SIF nPee || nScat
+		TheTips:LOCAL '= "Benki (便器) means toilet. The loan word Toire (トイレ) is also taken from the word Toilet and means Toilet. Now you know"
+	CASE 334
+		SIF nOmutsu
+		TheTips:LOCAL '= "Omutsu (お襁褓) means diaper. Tsukaisute Omutsu (使い捨ておむつ) is a disposable diaper and Nuno Omutsu (布おむつ) are cloth diapers. Notably this word is most often used honorifically in it's hiragana (おむつ) or katakana (オムツ) form; because diapers are for babies according to them. They were wrong."
+	CASE 335
+		SIF nOmutsu
+		TheTips:LOCAL '= "Oshime (お襁褓) is another way to read this kanji and due to this, means diaper as well."
+	CASE 336
+		SIF GETBIT(nWeapons,2)
+		TheTips:LOCAL '= "Most ballistic firearms will shoot the same ammo with the same damage. The only ways that damage can be changed is with a different ammunition type and barrel length."
+
+	;theTips:LOCAL '= "Kohotime is a cosplay fanatic. Try showing off a police officer uniform to her."
+	
+	;CASE 189
+	;theTips:LOCAL '= @"You. Can. Disable. The. Diapers. If. You. Don't. Like. Them."
+	
+	;4chan
+	[SKIPSTART]
+	CASE
+	theTips:LOCAL '= @"Pops' newest addition to his branch. A further confirmation of just how little he cares about Gensokyo lore."
+	CASE
+	theTips:LOCAL '= @"In a perfect world, meaningless shitflinging likes this would not exist, and less shit-y (heh) features from GunDiaperTW would be put in a more vanilla-ey version of TW."
+	CASE
+	theTips:LOCAL '= @"EraTW is meant to be a lovey-dovey slice of life dating sim with TSP elements, not a grimfest shitshow."
+	CASE
+	theTips:LOCAL '= @"Who the fuck is Konstantia Kastamos and Tabitha Berzinski. They aren't from any era related work. They sound like Rimworld's default names"
+	CASE
+	theTips:LOCAL '= @"Have you never played a dating sim before? You're missing the fundamental purpose of that genre."
+	CASE
+	theTips:LOCAL '= @"no not the heckin gameplay looperino it's getting STALE we need ARMED GENSOKYO CONFLICT and also piss and shit"
+	CASE
+	theTips:LOCAL '= @"This guy is an absolute retard."
+	CASE
+	theTips:LOCAL '= @"there was so much vile garbage i couldn't even finish reading it, but there's also some good stuff like marriage and adding the missing characters"
+	CASE
+	theTips:LOCAL '= @"What branch would it even be pushed too? eng-dev is dead and broken, and I'm pretty sure that Pedy will refuse anything from Pops on principle. Just let his shitty faggot branch serve as containment for his garbage. It's best to just pretend that it doesn't even exist."
+	CASE
+	theTips:LOCAL '= @"Adding missing characters, Makai, children, and stronger orgasms are fine ideas. But that's just it, they work fine as ideas, if someone wants to work on something like that they should do it from the ground up instead of using pop's deranged garbage that propably includes dying or at least shitting yourself from overstimulation."
+	CASE
+	theTips:LOCAL '= @"This guy wants a full combat system before the game even has a proper system whereby you can build and decorate your own location/house"
+	CASE
+	theTips:LOCAL '= @"It's all so tiresome. Have you never fucking played a single Touhou game? How retarded do you have to be to not see how your bullshit fucks with the established lore to such an asinine degree it would be better if you made your own fucking game instead of shitting on the touhou fan community with your shitty ideas?"
+	CASE
+	theTips:LOCAL '= @"Heya Pops, when can I expect the ear and brain penetration? May as well go all the way if you're doing death as is."
+	CASE
+	theTips:LOCAL '= @"Fuck off, posers. Pops' branch is infinitely better than Pedy could ever hope to be. TW is about rape. There is no option for pure love in it. I support Pops and his branch all the way. Get bent."
+	CASE
+	theTips:LOCAL '= @"Can i conquer locations with my private army and take taxes and randomly generated women from the locals as tribute like an African warlord"
+	CASE
+	theTips:LOCAL '= @"thank you so much for your version of tw pops. before you came along i woke up in a cold sweat every night, wishing, praying, that someone would make a game where i could murder and fuck the cold bodies of my beloved 2hus. never again will i have suicidal thoughts because no i can play a game where i cum inside tsukasas deliciously rotting pussy. ahh but for now i can only imagine what her diaper would smell like as she sees the last moments of her life down the barrel of a franchi spas-12."
+	CASE
+	theTips:LOCAL '= @"I always wondered what is his driving force. He's either too autistic or too shameless to works towards a game that has his specific fetishes. I mean, what kind of guy can add guro and diapers to a game with such a straight face?"
+	[SKIPEND]
+ENDSELECT
+NEXT
+ENDIF
+
+tipPick:2 = 0
+FOR tipPick:1,0,1000
+	IF !STRLENS(theTips:(tipPick:1))
+		;check size of the array
+		CONTINUE
+	ENDIF
+	tipPick:2 ++
+NEXT
+
+CALL FISHER_YATES_SHAFFLE(tipPick:1)
+;randomize and verify message
+FOR tipPick, 0, tipPick:1
+	IF STRFIND(theTips:(SHAFFLE_ARRAY:tipPick),"This tip is hidden because") == -1 && STRLENS(theTips:(SHAFFLE_ARRAY:tipPick))
+		PRINTFORM %@"【TIP #{SHAFFLE_ARRAY:tipPick,3}/{tipPick:2,3}】"%
+		PRINTFORM %theTips:(SHAFFLE_ARRAY:tipPick)%
+		BREAK
+	ELSE
+		CONTINUE
+	ENDIF
+NEXT
+
+;custom code, tips are getting too long
+CALL PRINT_BREAK
+;PRINTFORML 

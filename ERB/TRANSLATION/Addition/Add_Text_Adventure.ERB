@@ -1,0 +1,129 @@
+;System for classic text adventures that can be built as part of an event. See examples of usage in Lunatic Survival Scarlet's Abandoned Mansion adventure.
+;No basic variables e.g. locations or items are provided here. Those should be handled externally, such as via the quest system.
+
+@TEXT_ADVENTURE(AdventureAlias)
+	;Starts a text adventure. Call this from anywhere, with AdventureAlias as the name of your adventure, e.g. CALL TEXT_ADVENTURE("Adventure Example").
+	;Define @TA_ADVENTURE_EXAMPLE_SETUP, replacing "ADVENTURE_EXAMPLE" appropriately, to set any flags you need or print intro text at the start of the adventure.
+#DIMS DYNAMIC AdventureAlias
+TRYCALLFORM TA_%FUNCTION_FORMAT(AdventureAlias)%_SETUP
+CALL TA_CYCLE(AdventureAlias)
+
+@TA_COMMAND_FROM_SYNONYM(Command,AdventureAlias)
+	;Consolidates various synonyms for commands so that any can be used.
+	;To add synonyms for adventure-specific commands, define TA_ADVENTURE_EXAMPLE_COMMAND_FROM_SYNONYM(Command), replacing "ADVENTURE_EXAMPLE" appropriately.
+	;See @TA_LS_ABANDONED_MANSION_COMMAND_FROM_SYNONYM for an example of usage.
+#FUNCTIONS
+#DIMS DYNAMIC Command
+#DIMS DYNAMIC AdventureAlias
+RESULTS =
+TRYCALLFORMF TA_%FUNCTION_FORMAT(AdventureAlias)%_COMMAND_FROM_SYNONYM(Command)
+SIF RESULTS == ""
+	RESULTS '= Command
+RETURNF RESULTS
+
+@TA_TARGET_FROM_SYNONYM(CommandTarget,AdventureAlias)
+	;Consolidates various synonyms for targets so that they can be used. Same functionality as the equivalent for commands.
+#FUNCTIONS
+#DIMS DYNAMIC CommandTarget
+#DIMS DYNAMIC AdventureAlias
+RESULTS =
+TRYCALLFORMF TA_%FUNCTION_FORMAT(AdventureAlias)%_TARGET_FROM_SYNONYM(CommandTarget)
+SIF RESULTS == ""
+	RESULTS '= CommandTarget
+RETURNF RESULTS
+
+@TA_CYCLE(AdventureAlias)
+	;Keeps the player inside the text adventure until it's finished.
+	;To finish, return 2 from any cycle or command function.
+#DIMS DYNAMIC AdventureAlias
+CALL INFO_GO_NEXTDAY
+RESULT = 0
+TRYCALLFORM TA_%FUNCTION_FORMAT(AdventureAlias)%_CYCLE
+SIF RESULT == 2
+	RETURN
+CALL TA_INPUT_TEXT(AdventureAlias)
+CALL TA_INPUT(AdventureAlias)
+SIF RESULT != 2
+	RESTART
+
+@TA_PARSE_COMMAND(FullCommand,AdventureAlias)
+	;Breaks up input into command and target, converting them from synonyms and discarding filler text, e.g. "look at automobile" becomes "look car".
+#FUNCTIONS
+#DIMS DYNAMIC FullCommand
+#DIMS DYNAMIC AdventureAlias
+#DIMS DYNAMIC Command
+#DIMS DYNAMIC CommandTarget
+#DIM DYNAMIC SpacePosition
+#DIM DYNAMIC StartPosition
+#DIM DYNAMIC FillerText
+FullCommand '= TOLOWER(FullCommand)
+SpacePosition = STRFINDU(FullCommand," ")
+IF SpacePosition > -1
+	Command '= TA_COMMAND_FROM_SYNONYM(SUBSTRINGU(FullCommand,0,SpacePosition),AdventureAlias)
+	CommandTarget '= FullCommand
+	WHILE SUBSTRINGU(CommandTarget,STRLENS(CommandTarget)-1) == " "
+			;Remove any trailing spaces.
+		CommandTarget '= SUBSTRINGU(CommandTarget,0,STRLENS(CommandTarget)-1)
+	WEND
+	WHILE STRFINDU(CommandTarget," ") > -1
+		CommandTarget '= SUBSTRINGU(CommandTarget,STRFINDU(CommandTarget," ")+1)
+	WEND
+	CommandTarget '= TA_TARGET_FROM_SYNONYM(CommandTarget,AdventureAlias)
+	;FullCommand '= Command+" "+CommandTarget
+ELSE
+	Command '= TOLOWER(FullCommand)
+ENDIF
+RESULTS:1 '= Command
+RESULTS:2 '= CommandTarget
+RETURNF FullCommand
+
+@TA_INPUT(AdventureAlias)
+	;Processes input within a text adventure.
+#DIMS DYNAMIC AdventureAlias
+#DIMS DYNAMIC FullCommand
+#DIMS DYNAMIC Command
+#DIMS DYNAMIC CommandTarget
+#DIM ClearLast
+RESETCOLOR
+PRINTL
+PRINTFORMDL >
+$INPUT
+INPUTS
+LOCALS '= RESULTS
+SIF LOCALS == ""
+	GOTO INPUT
+IF SUBSTRINGU(LOCALS,0,1) == " "
+	CLEARLINE 1
+	GOTO INPUT
+ENDIF
+CLEARLINE 2
+SIF ClearLast
+	CLEARLINE 8
+PRINTFORMDL %LOCALS%
+PRINTL
+PRINTL
+CALL D_LINE
+PRINTL
+PRINTL
+FullCommand '= TA_PARSE_COMMAND(LOCALS,AdventureAlias)
+Command '= RESULTS:1
+CommandTarget '= RESULTS:2
+RESULT = 0
+TRYCALLFORM TA_%FUNCTION_FORMAT(AdventureAlias)%_COMMAND(Command,CommandTarget,FullCommand)
+SELECTCASE RESULT
+	CASE -1
+		PRINTFORMDL Invalid target: %CommandTarget%
+		ClearLast = 1
+		RESTART
+	CASE 0
+		PRINTFORMDL Invalid command: %Command%
+		ClearLast = 1
+		RESTART
+ENDSELECT
+ClearLast = 0
+RETURN RESULT
+
+@TA_INPUT_TEXT(AdventureAlias)
+	;Prints something before allowing input, such as a description of the current location.
+#DIMS DYNAMIC AdventureAlias
+TRYCALLFORM TA_%FUNCTION_FORMAT(AdventureAlias)%_INPUT_TEXT

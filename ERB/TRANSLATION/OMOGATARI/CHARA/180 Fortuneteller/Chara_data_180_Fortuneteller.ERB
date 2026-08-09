@@ -1,0 +1,204 @@
+@CHARAMOVE_DATA_180(ARG, ARG:2)
+LOCAL = 180
+SELECTCASE ARG
+	;連動設定（RETURN=依存するキャラ, RESULT:1～3=対等に連動するキャラ）
+	CASE 1
+		;たまに連動
+	;特殊生活時間設定（CFLAG:LOCAL:生活時間補正を設定する）
+	CASE 3
+	;移動傾向（±～10=行きやすい/行きにくい, -100=行かない）
+	CASE 4
+		SELECTCASE ARG:2
+			;よく居る
+			CASE P621庭, P626台所, P628居間
+				RETURN 5
+			;幽々子様の私室にはあまり入らない
+			CASE P623幽々子私室
+				RETURN -5
+			;私室系
+			CASE P608潤美の家, P609瓔花の家, P615映姫の部屋, P616小町の部屋, P633紫私室, P635橙私室, P636八雲邸風呂, P638藍私室
+				RETURN -100
+			CASE P643霊長園の風呂 TO P655尤魔宅の風呂
+				RETURN -100
+			;是非曲直庁、畜生界は行きにくい
+			CASE P610是非曲直庁ホール TO P618空き部屋, P640異界の関所 TO P655尤魔宅の風呂
+				RETURN -5
+		ENDSELECT
+	;出現場所
+	CASE 7
+		SELECTCASE ARG:2
+			CASE 桜並木の鳥居, 神社境内, 神社縁側
+				RETURN 1
+			CASE お地蔵通り, 枝垂れ柳の下, 神霊廟広場, 神霊廟道場
+				RETURN 1
+			CASE 広場, 商家町, 呑屋小道, 長屋街
+				RETURN 1
+			CASE 中有の道, 三途の川, マヨヒガ, 彼岸, 白玉楼庭, 白玉楼
+				RETURN 1
+		ENDSELECT
+	;引力設定（CFLAG:LOCAL:引力点を設定する）
+	CASE 8
+ENDSELECT
+
+@EXIST_キャラデータ180
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+@キャラデータ180(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+SELECTCASE O_DATA
+CASE "呼び名"
+	CALLF MAKE_STR(V_NAME, "Fortuneteller")
+;こっから衣装設定
+CASE "今日のパジャマ"
+	CALLF MAKE_STR(V_NAME, "パジャマ（襦袢）セット")
+
+CASE "普段着：外衣"
+	CALLF MAKE_INT(V_NAME, CLOTHES_ID("外衣", "マント"))
+CASE "普段着：靴"
+	CALLF MAKE_INT(V_NAME, CLOTHES_ID("靴", "ロングブーツ"))
+CASE "普段着：靴下"
+	IF FLAG:2 > 0
+		CALLF MAKE_INT(V_NAME, CLOTHES_ID("靴下", "ガーターストッキング"))
+	ELSE
+		CALLF MAKE_INT(V_NAME, CLOTHES_ID("靴下", "靴下"))
+	ENDIF
+CASE "普段着：ワンピース"
+	CALLF MAKE_INT(V_NAME, CLOTHES_ID("ワンピース", "ゴスロリドレス"))
+CASE "固有コマンド"
+	CALLF MAKE_STR(V_NAME, "FortuneTeller")
+CASE "固有コマンド実行可能"
+	CALLF MAKE_INT(V_NAME, 1)		
+
+;料理関連
+CASE "料理：好きな味"
+	CALLF MAKE_STR(V_NAME, "/")
+CASE "料理：嫌いな味"
+	CALLF MAKE_STR(V_NAME, "/")
+CASE "料理：助手効果"
+	CALLF MAKE_STR(V_NAME, "/")
+;贈り物関連
+CASE "感性：好き"
+	CALLF MAKE_STR(V_NAME, "/")
+CASE "感性：嫌い"
+	CALLF MAKE_STR(V_NAME, "/")
+ENDSELECT
+
+
+
+@UNIQUE_COM_FortuneTeller
+#DIM CLIENT_ID
+		IF CFLAG:[[霊夢]]:現在位置 == CFLAG:MASTER:現在位置 && SHIRAHU(1) && !PLAYING_AS(1)
+			PRINTFORML Suddenly %CALLNAME:1% swings at %CALLNAME:180% head with %HIS_HER(1)% purification rod.
+			PRINTFORML The pitiful Fortune-Teller is split in two.
+			FOR LOCAL,1,CHARANUM
+				IF CFLAG:LOCAL:現在位置 == CFLAG:MASTER:現在位置
+					BASE:LOCAL:理性 = MAXBASE:LOCAL:理性
+					BASE:LOCAL:ムード = 0
+				ENDIF
+			NEXT
+			IF nNecro
+			CALL SET_HISTORY_DEATH(180,1,EQUIP:1:Weapon)
+			ELSE
+			CALLF BEGONE(180)
+			ENDIF
+			LOCAL:1 ++
+		ELSE
+			PRINTFORML 「Divination opens up the path before you.」
+			$EKISYA
+			CALL ASK_M("Today's fortune", !GETBIT(FLAG:999, 1), "Find a person in need", 1, "Nail clippers", BASE:MASTER:TSP >= 20, "Dispel the Stone of Mirada (100 Charisma)", MONEY:2 >= 100, "Thumbs up", 1, "Give an offering", TALENT:MASTER:Religion == 6)
+			SELECTCASE RESULT
+				CASE 0
+					SELECTCASE RAND:10
+						CASE 0
+							TFLAG:幸運補正 = 3
+							PRINTFORML 「It's fantastic, why not try the lottery?」
+						CASE 1 TO 3
+							TFLAG:幸運補正 = 1
+							PRINTFORML 「It's good, a lot of fortune has accumulated.」
+						CASE 4,5
+							PRINTFORML 「Neither good nor bad.」
+						CASE 6 TO 8
+							TFLAG:幸運補正 = -1
+							PRINTFORML 「Not too good, don't be reckless.」
+						CASE 9
+							TFLAG:幸運補正 = -3
+							PRINTFORML 「... This is bad, keep quiet about it.」
+				ENDSELECT
+				CASE 1
+					CLIENT_ID = SEARCH_UNIQUE_COM_人助け()
+					IF !CLIENT_ID
+						PRINTFORML 「Hm... Can't see anyone in particular.」
+						PRINTFORML 「Since there's nothing else, I'm currently being targeted by the shrine maiden.」
+						PRINTFORML There doesn't seem to be anyone.
+					ELSE
+						PRINTFORML 「%CALLNAME:CLIENT_ID% seems in need of help」
+					ENDIF
+				CASE 2
+					PRINTFORMW When you see the %CALLNAME:180% you suddenly feel like bullying him.
+					PRINTFORMW ...What's with those nails?
+					PRINTFORML You don't know if it's because he's no longer human, but nails that long look weird.
+					PRINTFORML Isn't it inconvenient? Won't he accidentally scratch people?
+					PRINTFORML You always check your nails every day so you can touch delicate parts safely.
+					PRINTFORML If he were to accidentally scratch someone it would hurt considerably.
+					PRINTFORMW First of all, dirt accumulates under fingernails.
+					PRINTFORMW Unable to withstand it, you stop time and cut the %CALLNAME:180%'s nails.
+					PRINTFORMW You are filled with a great sense of accomplishment...
+					PRINTFORML On the other hand, %CALLNAME:180% is suddenly confused at having his nails suddenly shortened...
+					CALL RECOVER_PERMIL(MASTER,40,"気力")
+					BASE:MASTER:TSP -= 20
+				CASE 3
+					PRINTFORML Who should be dispelled?
+					FOR LOCAL,1,CHARANUM
+						SIF CFLAG:LOCAL:体目当て
+							PRINTFORMLC [{LOCAL}] %CALLNAME:LOCAL%
+					NEXT
+					PRINTFORML 
+					DRAWLINE
+					PRINTFORML [999] Never mind
+					INPUT
+					IF RESULT == 999
+						GOTO EKISYA
+					ELSEIF CFLAG:RESULT:体目当て
+						PRINTFORML 「I think such tools are no good.」
+						PRINTFORMW %CALLNAME:180% does some complicated ritual, and the Stone of Mirada loses its shine before crumbling.
+						TIME += 25
+						CFLAG:RESULT:体目当て = 0
+						MONEY:2 -= 100
+					ENDIF
+				CASE 4
+					PRINTFORML You meet %CALLNAME:180%'s gaze and give him a thumbs up.
+					PRINTFORML He hesitates for a while, but then returns the thumbs up in full force.
+					PRINTFORMW A strong friendship was forged.
+					GOTO EKISYA
+				CASE 5
+					PRINTFORML You stop time, take off %CALLNAME:180%'s clothes, and offer his underwear to god.
+					CALL BUFF_BASE(MASTER,BASE_TSP,100,1)
+					PRINTFORMW %CALLNAME:180% loses all composure from suddenly being naked.
+			ENDSELECT
+			PRINTFORMW 
+			DRAWLINE
+			$EKISYA_DIVIDE
+			IF SHIRAHU(1) && nRyona
+			PRINTFORML %CALLNAME:1% suddenly appears, and she swings at %CALLNAME:180%'s head with her purification rod...
+			CALLF TP(1)
+			CALL KNIFE_FIGHT(1,180)
+			ELSE
+				PRINTFORML The fortune teller runs into a gap and disappears, before the gap closes
+				CALLF BEGONE
+			ENDIF
+			[SKIPSTART]
+			PRINTFORML The pitiful Fortune-Teller is split in two.
+			PRINTFORMW Reimu leaves.
+			FOR LOCAL,1,CHARANUM
+				IF CFLAG:LOCAL:現在位置 == CFLAG:MASTER:現在位置
+					BASE:LOCAL:理性 = MAXBASE:LOCAL:理性
+					BASE:LOCAL:ムード = 0
+				ENDIF
+			NEXT
+			[SKIPEND]
+		ENDIF

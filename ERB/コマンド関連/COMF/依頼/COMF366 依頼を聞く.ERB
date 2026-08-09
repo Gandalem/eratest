@@ -1,0 +1,244 @@
+;-------------------------------------------------
+;実行判定
+;-------------------------------------------------
+@COM_ABLE366
+SIF !TFLAG:100
+	RETURN 0
+SIF TARGET <= 0
+	RETURN 0
+;時間停止/睡眠/添い寝/うふふ中は不可
+SIF SHIRAHU(TARGET) != 1
+	RETURN 0
+;一括管理
+SIF GLOBAL_COMABLE(366)
+	RETURN RESULT
+
+SELECTCASE IRAI_CHARA_TO_PROGRESS(TARGET)
+CASE "依頼未受託"
+;空きスロットが無いなら不可
+	SIF !SEARCH_IRAI_EMPTY()
+		RETURN 0
+;個々に指定された条件をみたさない時
+	SIF !INT_DATA_IRAI(CFLAG:TARGET:依頼内容, "依頼受託可能条件", TARGET)
+		RETURN 0
+CASE "依頼中"
+;依頼確認/破棄が可能
+CASE "依頼達成"
+;成功報告可能
+CASE "期限切れ", "報告忘れ", "依頼失敗"
+;失敗報告
+CASE "依頼終了（成功）", "依頼終了（期限切れ）", "依頼終了（報告忘れ）", "依頼終了（失敗）"
+;ここは依頼フラグの消滅待ちなんで触らない
+		RETURN 0
+CASEELSE
+		RETURN 0
+ENDSELECT
+RETURN 1
+
+
+@COM366
+SELECTCASE IRAI_CHARA_TO_PROGRESS(TARGET)
+CASE "依頼未受託"
+	CALL IRAI_START(TARGET)
+	RETURN RESULT
+CASE "依頼中"
+	CALL IRAI_LOOK(TARGET)
+	RETURN RESULT
+CASE "依頼達成", "期限切れ", "報告忘れ", "依頼失敗"
+	CALL IRAI_REPORT(TARGET)
+	RETURN 1
+ENDSELECT
+
+
+
+;-------------------------------------------------
+;依頼受託
+;21/08/25 受諾時に一部依頼内容を表示するように変更
+;-------------------------------------------------
+@IRAI_START(CHARA)
+#DIM CHARA
+#DIM 受諾		;受託依頼が入ったスロット番号
+#DIM 依頼ＩＤ	;依頼自体のID
+;依頼提示時
+PRINTFORMW It seems %CALLNAME:CHARA% has a favor to ask of you.
+CALL SHOW_IRAI_MESSAGE(CHARA, CFLAG:CHARA:依頼内容, "依頼提示時")
+CALL SHOW_IRAI_DATA(CFLAG:CHARA:依頼内容, 0)
+CALL ASK_YN("Accept the request", "Decline")
+IF RESULT
+	PRINTFORML You turn the request down politely.
+	CALL SHOW_IRAI_MESSAGE(CHARA, CFLAG:CHARA:依頼内容, "依頼非受託時")
+	PRINTFORMW %CALLNAME:CHARA% looks a bit disappointed.
+	RETURN -1
+ELSE
+	受諾 = SEARCH_IRAI_EMPTY() 
+	CALL SET_IRAI_SLOT(CHARA)
+	依頼ＩＤ = (CFLAG:CHARA:依頼内容) % 1000 
+	PRINTFORML You accept %CALLNAME:CHARA%'s request.
+	SELECTCASE IRAI_SLOT_TO_TASKNAME(受諾)
+		CASE "伝令（人物）"
+			;固有依頼は提示済なのでカット
+			SIF 依頼ＩＤ < 100
+				PRINTFORML Received a letter for %ALTNAME_OR_CALLNAME(IRAI_SLOT_TO_PERSON(受諾))%!
+		CASE "捜索（人物）"
+			IF 依頼ＩＤ == 9
+				PRINTFORML %CALLNAME:CHARA% hands you the lost item.
+				PRINTFORM Item Properties：
+			ELSE
+				PRINTFORM Hint：
+			ENDIF
+			CALL SHOW_IRAI_HINT("捜索（人物）", IRAI_SLOT_TO_PERSON(受諾), IRAI_SUB:受諾)
+		CASE "捜索（場所）"
+			PRINTFORM Hint：
+			CALL SHOW_IRAI_HINT("捜索（場所）", IRAI_SLOT_TO_PLACE(受諾), IRAI_SUB:受諾)
+		CASE "討伐"
+			PRINTFORML The opponent of the Danmaku match is %ALTNAME_OR_CALLNAME(IRAI_SLOT_TO_PERSON(受諾))%!
+		CASE "prank" ;addition custom code
+			PRINTFORML The target of the prank is %ALTNAME_OR_CALLNAME(IRAI_SLOT_TO_PERSON(受諾))%!
+		CASE "meeting";addition custom code
+			PRINTFORML %CALLNAME:CHARA% wants to meet with %ALTNAME_OR_CALLNAME(IRAI_SLOT_TO_PERSON(受諾))%.
+		CASE "person";addition custom code
+			PRINTFORML The person in question is %ALTNAME_OR_CALLNAME(IRAI_SLOT_TO_PERSON(受諾))%.
+		CASE "food";addition custom code
+			IF 依頼ＩＤ == 18
+				CALL IRAI_一般18_依頼料理(CHARA, 受諾)
+				PRINTFORML %CALLNAME:CHARA% wants to eat %DISHNAME_TR(RESULTS)%.
+			ELSEIF 依頼ＩＤ == 17
+				CALL SHOW_TASTE(IRAI_一般17_味設定_WRAPPER(CHARA, 受諾), "DISH_DATA",,1)
+				LOCALS = %HTML_TOPLAINTEXT(HTML_GETPRINTEDSTR(0))%
+				CLEARLINE 1
+				LOCALS = %CALLNAME:CHARA% wants to eat something with the following tastes: %LOCALS%
+				PRINTFORML %BREAKENG(LOCALS)%
+			ELSEIF 依頼ＩＤ == 93
+				CALL FOOD_NAME(IRAI_DATA:受諾 / 1000)
+				PRINTFORML %CALLNAME:CHARA% wants to eat %DISHNAME_TR(RESULTS)%.
+			ENDIF
+		CASE "faction hitman" ; NAS customs
+			CALL SPAWNMOBENEMY(IRAI_SLOT_TO_PERSON(受諾),IRAI_SUB:受諾,DT_CELL_GET("FactionUnits",IRAI_SUB:受諾,"faction",1),ENTRANCE)
+			PRINTFORML The target you need to kill is %CALLNAME:(IRAI_SLOT_TO_PERSON(受諾))% from the %FactionName(DT_CELL_GET("FactionUnits",IRAI_SUB:受諾,"faction",1))%!
+		CASE "bandit camp"
+		LOCALS '= @"%NAME:CHARA%, %FACTION_RANK_STRING(CHARA,TALENT:CHARA:Recruiter-1)% of %FactionName(TALENT:CHARA:Recruiter-1)%, has sent us a message.\n"
+		LOCALS += @"Apparently, %PLURALIZER(FactionUnit(IRAI_SUB:受諾))% based in %COND_STR(@"%GET_MAPNAME(GET_MAPID(IRAI_SLOT_TO_PLACE(受諾)))% - ", !IN_HOME(IRAI_SLOT_TO_PLACE(受諾)))%%THE_CASE_SHIFT(GET_PLACENAME(IRAI_SLOT_TO_PLACE(受諾)))% have been raiding their territory. The camp is controlled by %FactionName(IRAI_SUB:受諾)%.\n"
+		LOCALS += @"%CALLNAME:CHARA% is asking us to destroy the camp, which means eliminating all enemies. The base will have 3500 points of enemies.\n"
+		LOCALS += @"1500 points of soldiers will fight alongside you, but they can die in battle without any consequence."
+		HTML_PRINT LOCALS
+		CASE "downed refugee"
+		CALL SPAWNMOBENEMY(IRAI_SLOT_TO_PERSON(受諾),2,TALENT:CHARA:Recruiter-1,GET_MAP_REPLACEMENT(IRAI_SUB:受諾))
+		BASE:IRAI_SLOT_TO_PERSON(受諾):0 = 0
+		CFLAG:IRAI_SLOT_TO_PERSON(受諾):313 = 1
+		TCVAR:IRAI_SLOT_TO_PERSON(受諾):睡眠薬強度 = 3
+		CALLF BroadDamage(IRAI_SLOT_TO_PERSON(受諾),"fullbody",500,6,IRAI_SLOT_TO_PERSON(受諾),"Unknown Origin")
+		IF !RAND:4
+			IRAI_EX:受諾 = RAND_HUNTING_FACTION(TALENT:CHARA:Recruiter-1)
+			VARSET LOCAL
+			WHILE LOCAL:1 < 4
+				CALL FactionEnemySpawn(IRAI_EX:受諾,LOCAL,0,0)
+				CFLAG:(CHARANUM-1):300 = GET_MAP_REPLACEMENT(IRAI_SUB:受諾)
+				TCVAR:(CHARANUM-1):なるべく動かない = 1
+				CFLAG:(CHARANUM-1):移動率補正 = 1
+				LOCAL:1 ++
+			WEND
+		ELSE
+			IRAI_EX:受諾 = -1
+		ENDIF
+		LOCALS '= @"%NAME:CHARA%, %FACTION_RANK_STRING(CHARA,TALENT:CHARA:Recruiter-1)% of %FactionName(TALENT:CHARA:Recruiter-1)%, says that %HIS_HER(CHARA)% friend has been wounded while traveling. The victim is %NAME:IRAI_SLOT_TO_PERSON(受諾)%, a {CharaAge:IRAI_SLOT_TO_PERSON(受諾):0}-year-old officer.\n"
+		LOCALS += @"%CALLNAME:CHARA% has nobody to spare to rescue %CALLNAME:IRAI_SLOT_TO_PERSON(受諾)%, but says that if you can make it to %CALLNAME:IRAI_SLOT_TO_PERSON(受諾)%'s position and rescue %HIS_HER(IRAI_SLOT_TO_PERSON(受諾))%, %HE_SHE(IRAI_SLOT_TO_PERSON(受諾))% will join you.\n"
+		LOCALS += @"%CALLNAME:IRAI_SLOT_TO_PERSON(受諾)% says that %HES_SHES(IRAI_SLOT_TO_PERSON(受諾))% in %COND_STR(@"%GET_MAPNAME(GET_MAPID(IRAI_SUB:(受諾)))% - ", !IN_HOME(IRAI_SUB:(受諾)))%%THE_CASE_SHIFT(GET_PLACENAME(IRAI_SUB:(受諾)))%.\n"
+		SIF IRAI_EX:受諾 > -1
+		LOCALS += @"There is a group of %PLURALIZER(FactionUnit(IRAI_EX:受諾))% from %FactionName(IRAI_EX:受諾)% guarding %CALLNAME:IRAI_SLOT_TO_PERSON(受諾)%. You'll have to down the people guarding %CALLNAME:IRAI_SLOT_TO_PERSON(受諾)% before you can rescue them.."
+		HTML_PRINT LOCALS
+		CASE "investigate"
+			LOCAL = RAND_HUNTING_FACTION(TALENT:CHARA:Recruiter-1)
+			CALL SPAWNMOBENEMY(IRAI_SLOT_TO_PERSON(受諾),RAND_HUNTING_FACTION_MOB(LOCAL),LOCAL,CFLAG:MASTER:311)
+			CFLAG:IRAI_SLOT_TO_PERSON(受諾):現在位置 = CFLAG:MASTER:311
+			CFLAG:IRAI_SLOT_TO_PERSON(受諾):デート中 = MAIN_MAP
+			TEQUIP:IRAI_SLOT_TO_PERSON(受諾):拘束 = 1
+			CFLAG:IRAI_SLOT_TO_PERSON(受諾):うふふ = 1
+			CFLAG:IRAI_SLOT_TO_PERSON(受諾):同室 = 1
+
+			PRINTFORML Your job is to investigate %CALLNAME:IRAI_SLOT_TO_PERSON(受諾)%. %HES_SHES(IRAI_SLOT_TO_PERSON(受諾),1)% been transported to your room.
+			PRINTFORML Use any means necessary to extract information out, but don't kill %HIM_HER(IRAI_SLOT_TO_PERSON(受諾))% until you got enough information.
+		;=====================
+		CASE "伝令（場所）" ;qol custom code
+			PRINTFORML Your destination is %COND_STR(@"%GET_MAPNAME(GET_MAPID(IRAI_SLOT_TO_PLACE(受諾)))% - ", !IN_HOME(IRAI_SLOT_TO_PLACE(受諾)))%%THE_CASE_SHIFT(GET_PLACENAME(IRAI_SLOT_TO_PLACE(受諾)))%.
+		CASE "調達" ;qol custom code
+			PRINTFORML %CALLNAME:CHARA% wants you to bring {IRAI_SUB:受諾} %ITEMNAME_TR(IRAI_SLOT_TO_ITEM(受諾))%.
+	ENDSELECT
+	WAIT
+	CALL SHOW_IRAI_MESSAGE(CHARA, CFLAG:CHARA:依頼内容, "依頼受託時")
+	RETURN 1
+ENDIF
+
+
+
+;-------------------------------------------------
+;依頼確認/破棄
+;-------------------------------------------------
+@IRAI_LOOK(CHARA)
+#DIM CHARA
+#DIM CHK_SLOT
+CHK_SLOT = SEARCH_IRAI_SLOT(CFLAG:CHARA:依頼内容)
+CALL SHOW_IRAI_MESSAGE(CHARA, CFLAG:CHARA:依頼内容, "依頼確認時")
+CALL SHOW_IRAI_DATA(CFLAG:CHARA:依頼内容, CHK_SLOT)
+CALL ASK_YN("Never mind","Cancel the request" )
+SIF !RESULT
+	RETURN -1
+PRINTFORML Confirm again.
+CALL ASK_YN("Yes, Cancel the request", "Never mind")
+SIF RESULT
+	RETURN -1
+CALL SHOW_IRAI_MESSAGE(CHARA, CFLAG:CHARA:依頼内容, "依頼破棄時")
+PRINTFORMW The request has been discarded.
+CALL CLEAR_IRAI_SLOT(CHARA, CHK_SLOT, "依頼終了（失敗）")
+
+
+
+;-------------------------------------------------
+;依頼報告
+;-------------------------------------------------
+@IRAI_REPORT(CHARA)
+#DIM CHARA
+#DIM CHK_SLOT
+CHK_SLOT = SEARCH_IRAI_SLOT(CFLAG:CHARA:依頼内容)
+;依頼成功時
+;依頼失敗時
+SELECTCASE IRAI_CHARA_TO_PROGRESS(CHARA)
+CASE "依頼達成"
+	CALL SHOW_IRAI_MESSAGE(CHARA, CFLAG:CHARA:依頼内容, "成功報告時")
+	CALL IRAI_CARRYOUT(CHARA, CFLAG:CHARA:依頼内容, "依頼成功時")
+CASE "期限切れ", "報告忘れ", "依頼失敗"
+	CALL SHOW_IRAI_MESSAGE(CHARA, CFLAG:CHARA:依頼内容, "失敗報告時")
+	CALL IRAI_CARRYOUT(CHARA, CFLAG:CHARA:依頼内容, "依頼失敗時")
+ENDSELECT
+
+;楽譜入手処理
+SELECTCASE IRAI_CHARA_TO_PROGRESS(CHARA)
+CASE "依頼達成"
+	;RESULT = 楽譜入手_特殊条件(楽譜入手方法：妖精依頼成功) ;bugfix, disabled
+	CALL SET_REP(CHARA,14,,1)	
+	PRINTL
+	SELECTCASE CHARA
+	CASE 5,6,7,13,14
+		RESULT = 楽譜入手_特殊条件(楽譜入手方法：妖精依頼成功)
+	CASE 29
+		RESULT = 楽譜入手_特殊条件(楽譜入手方法：文依頼成功)
+	CASE 42
+		RESULT = 楽譜入手_特殊条件(楽譜入手方法：はたて依頼成功)
+	ENDSELECT
+CASE "依頼失敗"
+	IF (RAND:(100) < 30)
+		PRINTL
+		RESULT = 楽譜入手_特殊条件(楽譜入手方法：依賴失敗時)
+	ENDIF
+ENDSELECT
+
+SELECTCASE IRAI_CHARA_TO_PROGRESS(CHARA)
+CASE "依頼達成"
+	CALL CLEAR_IRAI_SLOT(CHARA, CHK_SLOT, "依頼終了（成功）")
+CASE "期限切れ"
+	CALL CLEAR_IRAI_SLOT(CHARA, CHK_SLOT, "依頼終了（期限切れ）")
+CASE "報告忘れ"
+	CALL CLEAR_IRAI_SLOT(CHARA, CHK_SLOT, "依頼終了（報告忘れ）")
+CASE "依頼失敗"
+	CALL CLEAR_IRAI_SLOT(CHARA, CHK_SLOT, "依頼終了（失敗）")
+ENDSELECT
+RETURN 1 ;bug fix

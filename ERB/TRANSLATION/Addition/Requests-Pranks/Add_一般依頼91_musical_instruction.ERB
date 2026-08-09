@@ -1,0 +1,144 @@
+@EXIST_一般依頼91
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+@一般依頼91(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+SELECTCASE O_DATA
+CASE "依頼名"
+	CALLF MAKE_STR(V_NAME, "Musical instruction")
+CASE "依頼内容表示"
+	CALLF MAKE_STR(V_NAME, @"Teach %CALLNAME:ARG% how to perform music")
+CASE "依頼報酬表示"
+	CALLF MAKE_STR(V_NAME, @"%金額表示(2000)%")
+CASE "依頼実行コマンド名"
+	CALLF MAKE_STR(V_NAME, @"Instruct %CALLNAME:ARG%")
+
+CASE "依頼内容"
+	CALLF MAKE_INT(V_NAME, MAKE_IRAI_DATA(0, "作業"))
+CASE "依頼サブ"
+	CALLF MAKE_INT(V_NAME, 0)
+CASE "依頼期限"
+	CALLF MAKE_INT(V_NAME, 0)
+CASE "依頼発生率"
+  IF TALENT:ARG:恋慕;girls who love you want to share your interests
+      CALLF MAKE_INT(V_NAME, 50)
+  ELSE
+      CALLF MAKE_INT(V_NAME, 3)
+  ENDIF
+	;CALLF MAKE_INT(V_NAME, 800)
+CASE "依頼発生条件"
+	IF !TALENT:MASTER:音楽知識 ;player needs knowledge of music
+    ELSEIF nRequestDisable:req_Music ;added for the disable musical instruction requests toggle
+    ELSEIF ABL:MASTER:教養 < 3 || ABL:MASTER:話術技能 < 3 || ABL:MASTER:音楽技能 < 3 ;needs basic skills in speech, knowledge, and music to give training
+	ELSEIF !TALENT:ARG:音楽知識 ;character must not already be a musician/singer/dancer 
+		CALLF MAKE_INT(V_NAME, 1)
+	ENDIF
+CASE "依頼受託可能条件"
+	CALLF MAKE_INT(V_NAME, 1)
+CASE "依頼実行可能条件"
+	CALLF MAKE_INT(V_NAME, 1)
+CASE "依頼消滅条件"
+	SIF nRequestDisable:req_Music || Add_Request_Should_Discard(ARG) ;added for the disable musical instruction requests toggle
+		CALLF MAKE_INT(V_NAME, 1)
+ENDSELECT
+
+
+@IRAI_一般91(CHARA, IRAI_ID, SCENE)
+#DIM  CHARA
+#DIM  IRAI_ID
+#DIMS SCENE
+#DIM  CLIENT_ID
+CLIENT_ID = IRAI_ID_TO_CLIENT(IRAI_ID)
+SELECTCASE SCENE
+CASE "依頼条件表示"
+CASE "依頼実行時"
+    PRINTFORMW You spend some time instructing %CALLNAME:TARGET% on musical theory.
+	PRINTFORML
+    IF ABL:MASTER:教養 + ABL:MASTER:話術技能 + (ABL:MASTER:音楽技能 * 2) + RAND:10 >= 20
+		PRINTFORMW %HE_SHE(TARGET, 1)% seems to have learned a lot today.
+    ELSE
+		PRINTFORMW Unfortunately, you failed to teach %HIM_HER(TARGET)% anything today.
+        TIME += 120
+		RETURN IRAI_CONST_RESULT("実行して失敗")
+    ENDIF
+  
+    CALL IRAI_一般91_Add_Xp_To_Best_Skill(TARGET, (ABL:MASTER:教養 + ABL:MASTER:話術技能 + (ABL:MASTER:音楽技能 * 3 / 2)) * 2) 
+    
+    IF EXP:TARGET:演奏経験 >= 100 || EXP:TARGET:歌唱経験 >= 100 || EXP:TARGET:舞踏経験 >= 100
+		PRINTFORML %CALLNAME:TARGET% has learned enough to continue on %HIS_HER(TARGET)% own.
+		PRINTFORML Which discipline do you want to nudge %HIM_HER(TARGET)% towards?
+        PRINTFORML [ 1] - Musical Knowledge
+        PRINTFORML [ 2] - Singing Knowledge
+        PRINTFORML [ 3] - Dancing Knowledge
+        PRINTFORML [ 4] - Let %HIM_HER(TARGET)% decide on %HIS_HER(TARGET)% own
+        DO
+            INPUT
+            SELECTCASE RESULT
+            CASE 1 TO 3
+                CALL IRAI_一般91_Give_Talent(TARGET, RESULT)
+            CASE 4
+                CALL IRAI_一般91_Give_Talent(TARGET, 1 + RAND:3)
+            CASEELSE
+                REUSELASTLINE Invalid Input
+                CONTINUE
+            ENDSELECT
+            BREAK
+        LOOP 1
+		PRINTFORML %CALLNAME:TARGET% thanks you for everything you did for %HIM_HER(TARGET)%. %HE_SHE(TARGET, 1)% hopes to perform alongside you sometime.
+    ENDIF
+    TIME += 115
+	RETURN IRAI_CONST_RESULT("実行して成功")
+CASE "依頼成功時"
+	SOURCE:恭順 = 1500
+	SOURCE:歓楽 = 1000
+	CALL CHANGE_CFLAG(2, TARGET, 25)
+	CALL CHANGE_CFLAG(4, TARGET, 15)
+	CALL KIGEN_CHANGE(TARGET, 100, 1)
+	CALL GET_MONEY_YEN(2000, 2)
+CASE "依頼失敗時"
+	CALL CHANGE_CFLAG(2, TARGET, -5)
+	CALL CHANGE_CFLAG(4, TARGET, -2)
+ENDSELECT
+
+@IRAI_一般91_Give_Talent(CHARA, PERFORMANCETYPE)
+#DIM CHARA
+#DIM PERFORMANCETYPE
+TALENT:CHARA:音楽知識 = PERFORMANCETYPE
+PRINTFORML %CALLNAME:CHARA% now has【%GET_TALENTNAME_TR(161, PERFORMANCETYPE)%】!
+;move highest xp to target skill, reset others to default
+SELECTCASE PERFORMANCETYPE
+CASE 1
+    EXP:CHARA:演奏経験 = MAX(EXP:CHARA:演奏経験, EXP:CHARA:歌唱経験, EXP:CHARA:舞踏経験)
+    EXP:CHARA:歌唱経験 = CSVEXP(NO:CHARA, GETNUM(EXP, "歌唱経験"))
+    EXP:CHARA:舞踏経験 = CSVEXP(NO:CHARA, GETNUM(EXP, "舞踏経験"))
+    TCVAR:CHARA:(400 + GETNUM(EXP, "歌唱経験")) = EXP:CHARA:歌唱経験
+    TCVAR:CHARA:(400 + GETNUM(EXP, "舞踏経験")) = EXP:CHARA:舞踏経験
+CASE 2
+    EXP:CHARA:歌唱経験 = MAX(EXP:CHARA:演奏経験, EXP:CHARA:歌唱経験, EXP:CHARA:舞踏経験)
+    EXP:CHARA:演奏経験 = CSVEXP(NO:CHARA, GETNUM(EXP, "演奏経験"))
+    EXP:CHARA:舞踏経験 = CSVEXP(NO:CHARA, GETNUM(EXP, "舞踏経験"))
+    TCVAR:CHARA:(400 + GETNUM(EXP, "演奏経験")) = EXP:CHARA:演奏経験
+    TCVAR:CHARA:(400 + GETNUM(EXP, "舞踏経験")) = EXP:CHARA:舞踏経験
+CASE 3
+    EXP:CHARA:舞踏経験 = MAX(EXP:CHARA:演奏経験, EXP:CHARA:歌唱経験, EXP:CHARA:舞踏経験)
+    EXP:CHARA:演奏経験 = CSVEXP(NO:CHARA, GETNUM(EXP, "演奏経験"))
+    EXP:CHARA:歌唱経験 = CSVEXP(NO:CHARA, GETNUM(EXP, "歌唱経験"))
+    TCVAR:CHARA:(400 + GETNUM(EXP, "演奏経験")) = EXP:CHARA:演奏経験
+    TCVAR:CHARA:(400 + GETNUM(EXP, "歌唱経験")) = EXP:CHARA:歌唱経験
+ENDSELECT
+
+@IRAI_一般91_Add_Xp_To_Best_Skill(CHARA, XP)
+#DIM CHARA
+#DIM XP
+IF EXP:CHARA:演奏経験 >= EXP:CHARA:歌唱経験 && EXP:CHARA:演奏経験 >= EXP:CHARA:舞踏経験
+    EXP:CHARA:演奏経験 += XP
+ELSEIF EXP:CHARA:歌唱経験 >= EXP:CHARA:舞踏経験
+    EXP:CHARA:歌唱経験 += XP
+ELSE
+    EXP:CHARA:舞踏経験 += XP
+ENDIF

@@ -1,0 +1,106 @@
+@Add_Milking(ARG, ARG:1)
+#DIM DYNAMIC nCollected
+SIF ARG:1 == 0 ;needs target
+	RETURN
+;set counters
+Qol_Info_Count_Array:ARG:Qol_Count_MilkLactated += ARG:1 * 10
+IF TEQUIP:ARG:乳首吸い
+	Qol_Info_Count_Array:ARG:Qol_Count_MilkDrankNipple += ARG:1 * 10
+	Qol_Info_Count_Array:MASTER:Qol_Count_MilkDrankNipple += ARG:1 * 10
+ENDIF
+
+;fringe cases, not allowed
+IF (!ITEM:瓶 || ITEM:ミルク瓶 >= 99) && (TEQUIP:ARG:搾乳機 || !SHIRAHU(ARG) || GETBIT(CFLAG:ARG:既成事実,1))
+	SIF !ITEM:瓶 && ITEM:ミルク瓶
+		PRINTFORML A part of you dies inside when you realize that you've let so much milk go to waste...
+	SIF ITEM:ミルク瓶 >= 99
+		PRINTFORML Unfortunately, you can't collect any more milk even if you wanted to because you're full. Just a fact of life...
+	;hint
+	IF !ITEM:瓶 && !ITEM:ミルク瓶 && !nMilkHint
+		PRINTFORML If only you had some kind of bottle to collect. Maybe you can purchase one from Eientei rabbits?
+		nMilkHint = 1
+	ENDIF
+	RETURN
+ENDIF
+
+;collecting
+IF TEQUIP:ARG:搾乳機
+	PRINTFORM The milker attached to %CALLNAME:ARG%'s chest squeezes out all of the lactated milk, resulting in 
+	SELECTCASE ARG:1
+		CASE 1 TO 2
+			PRINTFORM a few drops
+		CASE 3 TO 4
+			PRINTFORM a small haul
+		CASE 5 TO 6
+			PRINTFORM a decent chunk
+		CASE 7 TO 8
+			PRINTFORM a large number
+	CASEELSE
+		PRINTFORM a huge amount
+	ENDSELECT
+	PRINTFORML  being collected.
+	;with milker 100%
+	nCollected += ARG:1 * 10
+	SIF !SHIRAHU(ARG)
+		Qol_Info_Count_Array:ARG:Qol_Count_UncMilked += ARG:1 * 10
+ELSE ;without milker
+	IF !SHIRAHU(ARG)
+		PRINTFORML Since %CALLNAME:ARG% is pretty much incapacitated, she can't really object as you do your best trying to collect some of the milk.
+		Qol_Info_Count_Array:ARG:Qol_Count_UncMilked += ARG:1 * 10
+		SIF TEQUIP:ARG:乳首吸い
+			Qol_Info_Count_Array:ARG:Qol_Count_UncMilkDrank += ARG:1 * 10
+	ELSEIF GETBIT(CFLAG:ARG:既成事実,1) ;consent
+		IF MARK:ARG:反発刻印 || CFLAG:ARG:ブチギレ
+			PRINTFORML Sadly, %CALLNAME:ARG% is too angry with you to let you do as you please with her milk...
+			RETURN
+		ELSEIF TEQUIP:ARG:乳首吸い
+			PRINTFORML You rush to collect some of the amount you couldn't drink, which obviously results in a smaller yield.
+		ELSE
+			PRINTFORML \@ !CFLAG:うふふ ? Spotting the signs of lactation in the area, you # You\@ rush to %CALLNAME:ARG% to try and gather at least some of her milk into the bottle.
+		ENDIF
+		SELECTCASE CFLAG:ARG:性格傾向 ;personality reaction
+			CASE 1 ;timid
+				PRINTFORML %HE_SHE(ARG,1)% looks like she has something to say, but decides to stay quiet as she covers her mouth.
+			CASE 2 ;confident
+				PRINTFORML %HE_SHE(ARG,1)%'s a bit taken aback by your actions, but quickly regains her composure.
+			CASE 3 ;upfront
+				PRINTFORML %HE_SHE(ARG,1)% grins smugly at you, and even helps you squeeze her nipples to get the milk out.
+			CASE 4, 5 ;serious, other
+				PRINTFORML %HE_SHE(ARG,1)% looks at you %SPLIT_G(@"with a wry %FSYN("smile")%:in astonishment")%, but doesn't object.
+		ENDSELECT
+	ENDIF
+	nCollected += ARG:1 * RAND(6, 11)
+	;random loss
+	nCollected = MULTIPLY(nCollected, RAND(40, 81))
+ENDIF
+
+;process the yield
+IF nCollected
+;when enough is gathered to fill a bottle (300 units maybe?), add bottle of milk item
+	nMilkCount += nCollected
+	Qol_Info_Count_Array:ARG:Qol_Count_MilkCollected += nCollected
+	
+	CALL COLORMESSAGE(@"Milk collected: {nCollected}, total in reserve: {nMilkCount}/300",C_YELLOW,1)
+	LOCAL:9 = nMilkCount
+	SIF nMilkCount >= 300
+		CALL COLORMESSAGE(@"Processing loose milk...",C_YELLOW,1)
+	WHILE nMilkCount >= 300
+		;if run out of bottles or hit full
+		IF !ITEM:瓶
+			CALL COLORMESSAGE(@"You don't have enough bottles, so you had to give up...",C_RED,1)
+			BREAK
+		ELSEIF ITEM:ミルク瓶 >= 所持数制限
+			CALL COLORMESSAGE(@"Looks like you're full on milk, so you had to give up...",C_RED,1)
+			BREAK
+		ENDIF
+		
+		nMilkCount -= 300
+		CALL LOST_ITEM("瓶", 1, 1)
+		CALL GET_ITEM("ミルク瓶", 1, 1)
+	WEND
+	nMilkCount = MAX(0, nMilkCount) ;normalize
+	
+	SIF LOCAL:9 != nMilkCount
+		CALL COLORMESSAGE(@"Milk remaining: {nMilkCount}/300",C_YELLOW,1)
+ENDIF
+

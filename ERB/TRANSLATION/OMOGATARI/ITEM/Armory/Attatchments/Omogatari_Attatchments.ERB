@@ -1,0 +1,730 @@
+@AttachmentMatchesWeapon(Attachment,weapon,AttachmentType)
+#FUNCTION
+#DIMS AttachmentType
+#DIM weapon
+#DIM Attachment
+#DIM weaponBase
+SIF !STRLENS(GET_STR(MASTER, AttachmentType, Attachment, "名前")) && Attachment != 0
+	RETURNF 0
+;knife exception
+SIF PreviewWeaponStrs:1 == "knife/"
+	RETURNF 1
+;supports all
+SIF GET_STR(MASTER, AttachmentType, Attachment, "Platform") == "everything/"
+	RETURNF 1
+
+IF weapon > 600000000000000000
+	weaponBase = DT_CELL_GET("WeaponInventory", weapon, "def", 1)
+ELSE
+	weaponBase = weapon
+ENDIF
+
+SELECTCASE AttachmentType
+CASE "WeaponAmmo"
+	SIF PreviewWeaponStrs:1 != GET_STR(MASTER, "WeaponAmmo", Attachment, "Ammo") && Attachment != 0
+		RETURNF 0
+CASE "WeaponBarrel"
+	; SIF PreviewWeaponStrs:1 != GET_STR(MASTER, "WeaponBarrel", Attachment, "Ammo") && Attachment != 0
+	; 	RETURNF 0
+	SIF !STRLENS(PreviewWeaponStrs:0)
+		RETURNF 0
+	; FOR LOCAL:1, 0,STRCOUNT(PreviewWeaponStrs:0,"/")
+	; 	SIF STRFIND(GET_STR(MASTER, AttachmentType, Attachment, "Platform"),SPLIT_SINGLE(PreviewWeaponStrs:0,LOCAL:1,"/")) == -1 && Attachment != 0
+	; 		CONTINUE
+	; 	GOTO BarrelCheckAfter
+	; NEXT
+	; RETURNF 0
+	; $BarrelCheckAfter
+	FOR LOCAL:1, 0,MAX(1,STRCOUNT(GET_STR(MASTER, AttachmentType, Attachment, "Ammo"),"/"))
+		SIF STRFIND(PreviewWeaponStrs:1,SPLIT_SINGLE(GET_STR(MASTER, AttachmentType, Attachment, "Ammo"),LOCAL:1,"/")) == -1 && Attachment != 0
+			CONTINUE
+		RETURNF 1
+	NEXT
+	RETURNF 0
+CASE "WeaponSight"
+	SIF WeaponHasAttachmentSlot(weapon, 3) < GET_INT(MASTER, "WeaponSight", Attachment, "Sight Slot") && Attachment != 0
+		RETURNF 0
+CASE "WeaponMag"
+	SIF STRFIND(GET_STR(MASTER, AttachmentType, Attachment, "Ammo"),PreviewWeaponStrs:1) == -1 && Attachment != 0
+		RETURNF 0
+	RETURNF 1
+	$WeaponAmmoAfter
+CASE "WeaponTactical", "WeaponForegrip"
+	RETURNF 1
+CASE "WeaponReceiver"
+	SIF GET_INT(MASTER, AttachmentType, Attachment, "Base Weapon") == weaponBase
+		RETURNF 1
+	RETURNF 0
+CASEELSE
+	SIF !STRLENS(PreviewWeaponStrs:0)
+		RETURNF 0
+	$PlatformCheck
+	FOR LOCAL:1, 0,STRCOUNT(PreviewWeaponStrs:0,"/")
+		SIF STRFIND(GET_STR(MASTER, AttachmentType, Attachment, "Platform"),SPLIT_SINGLE(PreviewWeaponStrs:0,LOCAL:1,"/")) == -1 && Attachment != 0
+			CONTINUE
+		RETURNF 1
+	NEXT
+	RETURNF 0
+ENDSELECT
+RETURNF 1
+
+@WeaponHasAttachmentSlot(weapon, attachmentTypeID)
+#FUNCTION
+#DIM attachmentTypeID
+#DIM weapon
+#DIM weaponBase
+#DIM weaponAtt
+#DIM weaponAttGet
+weaponBase = weapon
+IF weapon > 600000000000000000
+	weaponBase = DT_CELL_GET("WeaponInventory", weapon, "def", 1)
+ENDIF
+
+; SIF (GET_STR(, "Weapon", weaponBase, "Type") == "Firearm") && attachmentTypeID == 9
+; 	RETURNF 1
+
+SELECTCASE attachmentTypeID
+CASE 0
+	SIF GET_STR(, "Weapon", weaponBase, "Type") == "Firearm"
+		RETURNF 1
+	SIF GET_INT(, "Weapon", weaponBase, "Receiver Slot") == -1
+		RETURNF 0
+CASE 9
+	;GET_STR(, "Weapon", weaponBase, "Type") == "Firearm"
+	SIF GET_STR(, "Weapon", weaponBase, "Ammo") != ""
+		RETURNF 1
+	SIF GET_STR(, "Weapon", weaponBase, "Type") == "Firearm"
+		RETURNF 1
+	; SIF (GET_INT(, "Weapon", weaponBase, "Firearm Template"))
+	; 	RETURNF 1
+ENDSELECT
+
+
+
+
+IF weapon > 600000000000000000
+	weaponAttGet = GET_INT(MASTER, "WeaponReceiver", DT_CELL_GET("WeaponInventory", weapon, "WeaponReceiver", 1), GetAttachmentType(attachmentTypeID,2))
+	FOR LOCAL,1,VARSIZE("charaWeaponAtts")
+		weaponAtt = DT_CELL_GET("WeaponInventory", weapon, GetAttachmentType(LOCAL), 1)
+		SIF !weaponAtt
+			CONTINUE
+		LOCAL:1 = GET_INT(MASTER, GetAttachmentType(LOCAL), weaponAtt, GetAttachmentType(attachmentTypeID,2))
+		SELECTCASE LOCAL:1
+		CASE IS != 0
+			weaponAttGet = LOCAL:1
+		ENDSELECT
+	NEXT
+ENDIF
+SELECTCASE weaponAttGet
+CASE 0
+RETURNF GET_INT(MASTER, "Weapon", weaponBase, GetAttachmentType(attachmentTypeID,2))
+CASE IS > 0
+RETURNF weaponAttGet
+CASE IS < 0
+RETURNF 0
+ENDSELECT
+
+
+@WEAPON_MODIFY(TempMod,CanDev=0)
+#DIM CanDev
+#DIM WM_LINE
+#DIM WM_BASE
+
+WM_BASE = TempMod
+IF TempMod > 600000000000000000
+	;weaponinventory entry
+	WM_BASE = DT_CELL_GET("WeaponInventory", TempMod, "def", 1)
+ENDIF
+
+PRINTFORML Weapon Platform: %LIST_IN_STRING(GET_STR(MASTER, "Weapon", TempMod, "Platform"), "/")%
+SETCOLOR C_GRAY
+CUSTOMDRAWLINE ━
+RESETCOLOR
+WM_LINE = LINECOUNT
+CALLF SetDefaultAttachments(MASTER,TempMod)
+$ModMenu
+CLEARLINE LINECOUNT-WM_LINE
+
+FOR LOCAL,0,VARSIZE("CharaWeaponAtts")
+	IF !WeaponHasAttachmentSlot(TempMod,LOCAL)
+		CONTINUE
+	ENDIF
+
+	PRINTBUTTON @"%GetAttachmentType(LOCAL,1),16,LEFT%: %GET_STR(MASTER, GetAttachmentType(LOCAL,0), DT_CELL_GET("WeaponInventory", TempMod, GetAttachmentType(LOCAL,0), 1), "名前")%", LOCAL
+	PRINTL
+NEXT
+SETCOLOR C_GRAY
+CUSTOMDRAWLINE ━
+RESETCOLOR
+PRINTFORML [900] Presets
+PRINTFORML [999] Return
+INPUT
+SELECTCASE RESULT
+CASE 0 TO VARSIZE("CharaWeaponAtts")-1
+	CALL SelectWeaponMod(GetAttachmentType(RESULT,0), CanDev)
+	SELECTCASE RESULT
+	CASE -533
+		GOTO ModMenu
+	ENDSELECT
+CASE 900
+	CALL PickWeaponPresets(CanDev)
+	GOTO ModMenu
+CASE 999
+	RETURN
+CASEELSE
+	GOTO ModMenu
+ENDSELECT
+
+@SelectWeaponMod(AttachmentType, CanDev)
+#DIM Attachment
+#DIMS AttachmentType
+#DIM CanDev
+#DIM SWM_LINECOUNT
+
+SWM_LINECOUNT = LINECOUNT
+DO
+	CLEARLINE LINECOUNT-SWM_LINECOUNT
+	IF AttachmentMatchesWeapon(999,TempMod,AttachmentType)
+		PRINTFORML [999] %GET_STR(MASTER, AttachmentType, 999, "名前")%
+	ENDIF
+	FOR LOCAL, 0, VAR_TEMP_MAX-1
+		SIF !AttachmentMatchesWeapon(LOCAL,TempMod,AttachmentType) && LOCAL != 0
+			CONTINUE
+		SIF LOCAL == 0 && GROUPMATCH(AttachmentType,"WeaponReceiver")
+			CONTINUE
+		PRINTFORML [{LOCAL,3}] %GET_STR(MASTER, AttachmentType, LOCAL, "名前")%
+	NEXT
+	PRINTFORML [-10] - Return
+	INPUT
+	Attachment = RESULT
+	SELECTCASE Attachment
+	CASE -10
+		RETURN -533
+	CASE 0 TO VAR_TEMP_MAX
+		IF !AttachmentMatchesWeapon(Attachment,TempMod,AttachmentType) && LOCAL != 0
+			REUSELASTLINE "Incompatible attachment."
+		ENDIF
+		CALL DevelopWeaponMod(Attachment,AttachmentType,CanDev)
+	ENDSELECT
+LOOP 1
+
+@DevelopWeaponMod(Attachment,AttachmentType,CanDev)
+#DIM Attachment
+#DIMS AttachmentType
+#DIM CanDev
+
+IF RESULT <= CHARANUM
+	Attachment = RESULT
+	CALL WeaponDescription(TempMod,Attachment,AttachmentType)
+	IF !GETVAR(@"Developed%AttachmentType%:{Attachment}") && Attachment && !TFLAG:989
+		IF CanDev
+			PRINTFORML Develop the %GET_STR(MASTER, AttachmentType, Attachment, "名前")%?
+			CALL PAY_YEN_OR_CM(GET_INT(MASTER, AttachmentType, Attachment, "Price"),GET_INT(MASTER, AttachmentType, Attachment, "Price")/MAX(1,CHARISMA_NOW()))
+			IF RESULT
+				;SETVAR @"%AttachmentType%:{TempMod}", Attachment
+				;DT_CELL_SET "WeaponInventory", TempMod, AttachmentType, Attachment, 1
+				SETVAR @"Developed%AttachmentType%:{Attachment}", 1
+				SIF AttachmentType == "WeaponAmmo"
+					AmmoStock:Attachment = 20
+				PRINTFORML Developed the %GET_STR(MASTER, AttachmentType, Attachment, "名前")%!
+				RETURN -533
+			ELSE
+				RETURN -533
+			ENDIF
+		ELSE
+			PRINTFORMW Go to %CALLNAME:51% or go on the Internet to develop this.
+			RETURN -533
+		ENDIF
+	ELSE
+		PRINTFORML [  0] - Equip
+		SIF Attachment && CanDev && AttachmentType == "WeaponAmmo"
+		PRINTFORML [  1] - Buy Stock (currently have {AmmoStock:Attachment})
+		PRINTFORML [999] - Return
+		INPUT
+		IF RESULT == 0
+			;SETVAR @"%AttachmentType%:{TempMod}", Attachment
+			DT_CELL_SET "WeaponInventory", TempMod, AttachmentType, Attachment, 1
+			SIF TFLAG:989 && AttachmentType == "WeaponAmmo"
+				AmmoStock:Attachment = MAX(AmmoStock:Attachment,9999)
+			PRINTFORML Equipped the %GET_STR(MASTER, AttachmentType, Attachment, "名前")%!
+			RETURN -533
+		ELSEIF RESULT == 1 && AttachmentType == "WeaponAmmo"
+			SIF !CanDev
+				RETURN -533
+
+			IF GET_INT(MASTER, "WeaponAmmo", Attachment, "Unit Price")
+				LOCAL = GET_INT(MASTER, "WeaponAmmo", Attachment, "Unit Price")
+			ELSE
+				LOCAL = GET_INT(MASTER, "WeaponAmmo", Attachment, "Price")/1000
+			ENDIF
+			PRINTFORML Please select the desired number of %GET_STR(MASTER, "WeaponAmmo", Attachment, "名前")% to purchase. (Cost \\{LOCAL}/round  Owned: {AmmoStock:Attachment})
+			PRINTL [  10] １０　
+			PRINTL [  20] ２０　
+			PRINTL [  50] ５０　
+			PRINTL [ 100] １００
+			PRINTL [ 250] ２５０
+			PRINTL [ 500] ５００
+			PRINTL [1000] １０００								
+			PRINTFORML [{MONEY/LOCAL}] As many as possible
+			PRINTL [ 0] Cancel
+			INPUT
+			LOCAL:1 = RESULT
+			IF RESULT > 0
+				CALL PAY_YEN_OR_CM(LOCAL*(LOCAL:1),(LOCAL*(LOCAL:1))/CHARISMA_NOW())
+				IF RESULT
+					AmmoStock:Attachment += LOCAL:1
+					PRINTFORML Bought {LOCAL:1} bullets of %GET_STR(MASTER, "WeaponAmmo", Attachment, "名前")% !
+					PRINTFORMW You now have {AmmoStock:Attachment} bullets.
+					RETURN -533
+				ELSE
+					RETURN -533
+				ENDIF					
+			ELSE
+				RETURN -533
+			ENDIF
+		ELSE
+			RETURN -533
+		ENDIF
+	ENDIF		
+ELSE
+	RETURN -533
+ENDIF
+
+;EquipWeapon(39,1005)
+@SetDefaultAttachments(ARG,nWeapon)
+#FUNCTION
+#DIM nWeapon
+#DIM WeapInv
+VARSET WeapInv
+
+IF nWeapon > 600000000000000000
+	;weaponinventory entry
+	WeapInv = nWeapon
+	;WeaponPreset = DT_CELL_GET("WeaponInventory", ARG, "detectedPreset", 1)
+	nWeapon = DT_CELL_GET("WeaponInventory", nWeapon, "def", 1)
+ENDIF
+
+FOR LOCAL,0,VARSIZE("charaWeaponAtts")
+	IF GET_INT(ARG, "Weapon", nWeapon, @"%GetAttachmentType(LOCAL,0)%/Default")
+		IF WeapInv && !DT_CELL_GET("WeaponInventory", nWeapon, GetAttachmentType(LOCAL,0), 1)
+			DT_CELL_SET "WeaponInventory", nWeapon, GetAttachmentType(LOCAL,0), GET_INT(ARG, "Weapon", nWeapon, @"%GetAttachmentType(LOCAL,0)%/Default"), 1
+		ELSEIF EQUIP:ARG:Weapon == nWeapon
+			;DEBUGPRINTFORML setting attachment's for {ARG} %CALLNAME:ARG%'s weapon no {nWeapon}.
+			charaWeaponAtts:ARG:LOCAL = GET_INT(ARG, "Weapon", nWeapon, @"%GetAttachmentType(LOCAL,0)%/Default")
+		ENDIF
+	ENDIF
+NEXT
+
+@RemoveCharaAttachments(ARG)
+#FUNCTION
+FOR LOCAL,0,VARSIZE("charaWeaponAtts")
+	charaWeaponAtts:ARG:LOCAL = 0
+NEXT
+
+@GetAttachmentType(ARG,ARG:1)
+#FUNCTIONS
+SELECTCASE ARG
+CASE 0
+	SELECTCASE ARG:1
+	CASE 1
+	RETURNF "Receiver"
+	CASE 2
+	RETURNF "Receiver Slot"
+	ENDSELECT
+CASE 1
+	SELECTCASE ARG:1
+	CASE 1
+	RETURNF "Grip"
+	CASE 2
+	RETURNF "Grip Slot"
+	ENDSELECT
+CASE 2
+	SELECTCASE ARG:1
+	CASE 1
+	RETURNF "Foregrip"
+	CASE 2
+	RETURNF "Foregrip Slot"
+	ENDSELECT
+CASE 3
+	SELECTCASE ARG:1
+	CASE 1
+	RETURNF "Sight"
+	CASE 2
+	RETURNF "Sight Slot"
+	ENDSELECT
+CASE 4
+	SELECTCASE ARG:1
+	CASE 1
+	RETURNF "Stock"
+	CASE 2
+	RETURNF "Stock Slot"
+	ENDSELECT
+CASE 5
+	SELECTCASE ARG:1
+	CASE 1
+	RETURNF "Barrel"
+	CASE 2
+	RETURNF "Barrel Body Slot"
+	ENDSELECT
+CASE 6
+	SELECTCASE ARG:1
+	CASE 1
+	RETURNF "Barrel Extension"
+	CASE 2
+	RETURNF "Barrel Slot"
+	ENDSELECT
+CASE 7
+	SELECTCASE ARG:1
+	CASE 1
+	RETURNF "Tactical"
+	CASE 2
+	RETURNF "Tactical Slot"
+	ENDSELECT
+CASE 8
+	SELECTCASE ARG:1
+	CASE 1
+	RETURNF "Magazine"
+	CASE 2
+	RETURNF "Magazine Slot"
+	ENDSELECT
+CASE 9
+	SELECTCASE ARG:1
+	CASE 1
+	RETURNF "Ammo"
+	CASE 2
+	RETURNF "Ammo Slot"
+	ENDSELECT
+CASE 10
+	SELECTCASE ARG:1
+	CASE 1
+	RETURNF "Blade"
+	CASE 2
+	RETURNF "Blade Slot"
+	ENDSELECT
+CASE 11
+	SELECTCASE ARG:1
+	CASE 1
+	RETURNF "Spring"
+	CASE 2
+	RETURNF "Spring Slot"
+	ENDSELECT
+CASE 12
+	SELECTCASE ARG:1
+	CASE 1
+	RETURNF "String"
+	CASE 2
+	RETURNF "String Slot"
+	ENDSELECT
+ENDSELECT
+
+RETURNF ERDNAME(charaWeaponAtts,ARG)
+
+@GetAttachmentType_Priority(ARG)
+#FUNCTIONS
+SELECTCASE ARG
+CASE 0
+	RETURNF "WeaponReceiver"
+CASE 1
+	RETURNF "WeaponAmmo"
+CASE 2
+	RETURNF "WeaponSpring"
+CASE 3
+	RETURNF "WeaponString"
+CASE 4
+	RETURNF "WeaponBlade"
+CASE 5
+	RETURNF "WeaponBarrelBody"
+CASE 6
+	RETURNF "WeaponBarrel"
+CASE 7
+	RETURNF "WeaponGrip"
+CASE 8
+	RETURNF "WeaponForegrip"
+CASE 9
+	RETURNF "WeaponSight"
+CASE 10
+	RETURNF "WeaponStock"
+CASE 11
+	RETURNF "WeaponMag"
+CASE 12
+	RETURNF "WeaponTactical"
+ENDSELECT
+
+@CurrentAttachment(ARG,nWeapon,nAttachment)
+#FUNCTION
+#DIM nWeapon
+#DIMS nAttachment
+
+IF nWeapon > 600000000000000000
+	RETURNF DT_CELL_GET("WeaponInventory", nWeapon, nAttachment, 1)
+ENDIF
+
+RETURNF GETVAR(@"charaWeaponAtts:{ARG}:%nAttachment%")
+
+@GetWeaponPreset(ARG,nWeapon)
+#FUNCTION
+#DIM DYNAMIC nWeapon
+#DIM DYNAMIC BestPreset,2
+#DIM DYNAMIC nPreset
+#DIM DYNAMIC nInventoryID
+#DIM DYNAMIC nBaseID
+
+nBaseID = nWeapon
+
+IF !nWeapon
+	RETURNF 0
+ELSEIF nWeapon > 600000000000000000
+	;weaponinventory entry
+	nInventoryID = nWeapon
+	;WeaponPreset = DT_CELL_GET("WeaponInventory", ARG, "detectedPreset", 1)
+	nBaseID = DT_CELL_GET("WeaponInventory", nInventoryID, "def", 1)
+ENDIF
+SIF !STRLENS(PossibleWeaponPresets:nBaseID)
+	RETURNF 0
+
+LOCAL:4 = STRCOUNT(PossibleWeaponPresets:nBaseID,"/")
+
+
+nPreset = 0
+WHILE nPreset < LOCAL:4+1
+	CALLF DWP_SINGLE(ARG,nWeapon,TOINT(SPLIT_SINGLE(PossibleWeaponPresets:nBaseID,nPreset,"/")),BestPreset)
+	nPreset ++
+WEND
+;DEBUGPRINTFORML best matching preset is {BestPreset:0} with {BestPreset:1} points
+RETURNF BestPreset
+
+@DWP_SINGLE(ARG,nWeapon,nPreset,BestPreset)
+#FUNCTION
+#DIM DYNAMIC nWeapon
+#DIM nPreset
+#DIM DYNAMIC GUP_SCORE,2
+#DIM REF BestPreset
+#DIM DYNAMIC nBaseID
+#DIM DYNAMIC nInventoryID
+
+nBaseID = nWeapon
+IF nWeapon > 600000000000000000
+	;weaponinventory entry
+	nInventoryID = nWeapon
+	;WeaponPreset = DT_CELL_GET("WeaponInventory", ARG, "detectedPreset", 1)
+	nBaseID = DT_CELL_GET("WeaponInventory", nInventoryID, "def", 1)
+ENDIF
+
+
+; SIF DetectingWeapPreset
+; 	RETURNF
+SIF !EXISTFUNCTION(@"WeaponPreset{nPreset}")
+	RETURNF
+SIF GET_INT(ARG,"WeaponPreset",nPreset,@"Base Weapon") != nBaseID
+	RETURNF
+
+VARSET GUP_SCORE
+FOR LOCAL,0,VARSIZE("charaWeaponAtts")
+	IF GET_INT(ARG,"WeaponPreset",nPreset,@"%GetAttachmentType(LOCAL,0)%/Required")
+		GUP_SCORE:1++
+		SIF CurrentAttachment(ARG,nWeapon,GetAttachmentType(LOCAL,0)) == GET_INT(ARG,"WeaponPreset",nPreset,@"%GetAttachmentType(LOCAL,0)%/Required") || (CurrentAttachment(ARG,nWeapon,GetAttachmentType(LOCAL,0)) <= 0 && GET_INT(ARG,"WeaponPreset",nPreset,@"%GetAttachmentType(LOCAL,0)%/Required") < 0)
+			GUP_SCORE:0++
+	ELSE
+		CONTINUE
+	ENDIF
+NEXT
+IF GUP_SCORE:0 >= GUP_SCORE:1 && GUP_SCORE:1
+	IF GUP_SCORE:1 > BestPreset:1
+		BestPreset:0 = nPreset
+		BestPreset:1 = GUP_SCORE:1
+	ENDIF
+ENDIF
+
+@CurrentWeaponAmmo(ARG,nWeapon)
+#FUNCTIONS
+#DIM nWeapon
+
+IF TempMod
+	SIF STRLENS(PreviewWeaponStrs:1)
+		RETURNF PreviewWeaponStrs:1
+ELSE
+	SIF STRLENS(CharaWeaponStrs:ARG:1)
+		RETURNF CharaWeaponStrs:ARG:1
+ENDIF
+RETURNF GET_STR(ARG,"Weapon",nWeapon,@"Ammo")
+
+@WeapStatsVarNames(ARG)
+#FUNCTION
+VARSET RESULTS
+SELECTCASE ARG
+CASE 0
+	RESULTS:2 '= "Damage"
+CASE 1
+	RESULTS:2 '= "Damage Type"
+CASE 2
+	RESULTS:2 '= "Burst"
+CASE 3
+	RESULTS:2 '= "Pellets"
+CASE 4
+	RESULTS:2 '= "Mag Size"
+CASE 5
+	RESULTS:2 '= "Penetration"
+CASE 6
+	RESULTS:2 '= "Accuracy"
+CASE 7
+	RESULTS:2 '= "Range"
+CASE 8
+	RESULTS:2 '= "Non Lethal"
+CASE 9
+	RESULTS:2 '= "Loudness"
+CASE 10
+	RESULTS:2 '= "Multi Hit"
+CASE 11
+	RESULTS:2 '= "MP Cost"
+CASE 15
+	RESULTS:2 '= "Fragmentation"
+CASE 16
+	RESULTS:2 '= "Fragmentation Damage"
+CASE 17
+	RESULTS:2 '= "Fragmentation Damage Type"
+CASE 18
+	RESULTS:2 '= "Fragmentation Size"
+CASE 19
+	RESULTS:2 '= "Diversion Chance"
+CASE 20
+	RESULTS:2 '= "Explosive"
+CASE 20
+	RESULTS:2 '= "Knock Back Chance"
+CASE 22
+;goes from slight debuff to lose your entire turn
+	RESULTS:2 '= "Knock Back Damage"
+CASE 23
+	RESULTS:2 '= "Explosive Damage"
+CASE 24
+	RESULTS:2 '= "Explosive Penetration"
+CASE 25
+	RESULTS:2 '= "Explosive Size"
+CASE 26
+	RESULTS:2 '= "Explosive Damage Type"
+ENDSELECT
+RETURNF 1
+
+@PickWeaponPresets(CanDev)
+#DIM CanDev
+#DIM DYNAMIC nPreset
+#DIM DYNAMIC PWP_LINE
+SETCOLOR C_GRAY
+CUSTOMDRAWLINE ━
+RESETCOLOR
+PWP_LINE = LINECOUNT
+DO
+	CLEARLINE LINECOUNT-PWP_LINE
+	FOR nPreset, 0, VAR_TEMP_MAX
+		SIF !EXISTFUNCTION(@"WeaponPreset{nPreset}")
+			CONTINUE
+		SIF GET_INT(0,"WeaponPreset",nPreset,@"Base Weapon") != TempMod
+			CONTINUE
+		PRINTFORML [{nPreset,3}] - %ALL_BRANDS_NAMES(GET_STR(0,"WeaponPreset",nPreset,@"Manufacturer"),1)% %GET_STR(0,"WeaponPreset",nPreset,@"Name")%
+	NEXT
+	SETCOLOR C_GRAY
+	CUSTOMDRAWLINE ━
+	RESETCOLOR
+	PRINTFORML [999] - Return
+	INPUT
+	SELECTCASE RESULT
+	CASE 999
+		RETURN
+	CASEELSE
+		SIF !EXISTFUNCTION(@"WeaponPreset{RESULT}")
+			CONTINUE
+		SIF GET_INT(0,"WeaponPreset",RESULT,@"Base Weapon") != TempMod
+			CONTINUE
+		CALL ShowWeaponPreset(MASTER,RESULT)
+	ENDSELECT
+LOOP 1
+
+@ShowWeaponPreset(ARG,nWeaponPreset)
+#DIM nWeaponPreset
+#DIM SWP_LOOP
+#DIM SWP_WEAPON
+#DIM SWP_INPUT
+SWP_WEAPON = GET_INT(ARG, "WeaponPreset", nWeaponPreset, "Base Weapon")
+
+;show weapon stats
+CALL WeaponDescription(nWeaponPreset+1000)
+SETCOLOR C_GRAY
+CUSTOMDRAWLINE ━
+RESETCOLOR
+FOR SWP_LOOP,0,9
+	IF !GET_INT(ARG, "Weapon", SWP_WEAPON, GetAttachmentType(SWP_LOOP,2)) && SWP_LOOP
+		CONTINUE
+	ENDIF
+	PRINTFORMS @"%GetAttachmentType(SWP_LOOP,1),16,LEFT%: %GET_STR(ARG, GetAttachmentType(SWP_LOOP,0), PresetAttachment(nWeaponPreset,GetAttachmentType(SWP_LOOP,0)), "名前")%"
+	PRINTL
+NEXT
+
+IF PresetAttachment(nWeaponPreset,"WeaponAmmo")
+	PRINTFORMS @"%"Ammo",16,LEFT%: %GET_STR(ARG, "WeaponAmmo", PresetAttachment(nWeaponPreset,"WeaponAmmo"), "名前")%"
+	PRINTL
+ENDIF
+SETCOLOR C_GRAY
+CUSTOMDRAWLINE ━
+RESETCOLOR
+IF CAN_APPLY_PRESET(nWeaponPreset)
+PRINTFORML [100] - Apply All
+PRINTFORML [101] - Apply Required Only
+ELSE
+PRINTFORML [200] - Develop
+ENDIF
+PRINTL
+PRINTFORML [999] - Cancel
+INPUT
+SWP_INPUT = RESULT
+SELECTCASE SWP_INPUT
+CASE 999
+RETURN
+CASE 100, 101
+	FOR SWP_LOOP,0,9
+		IF !GET_INT(ARG, "Weapon", GET_INT(ARG, "WeaponPreset", nWeaponPreset, "Base Weapon"), GetAttachmentType(SWP_LOOP,2)) && SWP_LOOP && SWP_INPUT == 101
+			CONTINUE
+		ENDIF
+		DT_CELL_SET "WeaponInventory", TempMod, GetAttachmentType(SWP_LOOP,0), PresetAttachment(nWeaponPreset,GetAttachmentType(SWP_LOOP,0)), 1
+		
+		;SETVAR @"%GetAttachmentType(SWP_LOOP,0)%:{SWP_WEAPON}", PresetAttachment(nWeaponPreset, GetAttachmentType(SWP_LOOP,0))
+	NEXT
+
+	IF PresetAttachment(nWeaponPreset,"WeaponAmmo")
+		DT_CELL_SET "WeaponInventory", TempMod, "WeaponAmmo", PresetAttachment(nWeaponPreset,"WeaponAmmo"), 1
+		;WeaponAmmo:SWP_WEAPON = PresetAttachment(nWeaponPreset,"WeaponAmmo")
+	ENDIF
+CASEELSE
+ENDSELECT
+
+@PresetAttachment(nWeaponPreset,nAttachmentType)
+#FUNCTION
+#DIM nWeaponPreset
+#DIMS nAttachmentType
+LOCAL:1 = GET_INT(MASTER, "WeaponPreset", nWeaponPreset, nAttachmentType+"/Required")
+LOCAL:2 = GET_INT(MASTER, "WeaponPreset", nWeaponPreset, nAttachmentType+"/Default")
+
+SIF !LOCAL:1 && !LOCAL:2
+	RETURNF 0
+
+IF LOCAL:1
+	RETURNF LOCAL:1
+ELSEIF LOCAL:2
+	RETURNF LOCAL:2
+ENDIF
+
+@CAN_APPLY_PRESET(nWeaponPreset)
+#FUNCTION
+#DIM nWeaponPreset
+#DIM CAP_POINTS,2
+#DIM SWP_LOOP
+VARSET CAP_POINTS
+
+SIF TFLAG:989
+	RETURNF 1
+
+FOR SWP_LOOP,0,9
+	IF !GET_INT(0, "Weapon", GET_INT(0, "WeaponPreset", nWeaponPreset, "Base Weapon"), GetAttachmentType(SWP_LOOP,2)) && SWP_LOOP
+		CONTINUE
+	ENDIF
+	PRINTFORMS @"%GetAttachmentType(SWP_LOOP,1),16,LEFT%: %GET_STR(0, GetAttachmentType(SWP_LOOP,0), PresetAttachment(nWeaponPreset,GetAttachmentType(SWP_LOOP,0)), "名前")%"
+	PRINTL
+NEXT

@@ -1,0 +1,783 @@
+;Yuri stuff (the NPC vs NPC kind of thing)
+
+@ONANISM_NAS
+#DIM 欲求不満度
+#DIM 満足度
+#DIM 嫉妬度
+#DIM 珠入手倍率
+#DIM 部位指定
+#DIM 追加Ｖ自慰
+#DIM 追加Ａ自慰
+#DIM 追加Ｂ自慰
+#DIM LocalMStim
+#DIM LocalUStim
+#DIM 自慰タイプ
+#DIM 自慰発生閾値
+#DIM CONST 文字サイズ = 15
+#DIMS 自慰画像
+#DIM CHARA
+#DIM CharaVStim
+#DIM CharaAStim
+#DIM CharaBStim
+#DIM CharaMStim
+#DIM CharaUStim
+#DIM CharaYuri
+VARSET LOCAL
+FOR LOCAL,0,CHARANUM
+	SIF CFLAG:LOCAL:出禁
+		CONTINUE
+	SIF IsDead:LOCAL:0
+		CONTINUE		
+	部位指定 = 0
+	自慰タイプ = 0
+	追加Ｖ自慰 = 0
+	追加Ａ自慰 = 0
+	追加Ｂ自慰 = 0
+	LocalMStim = 0
+	LocalUStim = 0
+	CharaYuri = 0
+	CHARA = -1
+	自慰発生閾値 = LIMIT(750 - 200 * TALENT:LOCAL:自慰しやすい - 100 * TALENT:LOCAL:快感応答 - 100 * TALENT:LOCAL:自己愛 + 200 * TALENT:LOCAL:自制心,500,999)
+	自慰発生閾値 -= 300 * TALENT:LOCAL:自慰狂い
+
+	IF GET_INT(LOCAL, "Religion", TALENT:LOCAL:Religion, "Masturbation") > 0
+		GOTO ForceFap
+	ELSEIF GET_INT(LOCAL, "Religion", TALENT:LOCAL:Religion, "Masturbation") > -3
+		自慰発生閾値 += (100*-(GET_INT(LOCAL, "Religion", TALENT:LOCAL:Religion, "Masturbation")))
+	ENDIF
+
+	IF CFLAG:LOCAL:オナバレ
+		PRINTFORML %CALLNAME:LOCAL% buries %HIS_HER(LOCAL)% face in a pillow and comforts %HIM_HER(LOCAL)%self...
+	ELSEIF CFLAG:LOCAL:溜まってる度 > 自慰発生閾値
+		$ForceFap
+		LOCAL:1 = 0
+		IF TALENT:LOCAL:愛欲
+			LOCAL:1 = 4
+		ELSEIF TALENT:LOCAL:恋慕
+			LOCAL:1 = 3
+		ELSEIF TALENT:LOCAL:セフレ
+			;愛人もここ
+			LOCAL:1 = 2
+		ELSEIF TALENT:LOCAL:思慕
+			LOCAL:1 = 1
+		ENDIF
+		IF TALENT:LOCAL:自制心 && LOCAL:1 < 5
+			LOCAL:1 += 1
+		ENDIF
+		SIF !RAND:(8 - LOCAL:1) && GETBIT(nNPCSex,0)
+			CharaYuri = 1
+		SIF CharaYuri && LOCAL != MASTER
+			GOTO MultiFapNewChara
+		SIF !nNPCMasturb && LOCAL != MASTER
+			CONTINUE
+		SIF !FLAG:自慰画像非表示
+			CALL PrintOnanismImage(LOCAL)
+
+		IF LOCAL == MASTER
+		TRYCALLFORM DAILY_CONDITION_EV1000
+		ELSEIF CFLAG:LOCAL:既成事実 & 合意_うふふ && !RAND:(8 - LOCAL:1)
+			;custom breakeng, this sentence gets too long
+			PRINTFORML %BREAKENG(@"Even though %CALLNAME:LOCAL%'s body keeps aching from the unbearable desire, %HE_SHE(LOCAL)% calms %HIM_HER(LOCAL)%self thinking about having sex with %PARSE("you")% in the near future, forcing %HIM_HER(LOCAL)%self to sleep...")%
+			自慰タイプ = 7
+			;CALL KOJO_MESSAGE_SEND("EVENT",22,LOCAL,7)
+			CFLAG:LOCAL:溜まってる度 = LIMIT(CFLAG:LOCAL:溜まってる度 + 100, 0 ,1000)
+			CALL CharacterSinned(LOCAL,"Masturbation",@"abstained from masturbating", 1, 1)
+			SIF !CFLAG:LOCAL:神社在住 
+				CFLAG:LOCAL:翌日来訪 = 1
+			PRINTL
+		ELSEIF ApplicablePrecept(LOCAL, "Masturbation") <= -3
+			;religion
+			PRINTFORML %BREAKENG(@"Even though %CALLNAME:LOCAL%'s body keeps aching from the unbearable desire, %HE_SHE(LOCAL)% forces %HIMSELF_HERSELF(LOCAL)% to sleep, as %HIS_HER(LOCAL)% religion blocks %HIM_HER(LOCAL)% from masturbating...")%
+			自慰タイプ = 7
+			;CALL KOJO_MESSAGE_SEND("EVENT",22,LOCAL,7)
+			CFLAG:LOCAL:溜まってる度 = LIMIT(CFLAG:LOCAL:溜まってる度 - 200, 0 ,1000)
+			CALL CharacterSinned(LOCAL,"Masturbation",@"abstained from masturbating", 1, 1)
+			PRINTL
+		ELSEIF GETBIT(IN_CHASTITY(LOCAL),0)
+			;chastity
+			PRINTFORML %BREAKENG(@"Even though %CALLNAME:LOCAL%'s body keeps aching from the unbearable desire, %HIS_HER(LOCAL)% chastity system forces %HIMSELF_HERSELF(LOCAL)% to endure the desire, as it blocks %HIM_HER(LOCAL)% from masturbating...")%
+			自慰タイプ = 7
+			;CALL KOJO_MESSAGE_SEND("EVENT",22,LOCAL,7)
+			CFLAG:LOCAL:溜まってる度 = LIMIT(CFLAG:LOCAL:溜まってる度 - 200, 0 ,1000)
+			CALL CharacterSinned(LOCAL,"Masturbation",@"abstained from masturbating", 1, 1)
+			PRINTL
+		ELSEIF CFLAG:MASTER:現在位置 == CFLAG:LOCAL:初期位置
+			PRINTFORML In the middle of the night, %PARSE("you hear")% a noise and %PARSE("wake")% up.
+			PRINTFORML ... %CALLNAME:LOCAL% tries to suppress %HIS_HER(LOCAL)% voice while masturbating and holding %PARSE("your")% hand...
+			自慰タイプ = 2
+		ELSEIF CharaYuri && LOCAL != MASTER
+		;reverse sleep rape but with another person
+		;like mesko's
+		; - Mr Pops Alot
+		$MultiFapNewChara
+		SIF !FLAG:自慰画像非表示 && !nNPCMasturb
+			CALL PrintOnanismImage(LOCAL)
+		CALL FISHER_YATES_SHAFFLE(CHARANUM)
+		FOR LOCAL:2, 1, CHARANUM
+			CHARA = SHAFFLE_ARRAY:(LOCAL:2)
+			CharaVStim = 0
+			CharaAStim = 0
+			CharaBStim = 0
+			CharaMStim = 0
+			CharaUStim = 0
+			;対象があなた
+			SIF CHARA == MASTER
+				CONTINUE
+			SIF CHARA == LOCAL
+				CONTINUE
+			;でてこない
+			SIF CFLAG:CHARA:出禁
+				CONTINUE
+			SIF IsDead:CHARA:0
+				CONTINUE
+			;wouldn't seek someone one they have a low relation for
+			;but can still seek 2hus with a low relation to them
+			SIF (RELATION:LOCAL:CHARA < 100 && RELATION:LOCAL:CHARA)
+				CONTINUE
+			
+
+			自慰発生閾値 = LIMIT(750 - 200 * TALENT:CHARA:自慰しやすい - 100 * TALENT:CHARA:快感応答 - 100 * TALENT:CHARA:自己愛 + 200 * TALENT:CHARA:自制心,500,999)
+			自慰発生閾値 -= 300 * TALENT:CHARA:自慰狂い		
+			;needs max horniness
+			SIF CFLAG:CHARA:溜まってる度 < 自慰発生閾値
+				CONTINUE
+			BREAK
+		NEXT
+		SIF !FLAG:自慰画像非表示
+			CALL PrintOnanismImage(CHARA)
+
+		IF ABL:LOCAL:指 >= ABL:CHARA:指
+		PRINTFORM %CALLNAME:LOCAL% breaks into %CALLNAME:CHARA%'s room, and asks %HIS_HER(CHARA)% if they could 
+		ELSE
+		PRINTFORM %CALLNAME:LOCAL% bangs on %CALLNAME:CHARA%'s door, but are unable to get it open.
+		PRINTFORML Frustrated that %HE_SHE(LOCAL)% wasn't able to get it open, %HE_SHE(LOCAL)% starts masturbating right at %HIS_HER(CHARA)% door.
+		自慰タイプ = 1
+		GOTO OnaniEnd
+		ENDIF
+
+		IF TALENT:LOCAL:SexKnow == -1
+		PRINTFORML do something about %HIS_HER(LOCAL)% aching crotch. 
+		ELSE
+		PRINTFORML have sex with each other.
+		ENDIF
+
+		IF (RELATION:CHARA:LOCAL < 100 && RELATION:CHARA:LOCAL)
+			PRINTFORML %CALLNAME:CHARA% tells %CALLNAME:LOCAL% to get lost.
+			PRINTFORMW %CALLNAME:LOCAL% runs away embarrassed, moving on to another room...
+			GOTO MultiFapNewChara
+		ELSEIF TALENT:CHARA:SexKnow == -1 && (ABL:LOCAL:教養 >= UniversalRank("B") || TALENT:LOCAL:SexKnow >= 3)
+			PRINTFORML %CALLNAME:CHARA% acts surprised on what %CALLNAME:LOCAL% wants.
+			PRINTFORML %CALLNAME:LOCAL% teaches %CALLNAME:CHARA% the basics of sex and some techniques %HE_SHE(CHARA)% can use.
+			PRINTFORMW %HE_SHE(CHARA,1)% now knows the truth.
+			PRINTFORMW %HE_SHE(CHARA,1)% loses %HIS_HER(CHARA)% ignorance...
+			TALENT:CHARA:SexKnow = 0
+			CALL QoL_Info_Write(CHARA, Qol_Dates_SexKnow) ;qol custom code
+		ELSEIF TALENT:LOCAL:SexKnow == -1 && (ABL:CHARA:教養 >= UniversalRank("B") || TALENT:CHARA:SexKnow >= 3)
+			PRINTFORML %CALLNAME:CHARA% teaches %CALLNAME:LOCAL% the basics of sex and some techniques %HE_SHE(LOCAL)% can use.
+			PRINTFORMW %HE_SHE(LOCAL,1)% now knows the truth.
+			PRINTFORMW %HE_SHE(LOCAL,1)% loses %HIS_HER(LOCAL)% ignorance...
+			TALENT:LOCAL:SexKnow = 0
+			CALL QoL_Info_Write(CHARA, Qol_Dates_SexKnow) ;qol custom code
+		ELSEIF TALENT:CHARA:SexKnow == -1 || TALENT:LOCAL:SexKnow == -1
+			PRINTFORML %CALLNAME:CHARA% acts surprised on what %CALLNAME:LOCAL% wants.
+			PRINTFORMW %CALLNAME:LOCAL% runs away embarrassed on what %HE_SHE(LOCAL)% tried to do and falls asleep with %HIS_HER(LOCAL)% unbearable desire unchecked...
+			CONTINUE
+		ELSE
+			PRINTFORML %HE_SHE(CHARA,1)% complies, as they are both horny to fuck...
+		ENDIF
+
+		$YuriLoop
+		LOCAL:2 = RAND:7
+		SELECTCASE LOCAL:2
+		CASE 0
+		;vag sex
+			IF (!HAS_PENIS(LOCAL) && !HAS_PENIS(CHARA)) || (!HAS_VAGINA(LOCAL) && !HAS_VAGINA(CHARA))
+			;needs to be hetero or futa
+				GOTO YuriLoop
+			ELSE
+			$VSexLoop
+			LOCAL:5 = RAND:2
+			SELECTCASE LOCAL:5
+				CASE 0
+					IF HAS_PENIS(LOCAL) && HAS_VAGINA(CHARA)
+						LOCAL:3 = LOCAL
+						LOCAL:4 = CHARA
+						CharaVStim = 2
+					ELSE
+						GOTO VSexLoop
+					ENDIF
+				CASE 1
+					IF HAS_PENIS(CHARA) && HAS_VAGINA(LOCAL)
+						LOCAL:3 = CHARA
+						LOCAL:4 = LOCAL
+						追加Ｖ自慰 = 2
+					ELSE
+						GOTO VSexLoop
+					ENDIF
+			ENDSELECT
+			PRINTFORML %CALLNAME:(LOCAL:3)% takes off %CALLNAME:(LOCAL:4)%'s panties and shoves %HIS_HER(LOCAL:4)+" "+TINKO(LOCAL:3)% into %HIS_HER(LOCAL:4)% pussy.
+			PRINTFORML %CALLNAME:(LOCAL:3)% cums over and over, filling up %CALLNAME:(LOCAL:4)%'s womb.
+			ENDIF
+		CASE 1
+		;a na ru
+		IF (!HAS_PENIS(LOCAL) && !HAS_PENIS(CHARA))
+		;one needs to have penis
+			GOTO YuriLoop
+		ELSE
+		$ASexLoop
+		LOCAL:5 = RAND:2
+		SELECTCASE LOCAL:5
+			CASE 0
+				IF HAS_PENIS(LOCAL)
+					LOCAL:3 = LOCAL
+					LOCAL:4 = CHARA
+					CharaAStim = 2
+				ELSE
+					GOTO ASexLoop
+				ENDIF
+			CASE 1
+				IF HAS_PENIS(CHARA)
+					LOCAL:3 = CHARA
+					LOCAL:4 = LOCAL
+					追加Ａ自慰 = 2
+				ELSE
+					GOTO ASexLoop
+				ENDIF
+		ENDSELECT
+		PRINTFORML %CALLNAME:(LOCAL:3)% takes off %CALLNAME:(LOCAL:4)%'s panties and shoves %HIS_HER(LOCAL:3)+" "+TINKO(LOCAL:3)% into %HIS_HER(LOCAL:4)% anus.
+		PRINTFORML %CALLNAME:(LOCAL:3)% cums over and over, filling up %CALLNAME:(LOCAL:4)%'s intestines.
+		ENDIF
+		CASE 2
+		;urethra play (segs)
+		IF (!HAS_PENIS(LOCAL) && !HAS_PENIS(CHARA)) || (TALENT:LOCAL:SexKnow < 5 || !TALENT:CHARA:SexKnow < 5) || !nPee
+		;one needs to have penis and forbidden knowledge
+			GOTO YuriLoop
+		ELSE
+		$USexLoop
+		LOCAL:5 = RAND:2
+		SELECTCASE LOCAL:5
+			CASE 0
+				IF HAS_PENIS(LOCAL)
+					LOCAL:3 = LOCAL
+					LOCAL:4 = CHARA
+					CharaUStim = 2
+				ELSE
+					GOTO USexLoop
+				ENDIF
+			CASE 1
+				IF HAS_PENIS(CHARA)
+					LOCAL:3 = CHARA
+					LOCAL:4 = LOCAL
+					LocalUStim = 2
+				ELSE
+					GOTO USexLoop
+				ENDIF
+		ENDSELECT
+		PRINTFORML %CALLNAME:(LOCAL:3)% takes off %CALLNAME:(LOCAL:4)%'s panties and shoves %HIS_HER(LOCAL:3)+" "+TINKO(LOCAL:3)% into %HIS_HER(LOCAL:4)% urethra.
+		PRINTFORML %CALLNAME:(LOCAL:3)% cums over and over, filling up %CALLNAME:(LOCAL:4)%'s bladder.
+		ENDIF
+		CASE 3
+		; cunni/fella
+		LocalMStim = 1
+		CharaMStim = 1
+
+		PRINTFORML They take off their panties as %CALLNAME:LOCAL% begins to lick %CALLNAME:CHARA%'s %PRINT_CLIT(CHARA)%.
+		PRINTFORML %CALLNAME:LOCAL% repeatedly licks the top of %HIS_HER(CHARA)+" "+PRINT_CLIT(CHARA)%, taking %HIM_HER(CHARA)% to the edge every time.
+		PRINTFORML Eventually, %CALLNAME:LOCAL% starts to suck on %CALLNAME:CHARA%'s %PRINT_CLIT(CHARA)%, bringing %HIM_HER(CHARA)% to orgasm.
+		PRINTFORML The two switch roles until both are sexually satisfied.
+		CASE 4
+		; fingering
+		SIF (!HAS_VAGINA(LOCAL) && !HAS_VAGINA(CHARA))
+			GOTO YuriLoop		
+
+			CharaVStim = 1
+			追加Ｖ自慰 = 1
+			PRINTFORML They take off their panties as they finger each other's vaginas until they're satisfied.
+		CASE 5
+		; anal tease
+			CharaAStim = 1
+			追加Ａ自慰 = 1
+			PRINTFORML They take off their panties as they finger each other's rectums until they're satisfied.
+		CASE 6
+		; tribbing
+		SIF (!HAS_VAGINA(LOCAL) || !HAS_VAGINA(CHARA))
+			GOTO YuriLoop
+			PRINTFORML They take off their panties as %CALLNAME:LOCAL% spreads %HIS_HER(LOCAL)% legs and %CALLNAME:CHARA% follows suit.
+			PRINTFORML Rubbing each other's labias until they're satisfied, they cum multiple times together.
+		ENDSELECT
+		自慰タイプ = 90
+
+		ELSEIF ABL:LOCAL:精液中毒 > 2 && EX:LOCAL:膣内精液 && !RAND:4
+			PRINTFORML %CALLNAME:LOCAL% can no longer hold out, and %HE_SHE(LOCAL)% masturbates by rubbing %PARSE("your")% semen into %HIS_HER(LOCAL)% pussy...
+			自慰タイプ = 3
+		ELSEIF TALENT:LOCAL:SexKnow == -1
+			LOCAL:1 = 0
+			LOCAL:1 = EXP:LOCAL:自慰経験 - EXP:LOCAL:調教自慰経験
+			IF LOCAL:1 >= 120 - (MIN(ABL:LOCAL:親密,6) * 10) && !FLAG:無知自動喪失禁止
+				PRINTFORMW %CALLNAME:LOCAL% finally speaks to %HIS_HER(LOCAL)% guardians about it...
+				PRINTFORMW %HE_SHE(LOCAL,1)% now knows the truth.
+				PRINTFORMW %HE_SHE(LOCAL,1)% loses %HIS_HER(LOCAL)% ignorance...
+				TALENT:LOCAL:SexKnow = 0
+				CALL QoL_Info_Write(LOCAL, Qol_Dates_SexKnow) ;qol custom code
+			ELSEIF LOCAL:1 >= 80 - (MIN(ABL:LOCAL:親密,4) * 10)
+				PRINTFORML %CALLNAME:LOCAL% is immersed in masturbation without understanding what %HE_SHE(LOCAL)%'s even doing...
+			ELSEIF LOCAL:1 >= 50 - (MIN(ABL:LOCAL:親密,3) * 10)
+				PRINTFORML %CALLNAME:LOCAL% finds %HIM_HER(LOCAL)%self humping a desk corner for stimulation...
+			ELSEIF LOCAL:1 >= 30 - (MIN(ABL:LOCAL:親密,2) * 10)
+				PRINTFORML %CALLNAME:LOCAL% secretly rubs a book against %HIS_HER(LOCAL)% crotch...
+			ELSEIF LOCAL:1 >= 15 - (MIN(ABL:LOCAL:親密,1) * 10)
+				PRINTFORML During study, %CALLNAME:LOCAL% rubs %HIS_HER(LOCAL)% pussy with %HIS_HER(LOCAL)% brush...
+			ELSE
+				PRINTFORML %CALLNAME:LOCAL% rubs %HIS_HER(LOCAL)% thighs together while lying in bed, sighing in anguish...
+			ENDIF
+			自慰タイプ = 4
+		ELSEIF ABL:LOCAL:自慰中毒 >= 3 && (TALENT:LOCAL:思慕 || IS_LOVER(LOCAL) || TALENT:LOCAL:恋人 || TALENT:LOCAL:セフレ) && !RAND:3
+			PRINTFORML When %CALLNAME:LOCAL% can no longer hold back, she intensely masturbates while sniffing clothes marked with %PARSE("your")% scent...
+			LOCAL:2 = RAND:5
+			IF (TALENT:LOCAL:Ｃ感度 == 1 || ABL:LOCAL:Ｃ感覚 >= 10) && LOCAL:2 == 4
+				PRINTFORM Furiously rubbing her clit, she squirts as she cums over and over
+				部位指定 = 1
+			ELSEIF (TALENT:LOCAL:Ｖ感度 == 1 || ABL:LOCAL:Ｖ感覚 >= 10) && LOCAL:2 == 3
+				PRINTFORM Fingering herself deeply until her hand is wet with juices, she cums again and again
+				部位指定 = 2
+				追加Ｖ自慰 = 1
+			ELSEIF (TALENT:LOCAL:Ａ感度 == 1 || ABL:LOCAL:Ａ感覚 >= 10) && LOCAL:2 == 2
+				PRINTFORM Fingering her anus as well as her pussy, she cums again and again
+				部位指定 = 3
+				追加Ａ自慰 = 1
+			ELSEIF (TALENT:LOCAL:Ｂ感度 == 1 || ABL:LOCAL:Ｂ感覚 >= 10) && LOCAL:2 == 1
+				IF TALENT:LOCAL:バストサイズ >= 1
+					PRINTFORM Bringing her nipples to her mouth, 
+				ELSEIF TALENT:LOCAL:バストサイズ <= -1
+					PRINTFORM Stroking her flat chest, 
+				ELSE
+					PRINTFORM Squeezing her soft breasts, 
+				ENDIF
+				PRINTFORM she cums again and again
+				部位指定 = 4
+				追加Ｂ自慰 = 0
+			ELSE
+				;PRINTFORML しかし、どんなに快感を得ようとも%CALLNAME:MASTER%への想いは治まることはなく、%CALLNAME:LOCAL%は朝まで悶々とした時間を過ごした……
+				PRINTFORM Her body trembles in pleasure
+				部位指定 = 5
+			ENDIF
+			IF TALENT:LOCAL:思慕 || TALENT:LOCAL:恋慕 || TALENT:LOCAL:恋人
+				PRINTFORML , her thoughts of you continuing to linger...
+			ELSE
+				PRINTFORML , her heated passion never fading...
+			ENDIF
+			追加Ｖ自慰 = 1
+			自慰タイプ = 5
+		ELSEIF ABL:LOCAL:自慰中毒 >= 3 && !RAND:2
+			PRINTFORML Unable to satisfy herself with just her fingers anymore, %CALLNAME:LOCAL% uses a toy that she bought from a Kappa.
+			PRINTFORM She indulges herself in masturbation, 
+			IF ABL:LOCAL:Ａ感覚 >= 5
+				IF TALENT:LOCAL:貞操 == -1 && TALENT:LOCAL:処女 == 0
+					PRINTFORM inserting it deep inside her ass and pussy and pistoning it
+					追加Ｖ自慰 = 1
+				ELSEIF TALENT:LOCAL:貞操 == 1
+					PRINTFORM gently and carefully pressing and rubbing it against her ass and pussy
+				ELSE
+					PRINTFORM playing with her ass and pussy, teasing them
+				ENDIF
+				部位指定 = 3
+				追加Ａ自慰 = 1
+			ELSE
+				IF TALENT:LOCAL:貞操 == -1 && TALENT:LOCAL:処女 == 0
+					PRINTFORM inserting it deep inside her pussy and pistoning it
+					追加Ｖ自慰 = 1
+				ELSEIF TALENT:LOCAL:貞操 == 1
+					PRINTFORM gently and carefully pressing and rubbing it against her pussy
+				ELSE
+					PRINTFORM playing with her pussy, teasing it
+				ENDIF
+				部位指定 = 1
+				
+			ENDIF
+			PRINTFORML ...
+			自慰タイプ = 6
+		ELSEIF CFLAG:LOCAL:溜まってる度 < 自慰発生閾値
+			;masturbation from religion
+			PRINTFORML Even though %CALLNAME:LOCAL% isn't unbearably horny, %HE_SHE(LOCAL)% still masturbates because it's required by %HIS_HER(LOCAL)% religion...
+			自慰タイプ = 1
+		ELSE
+			PRINTFORML As %CALLNAME:LOCAL% can no longer keep %HIS_HER(LOCAL)% aching body in check, %HE_SHE(LOCAL)% begins to play with %HIS_HER(LOCAL)% fingers...
+			自慰タイプ = 1
+		ENDIF
+		$OnaniEnd
+		IF LOCAL != MASTER
+		IF 自慰タイプ != 90
+		CALL KOJO_MESSAGE_SEND("EVENT",22,LOCAL,自慰タイプ,部位指定)
+		SIF 自慰タイプ == 7
+			CONTINUE
+		EXP:LOCAL:自慰経験 += ABL:LOCAL:自慰中毒 * 2 + 1
+		CALL COLORMESSAGE(@"Masturbation Exp＋{ABL:LOCAL:自慰中毒 * 2 + 1}",C_PINK,1)
+		ENDIF
+		SELECTCASE ABL:LOCAL:自慰中毒
+			CASE 0 TO 2
+				珠入手倍率 = 5
+			CASE 3 TO 5
+				珠入手倍率 = 3
+			CASEELSE
+				珠入手倍率 = 1
+		ENDSELECT		
+
+		[SKIPSTART]
+		;special situations
+		SIF 追加Ｖ自慰 == 2
+			CALL EVENT_HoleFuck(CHARA,LOCAL, 1)	
+		SIF 追加Ａ自慰 == 2
+			CALL EVENT_HoleFuck(CHARA,LOCAL, 2)
+		SIF LocalMStim == 2
+			CALL EVENT_HoleFuck(CHARA,LOCAL, 3)
+		SIF 追加Ｂ自慰 == 2
+			CALL EVENT_HoleFuck(CHARA,LOCAL, 4)						
+		SIF LocalUStim == 2
+			CALL EVENT_HoleFuck(CHARA,LOCAL, 5)				
+
+
+
+		;快C
+		CALL JUEL_UP_SPECIAL(LOCAL,"快Ｃ","Ｃ感覚",珠入手倍率,1)
+		SIF 追加Ｖ自慰
+			CALL JUEL_UP_SPECIAL(LOCAL,"快Ｖ","Ｖ感覚",珠入手倍率,1)
+		SIF 追加Ａ自慰
+			CALL JUEL_UP_SPECIAL(LOCAL,"快Ａ","Ａ感覚",珠入手倍率,1)
+		SIF 追加Ｂ自慰
+			CALL JUEL_UP_SPECIAL(LOCAL,"快Ｂ","Ｂ感覚",珠入手倍率,1)
+		SIF LocalMStim
+			CALL JUEL_UP_SPECIAL(LOCAL,"快Ｍ","Ｍ感覚",珠入手倍率,1)
+		SIF LocalUStim
+			CALL JUEL_UP_SPECIAL(LOCAL,"UPleas","USens",珠入手倍率,1)			
+		;恥情
+		CALL JUEL_UP_SPECIAL(LOCAL,"恥情","自慰中毒",珠入手倍率 * 2,1)
+		;欲情
+		CALL JUEL_UP_SPECIAL(LOCAL,"欲情","欲望",珠入手倍率,1)
+		[SKIPEND]
+		LOCAL:8 = 0
+		IF CHARA > -1
+			SIF HAS_PENIS(CHARA)
+				LOCAL:8 = 1
+		ENDIF
+
+		
+		CALL FUCK(LOCAL, @" C, \@ 追加Ｖ自慰 ? V, #\@ \@ 追加Ａ自慰 ? A, #\@ \@ 追加Ｂ自慰 ? B, #\@ \@ LocalMStim ? M, #\@ \@ LocalUStim ? U, #\@ desire, \@ HAS_PENIS(LOCAL) || LOCAL:8 ? cumlove, #\@ ejac, \@ 追加Ｖ自慰 == 2 ? Vrecept, #\@ \@ PeeHold:LOCAL:2 <= -2 ? piss, #\@ \@ PooHold:LOCAL:2 <= -2 ? shit, #\@ exposure", @"\@ 追加Ｖ自慰 == 2 ? Vcreamp, Vvloss, #\@ \@ 追加Ｖ自慰 == 2 ? Pvloss, #\@", 0, CHARA, CHARA, CHARA, @"\@ CHARA > 0 ? gave it to %CALLNAME:CHARA% to help sate %HIS_HER(LOCAL)% unbearable desire. #\@", "ペニス", "膣", "口")
+
+		IF CHARA > -1
+		CALL FUCK(CHARA, @" C, \@ CharaVStim ? V, #\@ \@ CharaAStim ? A, #\@ \@ CharaBStim ? B, #\@ \@ CharaMStim ? M, #\@ \@ CharaUStim ? U, #\@ desire, \@ HAS_PENIS(LOCAL) || HAS_PENIS(CHARA)? cumlove, #\@ ejac, \@ CharaVStim == 2 ? Vrecept, #\@ \@ PeeHold:CHARA:0 <= -2 ? piss, #\@ \@ PooHold:CHARA:0 <= -2 ? shit, #\@ exposure", @"\@ CharaVStim == 2 ? Vcreamp, Vvloss, #\@", 0, LOCAL, LOCAL, LOCAL, @"gave it to %CALLNAME:LOCAL% to help sate %HIS_HER(CHARA)% unbearable desire.", "ペニス", "膣", "口")
+		CALL CheckSinsForSex(LOCAL, CHARA)
+		[SKIPSTART]
+		IF HETEROSEX(CHARA,LOCAL)
+		CALL EVENT_Get_EXP(LOCAL, (50 + HETEROSEX(CHARA,LOCAL)), 10)
+		CALL EVENT_Get_EXP(CHARA, (50 + HETEROSEX(CHARA,LOCAL)), 10)
+		ENDIF
+
+		SIF CharaVStim == 2
+			CALL EVENT_HoleFuck(LOCAL, CHARA, 1)
+		SIF CharaAStim == 2
+			CALL EVENT_HoleFuck(LOCAL, CHARA, 2)
+		SIF CharaMStim == 2
+			CALL EVENT_HoleFuck(CHARA, CHARA, 3)
+		SIF CharaBStim == 2
+			CALL EVENT_HoleFuck(LOCAL, CHARA, 4)					
+		SIF CharaUStim == 2
+			CALL EVENT_HoleFuck(LOCAL, CHARA, 5)			
+
+		;快C
+		CALL JUEL_UP_SPECIAL(CHARA,"快Ｃ","Ｃ感覚",珠入手倍率,1)
+		SIF CharaVStim
+			CALL JUEL_UP_SPECIAL(CHARA,"快Ｖ","Ｖ感覚",珠入手倍率,1)
+		SIF CharaAStim
+			CALL JUEL_UP_SPECIAL(CHARA,"快Ａ","Ａ感覚",珠入手倍率,1)
+		SIF CharaBStim
+			CALL JUEL_UP_SPECIAL(CHARA,"快Ｂ","Ｂ感覚",珠入手倍率,1)
+		SIF CharaMStim
+			CALL JUEL_UP_SPECIAL(CHARA,"快Ｍ","Ｍ感覚",珠入手倍率,1)			
+		SIF CharaUStim
+			CALL JUEL_UP_SPECIAL(CHARA,"UPleas","USens",珠入手倍率,1)			
+		;恥情
+		CALL JUEL_UP_SPECIAL(CHARA,"恥情","自慰中毒",珠入手倍率 * 2,1)
+		;欲情
+		CALL JUEL_UP_SPECIAL(CHARA,"欲情","欲望",珠入手倍率,1)
+		[SKIPEND]
+
+		CFLAG:CHARA:溜まってる度 /= 4
+		ELSE
+		CALL CharacterSinned(LOCAL,"Masturbation",@"masturbated", -3,-1)
+		ENDIF
+
+		ENDIF
+		CFLAG:LOCAL:溜まってる度 /= 4
+		PRINTW 
+	ENDIF
+	;まず欲望で基礎値を決める
+	SELECTCASE ABL:LOCAL:欲望
+		CASE 0 TO 2
+			欲求不満度 = 10
+		CASE 3 TO 5
+			欲求不満度 = 20
+		CASE 6 TO 10
+			欲求不満度 = 30
+		CASE 10 TO 15
+			欲求不満度 = 50
+		CASEELSE
+			欲求不満度 = 80
+	ENDSELECT
+
+	欲求不満度 += ABL:LOCAL:自慰中毒 * 7 + (ABL:LOCAL:膣射中毒 + ABL:LOCAL:肛射中毒) * 3
+	欲求不満度 = 欲求不満素質補正(LOCAL,欲求不満度)
+	SELECTCASE 欲求不満度
+		CASE IS > 400
+			欲求不満度 = (欲求不満度 - 400) / 10 + 400
+		CASE IS > 200
+			欲求不満度 = (欲求不満度 - 200) / 4 + 200
+		CASE IS > 100
+			欲求不満度 = (欲求不満度 - 100) / 2 + 100
+	ENDSELECT
+	SIF 自慰タイプ
+		欲求不満度 = 0
+	SIF TCVAR:LOCAL:今日会ったか
+		欲求不満度 /= 2
+	SIF TALENT:LOCAL:妊娠
+		欲求不満度 /= 5
+	SIF TALENT:LOCAL:育児中
+		欲求不満度 /= 2
+	;溜まってる度は0~1000の間に
+	CFLAG:LOCAL:溜まってる度 = LIMIT(CFLAG:LOCAL:溜まってる度 + 欲求不満度, 0, 1000)
+	DEBUGPRINTFORML %CALLNAME:LOCAL%の満足度：{満足度}　欲求不満上昇値：{欲求不満度}　溜まってる度：{CFLAG:LOCAL:溜まってる度}
+NEXT
+
+;made universal
+;-Mr Pops Alot
+@LOST_GYAKURE_NAS(ARG,LOSER,ARG:1)
+#DIM LOSER
+SIF !ARG:1 ;bug fix
+CALL NAS_LOST_GYAKURE(ARG,LOSER) ;addition custom code
+GOTO SKIP
+BASE:LOSER:体力 = 0
+BASE:LOSER:気力 = 0
+BASE:LOSER:精力 = 0
+;custom code
+CFLAG:ARG:溜まってる度 = 0
+$SKIP
+Qol_Info_Count_Array:LOSER:Qol_Count_EncountMolest ++ ;qol custom code
+
+IF LOSER == MASTER
+;note - exception, not sure if PC name can be translated with the function if the name changes
+SIF !ARG:1 ;bug fix
+	CSTR:ARG:モブ子プロフィール２ = Has ravaged you in the past after defeating you.
+CALL SET_SLEEP(1,MASTER,0)
+CFLAG:MASTER:就寝時間 = DAY * 1440 + TIME + 120 + RAND:120
+TFLAG:106 = 0
+BEGIN AFTERTRAIN
+ENDIF
+
+;made it universal for lethal combats - Mr Pops Alot
+@NAS_LOST_GYAKURE(ARG,LOSER)
+#DIM LOSER
+#DIM nSexCount
+;SIF ARG <= 0 || !HAS_PENIS(MASTER)
+;	RETURN 0
+;sex count
+CFLAG:ARG:溜まってる度 = LIMIT(CFLAG:ARG:溜まってる度 + RAND:200, 500, 1000)
+nSexCount = MAX(MIN(ABL:ARG:欲望 / 2, 5) + CFLAG:ARG:溜まってる度 / 200,RAND(5,16))
+
+;style
+IF IS_HERM(ARG) || IS_MALE(ARG) ;futa/gay (gayyyyyyyyyyyyyyy) (males are not generated as of now, but just in case)
+	;use FUCK() instead
+
+	IF HAS_VAGINA(LOSER)
+		{
+		CALL FUCK(LOSER, @"V, desire, cumlove, ejac, Vrecept, maso, \@ PeeHold:ARG:2 <= -2 ? piss, #\@ \@ PooHold:ARG:2 <= -2 ? shit, #\@, exposure", 
+		"Vcreamp, Vvloss", 
+		0, ARG, ARG, ARG, 
+		@"forfeited during one-sided rape after losing a match to %CALLNAME:ARG%\@ TALENT:ARG:行きずり ? %" "%in a random encounter #\@.", 
+		"ペニス", "膣", "口")
+		}
+		{
+		CALL FUCK(ARG, "C, desire, cumlove, ejac, Vinsert, sadism, exposure", 
+		"Pvloss", 
+		0, LOSER, LOSER, LOSER, 
+		@"threw it away in a moment's intense desire after claiming victory over %CALLNAME:LOSER%'s body.", 
+		"ペニス", "膣", "口")
+		}
+	ELSE
+		{
+		CALL FUCK(LOSER, 
+		"A, desire, cumlove, ejac, Vrecept, maso, piss, exposure", 
+		"Acreamp, Avloss", 
+		0, ARG, ARG, ARG, 
+		@"forfeited during one-sided rape after losing a match to %CALLNAME:ARG%\@ TALENT:ARG:行きずり ? %" "%in a random encounter #\@.", 
+		"ペニス", "アナル", "口")
+		}
+		{
+		CALL FUCK(ARG, 
+		"C, desire, cumlove, ejac, Vinsert, sadism, exposure", 
+		"Pvloss", 
+		0, LOSER, LOSER, LOSER, 
+		@"threw it away in a moment's intense desire after claiming victory over %CALLNAME:LOSER%'s body.", 
+		"ペニス", "アナル", "口")
+		}
+	ENDIF
+
+	[SKIPSTART]
+	CALL AddEXP("Ｃ経験", ARG, nSexCount)
+	CALL AddEXP("Ｃ絶頂経験", ARG, nSexCount)
+	CALL AddEXP("絶頂経験", ARG, nSexCount)
+	CALL AddEXP("挿入経験", ARG, 2*nSexCount)
+	CALL AddEXP("射精経験", ARG, nSexCount)
+	
+	IF HAS_VAGINA(LOSER)
+		CALL AddEXP("Ｖ経験", LOSER, 2*nSexCount)
+		CALL AddEXP("Ｖ絶頂経験", LOSER, nSexCount)
+		CALL AddEXP("Ｖ性交経験", LOSER, 2*nSexCount)
+		CALL AddEXP("膣射経験", LOSER, nSexCount)
+		CALL AddEXP("絶頂経験", LOSER, nSexCount)
+		LOCAL = MAX((ABL:LOSER:膣 + 1) * 20 + BASE:ARG:精力 / 25, 1)
+		FOR LOCAL:1,1,nSexCount
+			LOCAL:2 += LOCAL + RAND:(LOCAL)
+		NEXT
+		LOCAL:2 = MIN(LOCAL:2, BASE:ARG:精力)		
+		CALL SAMEN_SHOOT3(LOCAL:2, ARG, LOSER)
+		EX:LOSER:膣内精液 += LOCAL:2
+		CFLAG:LOSER:累計膣内精液 += LOCAL:2
+		CALL JUEL_UP_SPECIAL(LOSER,"快Ｖ","Ｖ感覚",15,1)
+	ELSE
+		CALL AddEXP("Ａ経験", LOSER, 2*nSexCount)
+		CALL AddEXP("Ａ絶頂経験", LOSER, nSexCount)
+		CALL AddEXP("Ａ性交経験", LOSER, 2*nSexCount)
+		CALL AddEXP("肛射経験", LOSER, nSexCount)
+		CALL AddEXP("絶頂経験", LOSER, nSexCount)
+		LOCAL = MAX((ABL:LOSER:アナル + 1) * 20 + BASE:ARG:精力 / 25, 1)
+		FOR LOCAL:1,1,nSexCount
+			LOCAL:2 += LOCAL + RAND:(LOCAL)
+		NEXT
+		LOCAL:2 = MIN(LOCAL:2, BASE:ARG:精力)
+		EX:LOSER:アナル内精液 += LOCAL:2
+		CFLAG:LOSER:累計アナル精液 += LOCAL:2
+		CALL JUEL_UP_SPECIAL(LOSER,"快Ａ","Ａ感覚",15,1)
+	ENDIF
+	IF HAS_PENIS(LOSER)
+		CALL AddEXP("射精経験", LOSER, nSexCount)
+		BASE:LOSER:精力 = 0
+	ENDIF
+	CALL JUEL_UP_SPECIAL(ARG,"欲情","欲望",20,1)
+	CALL JUEL_UP_SPECIAL(ARG,"快Ｃ","Ｃ感覚",10,1)
+	
+	CALL SET_VIRGINLOSS_MASTER(@"forfeited during one-sided rape after losing a match to %CALLNAME:ARG%\@ TALENT:ARG:行きずり ? %" "%in a random encounter #\@.",LOSER)
+	CALL SET_DOUTEILOSS_MASTER(@"threw it away in a moment's intense desire after claiming victory over %CALLNAME:LOSER%'s body.", ARG)
+	[SKIPEND]
+ELSEIF IS_FEMALE(LOSER) && IS_SAMESEX(LOSER, ARG) ;lez
+	CALL FUCK(ARG, "C, desire, cumlove, ejac, sadism, exposure", "", 0, LOSER, LOSER, LOSER, "", "ペニス", "膣", "口")
+	CALL FUCK(LOSER, "C, desire, cumlove, ejac, maso, piss, exposure", "", 0, ARG, ARG, ARG, "", "ペニス", "膣", "口")
+	[SKIPSTART]
+	CALL AddEXP("Ｃ経験", ARG, 2*nSexCount)
+	CALL AddEXP("Ｃ絶頂経験", ARG, 2*nSexCount)
+	CALL AddEXP("絶頂経験", ARG, 2*nSexCount)
+	
+	CALL AddEXP("Ｃ経験", LOSER, nSexCount)
+	CALL AddEXP("Ｃ絶頂経験", LOSER,nSexCount)
+	CALL AddEXP("絶頂経験", LOSER, nSexCount)
+	SIF HAS_PENIS(LOSER)
+		CALL AddEXP("射精経験", LOSER, nSexCount)
+	SIF HAS_PENIS(TARGET)
+		CALL AddEXP("射精経験", ARG, nSexCount)
+	CALL JUEL_UP_SPECIAL(TARGET,"快Ｃ","Ｃ感覚",15,1)
+	CALL JUEL_UP_SPECIAL(LOSER,"快Ｃ","Ｃ感覚",15,1)
+	[SKIPEND]
+ELSE ;het
+	CALL FUCK(ARG, "V, desire, cumlove, ejac, Vrecept, sadism, exposure", "Vcreamp, Vvloss", 0, LOSER, LOSER, LOSER, @"threw it away in a moment's intense desire after claiming victory over %CALLNAME:LOSER%'s body.", "ペニス", "膣", "口")
+	CALL FUCK(LOSER, "C, desire, cumlove, ejac, Vinsert, maso, piss, exposure", "Pvloss", 0, ARG, ARG, ARG, @"forfeited during one-sided rape after losing a match to %CALLNAME:ARG%\@ TALENT:ARG:行きずり ? %" "%in a random encounter #\@.", "ペニス", "膣", "口")
+	[SKIPSTART]
+	CALL AddEXP("Ｖ経験", ARG, 2 * nSexCount)
+	CALL AddEXP("Ｖ絶頂経験", ARG, 1 * nSexCount)
+	CALL AddEXP("絶頂経験", ARG, 1 * nSexCount)
+
+	LOCAL = MAX((ABL:ARG:膣 + 1) * 20 + BASE:LOSER:精力 / 25, 1)
+	CALL AddEXP("膣射経験", ARG, 1 * nSexCount)
+	CALL AddEXP("Ｖ性交経験", ARG, 2 * nSexCount)
+	FOR LOCAL:1,1,nSexCount
+		LOCAL:2 += LOCAL + RAND:(LOCAL)
+	NEXT
+	LOCAL:2 = MIN(LOCAL:2, BASE:LOSER:精力)
+	CALL ADD_SAMEN_V(ARG, LOCAL:2)
+	CALL JUEL_UP_SPECIAL(ARG,"快Ｖ","Ｖ感覚",15,1)
+	CALL JUEL_UP_SPECIAL(ARG,"欲情","欲望",20,1)
+	CALL JUEL_UP_SPECIAL(LOSER,"快Ｃ","Ｃ感覚",10,1)
+	CALL ADD_EXP_LESNIAN(5, ARG, "PRINT")
+
+	CALL AddEXP("Ｃ経験", LOSER, nSexCount)
+	CALL AddEXP("Ｃ絶頂経験", LOSER, nSexCount)
+	CALL AddEXP("絶頂経験", LOSER, nSexCount)
+	CALL AddEXP("射精経験", LOSER, nSexCount)
+	CALL AddEXP("挿入経験", LOSER, 2 * nSexCount)
+
+	CALL SET_DOUTEILOSS_MASTER(@"forfeited during one-sided rape after losing a match to %CALLNAME:ARG%\@ TALENT:ARG:行きずり ? %" "%in a random encounter #\@.",LOSER)
+	CALL SET_VIRGINLOSS_MASTER(@"threw it away in a moment's intense desire after claiming victory over %CALLNAME:LOSER%'s body.", ARG)
+	[SKIPEND]
+ENDIF
+
+@NAS_LOST_GYAKURE_EX(ARG, HORNY, LOSER)
+#DIM HORNY
+#DIM LOSER
+
+IF LOSER == MASTER
+	IF IS_HERM(ARG) || IS_MALE(ARG) ;futa/gay (gayyyyyyyyyyyyyyy) (males are not generated as of now, but just in case)
+		PRINTFORMW %BREAKENG(@"Next thing %PARSE("you know",1)%, %PARSE("you feel")% something stiff pressed against %PARSE("your",1)% \@ IS_MALE(MASTER) ? %FSYN("anus")% # %FSYN("slit")%\@.")%
+		PRINTFORMW Oh dear... Could it be?
+		PRINTFORMW %BREAKENG(@"Before %PARSE("you",1)% could react, %PARSE("you sense",1)% a sharp pain coursing through %PARSE("you",1)%, feeling as though %PARSE("you were",1)% impaled on a hot, almost molten rod.")%
+		PRINTFORMW %BREAKENG(@"Looking down timidly, %PARSE("you're")% met with %CALLNAME:ARG% grinning broadly, her %FSYN("penis")% ramming %PARSE("your",1)% \@ !IS_MALE(MASTER) ? precious place # bumhole\@ %FSYN("base")%.")%
+		PRINTFORMW \@ HORNY ? Aroused to %HIS_HER(ARG)% peak, %CALLNAME:ARG% # Estrus hits its peak during full moon, and %CALLNAME:ARG%\@ deals with the thirst by ravaging, tormenting, and violating %PARSE("you",5)%...
+		PRINTFORMW .........
+		PRINTFORMW ......
+		PRINTFORMW ...
+		PRINTFORMW %CALLNAME:ARG% continues indulging in %PARSE("you")% until she's satisfied, before just leaving %PARSE("you",5)% dead-tired and exhausted on the ground.
+		RETURN 1
+	ELSEIF IS_FEMALE(MASTER) && IS_SAMESEX(MASTER, ARG) ;lez
+		PRINTFORMW Next thing %PARSE("you know",1)%, %PARSE("you feel")% something warm is pressing against %PARSE("your",1)% genitals.
+		PRINTFORMW %BREAKENG(@"Looking down timidly, %PARSE("you're")% met with %CALLNAME:ARG% grinning broadly, her pussy is slamming against %PARSE("yours",1)% as both of %PARSE("your",1)% clits get stimulated.")%
+		PRINTFORMW \@ HORNY ? Aroused to %HIS_HER(ARG)% peak, %CALLNAME:ARG% # Estrus hits its peak during full moon, and %CALLNAME:ARG%\@ deals with the thirst by ravaging, tormenting, and violating %PARSE("you",5)%...
+		PRINTFORMW .........
+		PRINTFORMW ......
+		PRINTFORMW ...
+		PRINTFORMW %CALLNAME:ARG% continues indulging in %PARSE("you")% until she's satisfied, before just leaving %PARSE("you",5)% dead-tired and exhausted on the ground.
+		RETURN 1
+	ENDIF
+ELSE
+	IF IS_HERM(ARG) || IS_MALE(ARG) ;futa/gay (gayyyyyyyyyyyyyyy) (males are not generated as of now, but just in case)
+		PRINTFORMW %BREAKENG(@"%CALLNAME:ARG% presses %HIS_HER(ARG)+" "+TINKO(ARG)% into %CALLNAME:LOSER%'s \@ IS_MALE(LOSER) ? %FSYN("anus")% # %FSYN("slit")%\@.")%
+		PRINTFORMW Oh dear... Could it be?
+		PRINTFORMW %BREAKENG(@"Before %CALLNAME:LOSER% could react, %HE_SHE(LOSER)% shakes as a sharp pain quakes through %HIS_HER(LOSER)%, %CALLNAME:ARG%'s %TINKO(ARG)% is fully inserted into %CALLNAME:LOSER%'s \@ IS_MALE(LOSER) ? %FSYN("anus")% # %FSYN("vagina")%\@.")%
+		PRINTFORMW %BREAKENG(@"Looking down timidly, %PARSE("you're")% met with %CALLNAME:ARG% grinning broadly, %HIS_HER(ARG)% %FSYN("penis")% ramming %CALLNAME:LOSER%'s \@ !IS_MALE(LOSER) ? precious place # bumhole\@ %FSYN("base")%.")%
+		PRINTFORMW \@ HORNY ? Aroused to %HIS_HER(ARG)% peak, %CALLNAME:ARG% # Estrus hits its peak during full moon, and %CALLNAME:ARG%\@ deals with the thirst by ravaging, tormenting, and violating %CALLNAME:LOSER%...
+		PRINTFORMW .........
+		PRINTFORMW ......
+		PRINTFORMW ...
+		PRINTFORMW %CALLNAME:ARG% continues indulging in %CALLNAME:LOSER% until she's satisfied, before just leaving %HIS_HER(LOSER)% dead-tired and exhausted on the ground.
+		RETURN 1
+	ELSEIF IS_FEMALE(LOSER) && IS_SAMESEX(LOSER, ARG) ;lez
+		PRINTFORMW %CALLNAME:ARG% takes off %HIS_HER(ARG)+" "+SHOW_BOTTOM(ARG)% and connects %HIS_HER(ARG)% legs with %CALLNAME:LOSER%.
+		PRINTFORMW %BREAKENG(@"Looking down timidly, %PARSE("you're")% met with %CALLNAME:ARG% grinning broadly, her pussy is slamming against %CALLNAME:LOSER%'s as both of their clits get stimulated.")%
+		PRINTFORMW \@ HORNY ? Aroused to %HIS_HER(ARG)% peak, %CALLNAME:ARG% # Estrus hits its peak during full moon, and %CALLNAME:ARG%\@ deals with the thirst by ravaging, tormenting, and violating %CALLNAME:LOSER%...
+		PRINTFORMW .........
+		PRINTFORMW ......
+		PRINTFORMW ...
+		PRINTFORMW %CALLNAME:ARG% continues indulging in %CALLNAME:LOSER% until she's satisfied, before just leaving %HIS_HER(LOSER)% dead-tired and exhausted on the ground.
+		RETURN 1
+	ENDIF
+ENDIF
+
+;for rika
+; PRINTFORMDL %CALLNAME:47%'s breasts can be changed to [Flat Chest] to better fit her dialogue.
+; PRINTFORMDL Change it now?
+; PRINTL
+; CALL ASK_M(@"Change to 【%GET_TALENTNAME_TR(105,VAR_OR_DEFAULT("NAS_SAVE_VER") ? -3 # -2)%】", 1, "", 1, @"Stay at 【\@ STRLENS(GET_TALENTNAME_TR(105,TALENT:47:105)) ? %GET_TALENTNAME_TR(105,TALENT:47:105)% # 【Average Breasts\@】", 1)
+; SELECTCASE RESULT
+; CASE 0
+; PRINTFORMDW %CALLNAME:47% is now a proud owner of a【%GET_TALENTNAME_TR(105,VAR_OR_DEFAULT("NAS_SAVE_VER") ? -3 # -2)%】.
+; TALENT:47:105 = -2
+; CASE 1
+; PRINTFORMDW %CALLNAME:47% is now a proud owner of 【%GET_TALENTNAME_TR(105,TALENT:47:105)%】.
+; CASE 2
+; PRINTFORMDW %CALLNAME:47%'s chest size will remain the same.
+; ENDIF

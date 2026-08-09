@@ -1,0 +1,482 @@
+
+@EXIST_ADD_GAME_INFO8
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+@ADD_GAME_INFO8(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+
+SELECTCASE O_DATA
+	CASE "NAME"
+		CALLF MAKE_STR(V_NAME, "Drinking Competition")
+	CASE "DESCRIPTION"
+		CALLF MAKE_STR(V_NAME, "a drinking competition")
+	CASE "MINPLAYERS"
+		CALLF MAKE_INT(V_NAME, 2)
+	CASE "MAXPLAYERS"
+		CALLF MAKE_INT(V_NAME, 10)
+	CASE "CHECKREQUIREMENTS"
+		IF AlcoholAddict:ARG:0 <= -5 ;nondrinker
+		ELSEIF BASE:ARG:酒気 > (MAXBASE:ARG:酒気 / 10) * 8 ;already drunk
+		ELSEIF TALENT:ARG:妊娠 ;not during pregnancy
+		ELSEIF TFLAG:酔い止め ;not while using turmeric
+		ELSEIF ADD_BANQUET_ACTIVITY_ALLOWED("DRINKING")
+			CALLF MAKE_INT(V_NAME, 1)
+		ENDIF
+	CASE "VALIDBETS"
+		LOCALS '= ADD_GAME_STANDARD_BETS()
+		SIF MONEY > 20000
+			LOCALS += "BIGMONEY/"
+		SIF MONEY:2 > 200
+			LOCALS += "BIGCHARISMA/"
+		CALLF MAKE_STR(V_NAME, LOCALS)
+	CASE "DURATION"
+		CALLF MAKE_INT(V_NAME, 120)
+ENDSELECT
+
+@ADD_GAME8
+#DIM DRINKS, 10
+#DIM REMAINING_PARTICIPANT_COUNT
+#DIM REMAINING_PARTICIPANTS, ADD_GAME_MAXIMUM_PARTICIPANTS
+#DIM CURRENT_ROUND
+#DIM SURRENDERED, ADD_GAME_MAXIMUM_PARTICIPANTS ;the people who surrendered/collapsed in the current round
+#DIM SURRENDERED_COUNT, ADD_GAME_MAXIMUM_PARTICIPANTS
+#DIM CURRENT_CHARA
+#DIM CHOSEN_DRINK
+#DIM PLAYER_QUIT
+
+PRINTFORML You challenge the others to a drinking competition.
+PRINTFORML Every round, all participants will pick a drink from the tray, filled with a random drink.
+PRINTFORML Participants can surrender at any time.
+PRINTFORML The victor is decided when everyone else has given up or collapsed.
+PRINTFORML If you train your Mixing skill, you may be able to recognize some of the drinks ahead of time.
+
+REMAINING_PARTICIPANT_COUNT = ADD_GAME_PARTICIPANT_COUNT
+PLAYER_QUIT = 0
+ARRAYCOPY "ADD_GAME_PARTICIPANTS", "REMAINING_PARTICIPANTS"
+
+WHILE 1
+	IF !ISSKIP()
+		PRINTFORMW Next round! {REMAINING_PARTICIPANT_COUNT} players remain.
+	ENDIF
+	VARSET DRINKS
+	VARSET SURRENDERED, -1
+	SURRENDERED_COUNT = 0
+	CALL ADD_GAME8_RANDOM_DRINKS(DRINKS, REMAINING_PARTICIPANT_COUNT)
+	CALL FISHER_YATES_SHAFFLE(REMAINING_PARTICIPANT_COUNT)
+
+	FOR LOCAL, 0, REMAINING_PARTICIPANT_COUNT
+		SIF REMAINING_PARTICIPANT_COUNT - SURRENDERED_COUNT <= 1 ;no-one else left, end game
+			GOTO ROUND_END
+		PRINTL
+		CURRENT_CHARA = REMAINING_PARTICIPANTS:(SHAFFLE_ARRAY:LOCAL)
+		IF CURRENT_CHARA == MASTER
+			CALL ADD_GAME8_PLAYER_JUDGMENT
+			PRINTFORML Which drink do you choose?
+			FOR	LOCAL:1, 0, REMAINING_PARTICIPANT_COUNT
+				SIF !DRINKS:(LOCAL:1)
+					CONTINUE
+
+				PRINTFORML [{(LOCAL:1)+1, 2}] - Drink #{(LOCAL:1)+1} %COND_STR(@"(%ADD_GAME8_DRINK_NAME(DRINKS:(LOCAL:1))%)", RAND:60 < TALENT:MASTER:調合Lv)%
+			NEXT
+			PRINTFORML [-1] - Give up
+			DO
+				INPUT
+				SELECTCASE RESULT
+				CASE -1
+					BREAK
+				CASEELSE
+					SIF INRANGE(RESULT, 1, REMAINING_PARTICIPANT_COUNT) && DRINKS:(RESULT-1)
+						BREAK
+					REUSELASTLINE Invalid Input
+					CONTINUE
+				ENDSELECT
+			LOOP 1
+			IF RESULT == -1
+				PRINTFORML You decide to quit while you're ahead.
+				SURRENDERED:(SURRENDERED_COUNT++) = MASTER
+				PLAYER_QUIT = 1
+			ELSE
+				CHOSEN_DRINK = DRINKS:(RESULT-1)
+				DRINKS:(RESULT-1) = 0
+
+				PRINTFORML You pick up the drink, and chug it down in one go.
+				IF CHOSEN_DRINK == 1
+					PRINTFORML It turns out to be ordinary water.
+					PRINTFORMW It's very refreshing!
+					BASE:MASTER:酒気 = MAX(BASE:MASTER:酒気-200, 0)
+				ELSE
+					PRINTFORML It's %ITEMNAME_TR(GETNUM(ITEM, ALC_NAME(CHOSEN_DRINK)))%.
+					LOCAL:2 = BASE:MASTER:酒気 ;previous drunkenness
+					CALL ADD_GAME8_DRINK(MASTER, CHOSEN_DRINK)
+					LOCAL:3 = BASE:MASTER:酒気 - LOCAL:2
+
+ 					;player won't instantly collapse after crossing the danger threshold, but every round afterwards will induce increasing risk
+					IF LOCAL:2 >= MAXBASE:MASTER:酒気 && RAND:2000 < (BASE:MASTER:酒気-MAXBASE:MASTER:酒気)
+						PRINTFORMW That last drink was too much for you, and you collapse on the spot.
+						SURRENDERED:(SURRENDERED_COUNT++) = MASTER
+						SKIPDISP 1 ;continue processing the rest of the game in silence
+						CONTINUE
+					ENDIF
+
+					SELECTCASE LOCAL:3
+						CASE IS <= 100
+							PRINTFORMW It's a weak drink and you barely notice it.
+						CASE IS <= 250
+							PRINTFORMW It's a mild drink and it goes down easily.
+						CASE IS <= 500
+							PRINTFORMW It's a fairly typical drink and it goes down without much issue.
+						CASE IS <= 750
+							PRINTFORMW It's a pretty strong drink and you feel its effects quickly.
+						CASE IS <= 1000
+							PRINTFORMW It's a very strong drink. You doubt you can take many of these.
+						CASEELSE
+							PRINTFORMW It's such a harsh drink you almost collapse on the spot.
+					ENDSELECT
+				ENDIF
+			ENDIF
+		ELSE
+			WHILE 1
+				LOCAL:1 = RAND:REMAINING_PARTICIPANT_COUNT
+				SIF DRINKS:(LOCAL:1)
+					BREAK
+			WEND
+			CHOSEN_DRINK = DRINKS:(LOCAL:1)
+			DRINKS:(LOCAL:1) = 0
+
+			PRINTFORM %CALLNAME:CURRENT_CHARA% picks up a drink 
+			;Do later: different dialogue per personality/oni/alcoholism level
+			PRINTFORML and chugs it down.
+			LOCAL:2 = BASE:CURRENT_CHARA:酒気 ;previous drunkenness
+			IF CHOSEN_DRINK == 1
+				BASE:CURRENT_CHARA:酒気 = MAX(BASE:CURRENT_CHARA:酒気-200, 0)
+			ELSE
+				CALL ADD_GAME8_DRINK(CURRENT_CHARA, CHOSEN_DRINK)
+			ENDIF
+			LOCAL:3 = BASE:CURRENT_CHARA:酒気 - LOCAL:2
+
+			IF LOCAL:2 >= MAXBASE:CURRENT_CHARA:酒気 && RAND:2000 < (BASE:CURRENT_CHARA:酒気-MAXBASE:CURRENT_CHARA:酒気)
+				PRINTFORML That last drink was too much for %CALLNAME:CURRENT_CHARA% to handle, and %HE_SHE(CURRENT_CHARA)% has to stop here.
+				SURRENDERED:(SURRENDERED_COUNT++) = CURRENT_CHARA
+				CONTINUE
+			ENDIF
+
+			CALL ADD_GAME8_ENEMY_JUDGMENT(CURRENT_CHARA)
+		ENDIF
+	NEXT
+	
+	$ROUND_END
+	;process quitters
+	FOR LOCAL, 0, SURRENDERED_COUNT
+		LOCAL:1 = FINDELEMENT(REMAINING_PARTICIPANTS, SURRENDERED:LOCAL)
+		IF LOCAL:1 >= 0
+			ADD_GAME_LOSERS:(ADD_GAME_LOSER_COUNT++) = SURRENDERED:LOCAL
+			ARRAYREMOVE REMAINING_PARTICIPANTS, LOCAL:1, 1
+			REMAINING_PARTICIPANT_COUNT--
+		ENDIF
+	NEXT
+
+	[IF_DEBUG]
+		NOSKIP
+		PRINTL
+		PRINTFORML Overview:
+		FOR LOCAL, 0, ADD_GAME_PARTICIPANT_COUNT
+			LOCAL:1 = ADD_GAME_PARTICIPANTS:LOCAL
+			PRINTFORML %CALLNAME:(LOCAL:1)%. Alcohol level: {BASE:(LOCAL:1):酒気} Maximum alcohol tolerance: {MAXBASE:(LOCAL:1):酒気}. %COND_STR("*Surrendered*", FINDELEMENT(ADD_GAME_LOSERS, LOCAL:1) >= 0)%
+		NEXT
+		ENDNOSKIP
+	[ENDIF]
+
+	;pick up winner
+	IF REMAINING_PARTICIPANT_COUNT == 1
+		ADD_GAME_WINNERS:(ADD_GAME_WINNER_COUNT++) = REMAINING_PARTICIPANTS:0
+		BREAK
+	ENDIF
+WEND
+$GAME_END
+SKIPDISP 0
+LOCAL:10 = ADD_GAME_WINNERS:0
+
+PRINTFORMW In the end, %CALLNAME:(LOCAL:10)% is the last person standing.
+;cap everyone's drunkenness to max
+FOR LOCAL, 0, ADD_GAME_PARTICIPANT_COUNT
+	LOCAL:1 = ADD_GAME_PARTICIPANTS:LOCAL
+	BASE:(LOCAL:1):酒気 = MIN(BASE:(LOCAL:1):酒気, MAXBASE:(LOCAL:1):酒気)
+NEXT
+
+IF LOCAL:10 > 0 && IS_FEMALE(LOCAL:10) && HAS_PENIS(MASTER) && !PLAYER_QUIT
+	;check if winner will take advantage of wasted player
+	IF !(CFLAG:(LOCAL:10):既成事実 & 合意_うふふ) ;must have given consent before
+	ELSEIF TALENT:(LOCAL:10):貞操 == 1 || TALENT:(LOCAL:10):性的興味 == -1 ;not if virtuous or conservative
+	ELSEIF RAND:4 ;Do later: modify by traits/horniness
+		TARGET = LOCAL:10
+		PRINTFORML When you finally come to, you find yourself lying under a blanket in your own bed.
+		PRINTFORML You feel thankful to whoever carried you here, but you should probably try not to do this too often.
+		PRINTFORMW Your balls feel strangely empty, however...
+		CALL ADD_GAME8_MOLESTATION(LOCAL:10)
+		MAXBASE:MASTER:酒気 = LIMIT(MAXBASE:MASTER:酒気-40,1500,3000)
+		CALL ADD_GAME8_TALENT_CHECK(0)
+		RETURN
+	ENDIF
+ENDIF
+
+IF LOCAL:10 == MASTER
+	BASE:MASTER:酒気 = MIN(BASE:MASTER:酒気, MAXBASE:MASTER:酒気-1) ;set to barely sober
+	PRINTFORML Amazingly, you manage to come out on top.
+	PRINTFORMW You feel like you've gotten a little better at holding your alcohol.
+	MAXBASE:MASTER:酒気 = LIMIT(MAXBASE:MASTER:酒気+20,1500,3000)
+	CALL ADD_GAME8_TALENT_CHECK(1)
+ELSEIF PLAYER_QUIT ;sensible
+	BASE:MASTER:酒気 = MIN(BASE:MASTER:酒気, MAXBASE:MASTER:酒気-1) ;set to barely sober
+	IF BASE:MASTER:酒気 < (MAXBASE:MASTER:酒気-1)
+		PRINTFORML Looking back, you feel like you could've gone on for a little longer.
+		PRINTFORMW Still, better to quit early on than to wake up in your own filth.
+	ELSE
+		PRINTFORML You gave a good effort, but this was as far as you could go.
+		PRINTFORMW Maybe things will go better next time.
+		IF !RAND:3
+			PRINTFORMW After such a challenge, you feel like you've gotten a little better at holding your liquor.
+			MAXBASE:MASTER:酒気 = LIMIT(MAXBASE:MASTER:酒気+20,1500,3000)
+		ENDIF
+		CALL ADD_GAME8_TALENT_CHECK(1)
+	ENDIF
+ELSE ;drank too much
+	IF !RAND:2
+		PRINTFORMW After getting wasted like that, you feel like you're a little worse at holding your liquor.
+		MAXBASE:MASTER:酒気 = LIMIT(MAXBASE:MASTER:酒気-20,1500,3000)
+	ENDIF
+
+	CALL ADD_GAME8_TALENT_CHECK(0)
+ENDIF
+
+@ADD_GAME8_RANDOM_DRINKS(DRINKS, DRINK_COUNT)
+#DIM REF DRINKS
+#DIM DRINK_COUNT
+#DIM DRINK_ID
+#DIM SET_COUNT
+VARSET DRINKS
+SET_COUNT = 0
+CALL FISHER_YATES_SHAFFLE(OBJ_ID_LAST)
+FOR LOCAL, 0, OBJ_ID_LAST
+	SIF SET_COUNT >= DRINK_COUNT
+		BREAK
+	DRINK_ID = SHAFFLE_ARRAY:LOCAL
+	IF DRINK_ID == 1 || GET_INT(0, "酒データ", DRINK_ID, "酒気増加量") > 0 ;normal water is also allowed
+		DRINKS:(SET_COUNT++) = DRINK_ID
+	ENDIF
+NEXT
+
+[IF_DEBUG]
+PRINTFORML Drinks list:
+FOR LOCAL, 0, DRINK_COUNT
+	PRINTFORM {LOCAL+1, 2}: {DRINKS:LOCAL, 2} 
+	LOCALS '= ADD_GAME8_DRINK_NAME(DRINKS:LOCAL)
+	IF STRLENS(LOCALS)
+		PRINTFORML (%LOCALS%)
+	ELSE
+		PRINTFORML 
+	ENDIF
+NEXT
+[ENDIF]
+
+@ADD_GAME8_DRINK(CHARA, DRINK)
+#DIM CHARA
+#DIM DRINK
+#DIM DRUNKENNESS_INCREASE
+DRUNKENNESS_INCREASE = GET_INT(CHARA, "酒データ", DRINK, "酒気増加量")
+IF DRINK != 50 ;overnight kushinada has its own handling
+	IF TALENT:CHARA:酒耐性 == -1
+		TIMES DRUNKENNESS_INCREASE, 1.2
+	ELSEIF TALENT:CHARA:酒耐性 == 1
+		TIMES DRUNKENNESS_INCREASE, 0.9
+	ELSEIF TALENT:CHARA:酒耐性 == 2
+		TIMES DRUNKENNESS_INCREASE, 0.75
+	ELSEIF TALENT:CHARA:酒耐性 == 3
+		TIMES DRUNKENNESS_INCREASE, 0.5
+	ENDIF
+ENDIF
+BASE:CHARA:酒気 += DRUNKENNESS_INCREASE
+
+@ADD_GAME8_MOLESTATION(CHARA)
+#DIM CHARA
+#DIM ROUNDS
+ROUNDS = MAX(MIN(ABL:CHARA:欲望 / 2, 5) + CFLAG:CHARA:溜まってる度 / 200,1)
+;due to the player having blacked out, focus on V Exp, expand on it later
+CALL AddEXP("Ｖ性交経験", CHARA, ROUNDS)
+CALL AddEXP("絶頂経験", CHARA, ROUNDS)
+CALL AddEXP("精液経験", CHARA, ROUNDS)
+CALL AddEXP("膣射経験", CHARA, ROUNDS)
+CALL AddEXP("絶頂経験", MASTER, ROUNDS)
+CALL AddEXP("射精経験", MASTER, ROUNDS)
+CALL AddEXP("挿入経験", MASTER, ROUNDS*2)
+CFLAG:CHARA:溜まってる度 = 0
+
+CALL ADD_SAMEN_V(CHARA, ROUNDS * 300)
+CALL SET_DOUTEILOSS_MASTER(@"%HE_SHE(MASTER)% had %HIS_HER(MASTER)% penile virginity stolen by %CALLNAME:CHARA% after losing a drinking competition.")
+CALL SET_VIRGINLOSS_MASTER(@"she lost her virginity to the drunk %CALLNAME:MASTER% after claiming victory in a drinking competition.", CHARA)
+
+@ADD_GAME8_PLAYER_JUDGMENT
+#DIM CHARA
+#DIM DRUNKENNESS_PERCENTAGE
+#DIM FUZZINESS_FACTOR
+FUZZINESS_FACTOR = 40 - (ABL:MASTER:教養 * 2) ;get better at guessing with higher knowledge
+IF FUZZINESS_FACTOR <= 0
+	DEBUGPRINTFORML No man may cheat at this most sacred of challenges.
+	FUZZINESS_FACTOR = 100
+ENDIF
+DRUNKENNESS_PERCENTAGE = BASE:MASTER:酒気 * 100 / MAXBASE:MASTER:酒気
+SIF DRUNKENNESS_PERCENTAGE > 0
+	DRUNKENNESS_PERCENTAGE += (RAND:(MAX(FUZZINESS_FACTOR*2, 1)) - FUZZINESS_FACTOR) ;it can go either way
+
+SELECTCASE DRUNKENNESS_PERCENTAGE
+	CASE IS <= 15
+		PRINTFORML You still feel completely sober.
+	CASE IS <= 50
+		PRINTFORML You're starting to feel the effects of the alcohol.
+	CASE IS <= 75
+		PRINTFORML The effects of the alcohol are pretty noticeable at this point. It may be wise to stop while you're still ahead.
+		PRINTFORML Who knows what some of these girls might do with you if you're not conscious enough to stop them.
+	CASE IS <= 150
+		PRINTFORML You feel pretty inebriated. It probably would not be wise to continue.
+		PRINTFORML Who knows what some of these girls might do with you if you're not conscious enough to stop them.
+	CASE IS <= 200
+		PRINTFORML You're near your absolute limit. You really should stop while you still can.
+		PRINTFORML Who knows what some of these girls might do with you if you're not conscious enough to stop them.
+	CASEELSE
+		PRINTFORML It's amazing that you're still awake, but you definitely shouldn't go any further now.
+ENDSELECT
+
+@ADD_GAME8_ENEMY_JUDGMENT(CHARA)
+#DIM CHARA
+#DIM DRUNKENNESS_PERCENTAGE
+#DIM FUZZINESS_FACTOR
+FUZZINESS_FACTOR = 50 - (ABL:MASTER:教養 * 5) ;get better at guessing with higher knowledge
+IF FUZZINESS_FACTOR <= 0
+	DEBUGPRINTFORML No man may cheat at this most sacred of challenges.
+	FUZZINESS_FACTOR = 100
+ENDIF
+DRUNKENNESS_PERCENTAGE = BASE:CHARA:酒気 * 100 / MAXBASE:CHARA:酒気
+DRUNKENNESS_PERCENTAGE += (RAND:(MAX(FUZZINESS_FACTOR*2, 1)) - FUZZINESS_FACTOR) ;it can go either way
+
+SELECTCASE DRUNKENNESS_PERCENTAGE
+	CASE IS <= 15
+		PRINTFORML %CALLNAME:CHARA% still looks completely sober.
+	CASE IS <= 50
+		PRINTFORML %CALLNAME:CHARA% looks a little tipsy.
+	CASE IS <= 90
+		PRINTFORML %CALLNAME:CHARA%'s face has gotten pretty red.
+	CASE IS <= 120
+		PRINTFORML %CALLNAME:CHARA% is slurring %HIS_HER(CHARA)% words pretty badly.
+	CASE IS <= 160
+		PRINTFORML %CALLNAME:CHARA% is wobbling and %HIS_HER(CHARA)% speech has become incomprehensible.
+	CASE IS <= 200
+		PRINTFORML %CALLNAME:CHARA% looks like %HE_SHE(CHARA)%'s barely cognizant.
+	CASEELSE
+		PRINTFORML %CALLNAME:CHARA% looks like %HE_SHE(CHARA)%'s completely wasted, but shows no sign of stopping.
+ENDSELECT
+
+@ADD_GAME8_TALENT_CHECK(POSITIVE)
+#DIM POSITIVE
+#DIM DYNAMIC SUCCESS
+IF POSITIVE
+	;nas custom code, use endurance system
+	SELECTCASE AlcoholAddict:MASTER:0
+		CASE -5
+				SUCCESS = 1
+		CASE -4
+			SIF !RAND:2
+				SUCCESS = 1
+		CASE -3
+			SIF !RAND:3
+				SUCCESS = 1
+		CASE -2
+			SIF !RAND:4
+				SUCCESS = 1
+		CASE -1
+			SIF !RAND:6
+				SUCCESS = 1
+		CASE 0
+			SIF !RAND:8
+				SUCCESS = 1
+		CASE 1
+			SIF !RAND:10
+				SUCCESS = 1
+		CASE 2
+			SIF !RAND:12
+				SUCCESS = 1
+		CASE 3
+			SIF !RAND:14
+				SUCCESS = 1
+		CASE 4
+			SIF !RAND:16
+				SUCCESS = 1
+	ENDSELECT
+	IF SUCCESS
+		;TALENT:MASTER:酒耐性 ++
+		AlcoholAddict:MASTER:0--
+		DrinkingExp:MASTER:0 = EXP_DEMAND_22(0,91,MASTER)
+		PRINTFORML Having increased your alcohol tolerance, you are now a【%GET_TALENTNAME_TR(GETNUM(TALENT, "酒耐性"), TALENT:MASTER:酒耐性)%】.
+	ENDIF
+ELSE
+	SELECTCASE AlcoholAddict:MASTER:0
+		CASE -4
+			SIF !RAND:16
+				SUCCESS = 1
+		CASE -3
+			SIF !RAND:14
+				SUCCESS = 1
+		CASE -2
+			SIF !RAND:12
+				SUCCESS = 1
+		CASE -1
+			SIF !RAND:10
+				SUCCESS = 1
+		CASE -1
+			SIF !RAND:8
+				SUCCESS = 1
+		CASE 0
+			SIF !RAND:6
+				SUCCESS = 1
+		CASE 1
+			SIF !RAND:5
+				SUCCESS = 1
+		CASE 2
+			SIF !RAND:4
+				SUCCESS = 1
+		CASE 3
+			SIF !RAND:3
+				SUCCESS = 1
+		CASE 4
+			SIF !RAND:2
+				SUCCESS = 1
+		CASE 5
+				SUCCESS = 1
+	ENDSELECT
+	IF SUCCESS
+		;TALENT:MASTER:酒耐性 --
+		AlcoholAddict:MASTER:0--
+		DrinkingExp:MASTER:0 = EXP_DEMAND_22(0,91,MASTER)
+		PRINTFORML After such a disastrous party, your alcohol tolerance worsened. You are now a【%GET_TALENTNAME_TR(GETNUM(TALENT, "酒耐性"), TALENT:MASTER:酒耐性)%】.
+	ENDIF
+ENDIF
+CALLF SILENT_ENDURANCECHANGE(MASTER)
+
+@ADD_GAME8_DRINK_NAME(DRINK_ID)
+#FUNCTIONS
+#DIM DRINK_ID
+SIF DRINK_ID == 1
+	RETURNF "Water"
+IF STRLENS(ALC_NAME(DRINK_ID))
+	LOCAL:1 = GETNUM(ITEM, ALC_NAME(DRINK_ID))
+	IF LOCAL:1 >= 0
+		RETURNF ITEMNAME_TR(GETNUM(ITEM, ALC_NAME(DRINK_ID)))
+	ELSE
+		RETURNF ALC_NAME(DRINK_ID)
+	ENDIF
+ELSE
+	RETURNF ""
+ENDIF

@@ -1,0 +1,121 @@
+;-------------------------------------------------
+;部屋に入る
+;-------------------------------------------------
+@COM698
+#DIM 部屋の汚れ
+#DIM 浮気
+#DIM 嫉妬
+
+;別の子とデート中
+IF FLAG:デート相手 != MASTER && ((!MOREDATE && FLAG:デート相手 != TARGET) || (MOREDATE && !IS_IN_GROUP_DATE(TARGET))) && GET_UWAKI_HISTORY(FLAG:デート相手, TARGET) != 2 ;custom code
+	PRINTFORMW You try to visit %OMANEKI_PLACE()%, but %CALLNAME:(FLAG:デート相手)% glares intensely at you.
+	RETURN -1
+ENDIF
+
+;com custom code
+IF BASE:怒り > 500
+	PRINTFORML You suggest visiting %OMANEKI_PLACE()%, but %CALLNAME:TARGET% shakes %HIS_HER(TARGET)% head.
+	PRINTFORMW Looks like %HE_SHE(TARGET)%'s a bit too agitated to let you in... (Anger too high)
+	RETURN -1
+ENDIF
+
+;見られてないかチェック
+浮気 = 0
+嫉妬 = 0
+FOR LOCAL,1,CHARANUM
+	IF LOCAL != TARGET && CFLAG:LOCAL:現在位置 == CFLAG:MASTER:現在位置 && !MORELOVER
+		SIF LOCAL == 60
+			嫉妬 = 60
+		SIF TALENT:LOCAL:恋慕 && CFLAG:LOCAL:信頼度 < 1000
+			浮気 = LOCAL
+	ENDIF
+NEXT
+;パルスィが出現し4人も住んでいる地霊殿はかなり難易度が高い
+;連動キャラも駆けつけてくるので二股してると大変
+IF 嫉妬 || 浮気
+	PRINTFORM You try entering %OMANEKI_PLACE()%, 
+	IF 嫉妬
+		PRINTFORMW but you change your mind after %CALLNAME:嫉妬% interrupts you with a fiendish look on %HIS_HER(嫉妬)% face.
+	ELSE
+		PRINTFORMW but you're stopped by %CALLNAME:浮気% staring at you suspiciously.
+	ENDIF
+	RETURN -1
+ENDIF
+TIME += 1
+SIF MOREDATE && FLAG:デート相手 ;if in middle of a date, keep dating
+	HouseInvitationStatus = 0
+CALL OMANEKI_ENTER(TARGET)
+
+RETURN 1
+
+;-------------------------------------------------
+;実行可能判定
+;-------------------------------------------------
+;部屋に入る
+@COM_ABLE698
+
+;一括管理
+SIF GLOBAL_COMABLE(698)
+	RETURN RESULT
+;仕事中
+SIF CFLAG:行動 == 5
+	RETURN 0
+;自宅にいない
+SIF CFLAG:MASTER:現在位置 != CFLAG:自宅位置
+	RETURN 0
+;とりあえず恋慕だけ条件　発情も追加
+;SIF !TALENT:恋慕 && !TCVAR:TARGET:発情 && TALENT:セフレ != 2
+	;RETURN 0
+;custom code, tweaked condition to be more forgiving and clear
+SIF !IS_FALLEN(TARGET) && TALENT:セフレ != 2 && !TCVAR:TARGET:発情 && !(TCVAR:誘惑時刻 && CFLAG:溜まってる度 >= 800) && TCVAR:Common_Sense_Alteration_Status <= 50
+	RETURN 0
+;外出してない
+SIF !CHK_DATENOW(CFLAG:MASTER:デート中)
+	RETURN 0
+;別の子とデート中,面白いのでコマンドは実行できるように
+;SIF FLAG:デート相手 != TARGET && FLAG:デート相手 != 0
+;	RETURN 0
+;怒ってたらだめ（バグ回避用でもある）
+;SIF BASE:怒り > 50 ;com custom code, cancel out with a notification instead
+;	RETURN 0
+;睡眠中
+SIF CFLAG:睡眠
+	RETURN 0
+;時間停止中
+SIF FLAG:70 && !MAXBASE:TARGET:TSP
+	RETURN 0
+;潜伏モード中は不可
+SIF GETBIT(FLAG:潜伏,0)
+	RETURN 0
+RETURN 1
+
+;-------------------------------------------------
+;外泊処理
+;-------------------------------------------------
+@OMANEKI_ENTER(ARG)
+#DIM 部屋の汚れ
+
+;お招きフラグにARGを代入
+CFLAG:ARG:お招き = ARG
+CFLAG:MASTER:お招き = ARG
+
+;初期位置をOMANEKIBEYA()=98にする
+CFLAG:ARG:初期位置 = OMANEKIBEYA()
+;移動させる
+CFLAG:ARG:現在位置 = OMANEKIBEYA()
+CFLAG:MASTER:現在位置 = OMANEKIBEYA()
+
+IF MOREDATE && NumberOfDates > 1 ; omaneki gets called before actually ending the date so checking the number should be fine
+	CALL MOREDATES_HOUSE_VISIT(ARG)
+ENDIF
+
+;部屋の汚れ具合
+;一度入っていたら参照する
+IF TCVAR:ARG:お招き部屋の汚れ > 0
+	YOGORE:(OMANEKIBEYA()) = TCVAR:ARG:お招き部屋の汚れ
+ELSE
+	;最初に入る時は汚臭耐性依存（敏感以下=最高,普通=中,鈍感=低,無視=ゴミの山）
+	部屋の汚れ = MAX(1999 + (TALENT:ARG:61 * 2000), 0) 
+	YOGORE:(OMANEKIBEYA()) = 部屋の汚れ
+	TCVAR:ARG:お招き部屋の汚れ = 部屋の汚れ
+ENDIF
