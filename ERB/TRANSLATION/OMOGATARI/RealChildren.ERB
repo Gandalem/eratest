@@ -1,0 +1,879 @@
+﻿; Modular ERB: OMOGATARI/RealChildren.ERB
+;-------------------------------------------------
+; custom code
+; stuffs for real working children
+;-------------------------------------------------
+;makes a REAL child, not one of those fakers.
+
+@BIRTH_NAS(ARG)
+#DIM CHILDNUM
+#DIM DYNAMIC INITCHILDNUM
+#DIM DYNAMIC CHILDCOUNT
+#DIM DYNAMIC ChildFather, MaxChild
+#DIM DYNAMIC MasterChilds, MaxChild
+#DIM DYNAMIC MasterChildCount
+#DIM DYNAMIC NonMCChilds, MaxChild
+#DIM DYNAMIC NonMCChildCount
+#DIM DYNAMIC CurLoop
+DRAWLINE
+;Custom code, make sure pregnancy is at least 1, set variables.
+CFLAG:ARG:WithChildCount = MAX(CFLAG:ARG:WithChildCount,1)
+PregnancyProgress:ARG:0 = MAX(PregnancyProgress:ARG:0,101)
+INITCHILDNUM = FREE_MOB_SLOT()
+CHILDCOUNT = CFLAG:ARG:子供人数
+CFLAG:ARG:LatestChildCount = COUNT_BIRTH_MATES(ARG)
+;negative loop fix
+SIF CFLAG:ARG:LatestChildCount-CFLAG:ARG:WithChildCount < 0
+	CFLAG:ARG:LatestChildCount = CFLAG:ARG:WithChildCount
+CFLAG:ARG:BirthEventsCount++
+PRINTFORMW %NUM_COUNT(CFLAG:ARG:LatestChildCount ,,1)% %PLURALIZER("baby",CFLAG:ARG:LatestChildCount )% \@ CFLAG:ARG:LatestChildCount > 1 ? 이다 # 이다 \@ 출산할 예정이다!
+;was used for pc birth
+; IF ARG == MASTER
+; PRINTFORMW Your body jolts in pain as you go into labor when trying to sleep.
+; PRINTFORML The ready to be born baby announces it's presence as it continuously kicks your belly, each hit sending you into agony.
+; PRINTFORML It eventually takes you over as you desperately try to take off your lower and spread your legs, preparing for birth.
+; PRINTFORML You repeatably go through the painful process of trying to push out the baby but to no avail.
+; PRINTFORML Eventually you make a mess on the futon as the baby comes out naturally.
+; ENDIF
+DRAWLINE
+$LOOP
+CALLF CLEAN_MOBS
+CurLoop = (CFLAG:ARG:LatestChildCount-CFLAG:ARG:WithChildCount)
+;#; PRINTFORML BIRTH LOOP: {CurLoop} | LatestChildCount {CFLAG:ARG:LatestChildCount} | WithChildCount: {CFLAG:ARG:WithChildCount} | Character: {ARG} %NAME:ARG%
+IF !INRANGE(CurLoop,0,VARSIZE("ChildFather"))
+	PRINTFORMW 오류: 탄생 캐릭터 루프가 범위를 벗어남 ({CurLoop}). 함수를 우아하게 종료한다.
+	RETURN
+ELSEIF !INRANGE(PreggoWith:ARG:0,0,CHARANUM-1)
+	PRINTFORML 경고: 아이의 아버지 {CurLoop}가 유효하지 않음 ({PreggoWith:ARG:0})
+	PRINTFORMW 아버지를 어머니로 대체한다.
+	PreggoWith:ARG:0 = ARG
+ENDIF
+;Custom code, reduce with child count and remove a pregnancy tracker once for each child.
+;NAS: check for father, sort them between master and non master
+ChildFather:(CurLoop) = PreggoWith:ARG:0
+IF PreggoWith:ARG:0 == MASTER || ARG == MASTER
+	;youkai breeder takes away your children
+	;count pc mother too
+	SIF nStartingBackstory != 25
+		MasterChilds:MasterChildCount = FREE_MOB_SLOT()
+	MasterChildCount++
+ELSE
+	;rando
+	NonMCChilds:NonMCChildCount = FREE_MOB_SLOT()
+	NonMCChildCount++
+ENDIF
+;///////////////////////
+CFLAG:ARG:WithChildCount -= 1
+CALL REMOVE_PREGNANCY_PROGRESS(ARG)
+EXP:ARG:出産経験 += 1
+;Moved.
+CFLAG:ARG:子供人数 ++
+SIF ChildFather:(CurLoop) != ARG
+	CFLAG:(ChildFather:(CurLoop)):子供人数 += 1
+CFLAG:ARG:育児人数 ++
+SIF ChildFather:(CurLoop) != ARG
+	CFLAG:(ChildFather:(CurLoop)):育児人数 ++
+Qol_Info_Count_Array:ARG:Qol_Count_Birth ++ ;qol custom code
+;backstory
+SIF nStartingBackstory == 25 && CFLAG:ARG:WithChildCount > 0 && (ChildFather:(CurLoop) == MASTER || ARG == MASTER)
+	GOTO LOOP
+;new chara
+CHILDNUM = FREE_MOB_SLOT()
+CALL MAKE_CHILD(CHILDNUM, ARG, ChildFather:(CurLoop), "町娘")
+CALLF NUDEME(CHILDNUM);babus are nude
+CALLF LinkFamilyRelation(ARG, CHILDNUM, 1)
+CALLF LinkFamilyRelation(ChildFather:(CurLoop), CHILDNUM, 1)
+;RELATION
+IF CFLAG:ARG:無自覚妊娠
+	RELATION:ARG:CHILDNUM = 70
+ELSEIF (TALENT:ARG:恋慕 && ChildFather:(CurLoop) == MASTER) || RELATION:ARG:(ChildFather:(CurLoop)) > 200
+	RELATION:ARG:CHILDNUM = 300
+ELSEIF (TALENT:ARG:思慕 && ChildFather:(CurLoop) == MASTER) || RELATION:ARG:(ChildFather:(CurLoop)) > 150
+	RELATION:ARG:CHILDNUM = 200
+ELSE
+	RELATION:ARG:CHILDNUM = 100
+ENDIF
+SIF !CFLAG:ARG:無自覚妊娠 && ITEM:私達だけが知る哀嘆 == 1
+	RELATION:ARG:CHILDNUM += 150
+;set birth mother
+RealChildren:CHILDNUM:1 = ARG
+;set birth father
+RealChildren:CHILDNUM:2 = ChildFather:(CurLoop)
+;Custom code, loop again if there are more children to be born.
+SIF CFLAG:ARG:WithChildCount > 0 && PregnancyProgress:ARG:0 > 100
+	GOTO LOOP
+;Custom code, only send KOJO event once, differentiate live birth and hatching, and pass the number of the first child being born as ARG:1.
+IF CFLAG:ARG:無自覚妊娠
+	LOCAL:1 = 4
+ELSEIF TALENT:ARG:恋慕
+	LOCAL:1 = 1
+ELSEIF TALENT:ARG:思慕
+	LOCAL:1 = 2
+ELSE
+	LOCAL:1 = 3
+ENDIF
+IF TALENT:ARG:NESTING
+	CALL KOJO_MESSAGE_SEND("EVENT",0,ARG,LOCAL:1,INITCHILDNUM,"HATCHING")
+ELSE
+	CALL KOJO_MESSAGE_SEND("EVENT",25,ARG,LOCAL:1,INITCHILDNUM)
+ENDIF
+;backstory stuff
+;youkai maker start auto takes your children
+IF nStartingBackstory == 25 && MasterChildCount
+	PRINTFORMDL 뭐, 뭐라고!
+	PRINTFORMDW 그 %PLURALIZER("child",MasterChildCount)% 네가 낳은 %PLURALIZER("was",MasterChildCount)% 어떤 힘에 의해 빼앗겼고 이제는 %PLURALIZER("it's",MasterChildCount)% 보이지 않는 곳에
+	PRINTFORMDW 적어도 돈을 좀 벌었고 그 덕분에 성적으로 좀 더 강력해진 기분이 든다.
+	CALL GET_MONEY_YEN(2000000*MasterChildCount, 1)
+	CALL COLORMESSAGE(@"최대 활력(Vigor)이 {300*MasterChildCount} 포인트 증가했다!",C_AQUA,2,1)
+	MAXBASE:MASTER:射精 += 300*MasterChildCount
+	CFLAG:ARG:出産経過日 = 1
+	CFLAG:ARG:妊娠経過日数 = 0
+	CFLAG:ARG:無自覚妊娠 = 0
+	CFLAG:ARG:身に覚え_母 = 0
+	CFLAG:ARG:身に覚え_父 = 0
+	CFLAG:ARG:妊娠自覚状態 = 0
+	CFLAG:ARG:産休中 = 0
+	EXP:ARG:愛情経験 += 10
+	;RETURN 1
+ENDIF
+;Custom code, separate loop to name all children, use LOCAL instead of CHILDNUM, account for pregnancy types.
+FOR LOCAL,INITCHILDNUM,INITCHILDNUM+(nStartingBackstory == 25 ? NonMCChildCount # CFLAG:ARG:LatestChildCount)
+;あらかじめ自立先を決めちゃう（自立するときにもっかい決める）
+;CALL 自立先選定(ARG, LOCAL)
+IF FLAG:EGGNANCY && GROUPMATCH(TALENT:ARG:PREGNANCY_TYPE, PREGNANCY_EGGS, PREGNANCY_CLUTCH)
+	PRINTFORMW 부화한 지 얼마 지나지 않아, %PARSE("your",,,ChildFather:(CurLoop))% 아이가 안전하게 알에서 깨어난다.
+ELSE
+	PRINTFORMW \@ TALENT:ARG:NESTING ? %PARSE("Your",,,ChildFather:(CurLoop))% 아이는 %PARSE("your",,,ARG)%의 보살핌 속에서 안전하게 부화한다. # %PARSE("You give",,,ARG)% 태어나서 %PARSE("your",,,ChildFather:(CurLoop))%%COND_STR(" own",ARG==ChildFather:(CurLoop))% 아이에게 안전하게 나온다. \@
+ENDIF
+IF ARG==ChildFather:(CurLoop)
+	PRINTFORMW %HE_SHE(LOCAL,1)%그/그녀는 약간 %PARSE("you",6,,ChildFather:(CurLoop))% 닮았다.
+ELSE
+	PRINTFORMW 「\@ IS_FEMALE(LOCAL) ? 그녀는 어머니를 닮았다 %CALLNAME:ARG% # 그는 아버지를 조금 닮았다 \@」
+ENDIF
+PRINTFORMW %PARSE("You hold",,,ARG)% 갓 태어난 아기와 부드럽게 %PARSE("cradle",,,ARG)% 그것을 ~로 %PARSE("you breastfeed",5,,ARG)% %HIM_HER(LOCAL)%...
+IF TALENT:ARG:母性 == 0
+	PRINTFORMW %CALLNAME:ARG%의 [모성]이 깨어났다!
+	;Moved.
+	TALENT:ARG:母性 = 1
+ENDIF
+CALL CHARA_STATE_TR(LOCAL)
+PRINTL ******************************************************************
+PRINTFORML %ORDINAL(CFLAG:ARG:子供人数)%자녀 ({CFLAG:ARG:LatestChildCount-CFLAG:ARG:WithChildCount} 중 {CFLAG:ARG:LatestChildCount}) 어머니: %NAME:ARG% 아버지: %NAME:(ChildFather:(CurLoop))%
+PRINTFORML 　성별: %TOSTR_GENDER(GET_GENDER(LOCAL))%
+PRINTFORML 생일: %PRINT_DATE_F(DAY)%
+PRINTFORML  %FESTIVAL_TR()% -%GET_WEATHER_TR()%-
+PRINTL ******************************************************************
+IF ISSKIP()
+	nameArray:LOCAL:na_FirstName '= "TEST CHARA"
+	CALLNAME:LOCAL '= nameArray:LOCAL:na_FirstName
+	NAME:LOCAL '= nameChecker(LOCAL)
+	TALENT:ARG:育児中 = LOCAL
+ELSE
+	CALL CHILD_NAME(ARG, LOCAL, ChildFather:(CurLoop))
+ENDIF
+NEXT
+IF ARG == MASTER
+	CFLAG:ARG:育児人数 += 1
+ELSE
+	CFLAG:ARG:育児人数 += 1
+	CFLAG:(ChildFather:(CurLoop)):育児人数 += 1
+ENDIF
+;育児中・母性追加
+CFLAG:ARG:出産経過日 = 1 + FLAG:妊娠日程倍率
+CFLAG:ARG:無自覚妊娠 = 0
+CFLAG:ARG:身に覚え_母 = 0
+CFLAG:ARG:身に覚え_父 = 0
+CFLAG:ARG:妊娠自覚状態 = 0
+CFLAG:ARG:産休中 = 0
+;Custom code, set pregnancy or nesting progress to the next due child (if any) instead of zero.
+IF GROUPMATCH(TALENT:ARG:PREGNANCY_TYPE, PREGNANCY_EGGS, PREGNANCY_CLUTCH) && !FLAG:EGGNANCY
+	TALENT:ARG:NESTING = PregnancyProgress:ARG:0
+	CFLAG:ARG:妊娠経過日数 = 0
+ELSE
+	CFLAG:ARG:妊娠経過日数 = PregnancyProgress:ARG:0
+	TALENT:ARG:NESTING = 0
+	;Only unset pregnancy talent if progress is below 20.
+	SIF CFLAG:ARG:妊娠経過日数 < 20
+		TALENT:ARG:妊娠 = 0
+ENDIF
+EXP:ARG:愛情経験 += 10
+IF FLAG:甲斐性無 && !FLAG:LUSTMODE && ChildFather:(CurLoop) == MASTER
+	PRINTFORML 당신의 \@ CFLAG:ARG:LatestChildCount > 1 ? 아이들이었다면 # 아이가 \@ 방금 태어났다는 사실을 깨닫는다.
+	CALL ASK_YN("책임감이 안에서부터 치밀어 오른다.","미래에 대한 불안이 당신을 공포로 가득 채운다.")
+	IF !RESULT
+		PRINTFORMW 당신은 더 이상 무능하지 않다.
+	ELSE
+		PRINTFORMW 인간의 본성이 그렇게 쉽게 변할 수 있었다면, 갈등은 존재하지 않았을 것이다.
+		PRINTFORMW %CALLNAME:ARG%는 언제나처럼 믿음직스럽지 못하니, \@ CFLAG:ARG:LatestChildCount > 1 ? 아이들 # 아이 를 돌봐야 한다 \@.
+	ENDIF
+	FLAG:甲斐性無 = RESULT
+ENDIF
+;custody
+;only for either mc births or mc fathered.
+IF MasterChildCount && nStartingBackstory != 25
+	IF ARG == MASTER && ChildFather:(CurLoop) == MASTER
+		;selfcest
+		PRINTFORML 당신들이 어머니이자 아버지이기에 받아들일 수밖에 없다 \@ MasterChildCount  > 1 ? 너의 아이들 # %CALLNAME:(MasterChilds:0)% \@.
+		P = MASTER
+		GOTO MasterMC
+	ENDIF
+	$Custody
+	IF ISSKIP()
+		P = ARG
+		GOTO MasterMC
+	ENDIF
+	PRINTFORML \@ MasterChildCount  > 1 ? 아이들의 양육권은 # %CALLNAME:(MasterChilds:0)% \@?
+	PRINTFORML [{ARG}] - %CALLNAME:ARG% (어머니)
+	PRINTFORML [{ChildFather:(CurLoop)}] - %CALLNAME:(ChildFather:(CurLoop))% (아버지)
+	INPUT
+	P = RESULT
+	SIF !GROUPMATCH(P,ARG,ChildFather:(CurLoop))
+		GOTO Custody
+	$MasterMC
+	FOR LOCAL,0,MasterChildCount
+	PRINTFORML 양육권이 %CALLNAME:(MasterChilds:LOCAL)%에게서 %CALLNAME:P%에게로 갔다.
+	RealChildren:(MasterChilds:LOCAL):0 = P
+	;give them a home
+	CFLAG:(MasterChilds:LOCAL):311 = CFLAG:P:311
+	CFLAG:(MasterChilds:LOCAL):358 = CFLAG:P:358
+	CFLAG:(MasterChilds:LOCAL):30 = CFLAG:P:30
+	NEXT
+ENDIF
+;non mc children
+IF NonMCChildCount
+	P = ARG
+	PRINTFORML 당신이 아버지가 되지 않은 아이들이 있었기 때문에, 그들의 양육권은 %CALLNAME:P%에게 갔다.
+	FOR LOCAL,0,NonMCChildCount
+	PRINTFORML %CALLNAME:LOCAL%의 양육권은 %CALLNAME:P%에게 넘어갔다.
+	RealChildren:LOCAL:0 = P
+	;give them a home
+	CFLAG:LOCAL:311 = CFLAG:P:311
+	CFLAG:LOCAL:358 = CFLAG:P:358
+	CFLAG:LOCAL:30 = CFLAG:P:30
+	NEXT
+ENDIF
+;continence loss
+PeeHoldExp:ARG:0 -= 500
+PooHoldExp:ARG:0 -= 100
+LOCAL:19 = PeeHold:ARG:0
+PeeHold:ARG:0 = MAX(PeeHold:ARG:0-2,-5)
+CALL NAMED_ABLCHANGE(ARG,19,PeeHold:ARG:0,LOCAL:19)
+RETURN CHILDNUM
+
+@MAKE_CHILD(ARG, MOTHER, FATHER, YUKIZURI_RACE)
+#DIM MOTHER
+#DIM FATHER
+#DIM DBB
+#DIM MOBNUM
+#DIM ENEMY
+#DIM 泡姫
+#DIMS YUKIZURI_RACE
+#DIM LAST_SKIP
+ADDCHARA CSV_CHARANUM()
+;set birthday
+CharaAge:ARG:0 = 0
+CharaAge:ARG:1 = 0
+CharaAge:ARG:2 = DAY + (StartingYear*YearLength)
+;last name
+nameArray:ARG:na_LastName = \@ BloodlineName:MOTHER:0 != "" ? %BloodlineName:MOTHER:0% # %nameArray:MOTHER:na_LastName% \@
+;if we can't get mother's
+SIF !STRLENS(nameArray:ARG:na_LastName)
+	nameArray:ARG:na_LastName = \@ BloodlineName:FATHER:0 != "" ? %BloodlineName:FATHER:0% # %nameArray:FATHER:na_LastName% \@
+;random name fallback
+IF !STRLENS(nameArray:ARG:na_LastName)
+	VARSET A
+	SIF nameArray:MOTHER:na_NameType == "Western" || nameArray:FATHER:na_NameType == "Western"
+		SETBIT A,0
+	SIF GROUPMATCH(TOLOWER(nameArray:MOTHER:na_NameType),TOLOWER("Japanese"),TOLOWER("Korean")) || GROUPMATCH(TOLOWER(nameArray:FATHER:na_NameType),TOLOWER("Japanese"),TOLOWER("Korean"))
+		SETBIT A,2
+	CALL RandomName(ARG, A)
+ENDIF
+BloodLineName:ARG:0 '= nameArray:ARG:na_LastName
+nameArray:ARG:na_FirstName '= @"아기\@ CFLAG:MOTHER:子供人数 > 1 ? %" ("+TOSTR(CFLAG:MOTHER:子供人数)+")"% #  \@"
+CALLNAME:ARG '= nameArray:ARG:na_FirstName
+;biased talents
+FOR LOCAL,0, 999
+; 	SIF 選べない素質(LOCAL)
+; 		CONTINUE
+; ELSE
+SIF 選べない素質2_CHEAT(LOCAL, ARG)
+	CONTINUE
+SIF STRLENS(TALENTNAME:LOCAL)
+	TALENT:ARG:LOCAL = BIASED_RANDOM(TALENT:MOTHER:LOCAL,500,TALENT:FATHER:LOCAL,500)
+;CALL SET_BIASED_TALENT(ARG, TALENTNAME:LOCAL, TALENT:MOTHER:LOCAL, 500, TALENT:FATHER:LOCAL, 500)
+NEXT
+FOR LOCAL,0, 100
+SIF STRLENS(ABLNAME:LOCAL)
+	ABL:ARG:LOCAL = RAND(0,MAX(ABL:MOTHER:LOCAL/2,ABL:FATHER:LOCAL/2)+1)
+;CALL SET_BIASED_TALENT(ARG, TALENTNAME:LOCAL, TALENT:MOTHER:LOCAL, 500, TALENT:FATHER:LOCAL, 500)a
+SELECTCASE LOCAL
+	CASE 9 TO 13
+		ABL:ARG:LOCAL = 0
+ENDSELECT
+NEXT
+;fallback
+TALENT:ARG:2 = BIASED_RANDOM(GET_GENDER(MOTHER),500,GET_GENDER(FATHER),500,1,500,2,500,3,200)
+SIF !TALENT:ARG:2
+	TALENT:ARG:2 = 1
+;race
+;no race = human
+SIF !IS_NONHUMAN(ARG) && !TALENT:ARG:190
+	TALENT:ARG:190 = 1
+TALENT:ARG:SexKnow = -1
+TALENT:ARG:300 = 0
+TALENT:ARG:301 = 1
+TALENT:ARG:BornChild = 1
+TALENT:ARG:100 = -4
+;set basic talents, virgin, not lactating, no lewd stuff
+TALENT:ARG:0 = 1
+TALENT:ARG:200 = 0
+TALENT:ARG:169 = 0
+TALENT:ARG:170 = 0
+TALENT:ARG:171 = 0
+TALENT:ARG:172 = 0
+TALENT:ARG:173 = 0
+TALENT:ARG:177 = 0
+TALENT:ARG:149 = 0
+CFLAG:ARG:出禁 = 0
+CALLF SILENT_ENDURANCECHANGE(ARG)
+CALL newGenderSystemConvert(ARG)
+CALL bladderTraitToPart(ARG)
+CALL CrippleEffects(ARG)
+;ensure minimum exp
+LAST_SKIP = ISSKIP()
+SKIPDISP 1
+CALL SET_MINIMUM_EXP_ALL(ARG, 1)
+CALL SOURCE_ABLUP(ARG)
+CALL SHOW_ABLUP_SELECT
+SKIPDISP LAST_SKIP
+;purges all mobs
+;noAdd prevents the replacement placeholder mob from spawning
+
+@KILL_ALL_MOBS(noAdd = 0)
+#FUNCTION
+#DIM charaSlot
+#DIM noAdd
+#DIM KAM_CSV
+VARSET charaSlot, RANDOM_CHARANUM
+KAM_CSV = CSV_CHARANUM()
+WHILE CHARANUM > charaSlot
+IF !IS_MOB(charaSlot) || TALENT:charaSlot:CustomChara
+	charaSlot ++
+ELSE
+	CALLF ClearAllHediffs(charaSlot)
+	DELCHARA charaSlot
+ENDIF
+WEND
+IF !noAdd
+	ADDCHARA KAM_CSV
+	VARSET RANDOM_CHARANUM
+	RANDOM_CHARANUM = CHARANUM-1
+ENDIF
+;purges mobs who are in-front of custom characters and moves them in front
+
+@CLEAN_MOBS
+#FUNCTION
+#DIM charaSlot
+#DIM nonMobs
+C = CSV_CHARANUM()
+$StartLoop
+VARSET nonMobs
+FOR charaSlot, 0, CHARANUM
+SIF !(TALENT:charaSlot:300 && !TALENT:charaSlot:CustomChara)
+	nonMobs++
+NEXT
+FOR charaSlot, 0, CHARANUM
+;break once we got the character slot cleaned up
+SIF charaSlot >= nonMobs
+	BREAK
+;move mobs
+IF (TALENT:charaSlot:300 && !TALENT:charaSlot:CustomChara)
+	IF GETCHARA(NO:charaSlot) == charaSlot && !GROUPMATCH(NAME:charaSlot,"Mob Girl", "Mob Character")
+		;false positive. character NO matches character ID.
+		;and isn't an uninitialized mob, that's the biggest part.
+		TALENT:charaSlot:300 = 0
+		GOTO StartLoop
+	ENDIF
+	CALLF NAS_MOVE_CHARA(charaSlot)
+	;restart loop
+	GOTO StartLoop
+ENDIF
+NEXT
+RANDOM_CHARANUM = CHARANUM-1
+SIF FREE_MOB_SLOT() != CHARANUM-1
+	ADDCHARA C
+VARSET RANDOM_CHARANUM
+RANDOM_CHARANUM = CHARANUM-1
+
+@PURGE_LAST_MOB
+#FUNCTION
+FOR LOCAL,0, MAX_MOBS
+IF LOCAL == MAX_MOBS
+	DELCHARA RANDOM_CHARANUM
+	RETURNF RANDOM_CHARANUM
+ELSEIF !RANDOM_CHARANUM:(LOCAL+1)
+	DELCHARA RANDOM_CHARANUM:(LOCAL)
+	RETURNF RANDOM_CHARANUM:(LOCAL)
+ENDIF
+NEXT
+
+@DUMP_MOBS
+;This intentionally spawns many more mobs than the maximum mob slot
+;FOR LOCAL, 0, MAX_MOBS+300
+FOR LOCAL, 0, 100
+SIF !RANDOM_CHARANUM:LOCAL
+	CALL SpawnMobEnemy(FREE_MOB_SLOT(),RAND(0,51))
+NEXT
+
+@IS_MOB(ARG)
+#FUNCTION
+SIF TALENT:ARG:300
+	RETURNF 1
+RETURNF 0
+
+@IS_MOB_OR_LOG_RIVAL(ARG)
+#FUNCTION
+RETURNF IS_MOB(ARG) || TALENT:ARG:LoGMobRival
+;gets character number of CSVs
+;does not assume CSV skips
+
+@CSV_CHARANUM
+#FUNCTION
+#DIM DYNAMIC C_ID
+FOR C_ID,0,キャラクタ数上限
+SIF !EXISTCSV(C_ID)
+	RETURNF (C_ID-1)
+NEXT
+
+@FREE_MOB_SLOT(ARG)
+#FUNCTION
+; SIF ARG || NAME:RANDOM_CHARANUM == "Mob Girl" || NAME:RANDOM_CHARANUM == "Mob Character"
+; 	RETURNF CHARANUM -1
+SIF ARG
+	RETURNF CHARANUM -1
+; SIF CALLNAME:RANDOM_CHARANUM == "Mob Girl" || CALLNAME:RANDOM_CHARANUM == "Mob Character"
+SIF GROUPMATCH(CALLNAME:RANDOM_CHARANUM,"Mob Girl","Mob Character","モブ子")
+	RETURNF RANDOM_CHARANUM
+DEBUGPRINTFORML {RANDOM_CHARANUM:(MAX_MOBS-1)}/{CHARANUM}
+SIF CHARANUM >= RANDOM_CHARANUM+(MAX_MOBS-1)
+	CALLF PURGE_LAST_MOB
+SIF CHARANUM >= (RANDOM_CHARANUM:0)+MAX_MOBS
+	THROW Failed to remove last mob! (Non Mob: {((RANDOM_CHARANUM:0)-1)} Max Mobs: {MAX_MOBS} Max #: {((RANDOM_CHARANUM:(MAX_MOBS-1)))+MAX_MOBS} Reported Last Slot: {((RANDOM_CHARANUM:0)-1)}  Got: {CHARANUM})
+RETURNF CHARANUM
+
+@RESERVE_MOB_SLOT
+#FUNCTION
+FOR LOCAL,0, MAX_MOBS
+IF !RANDOM_CHARANUM:LOCAL
+	RANDOM_CHARANUM:LOCAL = CHARANUM
+	RETURNF CHARANUM
+ENDIF
+NEXT
+
+@CONVERT_TO_20_SYSTEM(ARG,nSkill,IsTalent = 0)
+#FUNCTION
+#DIM nTemp
+#DIM nSkill
+#DIM IsTalent
+#DIM changeValue
+SELECTCASE IsTalent
+	CASE 2
+		nTemp = YoujutsuLevel:ARG:nSkill
+	CASE 1
+		nTemp = TALENT:ARG:nSkill
+	CASE 0
+		nTemp = ABL:ARG:nSkill
+ENDSELECT
+SELECTCASE nTemp
+	CASE 0
+		LOCAL = 0
+		;LOCAL = RAND(0,3)
+	CASE 1
+		LOCAL = 3
+	CASE 2
+		LOCAL = 5
+		;LOCAL = RAND(4,7)
+	CASE 3
+		LOCAL = 8
+		;LOCAL = RAND(7,10)
+	CASE 4
+		LOCAL = 11
+		;LOCAL = RAND(10,13)
+	CASE 5
+		LOCAL = 14
+		;LOCAL = RAND(13,16)
+	CASE 6
+		LOCAL = 18
+		;LOCAL = RAND(17,20)
+	CASE 7
+		LOCAL = 20
+	CASE 8
+		LOCAL = 30
+	CASE 9
+		LOCAL = 40
+	CASE 10
+		LOCAL = 50
+ENDSELECT
+SELECTCASE IsTalent
+	CASE 2
+		YoujutsuLevel:ARG:nSkill = LOCAL
+	CASE 1
+		TALENT:ARG:nSkill = LOCAL
+	CASE 0
+		ABL:ARG:nSkill = LOCAL
+ENDSELECT
+;revert to the original leveling system
+
+@REVERT_TO_6_SYSTEM(ARG,nSkill,IsTalent = 0)
+#FUNCTION
+#DIM nTemp
+#DIM nSkill
+#DIM IsTalent
+SELECTCASE IsTalent
+	CASE 2
+		nTemp = YoujutsuLevel:ARG:nSkill
+	CASE 1
+		nTemp = TALENT:ARG:nSkill
+	CASE 0
+		nTemp = ABL:ARG:nSkill
+ENDSELECT
+SELECTCASE nTemp
+	CASE 0 TO 2
+		LOCAL = 0
+	CASE 3
+		LOCAL = 1
+	CASE 4 TO 6
+		LOCAL = 2
+	CASE 7 TO 9
+		LOCAL = 3
+	CASE 10 TO 12
+		LOCAL = 4
+	CASE 13 TO 16
+		LOCAL = 5
+	CASE 17 TO 19
+		LOCAL = 6
+	CASE 20 TO 29
+		LOCAL = 7
+	CASE 30 TO 39
+		LOCAL = 8
+	CASE 40 TO 49
+		LOCAL = 9
+	CASE 50 TO 59
+		LOCAL = 10
+	CASE 60 TO 62
+		LOCAL = 11
+	CASE 63
+		LOCAL = 12
+ENDSELECT
+SIF LOCAL >  MaxNonHLevel
+	LOCAL = MaxNonHLevel
+SELECTCASE IsTalent
+	CASE 2
+		YoujutsuLevel:ARG:nSkill = LOCAL
+	CASE 1
+		TALENT:ARG:nSkill = LOCAL
+	CASE 0
+		ABL:ARG:nSkill = LOCAL
+ENDSELECT
+
+@LEVEL_TO_RANK(ARG,ARG:1 = 0)
+#FUNCTION
+#DIM DYNAMIC RTL
+; SIF !nLevelRework && !ARG:1
+SIF !ARG:1
+	RETURNF ARG
+SELECTCASE ARG
+	CASE 0 TO 2
+		RTL = 0
+	CASE 3
+		RTL = 1
+	CASE 4 TO 6
+		RTL = 2
+	CASE 7 TO 9
+		RTL = 3
+	CASE 10 TO 12
+		RTL = 4
+	CASE 13 TO 16
+		RTL = 5
+	CASE 17 TO 19
+		RTL = 6
+	CASE 20 TO 29
+		RTL = 7
+	CASE 30 TO 39
+		RTL = 8
+	CASE 40 TO 49
+		RTL = 9
+	CASE 50 TO 59
+		RTL = 10
+	CASE 60 TO 62
+		RTL = 11
+	CASE 63
+		RTL = 12
+ENDSELECT
+RETURNF RTL
+
+@RANK_TO_LEVEL(ARG)
+#FUNCTION
+#DIM DYNAMIC RTL
+;SIF !nLevelRework
+;level rework removed
+RETURNF ARG
+SELECTCASE ARG
+	CASE 0
+		RTL = 0
+		;RTL = RAND(0,3)
+	CASE 1
+		RTL = 3
+	CASE 2
+		RTL = 5
+		;RTL = RAND(4,7)
+	CASE 3
+		RTL = 8
+		;RTL = RAND(7,10)
+	CASE 4
+		RTL = 11
+		;RTL = RAND(10,13)
+	CASE 5
+		RTL = 14
+		;RTL = RAND(13,16)
+	CASE 6
+		RTL = 18
+		;RTL = RAND(17,20)
+	CASE 7
+		RTL = 20
+	CASE 8
+		RTL = 30
+	CASE 9
+		RTL = 40
+	CASE 10
+		RTL = 50
+ENDSELECT
+RETURNF RTL
+;==========================================================================
+;Returns 1 if the character has any of Love, Engaged, Spouse, Lust, Lewd,  Blood Relative, or is MASTER
+;==========================================================================
+
+@SignificantRelationship(ARG)
+#FUNCTION
+;family, slave,
+SIF TALENT:ARG:恋慕 || TALENT:ARG:Slave || TALENT:ARG:淫乱 || TALENT:ARG:225 || TALENT:ARG:恋人
+	RETURNF 1
+SIF RELATION_IS_INCEST(MASTER,ARG) == 1
+	RETURNF 1
+SIF FLAG:なりきり == ARG || MASTER == ARG || TALENT:ARG:NonSentient
+	RETURNF 1
+RETURNF 0
+;==========================================================================
+;Returns 1 if the character has any of Yearning, Love, Engaged, Spouse, Sex Friend, Lust, Lewd, Blood Relative, or is MASTER
+;==========================================================================
+
+@HasFallState(ARG)
+#FUNCTION
+SIF SignificantRelationship(ARG)
+	RETURNF 1
+SIF TALENT:思慕 || TALENT:セフレ
+	RETURNF 1
+; base TW has a lot of age stages for children
+; but i can simplify it to this
+; 0 to 25: newborn
+; 26 to 30: infant
+; 30 to 60: toddler
+; 60 to 90: child
+; 90 to 124: pre-teen
+; 124+: early teen (15)
+;checks if the 2hu is a baby
+
+@IS_BABY(ARG)
+#FUNCTION
+SIF TALENT:ARG:NonSentient
+	RETURNF 0
+SIF CharaAge:ARG:0 < 3
+	RETURNF 1
+
+@IS_DEPENDENT_MEMBER(ARG)
+#FUNCTION
+SIF TALENT:ARG:NonSentient
+	RETURNF 0
+SIF CharaAge:ARG:0 >= 18
+	RETURNF 0
+SIF !CharaFamily:ARG:MASTER
+	RETURNF 0
+RETURNF 1
+
+@birthDateToDay(ARG)
+#FUNCTION
+IF CharaAge:(ARG):2 > 0
+	RETURNF -((StartingYear*YearLength) - CharaAge:(ARG):2)
+ELSE
+	RETURNF -((StartingYear*YearLength) + CharaAge:(ARG):2)
+ENDIF
+
+@TooYoungForSex(ARG)
+#FUNCTION
+SIF CharaAge:ARG:0 < nMinSexAge
+	RETURNF 1
+SIF CharaAge:ARG:0 < ICSexThreshold() && TALENT:ARG:BornChild
+	RETURNF 1
+RETURNF 0
+
+@ICSexThreshold
+#FUNCTION
+IF nSJW >= 2
+	RETURNF 18
+ELSE
+	RETURNF 7
+ENDIF
+
+@TimeStamp(ARG = -1)
+#FUNCTION
+SIF ARG == -1
+	ARG = DAY
+RETURNF ARG+StartingDay
+
+@YearFromStamp(ARG = -1)
+#FUNCTION
+SIF ARG == -1
+	ARG = DAY
+RETURNF ARG/YearLength
+
+@DateFromStamp(ARG = -1)
+#FUNCTION
+SIF ARG == -1
+	ARG = DAY
+RETURNF ARG-StartingDay
+;ARG = Character
+;nDate:0 = Age
+;nDate:1 = Year when in that age
+;nDate:2 = Birth Month
+;nDate:3 = Birth Day
+;ie: SetBirthDate(ARG, 18, 1998, 1, 1)
+;This sets the character to be 18 at 1998.
+;SetBirthDate(24, 3, 2023, 1, 17, 0)
+;PRINT_DATE_F(DateFromStamp(SetBirthDate(24, 3, 2023, 1, 17, 0)),2)
+
+@SetBirthDate(ARG, nDate:0 = 0, nDate:1 = (__INT_MIN__+1), nDate:2 = 1, nDate:3 = 1, AffectAge = 1)
+#FUNCTION
+#DIM nDate,5
+#DIM AffectAge
+#DIM localYear
+#DIM localMonth
+#DIM localDay
+SIF nDate:1 == (__INT_MIN__+1)
+	nDate:1 = GET_YEAR()
+; SIF nDate:1 < 0
+; 	nDate:1 = -nDate:1
+;end of year fuckery
+; SIF nDate:2 == 4 && nDate:3 == 31
+; 	nDate:1 --
+;Dates
+localYear = (YearLength*(nDate:1))-(YearLength*nDate)
+localMonth = (((YearLength)/4)*(nDate:2-1))
+localDay = (nDate:3)
+;Year
+CharaAge:ARG:2 = localYear
+;DEBUGPRINTFORML Y: {localYear} M: {localMonth} DD: {localDay}
+;Month
+CharaAge:ARG:2 += localMonth
+;Day
+CharaAge:ARG:2 += localDay
+;===================================
+charaAge:ARG:1 = ((TimeStamp())-CharaAge:ARG:2)/YearLength
+SIF AffectAge
+	charaAge:ARG:0 = charaAge:ARG:1
+CharaAge:ARG:4 = ((TimeStamp())-CharaAge:ARG:2)%YearLength
+RETURNF CharaAge:ARG:2
+
+@RELATION_IS_INCEST(ARG,ARG:1)
+#FUNCTION
+;no family relation
+SIF !CharaFamily:ARG:(ARG:1) || !CharaFamily:(ARG:1):ARG
+	RETURNF 0
+;first-hand
+SIF GROUPMATCH(CharaFamily:ARG:(ARG:1), 1, 2, 4) || GROUPMATCH(CharaFamily:(ARG:1):ARG, 1, 2, 4)
+	RETURNF 1
+;second-hand
+SIF GROUPMATCH(CharaFamily:ARG:(ARG:1), 3, 5, 7, 8, 10) || GROUPMATCH(CharaFamily:(ARG:1):ARG, 3, 5, 7, 8, 10)
+	RETURNF 2
+;third-hand and lower we don't count
+; refactored child multiple functions
+
+@CHILD_MULTIPLE_LAST_NAS(Character,Child)
+#FUNCTION
+#DIM DYNAMIC Character
+#DIM DYNAMIC Child
+#DIM DYNAMIC LastChild
+#DIM DYNAMIC ChildList, 2000
+#DIM DYNAMIC ChildCount
+LastChild = -1
+ChildCount = 0
+DEBUGPRINTFORML 컴파레 캐릭터: {Child} - 컴파레 연령 {CharaAge:(Child):2}
+FOR LOCAL,0,CHARANUM
+SIF RealChildren:LOCAL:1 != Character
+	CONTINUE
+DEBUGPRINTFORML 자식: {LOCAL} - 연령 {CharaAge:(LOCAL):2}
+IF CharaAge:Child:2 == CharaAge:LOCAL:2 && RealChildren:Child:1 == RealChildren:LOCAL:1 && RealChildren:Child:2 == RealChildren:LOCAL:2
+	LastChild = LOCAL
+	ChildCount++
+	SIF ChildCount == CFLAG:Character:子供人数
+		RETURNF LastChild
+ELSEIF LastChild > -1
+	RETURNF LastChild
+ENDIF
+NEXT
+RETURNF -1
+; CHILD_MULTIPLE_LAST_NAS(53,229)
+
+@CHILD_MULTIPLE_FIRST_NAS(Character,Child)
+;Returns the firstborn child in a single birthing.
+#FUNCTION
+#DIM DYNAMIC Character
+#DIM DYNAMIC Child
+FOR LOCAL,0,CHARANUM
+SIF RealChildren:LOCAL:1 != Character
+	CONTINUE
+; IF CharaAge:LOCAL:2 == CharaAge:Child:2
+IF CharaAge:Child:2 == CharaAge:LOCAL:2 && RealChildren:Child:1 == RealChildren:LOCAL:1 && RealChildren:Child:2 == RealChildren:LOCAL:2
+	RETURNF LOCAL
+ENDIF
+NEXT
+RETURNF -1
+
+@CHILD_MULTIPLE_COUNT_NAS(Character,Child,SameMother=1)
+;Returns the total number of children in the given child's birthing.
+;If SameMother is 0, it will also count children of other characters born on the same day.
+#FUNCTION
+#DIM DYNAMIC Character
+#DIM DYNAMIC Child
+#DIM DYNAMIC SameMother
+#DIM DYNAMIC ChildCount
+; SIF Child > CFLAG:Character:子供人数 || Child < 1
+; RETURNF 0
+FOR LOCAL,0,CHARANUM
+SIF RealChildren:LOCAL:1 != Character && SameMother
+	CONTINUE
+IF CharaAge:Child:2 == CharaAge:LOCAL:2
+	ChildCount++
+ENDIF
+NEXT
+; IF !SameMother
+; 	FOR LOCAL:1,0,CHARANUM
+; 		SIF LOCAL:1 == Character
+; 			CONTINUE
+; 		FOR LOCAL,1,CHARANUM
+; 			SIF CHILD_BIRTHDATE:(LOCAL:1):LOCAL == CHILD_BIRTHDATE:Character:Child
+; 				ChildCount++
+; 		NEXT
+; 	NEXT
+; ENDIF
+RETURNF ChildCount
+
+@TwinsTestShitDebug()
+SKIPDISP 1
+CFLAG:53:WithChildCount = 3
+PregnancyProgress:53:0 = 101
+PregnancyProgress:53:1 = 101
+PregnancyProgress:53:2 = 101
+CALL BIRTH_NAS(53)
+SKIPDISP 0
+CALL M_KOJO_EVENT_K53_CHILD_RAISING_玩具
+WAIT

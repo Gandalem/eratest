@@ -1,0 +1,191 @@
+﻿; Modular ERB: 物件関連/08山頂/MAP_COMM_08.ERB
+;--------------------------------------------------
+;地点名変更関数
+;--------------------------------------------------
+
+@MAP_PLACENAME_8(ARG, ARG:1) ;custom code
+#FUNCTIONS
+IF GET_MAPID(ARG) == MAIN_MAP
+	SELECTCASE ARG
+		CASE P842比那名居邸物置 ;qol custom code
+			IF CFLAG:MASTER:初期位置 == ARG
+				RETURNF @"%nameArray:34:na_LastName% 저택・" + CALLNAME:MASTER + "'s Room"
+			ELSE
+				RETURNF @"%nameArray:34:na_LastName% 거주지・창고"
+			ENDIF
+		CASE P823空室
+			IF CFLAG:MASTER:初期位置 == ARG
+				RETURNF CALLNAME:MASTER + "'s Room"
+			ELSE
+				RETURNF "Vacant Room"
+			ENDIF
+		CASE SUMIKOMI_ROOM
+			;※このマップでは未実装
+			IF FLAG:住み込みキャラ
+				RETURNF CALLNAME:(FLAG:住み込みキャラ) + "'s Room"
+			ELSE
+				RETURNF "Vacant Room"
+			ENDIF
+		CASE MINROOM() TO (MAXROOM - 1)
+			RETURNF ARG:1 ? STR:(ARG + 8000) # STR_TR(ARG + 8000) ;custom code
+		CASE OMANEKIBEYA()
+			RETURNF OMANEKI_PLACE()
+		CASE SUKIMA()
+			RETURNF "Gap Space"
+		CASE MAXROOM
+			RETURNF "Foothills"
+		CASEELSE
+			RETURNF "Unknown"
+	ENDSELECT
+ELSE
+	RETURNF "Beyond the Mountaintop"
+ENDIF
+;--------------------------------------------------
+;場所ARGがどのエリアにあるか
+;表示するマップの番号と連動（TFLAG:マップ切り替え）
+;ARG     場所ID
+;--------------------------------------------------
+
+@MAP_AREASELECT_8(ARG)
+#FUNCTION
+SELECTCASE ARG
+	;天界
+	CASE P830玄雲海, P832有頂天街, P833桃園
+		RETURNF 3
+		;守矢神社
+	CASE P811境内 TO P826廊下
+		RETURNF 2
+		;比那名居邸
+	CASE P831比那名居邸前, P834比那名居邸土間 TO P842比那名居邸物置
+		RETURNF 4
+		;妖怪の山・山頂
+	CASEELSE
+		RETURNF 1
+ENDSELECT
+;--------------------------------------------------
+;内部構造がある場所の内部の判定
+;TFLAG:マップ切り替え  内部察知が必要なマップ番号
+;                P_ID  表示ボタンの場所ID
+;                Q_ID  判定する内部の場所ID,必ずP_IDと一致した数値も含める
+;--------------------------------------------------
+
+@GETMAP_BUILDING_8(P_ID, Q_ID)
+#FUNCTION
+#DIM P_ID
+#DIM Q_ID
+IF TFLAG:マップ切り替え == 1
+	SELECTCASE P_ID
+		;天界
+		CASE P830玄雲海
+			SELECTCASE Q_ID
+				CASE P830玄雲海 TO P842比那名居邸物置
+					RETURNF 1
+			ENDSELECT
+			;守矢神社
+		CASE P811境内
+			SELECTCASE Q_ID
+				CASE P811境内 TO P826廊下
+					RETURNF 1
+			ENDSELECT
+	ENDSELECT
+ELSEIF TFLAG:マップ切り替え == 3
+	SELECTCASE P_ID
+		;比那名居邸
+		CASE P831比那名居邸前
+			SELECTCASE Q_ID
+				CASE P831比那名居邸前, P834比那名居邸土間 TO P842比那名居邸物置
+					RETURNF 1
+			ENDSELECT
+	ENDSELECT
+ENDIF
+RETURNF 0
+;--------------------------------------------------
+;移動制限設定
+;ARG    場所ID
+;CHARA  移動するキャラID
+;RETURNF 1=移動できる,0=移動できない
+;TFLAG:移動不能メッセージ   ↓の@MAP_CANNOT_WORD用の設定
+;--------------------------------------------------
+
+@MAP_CAN_MOVE_8(ARG, CHARA)
+#FUNCTION
+#DIM CHARA
+SELECTCASE ARG
+	;誰かが住んでないと入れない
+	CASE P823空室
+		IF !PRIVATEROOM:(ARG % 100) && CFLAG:MASTER:初期位置 != ARG
+			TFLAG:移動不能メッセージ = 999
+			RETURNF 0
+		ENDIF
+ENDSELECT
+RETURNF 1
+;--------------------------------------------------
+;移動不能時に表示されるメッセージ
+;--------------------------------------------------
+
+@MAP_CANNOT_WORD_8(ARG)
+RETURN
+SELECTCASE TFLAG:移動不能メッセージ
+	CASE 1
+		PRINTFORMW ※여기에 메시지를 넣는다. 행수+1의 CLEARLINE을 한다
+		CLEARLINE 2
+ENDSELECT
+REUSELASTLINE
+;-----------------------------------------
+;拠点専用の情景描写
+;WAITはかけないように
+;-----------------------------------------
+
+@MAP_UNIQUEMESSAGE_8
+;addition custom code
+LOCAL:90 = MAIN_MAP != 8 ? 九天の滝 # P803索道駅
+IF WITH_MOB() && MAIN_MAP == 8 ;addition custom code
+	RETURN 1
+ELSE
+	SELECTCASE CFLAG:MASTER:現在位置
+		;索道駅
+		CASE LOCAL:90 ;addition custom code
+			IF INRANGE(TIME, 540, 1020)
+				PRINTFORML 의욕 없는 카파가 케이블카 정거장 안내 데스크에 서 있다.
+			ELSE
+				PRINTFORML 케이블카 역은 폐쇄되었다.
+			ENDIF
+	ENDSELECT
+ENDIF
+RETURN 1
+;-----------------------------------------
+;拠点の場所IDをお出かけマップ上の場所IDに置換する関数
+;ARG      対象の場所ID（拠点マップ）
+;RETURNF  差し替え場所ID（お出かけマップ）
+;-----------------------------------------
+
+@MAP_SEARCH_REPLACEMENT_8(ARG)
+#FUNCTION
+SELECTCASE ARG
+	CASE P830玄雲海 TO P842比那名居邸物置
+		RETURNF 天界
+	CASE P801山頂入り口, P802橋, P803索道駅, P806滝の裏 TO P809はたて宅
+		RETURNF 九天の滝
+	CASE P805頂上, P851久侘歌の小屋 TO P854龍宅
+		RETURNF 絶景の丘
+	CASE P814湖畔
+		RETURNF 山の湖
+	CASE P804守矢神社鳥居, P811境内, P813社務所, P815庭
+		RETURNF 守矢神社境内
+	CASE P855虹龍洞, P856百々世の住処
+		RETURNF 虹龍洞
+	CASEELSE
+		RETURNF 守矢神社本殿
+ENDSELECT
+RETURNF 0
+;--------------------------------------------------
+;マップの紹介文
+;--------------------------------------------------
+
+@マップ紹介_8
+;とりあえず5行
+PRINTFORML 이 지도는 %nameArray:33:na_LastName% 신사, 텐구의 거처, 그리고 천국을 포함한다.
+PRINTFORML 다른 인연계에 비해 다소 외딴 곳이지만 인간 마을로 가는 케이블웨이 덕분에 지금은 접근성이 더 좋다.
+PRINTFORML %nameArray:33:na_LastName% 복권으로는 아이템이나 연애를 얻기에 좋을 수 있지만, 확률에 많이 투자할 준비를 해야 한다.
+PRINTFORML 여러 채집 지점이 있으며, 계절과 채집 기술에 따라 많은 재료를 발견할 수 있다.
+PRINTFORML 호수의 물로 낚시나 양조를 하는 것 외에도 일을 도와줄 사람이 많다 - 이곳에서는 시간이 빠르게 지나간다.

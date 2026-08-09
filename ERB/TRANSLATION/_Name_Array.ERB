@@ -1,0 +1,535 @@
+﻿; Modular ERB: _Name_Array.ERB
+;init
+
+@EVENTFIRST
+#PRI
+CALL NAS_START_LOADING()
+CALL Name_Array_Set
+
+@EVENTLOAD
+#PRI
+CALL NAS_START_LOADING()
+SIF !FIRST_NAME_KM_ADDRESS
+	CALL CREATE_NAME_LIST
+CALL Name_Array_Set
+;set every other string but the name again when reloading (so there's no need to use Update every time a little thing changes)
+FOR LOCAL, 0, CHARANUM
+;fallback
+SIF NO:LOCAL >= CSV_CHARANUM()
+	CONTINUE
+SIF LOCAL%10 == 0
+	CALL ANIMATION_LOAD_NAS(LOCAL, 0, CHARANUM, @"설정 이름" ) ;nas loading
+SIF CSVCSTR(NO:LOCAL, 2) != "" ;workplace, printed at PRINT_STATE_PERSONAL
+	CSTR:LOCAL:職場 '= nameArray:LOCAL:na_WorkPlace
+SIF CSVCSTR(NO:LOCAL, 3) != "" ;work info, printed at WORK_INFO
+	CSTR:LOCAL:仕事情報 '= nameArray:LOCAL:na_WorkInfo
+;SIF CSVCSTR(NO:LOCAL, 10) != "" ;title/ability/race, printed at PRINT_種族抽出 and PRINT_STATE_PERSONAL
+;	CSTR:LOCAL:10 '= nameArray:LOCAL:na_Title
+NAME:LOCAL = %NameChecker(LOCAL)%
+NEXT
+;cstr:10 is tricky because it overlaps with the same range used for building a string check for ejaculations
+;therefore we check it directly from the array (like csvcstr would) with nameArray:ARG:na_Title
+;additional profile lines are translated through erb in dialogue and CHARACTER_PROFILE.ERB
+;CSTR:2, CSTR:3 can be safely overridden via dialogue, title can be typed manually in custom character profile function
+;names are reset to array's default on update, so they won't stick (but who really changes character names anyway?)
+;syntax: 0 - og name, 1 - og callname
+;2 - translated name, 3 - translated callname
+;4 - work place, 5 - work description, 6 - title (ability etc)
+;(todo - add og names for everyone when needed)
+;revised example for omogatari
+
+@EVENTTRAIN
+#PRI
+CALL PlaceHolderFlag
+
+@EVENTCOM
+#PRI
+CALL PlaceHolderFlag
+
+@EVENTSHOP
+#PRI
+CALL PlaceHolderFlag
+
+@PlaceHolderInit
+#DIM nReplaced = 182, 183, 184, 185
+#DIM nArray = 182, 183, 184, 185
+;init reset on replaced characters
+FOR LOCAL, 0, VARSIZE("nReplaced")
+WHILE GETCHARA(nReplaced:LOCAL) != -1 && EXISTCSV(nReplaced:LOCAL) && NAME:(nReplaced:LOCAL) != nameArray:(nReplaced:LOCAL):na_Name
+CALL ADDCHARA_INIT(NO:(nReplaced:LOCAL))
+SWAPCHARA CHARANUM-1, nReplaced:LOCAL
+DELCHARA CHARANUM-1
+CALL ADDCHARA_INIT(NO:(nReplaced:LOCAL), 1) ;apply again to init strings
+IF !EXP:(NO:(nReplaced:LOCAL)):キス経験
+	TALENT:(NO:(nReplaced:LOCAL)):キス未経験 = 1
+ELSE
+	TALENT:(NO:(nReplaced:LOCAL)):キス未経験 = 0
+ENDIF
+WEND
+NEXT
+FOR LOCAL, 0, VARSIZE("nArray")
+IF GETCHARA(nArray:LOCAL) != -1 && EXISTCSV(nArray:LOCAL)
+	CALL ADDCHARA_INIT(NO:(nArray:LOCAL))
+	SWAPCHARA CHARANUM-1, nArray:LOCAL
+	DELCHARA CHARANUM-1
+	CALL ADDCHARA_INIT(NO:(nArray:LOCAL), 1) ;apply again to init strings
+ENDIF
+NEXT
+
+@PlaceHolderFlag
+#DIM nArray = 182, 183, 184, 185
+FOR LOCAL, 0, VARSIZE("nArray")
+IF GETCHARA(nArray:LOCAL) != -1 && nArray:LOCAL < CHARANUM
+	CFLAG:(nArray:LOCAL):出禁 = 2
+ENDIF
+NEXT
+
+@Name_Array_Set
+FOR LOCAL, 0, 2000
+SIF LOCAL >= CHARANUM
+	RETURN
+SIF nameArray:LOCAL:na_Callname != "" && nameArray:LOCAL:na_FirstName != ""
+	CONTINUE
+IF LOCAL == 0 && CALLNAME:LOCAL != CSVNAME(0)
+	nameArray:LOCAL:na_Name '= NAME:LOCAL
+	nameArray:LOCAL:na_Callname '= CALLNAME:LOCAL
+	nameArray:LOCAL:na_FirstName '= CALLNAME:LOCAL
+ELSE
+	CALL IndividualNameSet(LOCAL)
+ENDIF
+NEXT
+
+@IndividualNameSet(ARG)
+CALL IndividualNameGet(NO:ARG)
+FOR LOCAL,0,VARSIZE("nameArray")
+nameArray:ARG:LOCAL '= nameArrayTemp:LOCAL
+NEXT
+
+@IndividualNameGet(ARG)
+SELECTCASE ARG
+	CASE 0
+		CALL GENERATE_FIRST_NAME_KM()
+		LOCALS:1 = %RESULTS%
+		CALL GENERATE_FAMILY_NAME_K()
+		LOCALS:2 = %RESULTS%
+		nameArrayTemp:0 '= "ogname", "ogcallname", @"%LOCALS:1+" "+LOCALS:2%", @"%LOCALS:1%", "", "", "●Race:Human", @"%LOCALS:1%", @"%LOCALS:2%", "", "Western", "", "", "Timestopper"
+	CASE 1
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Hakurei Reimu", "Reimu", "Hakurei Shrine - Shrine Grounds", "Cleaning the Shrine every morning 06:00～08:00", "～Shrine Maiden of Paradise～　●Race:Human　●Ability:Ability to float", "Reimu", "Hakurei", "", "Japanese", "", "", "Shrine Maiden"
+	CASE 2
+		VARSET LOCALS
+		SIF GETBIT(NASFeature,6)
+			LOCALS = SN-%RandomLetterGenerator()%{RAND:1000}%RandomLetterGenerator()+RandomLetterGenerator()%
+		nameArrayTemp:0 '= "ogname", "ogcallname", @"\@ GETBIT(NASFeature,6) ? %LOCALS% 'Ruukoto' PnL # Ruukoto \@", "Ruukoto", "Hakurei Shrine - Kitchen", "Housekeeping on weekdays 18:00～21:00", "●Race:Paniel", @"%LOCALS%", "PnL", "", "Western", "", "", "Automation Maid"
+	CASE 3
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Kana Anaberal", "Kana", "", "", "～Maiden poltergeist who's lost her dreams～ ●Race:Poltergeist", "Kana", "Anaberal", "", "Western", "", "", ""
+	CASE 4
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Mima", "Mima", "Hakurei Shrine - Garden・Village - Liquor store 18:00～21:00", "Training (Mon&Wed)　16:00～19:00・Girls Club  2nd Sunday Every Month", "～Spirit who leaves fate to the dream of eternity～ ●Race:Vengeful spirit", "", "", "", "Japanese", "", "", "Vengeful Spirit"
+	CASE 5
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Sunny Milk", "Sunny", "Three Fairies House - Sunny's Boudoir", "Playing (Sat&Sun)　10:00～17:00", "～Mischievous Sunlight～　●Race:Fairy　●Ability:Refraction of light", "Sunny", "Milk", "", "Western", "", "", "Fairy of Light"
+	CASE 6
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Luna Child", "Luna", "Three Fairies House - Sunny's Boudoir", "Playing (Sat&Sun)　10:00～17:00", "～Silent Moonlight～　●Race:Fairy　●Ability:Muting (the surrounding) sound", "Luna", "Child", "", "Western", "", "", "Fairy of Light"
+	CASE 7
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Star Sapphire", "Star", "Three Fairies House - Sunny's Boudoir", "Playing (Sat&Sun)　10:00～17:00", "～Pouring Starlight～　●Race:Fairy　●Ability:Detection of moving things", "Star", "Sapphire", "", "Western", "", "", "Fairy of Light"
+	CASE 8
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Kitashirakawa Chiyuri", "Chiyuri", "Fantasy Ruins - Lab", "Research on weekdays　06:00～12:00", "～Resident of fantasy that runs through time～ ●Race:Human", "Chiyuri", "Kitashirakawa", "", "Japanese", "", "", "Researcher"
+	CASE 9
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Okazaki Yumemi", "Yumemi", "Fantasy Ruins - Lab", "Research on weekdays　10:00～13:00　14:00～17:00", "～Fantasy legend～ ●Race:Human", "Yumemi", "Okazaki", "", "Japanese", "", "", "Researcher"
+	CASE 10
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Ibuki Suika", "Suika", "Hakurei Shrine - Garden", "Training (Wed) 16:00～19:00", "～Tiny Night Parade of a Hundred Demons～　●Race:Oni　●Ability:Manipulation of density and sparseness", "Suika", "Ibuki", "", "Japanese", "", "", "Drunkard"
+	CASE 11
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Kirisame Marisa", "Marisa", "Hakurei Shrine - Storage Room and Garden", "Excavation and training (Mon)　13:00～19:00", "～Ordinary Magician～　●Race:Human　●Ability:Using magic", "Marisa", "Kirisame", "", "Japanese", "", "", "Magician"
+	CASE 12
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Rumia", "Rumia", "Myouren Temple - Jizo Street", "Food Gathering (Tue)　22:00～00:00", "～Youkai of the Dusk～　●Race:Youkai　●Ability:Manipulating Darkness", "", "", "", "Western", "", "", ""
+	CASE 13
+		VARSET LOCALS
+		IF GETBIT(NASFeature,6)
+			CALL GENERATE_FIRST_NAME_FAIRY()
+			LOCALS:1 = %RESULTS%
+			CALL GENERATE_FAMILY_NAME_FAIRY()
+			LOCALS:2 = %RESULTS%
+		ENDIF
+		nameArrayTemp:0 '= "ogname", "ogcallname", @"「\@ GETBIT(NASFeature,6) ? %LOCALS:1+" 'Daiyousei' "+LOCALS:2% # 대요새 \@」", "Daiyousei", "Three Fairies House - Sunny's Boudoir", "Playing (Sat&Sun)　10:00～17:00", "●Race:Fairy", @"%LOCALS:1%", @"%LOCALS:2%", "", "Western", "", "", "Fairy of Light"
+	CASE 14
+		VARSET LOCALS
+		IF GETBIT(NASFeature,6)
+			CALL GENERATE_FIRST_NAME_FAIRY()
+			LOCALS:1 = %RESULTS%
+			CALL GENERATE_FAMILY_NAME_FAIRY()
+			LOCALS:2 = %RESULTS%
+		ENDIF
+		nameArrayTemp:0 '= "ogname", "ogcallname", @"\@ GETBIT(NASFeature,6) ? %LOCALS:1+" 'Cirno' "+LOCALS:2% # Cirno\@", "Cirno", "Three Fairies House - Sunny's Boudoir & Village - Square", "Playing (Sat&Sun)　10:00～17:00 & Selling ice during summer when it's sunny 10:00～15:00", "～Small Fairy of the Ice～　●Race:A Girl of Snow　●Ability:Manipulating cold", @"%LOCALS:1%", @"%LOCALS:2%", "", "Western", "", "", "Strongest Fairy"
+	CASE 15
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Izayoi Sakuya", "Sakuya", "Scarlet Devil Mansion - Hall and Dining Room", "Cleaning and cooking (Mon&Wed&Fri)　08:00～12:00　17:00～19:00", "～Perfect and Elegant Maid～　●Race:Human　●Ability:Time manipulation", "Sakuya", "Izayoi", "", "Japanese", "", "", "Royal Maid"
+	CASE 16
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Remilia Scarlet", "Remilia", "Scarlet Devil Mansion - Small Balcony", "Sunday Daily Routine (Sun)　18:30～19:00", "～The Eternal Young Scarlet Moon～　●Race:Vampire　●Ability:Manipulation of fate", "Remilia", "Scarlet", "", "Western", "", "", "Nosferatu"
+	CASE 17
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Alice Margatroid", "Alice", "Village - Square", "Puppet show once per two weeks　10:00～12:00", "～Seven-Colored Puppeteer～　●Race:Magician　●Ability:Magic", "Alice", "Margatroid", "", "Western", "", "", "Doll Maker"
+	CASE 18
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Lily White", "Lily White", "", "", "●Race:Fairy", "Lily", "White", "", "Western", "", "", ""
+	CASE 19
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Lily Black", "Lily Black", "", "", "●Race:Fairy", "Lily", "Black", "", "Western", "", "", ""
+	CASE 20
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Lyrica Prismriver", "Lyrica", "Village - Square", "Concert once per month (Sun)　13:00～19:00", "～Poltergeist Keyboardist～　●Race:Poltergeist　●Ability:Performing on musical instruments without hands or feet", "Lyrica", "Prismriver", "", "Western", "", "", "Keyboardist"
+	CASE 21
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Merlin Prismriver", "Merlin", "Village - Square", "Concert once per month (Sun)　13:00～19:00", "～Poltergeist Trumpeter～　●Race:Poltergeist　●Ability:Performing on musical instruments without hands or feet", "Merlin", "Prismriver", "", "Western", "", "", "Trumpeter"
+	CASE 22
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Lunasa Prismriver", "Lunasa", "Village - Square", "Concert once per month (Sun)　13:00～19:00", "～Poltergeist Violinist～　●Race:Poltergeist　●Ability:Performing on musical instruments without hands or feet", "Lunasa", "Prismriver", "", "Western", "", "", ""
+	CASE 23
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Konpaku Youmu", "Youmu", "Village", "Shopping (Wed)　13:00～16:00", "～Phantom-Human Gardener～　●Race:Half-human half-phantom　●Ability:Handling sword techniques", "Youmu", "Konpaku", "", "Japanese", "", "", "Ghostly Rebirth"
+	CASE 24
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Chen", "Chen", "", "", "～Black Cat of Bad Omens～　●Race:Shikigami（Bakeneko）　●Ability:Use of sorcery", "", "", "", "Japanese", "", "", ""
+	CASE 25
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Yakumo Ran", "Ran", "Hakurei Shrine - Main Shrine", "Barrier Management on 5th and 20th day of every month", "～Shikigami of the Gap Youkai～　●Race:Shikigami（Kitsune）　●Ability:Using Shikigami", "Ran", "Yakumo", "", "Japanese", "", "", "Shikigami"
+	CASE 26
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Yakumo Yukari", "Yukari", "Hakurei Shrine - Main Shrine・Village - Liquor store 18:00～21:00", "Barrier Management every 30th day of Winter・Girls Club  2nd Sunday Every Month", "～Mastermind behind the Spiriting Away～　●Race:Youkai　●Ability:Manipulation of boundaries", "Yukari", "Yakumo", "", "Japanese", "", "", "Gap Creator"
+	CASE 27
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Wriggle Nightbug", "Wriggle", "", "", "～A Bug of Light Wriggling in the Dark～　●Race:Firefly Youkai　●Ability:Manipulation of insects", "Wriggle", "Nightbug", "", "Western", "", "", ""
+	CASE 28
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Mystia Lorelei", "Mystia", "Bamboo Forest Entrance", "Lamprey Shop once per three days　16:00～00:00", "～Night Sparrow Apparition～　●Race:Night Sparrow　●Ability:Driving people insane by singing", "Mystia", "Lorelei", "", "Western", "", "", "Singer"
+	CASE 29
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Shameimaru Aya", "Aya", "Youkai Mountain (Top) - Waterfall of Nine Heavens", "Writing News on Friday　13:00～19:00", "～Traditional Reporter of Fantasy～　●Race:Crow Tengu　●Ability:Manipulation of wind", "Aya", "Shameimaru", "", "Japanese", "", "", "Journalist"
+	CASE 30
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Shiki Eiki", "Eiki", "Netherworld - The Ministry of Right and Wrong", "Judicial and administrative work every other day 09:00～19:00", "～Supreme Judge of Paradise～, ～Yamaxanadu～,　●Race:Yama　●Ability:Can distinctly judge anything to be good or evil", "Eiki", "Shiki", "", "Japanese", "", "", "Yamaxandu"
+	CASE 31
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Kochiya Sanae", "Sanae", "Village - Square", "Canvassing (Tue&Fri)　12:00～16:00", "～Deified Human of the Wind～　●Race:Human　●Ability:Causing miracles to occur", "Sanae", "Kochiya", "", "Japanese", "", "", "Shrine Maiden"
+	CASE 32
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Yasaka Kanako", "Kanako", "Village - Temple School・Village - Liquor store 18:00～21:00", "Body measurement every Summer on 5th day　09:00～12:00・Girls Club  2nd Sunday Every Month", "～The Avatar of Mountains and Lakes～　●Race:Divine Spirit　●Ability:Creating heavenliness", "Kanako", "Yasaka", "", "Japanese", "", "", "Avatar"
+	CASE 33
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Moriya Suwako", "Suwako", "Kitchen", "Domestic helper　???　11:00～13:00", "～The Highest/Epitome of Native Gods～　●Race:Yaoyorozu no Kami　●Ability:Creating earthiness", "Suwako", "Moriya", "", "Japanese", "", "", "Native God"
+	CASE 34
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Hinanawi Tenshi", "Tenshi", "Hakurei Shrine - Offertory Box", "Prayer (Sat)　10:00～10:10", "～Girl of the Sphere of Neither Perception nor Non-Perception～　●Race:Fallen Celestial　●Ability:Manipulation of earth", "Chiko", "Hinanawi", "", "Japanese", "", "", "Lazy Child"
+	CASE 35
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Nagae Iku", "Iku", "Youkai Mountain (Top) - Heaven", "Conversation (Tue)　20:00～21:00", "～Beautiful Scarlet Cloth～　●Race:Youkai（Oarfish）　●Ability:Reading the atmosphere", "Iku", "Nagae", "", "Japanese", "", "", ""
+	CASE 36
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Kaenbyou Rin", "Orin", "Underworld - Remains of Blazing Hell", "Spirit Management on weekdays　07:00～12:00", "～Hell's Traffic Accident～　●Race:Kasha　●Ability:Carrying away corpses", "Rin", "Kaenbyou", "", "Japanese", "", "", "Spirit Purger"
+	CASE 37
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Reiuji Utsuho", "Utsuho", "Underworld - Underground Geyser Center", "Maintaining nuclear reactor on weekdays 10:00～13:00", "～Scorching, Troublesome Divine Flame～　●Race:Hell Raven　●Ability:Manipulation of nuclear fusion", "Utsuho", "Reiuji", "", "Japanese", "", "", "Nuclear Weapon"
+	CASE 38
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Komeiji Koishi", "Koishi", "", "", "～The Closed Eyes of Love～　●Race:Satori　●Ability:Manipulation of the Subconscious", "Koishi", "Komeiji", "", "Japanese", "", "", "Satori"
+	CASE 39
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Nazrin", "Nazrin", "", "", "～The Dowser Little General～　●Race:Mouse Youkai　●Ability:Finding sought-for items", "", "", "", "Western", "", "", "Douser"
+	CASE 40
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Tatara Kogasa", "Kogasa", "Myouren Temple (Tue)・Temple School (Fri)", "Babysitting (Tue&Fri)　20:00～00:00", "～The Cheery Forgotten Umbrella～　●Race:Karakasa obake（Tsukumogami）　●Ability:Surprising humans", "Kogasa", "Tatara", "", "Japanese", "", "", ""
+	CASE 41
+		VARSET LOCALS
+		IF GETBIT(NASFeature,6)
+			LOCALS '= @"N-%RandomLetterGenerator()%-{RAND:1000}"
+		ELSE
+			LOCALS = Nue
+		ENDIF
+		nameArrayTemp:0 '= "ogname", "ogcallname", @"%LOCALS% '누에' 후주", "Nue", "Scarlet Devil Mansion - Dining Room", "Cooking monthly every 6th day　22:00～23:00", "～The Unidentified Fantastic Flying Girl～　●Race:Nue　●Ability:Making objects unidentifiable", @"%LOCALS%", "Houjuu", @"", "Western", "", "", "Unidentified"
+	CASE 42
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Himekaidou Hatate", "Hatate", "Village Cafe", "Photo Gallery (Sat) 17:00～22:00", "～Modern-Day Thoughtography Reporter～　●Race:Crow Tengu　●Ability:Spirit photography", "Hatate", "Himekaidou", "", "Japanese", "", "", "Journalist"
+	CASE 43
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Ibaraki Kasen", "Kasen", "Village - Square", "Eating Tour (Sat)　11:00～16:00", "～The One-Armed Horned Hermit～　●Race:Hermit？　●Ability:", "Kasen", "Ibaraki", "", "Japanese", "", "", "Hermit (?)"
+	CASE 44
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Ellen", "Ellen", "Village - Square", "Magic Shop Tour every month on 15th and 30th day　14:00～19:00", "～Hardworking Witch who Dreams of Love～　●Race:Magician", "Ellen", "", "", "Western", "", "", "Shop Kid"
+	CASE 45
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Asakura Rikako", "Rikako", "", "", "～Science that Looks for Dreams～", "Rikako", "Asakura", "", "Japanese", "", "", "Researcher"
+	CASE 46
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Meira", "Meira", "", "", "", "Meira", "", "", "Japanese", "", "", ""
+	CASE 47
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Rika", "Rika", "", "", "●Race:Human", "Rika", "", "", "Japanese", "", "", "Engineer"
+	CASE 48
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Louise", "Louise", "", "", "～Makai Person～　●Race:Makai Resident", "Louise", "", "", "Western", "", "", ""
+	CASE 49
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Komeiji Satori", "Satori", "", "", "～The Girl Even the Vengeful Spirits Fear～　●Race:Satori　●Ability:Reading minds", "Satori", "Komeiji", "", "Japanese", "", "", "Satori"
+	CASE 50
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Flandre Scarlet", "Flandre", "Scarlet Devil Mansion - Warehouse", "It's a secret!", "～Sister of the Devil～　●Race:Vampire　●Ability:Destroying absolutely anything", "Flandre", "Scarlet", "", "Western", "", "", "Nosferatu"
+	CASE 51
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Kawashiro Nitori", "Nitori", "", "", "～Super Youkai Warhead～　●Race:Kappa　●Ability:Manipulation of water", "Nitori", "Kawashiro", "", "Japanese", "", "", "Engineer"
+	CASE 52
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Reisen Udongein Inaba", "Reisen", "Village - Square & Eientei - Apothecary", "Selling Medicine (Tue) 10:00～15:00・Preparing medicine (Thu)　10:00～18:00", "～Lunatic Moon Rabbit～　●Race:Moon Rabbit　●Ability:Manipulation of insanity", "Reisen", "Inaba", "Udongein", "Western", "", "", "Deserter"
+	CASE 53
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Inaba Tewi", "Tewi", "", "", "～Bare White Rabbit of Good Fortune～　●Race:Youkai Rabbit　●Ability:Conferring good luck to humans", "Tewi", "Inaba", "", "Japanese", "", "", ""
+	CASE 54
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Patchouli Knowledge", "Patchouli", "Library", "Book reading", "～The Unmoving Great Library～　●Race:Witch　●Ability:Manipulation of fire, water, wood, metal, earth, sun and moon", "Patchouli", "Knowledge", "", "Western", "", "", "Magician"
+	CASE 55
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Hijiri Byakuren", "Byakuren", "Village - Square & Village - Liquor store 18:00～21:00", "Canvassing (Mon&Thu)　12:00～16:00・Girls Club  2nd Sunday Every Month", "～The Sealed Great Magician～　●Race:Magician(formerly Human)　●Ability:Using magic", "Byakuren", "Hijiri", "", "Japanese", "", "", "Magician"
+	CASE 56
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Toyosatomimi no Miko", "Miko", "Shintoku Dojo", "Ascetic practices (Mon&Wed&Fri)　13:00～16:00", "～Shoutoku Taoist～　●Race:Saint　●Ability:Listening to ten people's conversations at the same time", "Miko", "Toyosatomimi", "no", "Japanese", "", "", "Dispatcher"
+	CASE 57
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Hata no Kokoro", "Kokoro", "Hakurei Shrine - Backyard", "Practicing Noh play for regularly held festival", "～The Expressive Poker Face～　●Race:Menreiki　●Ability:Manipulating emotions", "Kokoro", "Hata", "no", "Japanese", "", "", "Emotionless"
+	CASE 58
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Hong Meiling", "Meiling", "Scarlet Devil Mansion - Main Gate", "Gatekeeping on weekdays　06:00～12:00", "～Chinese Girl～　●Race:Youkai　●Ability:Usage of Qi", "Meiling", "Hong", "", "Japanese", "", "", "Gatekeeper"
+	CASE 59
+		VARSET LOCALS
+		IF GETBIT(NASFeature,6)
+			CALL GENERATE_FIRST_NAME_KF()
+			LOCALS:1 = %RESULTS%
+			CALL GENERATE_FAMILY_NAME_K()
+			LOCALS:2 = %RESULTS%
+		ENDIF
+		nameArrayTemp:0 '= "ogname", "ogcallname", @"「\@ GETBIT(NASFeature,6) ? %LOCALS:1+" 'Koakuma' "+LOCALS:2% # 코아쿠마 \@」", "Koakuma", "Scarlet Devil Mansion - Dining Room", "Cooking monthly every 6th day　22:00～23:00", "", @"%LOCALS:1%", @"%LOCALS:2%", "", "Western", "", "", "Devil Maid"
+	CASE 60
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Mizuhashi Parsee", "Parsee", "Deep Road to Hell", "Bridgekeeping on weekdays　13:00～18:00", "～The Jealousy Beneath the Earth's Crust～　●Race:Hashihime　●Ability:Manipulation of jealousy", "Parsee", "Mizuhashi", "", "Japanese", "", "", "Gatekeeper"
+	CASE 61
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Fujiwara no Mokou", "Mokou", "", "", "～Figure of the Person of Hourai～　●Race:Human　●Ability:Eternal youth and immortality", "Mokou", "Fujiwara", "no", "Japanese", "", "", "Guide"
+	CASE 62
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Houraisan Kaguya", "Kaguya", "Eientei - Garden", "Taking care of bonsai daily　13:00～14:00", "～The Sinner of Eternity and the Instantaneous～　●Race:Lunarian　●Ability:Manipulation of eternity and the instantaneous", "Kaguya", "Houraisan", "", "Japanese", "", "", ""
+	CASE 63
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Imaizumi Kagerou", "Kagerou", "", "", "～The Bamboo Forest's Loup-Garou～　●Race:Wolf-woman　●Ability:Can transform into a wolf on the night of the full moon", "Kagerou", "Imaizumi", "", "Japanese", "", "", ""
+	CASE 64
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Hoshiguma Yuugi", "Yuugi", "", "", "～The So-Called Unexplainable Phenomenon～　●Race:Oni　●Ability:Wielding unexplainable phenomena", "Yuugi", "Hoshiguma", "", "Japanese", "", "", ""
+	CASE 65
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Inubashiri Momiji", "Momiji", "Waterfall of Nine Heavens", "Patrolling Youkai Mountain (Mon&Tue) at morning・(Fri&Sat) afternoon shift", "～The Petty Patrol Tengu～　●Race:White Wolf Tengu　●Ability:Seeing a thousand ri ahead", "Momiji", "Inubashiri", "", "Japanese", "", "", "MDF White Wolf"
+	CASE 66
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Saigyouji Yuyuko", "Yuyuko", "Village - Liquor store 18:00～21:00", "Girls Club  2nd Sunday Every Month", "～Ghost Girl in the Netherworld Tower～　●Race:Ghost　●Ability:Manipulating death", "Yuyuko", "Saigyouji", "", "Japanese", "", "", "Ghostly Rebirth"
+	CASE 67
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Kamishirasawa Keine", "Keine", "Village - Temple School", "Teaching at the Temple School on weekdays　08:00～14:00", "～Half Beast of Knowledge and History～　●Race:Were-hakutaku　●Ability:Eating (concealing) history", "Keine", "Kamishirasawa", "", "Japanese", "", "", "Teacher"
+	CASE 68
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Kazami Yuuka", "Yuuka", "Bamboo Forest - Garden of the Sun", "Taking care of flowers every four days　06:00～10:00", "～Flower Master of the Four Seasons～　●Race:Youkai　●Ability:Manipulation of flowers", "Yuuka", "Kazami", "", "Japanese", "", "", "Bontanist"
+	CASE 69
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Futatsuiwa Mamizou", "Mamizou", "", "", "～The Bake-danuki with Ten Transformations～　●Race:Bake-danuki　●Ability:Disguising things and herself", "Mamizou", "Futatsuiwa", "", "Japanese", "", "", "Unidentified"
+	CASE 70
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Motoori Kosuzu", "Kosuzu", "Village - Shopping District", "Managing store (Wed&Thu) 09:00～17:00・Organizing book collection (Mon&Tue&Fri) 18:00～20:00", "～Bibliophile with a Deciphering Eye～　●Race:Human　●Ability:Able to decipher books by only touching them", "Kosuzu", "Motoori", "", "Japanese", "", "", "Shop Kid"
+	CASE 71
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Sukuna Shinmyoumaru", "Shinmyoumaru", "", "", "～Descendant of the Inchlings～　●Race:Inchling　●Ability:Using the Miracle Mallet", "Shinmyoumaru", "Sukuna", "", "Japanese", "", "", "Inchling"
+	CASE 72
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Yagokoro Eirin", "Eirin", "Eientei  Village - Liquor store 18:00～21:00", "Medical examination (Mon&Tue&Fri)　10:00～18:00・Girls Club  2nd Sunday Every Month", "～Brain of the Moon～　●Race:Lunarian　●Ability:Making any drug", "Eirin", "Yagokoro", "", "Japanese", "", "", "Doctor"
+	CASE 73
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Sekibanki", "Sekibanki", "", "", "～The Rokurokubi Horror～　●Race:Rokurokubi　●Ability:Making her head fly", "", "", "", "Japanese", "", "", ""
+	CASE 74
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Letty Whiterock", "Letty", "", "", "～What Winter Left Behind～　●Race:Youkai　●Ability:Manipulation of cold", "Letty", "Whiterock", "", "Western", "", "", ""
+	CASE 75
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Medicine Melancholy", "Medicine", "Mound Of The Nameless", "Collecting poison", "～Little Sweet Poison～　●Race:Doll　●Ability:Manipulating poison", "Medicine", "Melancholy", "", "Western", "", "", "Doll"
+	CASE 76
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Onozuka Komachi", "Komachi", "Netherworld - Sanzu River", "Ferrying and guiding dead spirits (Mon&Wed&Fri)　10:00～16:00 (often skips)", "～Guide of the Sanzu River～　●Race:Shinigami　●Ability:Manipulation of distance", "Komachi", "Onozuka", "", "Japanese", "", "", "Corpse Disposer"
+	CASE 77
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Aki Shizuha", "Shizuha", "", "", "～Symbol of Loneliness and Demise～　●Race:Goddess of Autumn Leaves　●Ability:Controlling the turning of leaves", "Shizuha", "Aki", "", "Japanese", "", "", "Farmer"
+	CASE 78
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Aki Minoriko", "Minoriko", "", "", "～Symbol of Abundance and Harvest～　●Race:Harvest Goddess　●Ability:Controlling abundant harvest", "Minoriko", "Aki", "", "Japanese", "", "", "Farmer"
+	CASE 79
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Kagiyama Hina", "Hina", "Youkai Mountain Foothills - Edge of Great Forest", "Collecting misfortunes", "～Nagashi-bina of the Hidden God～　●Race:Misfortune Goddess　●Ability:Stockpiling misfortune", "Hina", "Kagiyama", "", "Japanese", "", "", "Misfortuned"
+	CASE 80
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Hieda no Akyuu", "Akyuu", "Village - Residential Area", "Writing work on every month from 15th to 20th day", "～The Ninth Generation Savant～　●Race:Human　●Ability:Not forgetting things seen once", "Akyuu", "Hieda", "no", "Japanese", "", "", "Child of Maire"
+	CASE 81
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Usami Renko", "Renko", "Village - Residential Area", "Making report at the end of every month　19:00～21:00", "●Race:Human　●Ability:To know present time and present place", "Renko", "Usami", "", "Japanese", "", "", ""
+	CASE 82
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Maribel Hearn", "Maribel", "Village - Residential Area", "Making report at the end of every month　19:00～21:00", "●Race:Human　●Ability:Can see boundaries", "Maribel", "Hearn", "", "Western"
+	CASE 83
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Kisume", "Kisume", "", "", "～The Fearsome Well Spirit～　●Race:Tsurube-otoshi　●Ability:Dropping will-o'-the-wisps", "", "", "", "Japanese", "", "", "Well Spirit"
+	CASE 84
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Kurodani Yamame", "Yamame", "", "", "～The Bright Net in the Dark Cave～　●Race:Tsuchigumo　●Ability:Manipulation of illness (mainly infectious disease)", "Yamame", "Kurodani", "", "Japanese", "", "", ""
+	CASE 85
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Kumoi Ichirin", "Ichirin", "Myouren Temple - Grounds", "Cleaning temple (Tue&Thu)　07:00～12:00", "～The Great Wheel, Having Guarded and Been Guarded～　●Race:Youkai（Formerly Human）　●Ability:Using nyuudou", "Ichirin", "Kumoi", "", "Japanese", "", "", "Air Shapeshifter"
+	CASE 86
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Minamitsu Murasa", "Murasa", "", "", "～The Ghost Left From the Shipwreck Accident～　●Race:Ship Phantom　●Ability:Causing shipwrecks", "Murasa", "Minamitsu", "", "Japanese", "", "", "Ghostly Rebirth"
+	CASE 87
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Toramaru Shou", "Shou", "Myouren Temple - Main Temple", "Religious service on weekdays　10:00～14:00, sermon from 13:00", "～Disciple of Bishamonten～　●Race:Avatar of Bishamonten　●Ability:Gathering treasures", "Shou", "Toramaru", "", "Japanese", "", "", ""
+	CASE 88
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Kasodani Kyouko", "Kyouko", "", "", "～Sutra Chanting Yamabiko～　●Race:Yamabiko　●Ability:Reflection of sound", "Kyouko", "Kasodani", "", "Japanese", "", "", ""
+	CASE 89
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Miyako Yoshika", "Yoshika", "Myouren Temple - Graveyard", "Being under maintenance monthly every 4th day　08:00～23:00", "～Loyal Undead～　●Race:Jiang-Shi　●Ability:Eating anything", "Yoshika", "Miyako", "", "Japanese", "", "", "Monster"
+	CASE 90
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Kaku Seiga", "Seiga", "Myouren Temple - Graveyard", "Maintenance monthly every 4th day　08:00～23:00", "～The Wicked Hermit Who Passes Through Walls～　●Race:Wicked Hermit　●Ability:Passing through walls", "Seiga", "Kaku", "", "Japanese", "", "", ""
+	CASE 91
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Soga no Tojiko", "Tojiko", "Youkai Mountain (Top) - Heaven", "Conversation (Tue)　20:00～21:00", "～Ghost of the Descendant of the Gods～　●Race:Ghost　●Ability:Causing thunder", "Tojiko", "Soga", "no", "Japanese", "", "", "Ghostly Rebirth"
+	CASE 92
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Mononobe no Futo", "Futo", "Village - Square", "Canvassing on (Wed&Sat)　12:00～16:00", "～Shikaisen from Ancient Japan～　●Race:Human？　●Ability:Manipulating feng shui", "Futo", "Mononobe", "no", "Japanese", "", "", "Shikaisen"
+	CASE 93
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Wakasagihime", "Wakasagihime", "", "", "～Mermaid Living in Fresh Water～　●Race:Mermaid　●Ability:Grows in power when underwater", "", "", "", "Japanese", "", "", "Mermaid"
+	CASE 94
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Tsukumo Benben", "Benben", "Village - Square", "Concert first Sunday of every month　15:00～21:00", "～Tsukumogami of an Aged Biwa～　●Race:Tsukumogami　●Ability:Making sounds and performing on her own", "Benben", "Tsukumo", "", "Japanese", "", "", "Biwaist"
+	CASE 95
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Tsukumo Yatsuhashi", "Yatsuhashi", "Village - Square", "Concert first Sunday of every month　15:00～21:00", "～Tsukumogami of an Aged Koto～　●Race:Tsukumogami　●Ability:Making sounds and performing on her own", "Yatsuhashi", "Tsukumo", "", "Japanese", "", "", "Kotoist"
+	CASE 96
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Horikawa Raiko", "Raiko", "Youkai Mountain (Top) - Heaven・Village - Square", "Conversation (Tue)　20:00～21:00・Concert first Sunday of every month　15:00～21:00", "～Phantasmal Percussionist～　●Race:Tsukumogami　●Ability:Making anything follow a rhythm", "Raiko", "Horikawa", "", "Japanese", "", "", "Drummer"
+	CASE 97
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Kijin Seija", "Seija", "Scarlet Devil Mansion - Misty Lake・Forest of Magic - Big Old Tree", "Canvassing on (Mon&Wed)　21:00～00:00", "～The Counterattacking Amanojaku～　●Race:Amanojaku　●Ability:Turning anything upside-down", "Seija", "Kijin", "", "Japanese", "", "", "Reject"
+	CASE 98
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Watatsuki no Yorihime", "Yorihime", "", "", "～The Moon Princess Possessed Around by Divine Spirits～　●Race:Lunarian　●Ability:Can summon the power of the gods", "Yorihime", "Watatsuki", "no", "Japanese", "", "", "Lunar Princess"
+	CASE 99
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Watatsuki no Toyohime", "Toyohime", "", "", "～The Moon Princess that Connects Sea and Mountain～　●Race:Lunarian　●Ability:Can link the sea and mountains", "Toyohime", "Watatsuki", "no", "Japanese", "", "", "Lunar Princess"
+	CASE 100
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Rei'sen", "Rei'sen", "", "", "●Race:Moon Rabbit", "", "", "", "Japanese", "", "", "LDC Rifleman"
+	CASE 101
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Tokiko", "Tokiko", "", "", "●Race:Youkai", "", "", "", "Japanese", "", "", ""
+	CASE 102
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Shinki", "Shinki", "Village - Liquor store 18:00～21:00", "Girls Club  2nd Sunday Every Month", " ～The God of Makai～    ●Race:Goddess", "", "", "", "Japanese", "", "", "Demon God"
+	CASE 103
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Yumeko", "Yumeko", "Dollhouse", "Housework (Mon&Thu) 07:00～11:00", " ～Makai Maid～    ●Race:Makai Resident", "", "", "", "Japanese", "", "", ""
+	CASE 104
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Yuki", "Yuki", "", "", "～Black Girl～　●Race:Witch（Makai Resident）", "", "", "", "Japanese", "", "", ""
+	CASE 105
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Mai", "Mai", "", "", "～White Girl～　●Race:Witch（Makai Resident）", "", "", "", "Japanese", "", "", ""
+	CASE 106
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Usami Sumireko", "Sumireko", "", "", "～Expose the Esoteric! The Secret Sealing Club's First President～　●Race:Human　●Ability:Manipulating psychic powers", "Sumireko", "Usami", "", "Japanese", "", "", "Magician"
+	CASE 107
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Seiran", "Seiran", "", "", "～The Pale Blue Eagle Ravi～　●Race:Moon Rabbit　●Ability:Firing bullets from other dimensions", "", "", "", "Japanese", "", "", ""
+	CASE 108
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Ringo", "Ringo", "", "", "～The Orange Eagle Ravi～　●Race:Moon Rabbit　●Ability:Growing in strength by eating dango", "", "", "", "Japanese", "", "", ""
+	CASE 109
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Doremy Sweet", "Doremy", "", "", "～Ruler of Dreams～　●Race:Baku　●Ability:Eating and creating dreams", "Doremy", "Sweet", "", "Western", "", "", "Dream Ruler"
+	CASE 110
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Kishin Sagume", "Sagume", "", "", "～Goddess Who Invites Unfortunate Slips of the Tongue～　●Race:Divine Spirit　●Ability:Reversing a situation with her words", "Sagume", "Kishin", "", "Japanese", "", "", ""
+	CASE 111
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Clownpiece", "Clownpiece", "", "", "～Fairy of Hell～　●Race:Lampad　●Ability:Driving people to madness", "", "", "", "Japanese", "", "", "Fairy"
+	CASE 112
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Junko", "Junko", "", "", "Nameless being　●Race:Divine Spirit　●Ability:Can purify anything", "", "", "", "Japanese", "", "", ""
+	CASE 113
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Hecatia Lapislazuli", "Hecatia", "", "", "～Goddess of Hell～　●Race:Goddess　●Ability:To have three bodies", "Hecatia", "Lapislazuli", "", "Western", "", "", "Split God"
+	CASE 114
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Kurumi", "Kurumi", "", "", "～Lake Guardian～　●Race:Vampire", "", "", "", "Japanese", "", "", ""
+	CASE 115
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Elly", "Elly", "", "", "～Mansion Porter～　●Race:Youkai", "", "", "", "Japanese", "", "", ""
+	CASE 116
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Mugetsu", "Mugetsu", "", "", "～Fake Maid～　●Race:Demon", "", "", "", "Japanese", "", "", "Maid"
+	CASE 117
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Gengetsu", "Gengetsu", "", "", "～Lady of a Dream World～　●Race:Demon", "", "", "", "Japanese", "", "", "Maid"
+	CASE 118
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Eternity Larva", "Larva", "", "", "～The Butterfly Fairy who Approaches God～　●Race:Goddess？　●Ability:Scattering insect scales", "Eternity", "Larva", "", "Western", "", "", ""
+	CASE 119
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Sakata Nemuno", "Nemuno", "", "", "～The Mountain Hag who Surpasses This Floating World's Barriers～　●Race:Yamanba　●Ability:Creating sanctuaries", "Nemuno", "Sakata", "", "Japanese", "", "", ""
+	CASE 120
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Komano Aunn", "Aunn", "Hakurei Shrine, Moriya Shrine, or Myouren Temple Grounds", "Guarding shrines and temples on random days　09:00～15:00", "～The Guardian Beast Devoted to Shintoism and Buddhism～　●Race:Komainu　●Ability:Locating Shintoism and Buddhism", "Aunn", "Komano", "", "Japanese", "", "", "Statue"
+	CASE 121
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Yatadera Narumi", "Narumi", "", "", "～Magical Jizo who Manifested in the Forest～　●Race:Magician（Jizo）　●Ability:Capable of using magic (control of life)", "Narumi", "Yatadera", "", "Japanese", "", "", ""
+	CASE 122
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Teireida Mai", "Mai", "", "", "～All-Too-Dangerous Backup Dancer～　●Race:Human（？）　●Ability:Drawing out people's vitality by dancing behind them", "Mai", "Teireida", "", "Japanese", "", "", "Dancer"
+	CASE 123
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Nishida Satono", "Satono", "", "", "～All-Too-Dangerous Backup Dancer～　●Race:Human（？）　●Ability:Drawing out people's mental energy by dancing behind them", "Satono", "Nishida", "", "Japanese", "", "", "Dancer"
+	CASE 124
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Matara Okina", "Okina", "Village - Liquor store 18:00～21:00", "Girls Club  2nd Sunday Every Month", "～The Ultimate Absolute Secret God～　●Race:Secret God　●Ability:Creating doors on the back of anything", "Okina", "Matara", "", "Japanese", "", "", "Disability God"
+	CASE 125
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Yorigami Joon", "Joon", "", "", "～A Cursed and Evil Younger Twin Sister～　●Race:Pestilence God　●Ability:Causing consumption of financial assets", "Joon", "Yorigami", "", "Japanese", "", "", "Greed God"
+	CASE 126
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Yorigami Shion", "Shion", "", "", "～A Cursed and Evil Older Twin Sister～　●Race:Poverty God　●Ability:Capable of making people unlucky, including themselves", "Shion", "Yorigami", "", "Japanese", "", "", "Poverty God"
+	CASE 127
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Ebisu Eika", "Eika", "", "", "～Stillborn Idol of the Riverbed～　●Race:Soul of a Stillborn　●Ability:Capable of stacking stones well", "Eika", "Ebisu", "", "Japanese", "", "", "Stonestacker"
+	CASE 128
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Ushizaki Urumi", "Urumi", "", "", "～Parental Guardian of Ancient Fish～　●Race:Ushi-oni　●Ability:Capable of changing the weight of everyday objects", "Urumi", "Ushizaki", "", "Japanese", "", "", ""
+	CASE 129
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Niwatari Kutaka", "Kutaka", "Higan", "Gatekeeper of Hell on weekdays 09:00～15:00", "～Clerical God of Hell's Checkpoint～　●Race:God of Chickens　●Ability:Capable of healing throat diseases", "Kutaka", "Niwatari", "", "Japanese", "", "", "Gatekeeper"
+	CASE 130
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Kicchou Yachie", "Yachie", "", "", "～Matriarch of the Kiketsu Family～　●Race:Jidiao　●Ability:Making people lose the will to fight back", "Yachie", "Kicchou", "", "Japanese", "", "", "Matriarch"
+	CASE 131
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Joutouguu Mayumi", "Mayumi", "", "", "～Haniwa Lance Corporal～　●Race:Haniwa　●Ability:Directly turning her loyalty into strength", "Mayumi", "Joutouguu", "", "Japanese", "", "", "Haniwa"
+	CASE 132
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Haniyasushin Keiki", "Keiki", "", "", "～The Sculptor God Crafted by Utter Isolation～　●Race:Goddess　●Ability:Ability to create idols", "Keiki", "Haniyasushin", "", "Japanese", "", "", "Haniwa God"
+	CASE 133
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Kurokoma Saki", "Saki", "", "", "～Matriarch of the Keiga Family～　●Race:Kurokoma　●Ability:Having unmatched leg strength", "Saki", "Kurokoma", "", "Japanese", "", "", ""
+	CASE 134
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Okunoda Miyoi", "Miyoi", "Human Village Bar", "Waitress (Wed～Sun)　18:00～02:00", "～The Poster Girl of Geidontei, the Fantasy Pub～　●Race:Zashiki-Warashi　●Ability：Manipulation of memories", "Miyoi", "Okunoda", "", "Japanese", "", "", "Cook"
+	CASE 135
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Goutokuji Mike", "Mike", "", "", "～Lucky Charm for Prosperous Commerce～　●Race:Maneki-neko　●Ability:Capable of beckoning in money or customers", "Mike", "Goutokuji", "", "Japanese", "", "", ""
+	CASE 136
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Yamashiro Takane", "Takane", "", "", "～Business Youkai of the Mountain's Recess～　●Race:Yamawaro　●Ability:Capable of manipulating forest qi", "Takane", "Yamashiro", "", "Japanese", "", "", "Shop Kid"
+	CASE 137
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Komakusa Sannyo", "Sannyo", "", "", "～Highland-Dwelling Yamajorou～　●Race:Yamajorou　●Ability:Capable of controlling people's minds with tobacco smoke", "Sannyo", "Komakusa", "", "Japanese", "", "", "Smoker"
+	CASE 138
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Tamatsukuri Misumaru", "Misumaru", "", "", "～Genuine Magatama-Producing Craftsman～　●Race:Goddess　●Ability:Capable of making magatama", "Misumaru", "Tamatsukuri", "", "Japanese", "", "", "Engineer"
+	CASE 139
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Kudamaki Tsukasa", "Tsukasa", "", "", "～Wicked White Fox Who Whispers in Ears～　●Race:Kuda-gitsune　●Ability:Capable of slipping into places where one's soul is weak", "Tsukasa", "Kudamaki", "", "Japanese", "", "", ""
+	CASE 140
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Iizunamaru Megumu", "Megumu", "", "", "～Chief of the Crow Tengu～　●Race:Great Tengu　●Ability:Capable of manipulating the starry sky", "Megumu", "Iizunamaru", "", "Japanese", "", "", "MDF Great Tengu"
+	CASE 141
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Tenkyuu Chimata", "Chimata", "", "", "～God of the Unowned～　●Race:Goddess　●Ability:Capable of letting one relinquish ownership", "Chimata", "Tenkyuu", "", "Japanese", "", "", "Market God"
+	CASE 142
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Himemushi Momoyo", "Momoyo", "Youkai Mountain (Summit) - Rainbow Dragon Cave", "Mining for Dragon Gems on weekdays 16:00～00:00", "～Onyx Dragon-Eater～　●Race:Oomukade　●Ability:Capable of eating dragons", "Momoyo", "Himemushi", "", "Japanese", "", ""
+	CASE 143
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Toutetsu Yuuma", "Yuuma", "Old Hell's Blood Pond", "Managing the Blood Pond (Mon&Wed&Fri) 11:00～18:00", "～Undefeated Matriarch of the Gouyoku Alliance～　●Race:Taotie　●Ability:Absorbing anything", "Yuuma", "Toutetsu", "", "Japanese", "", "", ""
+	CASE 144
+		nameArrayTemp:0 '= "茨木童子の腕", "影華扇", "Ibaraki Douji", "Douji", "", "", "～The Inhuman Arm That Abandoned Virtue and Embraced Vice～　●Race:Oni", "Douji", "Ibaraki", "", "Japanese", "", "'s Arm", "Separated"
+	CASE 145
+		nameArrayTemp:0 '= "小兎姫", "小兎姫", "Kotohime", "Kotohime", "Village - Square", "Patrolling the Village every morning 06:00～10:00", "～Princess Dreaming of Beauty in Danmaku～　●Race:Human", "", "", "", "Japanese", "", "", ""
+	CASE 146
+		nameArrayTemp:0 '= "エリス", "エリス", "Elis", "Elis", "", "", "～Innocence Devil～　●Race:Demon　●Ability:Can turn into a bat", "Elis", "", "", "Western", "", "", ""
+	CASE 147
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Sariel", "Sariel", "", "", "～Angel of Death～　●Race:Angel", "Sariel", "", "", "Western", "", "", "Archangel"
+	CASE 148
+		nameArrayTemp:0 '= "サラ", "サラ", "Sara", "Sara", "", "", "～Gate Keeper of Makai～　●Race:Makai Resident", "Sara", "", "", "Western", "", "", "Gatekeeper"
+	CASE 149
+		nameArrayTemp:0 '= "オレンジ", "オレンジ", "Orange", "Orange", "", "", "～Passerby Youkai～　●Race:Youkai", "", "", "", "Western", "", "", ""
+	CASE 150
+		nameArrayTemp:0 '= "矜羯羅", "コンガラ", "Konngara", "Konngara", "", "", "～Astral Knight～　●Race:Ascended Oni?", "Konngara", "", "", "Japanese", "", "", ""
+	CASE 151
+		nameArrayTemp:0 '= "ユウゲンマガン", "ユウゲンマガン", "YuugenMagan", "YuugenMagan", "", "", "～EvilEyes～　●Race:Demon　●Ability:Control electricity", "", "", "", "Japanese", "", "", "Evil Eye"
+	CASE 152
+		nameArrayTemp:0 '= "キクリ", "キクリ", "Kikuri", "Kikuri", "", "", "～HellMoon～　●Race:God", "Kikuri", "", "", "Japanese", "", "", "Disc"
+	CASE [[Biten]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Son Biten", "Biten", "", "", "～Great Sage of a Small Bastion～　●Race:Sarugami　●Ability:Manipulating wild monkeys", "Biten", "Son", "", "Chinese", "", "", ""
+	CASE [[Enoko]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Mitsugashira Enoko", "Enoko", "", "", "～Silent Cerberus～　●Race:Yamainu　●Ability:Manipulating traps", "Enoko", "Mitsugashira", "", "Japanese", "", "", ""
+	CASE [[Chiyari]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Tenkajin Chiyari", "Chiyari", "", "", "～Corrupted Monster of Organic Matter～　●Race:Tenkajin　●Ability:Manipulating blood and fire", "Chiyari", "Tenkajin", "", "Japanese", "", "", ""
+	CASE [[Hisami]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Yomotsu Hisami", "Hisami", "", "", "～Hell's Beautiful Stalker～　●Race:Yomotsu-Shikome　●Ability:Never missing a change/letting people get away", "Hisami", "Yomotsu", "", "Japanese", "", "", ""
+	CASE [[Zanmu]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Nippaku Zanmu", "Zanmu", "", "", "～Ruler of Blissful Nirvana～　●Race:Human-oni　●Ability:Manipulating nothingness", "Zanmu", "Nippaku", "", "Japanese", "", "", ""
+	CASE [[Mizuchi]]
+		nameArrayTemp:0 '= "宮出口 瑞霊", "瑞霊", "Miyadeguchi Mizuchi", "Mizuchi", "", "", "～Jailbreak King～　●Race:Vengeful spirit　●Ability:Capable of possessing people", "Mizuchi", "Miyadeguchi", "", "Japanese", "", "", "Spirit"
+	CASE [[SinGyoku]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "SinGyoku", "SinGyoku", "", "", "～Gatekeeper～　●Race:God　●Ability:Can turn into multiple forms.", "", "", "", "Japanese", "", "", ""
+	CASE [[Shanghai]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Shanghai Doll", "Shanghai", "", "", "●Race:Doll", "Shanghai", "Doll", "", "Western", "", "", ""
+	CASE [[Rinnosuke]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Morichika Rinnosuke", "Rinnosuke", "Kourindou", "Selling things on weekdays 10:00～18:00", "～The Unmoving Used Goods Seller～　●Race:Half-youkai　●Ability:Knowing the name and utility of tools", "Rinnosuke", "Morichika", "", "Japanese", "", "", "Shopkeeper"
+	CASE [[Youki]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Konpaku Youki", "Youki", "", "", "●Race:Phantom", "Youki", "Konpaku", "", "Japanese", "", "", ""
+	CASE [[Hourai]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Hourai Doll", "Hourai", "", "", "●Race:Doll", "Hourai", "Doll", "", "Western", "", "", ""
+	CASE [[Layla]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Layla Prismriver", "Layla", "", "", "～Poltergeist Conjurer～　●Race:Human ●Ability:Conjuring poltergeists", "Layla", "Prismriver", "", "Western", "", "", "Conjurer"
+	CASE [[Ooedo]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Ooedo Doll", "Ooedo", "", "", "●Race:Doll", "Ooedo", "Doll", "", "Western", "", "", ""
+	CASE [[Goliath]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Goliath Doll", "Goliath", "", "", "●Race:Doll", "Goliath", "Doll", "", "Western", "", "", ""
+	CASE [[Satsuki]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Satsuki Rin", "Rin", "Temple School - Human Village", "Nursing kids at the Temple School on weekdays 08:00～14:00", "～Forgotten Nurse from the Continent～　●Race:Kirin　●Ability:Return forgotten memories", "Rin", "Satsuki", "", "Japanese", "", "", "Nurse"
+	CASE [[Multi]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Multi", "Multi", "", "", "●Race:Android", "", "", "", "Western", "", "", ""
+	CASE [[Mimi]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Mimi-chan", "Mimi", "", "", "●Race:Missile", "", "", "", "Western", "", "", ""
+	CASE [[Unzan]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Unzan", "Unzan", "", "", "●Race:Tsukumogami", "", "", "", "Japanese", "", "", ""
+	CASE [[Genji]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Genji", "Genji", "", "", "●Race:Turtle", "", "", "", "Japanese", "", "", ""
+	CASE [[Vivit]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "VIVIT", "VIVIT", "", "", "●Race:Android", "", "", "", "Western", "", "", ""
+	CASE [[Myouren]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Hijiri Myouren", "Myouren", "", "", "●Race:Human", "Myouren", "Hijiri", "", "Japanese", "", "", ""
+	CASE [[Sendai]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Hakurei Sendai", "Sendai", "Hakurei Shrine - Shrine Grounds", "Cleaning the Shrine every morning 06:00～08:00", "～Past Hakurei Shrine Maiden～　●Race:Human　●Ability:Blasting demons to death with her fists", "Sendai", "Hakurei", "", "Japanese", "", " Miko", "Shrine Maiden"
+	CASE [[ZUN]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "ZUN", "ZUN", "", "", "●Race:Human", "", "", "", "Western", "", "", ""
+	CASE [[Hikariko]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Hikariko", "Hikariko", "", "", "●Race:Fairy", "", "", "", "Japanese", "", "", ""
+	CASE [[Matenshi]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Matenshi", "Matenshi", "", "", "●Race:Fairy", "", "", "", "Japanese", "", "", ""
+	CASE [[Noroiko]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Noroiko", "Noroiko", "", "", "●Race:Fairy", "", "", "", "Japanese", "", "", ""
+	CASE [[Hinamei]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Hinamei", "Hinamei", "", "", "～Wheel Demon～ ●Race:Fairy", "", "", "", "Japanese", "", "", ""
+	CASE [[FortuneTeller]]
+		IF GETBIT(NASFeature,6)
+			CALL GENERATE_FIRST_NAME_KM()
+			LOCALS:1 = %RESULTS%
+			CALL GENERATE_FAMILY_NAME_K()
+			LOCALS:2 = %RESULTS%
+			nameArrayTemp:0 '= "ogname", "ogcallname", @"%LOCALS:1+" "+LOCALS:2%", @"%LOCALS:1%", "", "", "●Race:Youkai", @"%LOCALS:1%", @"%LOCALS:2%", "", "Western", "", "", "Fortune Teller"
+		ELSE
+			nameArrayTemp:0 '= "ogname", "ogcallname", @"점쟁이", @"점쟁이", "", "", "●Race:Youkai", @"", @"", "", "Western", "", "", "Fortune Teller"
+		ENDIF
+	CASE [[Ayana]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Ayana", "Ayana", "", "", "", "", "", ""
+	CASE [[Sugar]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Sugar", "Sugar", "", "", "", "", "", ""
+	CASE [[Maybell]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Maybell", "Maybell", "", "", "", "", "", ""
+	CASE [[Mitori]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Kawashiro Mitori", "Mitori", "", "", "", "Mitori", "Kawashiro", "", "Japanese", "", "", ""
+	CASE [[Vahbiz]]
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Vahbiz", "Vahbiz", "", "", "", "", "", ""
+	CASE [[モブ子]]
+		nameArrayTemp:0 '= "モブ子", "モブ子", "Mob Character", "Mob Character", "", "", "", "", "", ""
+	CASE 2000
+		nameArrayTemp:0 '= "ogname", "ogcallname", "Chevalier Nyala", "Nyala", "", "", "●Race:Car", "Nyala", "Chevalier", "", "Vehicle", "", "", "Car"
+	CASEELSE
+		;catch
+		IF INRANGE(ARG,0,CHARANUM-1)
+			TRYCCALLFORM NAME_ARRAY_{NO:ARG}
+			CATCH
+			ENDCATCH
+		ENDIF
+ENDSELECT

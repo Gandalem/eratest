@@ -1,0 +1,1133 @@
+﻿; Modular ERB: OMOGATARI/CraftingOverhaul.ERB
+
+@BIONIC_RANK(ARG:0)
+#FUNCTION
+SELECTCASE ARG:0
+	;(酒造パッチ)追加酒の調合難易度は1
+	CASE 1 TO 5, 88, 89
+		RETURNF 1
+		;(酒造パッチ)あくまきの調合難易度は2
+	CASE 6 TO 18, 122, 127
+		RETURNF UniversalRank("C")
+	CASE 123, 128
+		RETURNF UniversalRank("B")
+	CASE 19 TO 35, 120, 124, 129
+		RETURNF UniversalRank("A")
+	CASE 56 TO 70, 85, 86, 121, 125, 130
+		RETURNF UniversalRank("S")
+	CASE 37 TO 55, 126, 131
+		RETURNF UniversalRank("Extra")
+ENDSELECT
+RETURNF 0
+
+@MakePharmacyHeader(nTier,nType)
+#DIM nTier
+#DIMS nType
+CALL PRINT_RANK(nTier,"MAX_6")
+PRINTFORML  %nType% Lv{nTier}%"="*(MAXWIDTH()-STRLENS(nType)-4-2-STRLENS(TOSTR(nTier)))%
+
+@PHARMACY_LIST_REVAMP_BUTTON(ARG, ARGS,STR_LEN)
+#DIMS ITEM_NAME, 2
+#DIM STR_LEN
+#DIM R_ID
+#DIM R_TEM
+#DIM R_PICK
+SELECTCASE ARGS
+	CASE "Bionic"
+		SIF GET_STR(MASTER, "Hediff", (ARG+100), "名前") == "" || GET_STR(MASTER, "Hediff", (ARG+100), "名前") == "0"
+			RETURN
+		ITEM_NAME = %GET_STR(MASTER, "Hediff", (ARG+100), "名前"), 32, LEFT%
+		R_TEM = (ARG*10) + BionicOffset
+		R_PICK = R_TEM
+	CASE "Weapon"
+		ITEM_NAME = %PrintWeaponName(,ARG,,1), 32, LEFT%
+		R_TEM = (ARG*10) + WeaponOffset
+		R_PICK = R_TEM
+	CASEELSE
+		ITEM_NAME = %ITEMNAME_TR(ARG), 32, LEFT%
+		R_TEM = ARG * 10
+		R_PICK = ARG
+ENDSELECT
+STR_LEN += STRLENS(ITEM_NAME)
+IF STR_LEN > MAXWIDTH()-1
+	PRINTL 
+	STR_LEN = STRLENS(ITEM_NAME)
+ENDIF
+SIF LineIsEmpty()
+	PRINT 　　
+;一旦灰色にセット
+SETCOLOR 0x666666
+FOR LOCAL,1,6
+R_ID = R_TEM + LOCAL
+;可能なレシピがあれば白に戻す
+SIF CAN_PHARMA(R_ID)
+	RESETCOLOR
+NEXT
+PRINTBUTTON @"%ITEM_NAME%", R_PICK
+RESETCOLOR
+RETURN STR_LEN
+
+@CraftingDenyReason(R_ID, nType, preConvert = 1)
+#DIM  DYNAMIC R_ID
+#DIMS DYNAMIC nType
+#DIMS  DYNAMIC CratExpectation,2
+#DIM  DYNAMIC CraftRequire, 3
+#DIMS DYNAMIC CraftRequires, 3
+#DIMS DYNAMIC TEMP_NAME
+#DIM  DYNAMIC preConvert
+#DIM  DYNAMIC CDR_RESEARCH
+#DIM  DYNAMIC CDR_CANDO
+VARSET RESULT
+VARSET RESULTS
+VARSET CratExpectation
+VARSET CraftRequire
+VARSET CraftRequires
+CDR_CANDO = CraftingDeny(R_ID, nType, preConvert)
+CratExpectation:0 '= RESULTS:1
+CratExpectation:1 '= RESULTS:2
+CraftRequire:0     = RESULT:1
+CraftRequire:1     = RESULT:2
+CraftRequires:0   '= RESULTS:3
+CraftRequires:2   '= RESULTS:4
+;#;PRINTFORML ID: {R_ID} | EXPECT: %NAME:CraftRequire% (%CratExpectation% {CraftRequire:1}) (%CratExpectation:1% %CraftRequires%)
+SIF !nSpoilerMode
+	RETURN CDR_CANDO
+FOR LOCAL,0,VARSIZE("CratExpectation")
+IF STRLENS(CratExpectation:0) && STRLENS(CratExpectation:1) && LOCAL == 1
+	IF CraftRequires:2 != "AND"
+		SETCOLOR C_AQUA
+		FONTBOLD
+		PRINTFORML OR
+		FONTREGULAR
+		RESETCOLOR
+	ELSE
+		SETCOLOR C_AQUA
+		FONTBOLD
+		PRINTFORML AND
+		FONTREGULAR
+		RESETCOLOR
+	ENDIF
+ENDIF
+SELECTCASE CratExpectation:LOCAL
+	CASE "intimacy"
+		IF !CDR_CANDO
+			PRINTFORML 이 것을 제작하기 위해 %NAME:CraftRequire%과 친밀도를 얻으세요 {CraftRequire:1}.
+		ENDIF
+	CASE "quest"
+		IF !CDR_CANDO
+			TRYCALLFORMF 固有依頼{CraftRequire}(CraftRequire:1+100,"依頼名",@"TestVar{CraftRequire:1+100}")
+			TEMP_NAME = %TEMP_GET("GET_ID",@"TestVar{CraftRequire:1+100}")%
+			LOCALS = %REQUEST_NAMES_TR(TEMP_RE_STR(@"TestVar{CraftRequire:1+100}"))%
+			PRINTFORML 이것을 제작하려면 %LOCALS% (%NAME:CraftRequire%의 %ORDINAL(CraftRequire:1)%) 퀘스트를 깨야 한다.
+		ENDIF
+	CASE "love"
+		IF !CDR_CANDO
+			PRINTFORML 이 것을 제작하려면 %NAME:CraftRequire%이 당신에게 연모하게 만들어라
+		ENDIF
+	CASE "techknow"
+		CALL TechCheck(MASTER,CraftRequire:1)
+	CASE "research"
+		IF !CDR_CANDO
+			PRINTFORML 모든 필수 연구가 완료되지 않았다! 다음 연구를 완료하거나 이미 이 연구들을 완료한 세력에 가라!
+			PRINTFORML 필요한 연구: 
+			;check for research
+			FOR LOCAL:1,0,STRCOUNT(CraftRequires, "/")
+			VARSET RESULT
+			LOCALS '= SPLIT_SINGLE(CraftRequires,LOCAL:1,"/")
+			DT_SELECT "ResearchProject", @"defName = '%LOCALS%'"
+			CDR_RESEARCH = RESULT:1
+			SETCOLOR TechLevelColor(TechLevelStrToInt(DT_CELL_GETS("ResearchProject", CDR_RESEARCH, "techLevel", 1)))
+			SIF KNOW_RESEARCH(LOCALS)
+				SETCOLOR C_GRAY
+			PRINTFORM %DT_CELL_GETS("ResearchProject", CDR_RESEARCH, "label", 1)%
+			IF KNOW_RESEARCH(LOCALS)
+				PRINTFORM  (완료됨)
+			ENDIF
+			RESETCOLOR
+			PRINTL
+			NEXT
+		ENDIF
+	CASE "tsp"
+		IF !CDR_CANDO
+			PRINTFORML 충분한 TSP가 없다. 이 아이템을 제작하려면 최소 {CraftRequire:1}개 이상의 최대 TSP를 가져야 한다.
+		ENDIF
+	CASE "item"
+		IF !CDR_CANDO
+			PRINTFORML 이 것을 제작하려면 %ARTICLE(ITEMNAME_TR(CraftRequire:1))%가 필요하다.
+		ENDIF
+ENDSELECT
+NEXT
+RETURN CDR_CANDO
+;==========================================================================
+;CraftingDeny
+;==========================================================================
+; ALlows for
+;CraftRequires
+; Strings such as those for research (CratExpectation:1 MUST be "research" for this to take effect)
+; 0 determines what research is needed
+; 2 determines whether the research requirement is an AND or OR statement
+;==========================================================================
+
+@CraftingDeny(R_ID, nType = "Item", preConvert = 1)
+#FUNCTION
+#DIM R_ID
+#DIMS CratExpectation,2
+#DIM CraftRequire, 3
+#DIM CONST CD_CHARA = 0
+#DIM CONST CD_QUEST = 1
+#DIM CONST CD_QUESTLINE = 2
+#DIMS CraftRequires, 3
+#DIM DYNAMIC ShowReason
+#DIMS TEMP_NAME
+#DIMS nType
+#DIM DYNAMIC preConvert
+#DIM CD_SCORE
+#DIM CD_REQUIRE_SCORE
+VARSET CD_REQUIRE_SCORE
+VARSET CratExpectation
+VARSET CraftRequire
+VARSET CraftRequires
+VARSET CD_SCORE
+VARSET RESULT
+VARSET RESULTS
+CraftRequire = MASTER
+CraftRequire:1 = 0
+SELECTCASE nType
+	CASE "Weapon"
+		SIF preConvert
+			R_ID = (R_ID-WeaponOffset)/10
+		SELECTCASE R_ID
+			CASE 141
+				CratExpectation '= "quest"
+				CraftRequire = 102
+				CraftRequire:1 = 2
+				CraftRequire:2 = 0
+			CASEELSE
+				CratExpectation:1 '= "research"
+				CraftRequires '= GET_STR(MASTER, "Weapon", R_ID, "Research Required")
+				SIF CraftRequires == "0"
+					CraftRequires '= ""
+				CraftRequires:2 '= "AND"
+		ENDSELECT
+	CASE "Bionic"
+		SIF preConvert
+			R_ID = (R_ID-BionicOffset)/10
+		SELECTCASE R_ID
+			; CASE 41
+			; 	CratExpectation '= "quest"
+			; 	CraftRequire = 102
+			; 	CraftRequire:1 = 2
+			; 	CraftRequire:2 = 0
+			; CASE 42
+			; 	CratExpectation '= "quest"
+			; 	CraftRequire = 102
+			; 	CraftRequire:1 = 4
+			; 	CraftRequire:2 = 0
+			; CASE 45
+			; 	CratExpectation '= "quest"
+			; 	CraftRequire = 102
+			; 	CraftRequire:1 = 1
+			; 	CraftRequire:2 = 0
+			CASE 37 TO 55
+				CratExpectation '= "love"
+				CraftRequire = 102
+			CASEELSE
+				CratExpectation:1 '= "research"
+				CraftRequires '= GET_STR(MASTER, "Hediff", R_ID, "Research Required")
+				SIF CraftRequires == "0"
+					CraftRequires '= ""
+				CraftRequires:2 '= "AND"
+		ENDSELECT
+	CASEELSE
+		SIF preConvert
+			R_ID = R_ID/10
+		;特定キャラの親密依存アイテムを弾く
+		SELECTCASE R_ID
+			CASE 41
+				CratExpectation '= "research"
+				CraftRequires '= "Aphros/Schedule3Drug/"
+			CASE 42
+				CratExpectation '= "research"
+				CraftRequires '= "Diuretic/"
+			CASE 45
+				CratExpectation '= "research"
+				CraftRequires '= "Rubber/"
+			CASE 58
+				CratExpectation '= "research"
+				CraftRequires '= "Alcohol/"
+			CASE 59
+				CratExpectation '= "research"
+				CraftRequires '= "Alcohol/"
+			CASE 79
+				CratExpectation '= "research"
+				CraftRequires '= "Schedule2Drug/Candy/"
+			CASE 91
+				CratExpectation '= "research"
+				CraftRequires '= "Schedule3Drug/Aphros/"
+			CASE 191
+				CratExpectation '= "research"
+				CraftRequires '= "Mixing/"
+			CASE 213
+				CratExpectation '= "research"
+				CraftRequires '= "Mixing/"
+			CASE 215
+				CratExpectation '= "research"
+				CraftRequires '= "Mixing/"
+			CASE 216
+				CratExpectation '= "research"
+				CraftRequires '= "Mixing/"
+			CASE 250
+				CratExpectation '= "research"
+				CraftRequires '= "Mixing/Schedule1Drug/"
+			CASE 252
+				CratExpectation '= "research"
+				CraftRequires '= "Mixing/Schedule3Drug/"
+			CASE 500
+				CratExpectation '= "research"
+				CraftRequires '= "Mixing/"
+			CASE 501
+				CratExpectation '= "research"
+				CraftRequires '= "Potions/"
+			CASE 502
+				CratExpectation '= "research"
+				CraftRequires '= "Potions/Aphros/"
+			CASE 503
+				CratExpectation '= "research"
+				CraftRequires '= "GinGin/"
+			CASE 505
+				CratExpectation '= "research"
+				CraftRequires '= "GinGin/"
+			CASE 506
+				CratExpectation '= "research"
+				CraftRequires '= "Schedule2Drug/Aphros/"
+			CASE 507
+				CratExpectation '= "research"
+				CraftRequires '= "Potions/"
+			CASE 509
+				CratExpectation '= "research"
+				CraftRequires '= "Potions/"
+			CASE 510
+				CratExpectation '= "research"
+				CraftRequires '= "Potions/"
+			CASE 511
+				CratExpectation '= "research"
+				CraftRequires '= "Elixirs/Schedule1Drug"
+			CASE 512
+				CratExpectation '= "research"
+				CraftRequires '= "Elixirs/"
+			CASE 513
+				CratExpectation '= "intimacy"
+				CraftRequire = 80
+				CraftRequire:1 = 5
+				CratExpectation:1 '= "research"
+				CraftRequires '= "HighConcentrationAlcohol/"
+				CraftRequires:2 '= "OR"
+			CASE 514
+				CratExpectation '= "intimacy"
+				CraftRequire = 72
+				CraftRequire:1 = 5
+				CratExpectation:1 '= "research"
+				CraftRequires '= "Poisonbody/"
+				CraftRequires:2 '= "OR"
+			CASE 515
+				CratExpectation '= "intimacy"
+				CraftRequire = 72
+				CraftRequire:1 = 5
+				CratExpectation:1 '= "research"
+				CraftRequires '= "PeerlessPatriot/"
+				CraftRequires:2 '= "OR"
+			CASE 516, 517
+				CratExpectation '= "intimacy"
+				CraftRequire = 75
+				CraftRequire:1 = 5
+				CratExpectation:1 '= "research"
+				CraftRequires '= "Poisonbody/"
+				CraftRequires:2 '= "OR"
+			CASE 518
+				CratExpectation '= "research"
+				CraftRequires '= "Mixing/"
+			CASE 523
+				CratExpectation '= "research"
+				CraftRequires '= "MedKit/"
+			CASE 530
+				CratExpectation '= "research"
+				CraftRequires '= "Aphros/"
+			CASE 531
+				CratExpectation '= "intimacy"
+				CraftRequire = 61
+				CraftRequire:1 = 5
+				CratExpectation:1 '= "research"
+				CraftRequires '= "ArchotechBioMechanites/MasterMagicWeapons/"
+				CraftRequires:2 '= "OR"
+			CASE 560
+				CratExpectation '= "research"
+				CraftRequires '= "Alcohol/"
+			CASE 575
+				CratExpectation '= "research"
+				CraftRequires '= "Alcohol/"
+			CASE 516
+				CratExpectation '= "research"
+				CraftRequires '= "Mixing/"
+			CASE 641
+				CratExpectation '= "research"
+				CraftRequires '= "Mixing/"
+			CASE 642
+				CratExpectation '= "research"
+				CraftRequires '= "Mixing/"
+			CASE 648
+				CratExpectation '= "research"
+				CraftRequires '= "Alcohol/"
+			CASE 661
+				CratExpectation '= "research"
+				CraftRequires '= "Alcohol/"
+			CASE 663
+				CratExpectation '= "research"
+				CraftRequires '= "Alcohol/"
+			CASE 664
+				CratExpectation '= "research"
+				CraftRequires '= "Alcohol/"
+			CASE 667
+				CratExpectation '= "research"
+				CraftRequires '= "Mixing/"
+			CASE 678
+				CratExpectation '= "item"
+				CraftRequire = MASTER
+				CraftRequire:1 = 988
+				CraftRequire:2 = 1
+			CASE 856, 857
+				CratExpectation '= "research"
+				CraftRequires '= "ProfessionalMagicWeapons/"
+			CASE 810 TO 812
+				CratExpectation '= "research"
+				CraftRequires '= "Paniel/"
+			CASE 850
+				CratExpectation '= "intimacy"
+				CraftRequire = 11
+				CraftRequire:1 = 5
+				CratExpectation:1 '= "research"
+				CraftRequires '= "Gunpowder/Mixing/"
+				CraftRequires:2 '= "OR"
+			CASE 851
+				CratExpectation '= "intimacy"
+				CraftRequire = 14
+				CraftRequire:1 = 5
+				CratExpectation:1 '= "research"
+				CraftRequires '= "IceMagic/ProfessionalMagicWeapons/"
+				CraftRequires:2 '= "OR"
+			CASE 852
+				CratExpectation '= "intimacy"
+				CraftRequire = 92
+				CraftRequire:1 = 5
+				CratExpectation:1 '= "research"
+				CraftRequires '= "Gunpowder/FireMagic/ProfessionalMagicWeapons/"
+				CraftRequires:2 '= "OR"
+			CASE 853
+				CratExpectation '= "intimacy"
+				CraftRequire = 26
+				CraftRequire:1 = 5
+				CratExpectation:1 '= "research"
+				CraftRequires '= "BewhichingBait/"
+				CraftRequires:2 '= "OR"
+			CASE 854
+				CratExpectation '= "intimacy"
+				CraftRequire = 54
+				CraftRequire:1 = 5
+				CratExpectation:1 '= "research"
+				CraftRequires '= "FireMagic/IceMagic/Electricity/ForceMagic/DarkMagic/ExpertMagicWeapons/"
+				CraftRequires:2 '= "OR"
+			CASE 855
+				CratExpectation '= "intimacy"
+				CraftRequire = [[成美]]
+				CraftRequire:1 = 5
+				CratExpectation:1 '= "research"
+				CraftRequires '= "GasOperation/Prosthetics/"
+				CraftRequires:2 '= "OR"
+			CASE 870
+				CratExpectation '= "tsp"
+				CraftRequire = MASTER
+				CraftRequire:1 = 500
+				CratExpectation:1 '= "research"
+				CraftRequires '= "Sandevistan/"
+				CraftRequires:2 '= "OR"
+			CASE 871
+				CratExpectation '= "tsp"
+				CraftRequire = MASTER
+				CraftRequire:1 = 2000
+				CratExpectation:1 '= "research"
+				CraftRequires '= "Sandevistan/"
+				CraftRequires:2 '= "OR"
+			CASE 910 TO 915
+				CratExpectation '= "techknow"
+				CraftRequire = MASTER
+				CraftRequire:1 = 9
+				CratExpectation:1 '= "research"
+				CraftRequires '= "ShipBuild/"
+				CraftRequires:2 '= "AND"
+			CASE 995
+				CratExpectation '= "research"
+				CraftRequires '= "ForceMagic/ExpertMagicWeapons"
+			CASE 997, 998
+			CASE 1110
+				CratExpectation '= "techknow"
+				CraftRequire = MASTER
+				CraftRequire:1 = 8
+				CratExpectation:1 '= "research"
+				CraftRequires '= "EStim/"
+				CraftRequires:2 '= "AND"
+		ENDSELECT
+ENDSELECT
+DEBUGPRINTFORML ID: {R_ID} | EXPECT: %NAME:CraftRequire% (%CratExpectation% {CraftRequire:1})
+RESULTS:1 '= @"%CratExpectation%"
+RESULTS:2 '= @"%CratExpectation:1%"
+RESULTS:3 '= @"%CraftRequires%"
+RESULTS:4 '= @"%CraftRequires:2%"
+RESULT:1 = CraftRequire
+RESULT:2 = CraftRequire:1
+FOR LOCAL,0, VARSIZE("CratExpectation")
+SIF !STRLENS(CratExpectation:LOCAL)
+	CONTINUE
+SIF STRLENS(CratExpectation:LOCAL) && CratExpectation:LOCAL != "research"
+	CD_REQUIRE_SCORE ++
+SELECTCASE CratExpectation:LOCAL
+	CASE "intimacy"
+		SIF MASTER == CraftRequire
+			GOTO SCORE_GET
+		IF ABL:CraftRequire:親密 < CraftRequire:1
+			CONTINUE
+		ENDIF
+	CASE "quest"
+		SIF MASTER == CraftRequire
+			GOTO SCORE_GET
+		IF CharaQuestline:CraftRequire:(CraftRequire:2):0 < CraftRequire:1
+			CONTINUE
+		ENDIF
+	CASE "research"
+		;and
+		SIF CraftRequires:2 == "AND" || !STRLENS(CratExpectation:0) || !STRLENS(CratExpectation:1)
+			CD_REQUIRE_SCORE ++
+		;check for research
+		FOR LOCAL:1,0,STRCOUNT(CraftRequires, "/")
+		SIF !KNOW_RESEARCH(SPLIT_SINGLE(CraftRequires, LOCAL:1, "/"))
+			GOTO SCORE_NOGET
+		NEXT
+	CASE "love"
+		SIF MASTER == CraftRequire
+			GOTO SCORE_GET
+		IF !TALENT:CraftRequire:3
+			CONTINUE
+		ENDIF
+	CASE "wife"
+		SIF MASTER == CraftRequire
+			GOTO SCORE_GET
+		IF !TALENT:CraftRequire:225
+			CONTINUE
+		ENDIF
+	CASE "lust"
+		SIF MASTER == CraftRequire
+			GOTO SCORE_GET
+		IF !TALENT:CraftRequire:184
+			CONTINUE
+		ENDIF
+	CASE "lewd"
+		SIF MASTER == CraftRequire
+			GOTO SCORE_GET
+		IF !TALENT:CraftRequire:4
+			CONTINUE
+		ENDIF
+	CASE "techknow"
+		IF TALENT:MASTER:234 < CraftRequire:1
+			CONTINUE
+		ENDIF
+	CASE "tsp"
+		IF BASE:MASTER:TSP < CraftRequire:1
+			CONTINUE
+		ENDIF
+	CASE "item"
+		IF !ITEM:(CraftRequire:1) || ITEM:(CraftRequire:1) < CraftRequire:2
+			CONTINUE
+		ENDIF
+ENDSELECT
+$SCORE_GET
+CD_SCORE ++
+$SCORE_NOGET
+NEXT
+RETURNF CD_SCORE >= CD_REQUIRE_SCORE
+
+@PHARMACY_LIST_NAS
+#DIMS DYNAMIC ITEM_NAME
+#DIM  DYNAMIC nTier
+#DIM  DYNAMIC ShowHeader,2
+#DIM  DYNAMIC nRankRequired
+#DIMS DYNAMIC PL_ITEM_TIERS,65
+#DIMS DYNAMIC PL_CACHE,100
+#DIMS CONST DISP_NAME = "Items", "Bionics", "Weapons"
+;unfucked jank code with a loop
+;-Mr Pops Alot
+;cache suff here.
+VARSET PL_CACHE
+VARSET PL_ITEM_TIERS
+SELECTCASE globalLineSave
+	CASE 0
+		FOR LOCAL:0 ,0, 2000
+		PL_ITEM_TIERS:(PHARMACY_RANK(LOCAL:0)) += @"{LOCAL:0}/"
+		NEXT
+	CASE 1
+		FOR LOCAL:0 ,0, VAR_TEMP_MAX
+		PL_ITEM_TIERS:(BIONIC_RANK(LOCAL:0)) += @"{LOCAL:0}/"
+		NEXT
+	CASE 2
+		FOR LOCAL:0 ,0, 2*VAR_TEMP_MAX
+		SIF !STRLENS(PrintWeaponName(,LOCAL,-1))
+			CONTINUE
+		SIF BLACKLISTED_WEAPON(LOCAL)
+			CONTINUE
+		SIF GET_INT(MASTER, "Weapon", LOCAL, "Quest Only")
+			CONTINUE
+		nRankRequired = WEAP_RANK_REQUIRE(LOCAL:0)
+		PL_ITEM_TIERS:(nRankRequired) += @"{LOCAL:0}/"
+		NEXT
+ENDSELECT
+FOR nTier, 1, MaxNonHLevel+1
+VARSET ShowHeader
+VARSET LOCAL
+IF TALENT:MASTER:調合Lv >= nTier-3
+	;LOCAL:1 = 999
+	LOCAL:1 = 0
+	SELECTCASE globalLineSave
+		CASE 0
+			LOCALS '= ""
+		CASE 1
+			LOCALS '= "Bionic"
+		CASE 2
+			LOCALS '= "Weapon"
+	ENDSELECT
+	SPLIT PL_ITEM_TIERS:nTier, "/", PL_CACHE
+	FOR LOCAL:0 ,0, VARSIZE("PL_CACHE")
+	LOCAL:1 = TOINT(PL_CACHE:LOCAL)
+	SIF !LOCAL:1
+		BREAK
+	ShowHeader = 1
+	SIF !ShowHeader:1
+		CALL MakePharmacyHeader(nTier,@"%COND_STR(@"%LOCALS% ",STRLENS(LOCALS))% 제작")
+	ShowHeader:1 = 1
+	;体質変化薬は【禁断の知識】がない場合はスキップ
+	IF globalLineSave == 0
+		SIF PHARMA_VOLATILE(LOCAL:1) && TALENT:MASTER:SexKnow < 3
+			CONTINUE
+	ENDIF
+	CALL PHARMACY_LIST_REVAMP_BUTTON(LOCAL:1, LOCALS, LOCAL:2)
+	LOCAL:2 = RESULT
+	NEXT
+	SIF ShowHeader
+		PRINTL
+ELSE
+	;SETCOLOR 0x666666
+	;PRINTFORM 　　？？？？
+	;RESETCOLOR
+	BREAK
+ENDIF
+NEXT
+DRAWLINE
+FOR LOCAL, 0, VARSIZE("DISP_NAME")
+SIF globalLineSave == LOCAL
+	SETCOLOR 0x00FFFF
+PRINTBUTTON DISP_NAME:LOCAL, LOCAL + 8000
+PRINTFORM %" "*5%
+RESETCOLOR
+NEXT
+PRINTL
+DRAWLINE
+PRINTL 　　[1000] 리턴
+; 680,Steel,300
+; 681,Component,3200
+; 682,AdvancedComponent,20000
+; 683,Graphite,1000
+; 684,FirearmParts,3200
+; 685,Plasteel,900
+; 686,Gold,1000
+; 687,Uranium,600
+; 610,Timber
+
+@WEAPON_MATS_NEED(ARG,ING)
+#FUNCTION
+#DIM REF ING
+#DIM DYNAMIC nITEMSPool,VARSIZE("ITEM")
+#DIM DYNAMIC WMN_COUNT
+#DIM nTechLevel
+#DIM baseWeapon
+IF ARG > 1000
+	baseWeapon = GET_INT(MASTER, "WeaponPreset", ARG%VAR_TEMP_MAX, "Base Weapon")
+	nTechLevel = GET_INT(MASTER, "Weapon", baseWeapon, "Tech Level")
+ELSE
+	baseWeapon = ARG
+	nTechLevel = GET_INT(MASTER, "Weapon", ARG, "Tech Level")
+ENDIF
+SELECTCASE nTechLevel
+	CASE 0
+		;none
+	CASE 1
+		;2 wood
+		nITEMSPool:610 = 2
+	CASE 2
+		;2 steel and 1 wood
+		nITEMSPool:680 = 2
+		nITEMSPool:610 = 1
+	CASE 3,4
+		;4 steel and 2 wood
+		nITEMSPool:680 = 4
+		nITEMSPool:610 = 2
+	CASE 5
+		;2 steel and 2 wood, 1 component
+		nITEMSPool:680 = 2
+		nITEMSPool:610 = 2
+		nITEMSPool:681 = 1
+	CASE 6
+		;4 steel and 2 wood, 1 component
+		nITEMSPool:680 = 4
+		nITEMSPool:610 = 2
+		nITEMSPool:681 = 1
+	CASE 7
+		;2 wood, 2 steel, 1 component, 1 firearm part
+		nITEMSPool:680 = 2
+		nITEMSPool:681 = 1
+		nITEMSPool:684 = 1
+		nITEMSPool:680 = 2
+	CASE 8
+		;2 steel, 2 components, 1 firearm part
+		nITEMSPool:680 = 2
+		nITEMSPool:681 = 2
+		nITEMSPool:684 = 1
+	CASE 9
+		;5 plasteel, 2 ADVANCED components, 1 firearm part
+		nITEMSPool:685 = 5
+		nITEMSPool:682 = 2
+		nITEMSPool:684 = 1
+	CASE 10
+		;10 plasteel, 4 ADVANCED components, 2 firearm parts, 1 dark matter
+		nITEMSPool:685 = 10
+		nITEMSPool:682 = 4
+		nITEMSPool:684 = 2
+		nITEMSPool:639 = 1
+	CASE 11
+		;10 plasteel, 4 ADVANCED components, 2 firearm parts, 1 dark matter, 1 phoenix feather
+		nITEMSPool:685 = 10
+		nITEMSPool:682 = 4
+		nITEMSPool:684 = 2
+		nITEMSPool:639 = 1
+		nITEMSPool:640 = 1
+ENDSELECT
+;raw material costs doubled for long guns and two-handed
+IF GROUPMATCH(GET_STR(MASTER, "Weapon", baseWeapon, "Class"), "1H Blunt", "2H Blunt")
+	CALLF WMN_REMOVE_COMPONENTS(nITEMSPool)
+ELSEIF GROUPMATCH(GET_STR(MASTER, "Weapon", baseWeapon, "Class"), "1H Blade", "2H Blade")
+	CALLF WMN_REMOVE_COMPONENTS(nITEMSPool)
+	CALLF WMN_MULTIPLY_RAW(nITEMSPool,2)
+ELSEIF GROUPMATCH(GET_STR(MASTER, "Weapon", baseWeapon, "Class"), "Choking")
+	CALLF WMN_REMOVE_COMPONENTS(nITEMSPool)
+ELSEIF GROUPMATCH(GET_STR(MASTER, "Weapon", baseWeapon, "Class"), "Pistol", "Automatic Pistol")
+ELSEIF GROUPMATCH(GET_STR(MASTER, "Weapon", baseWeapon, "Class"), "Rifle", "Semi-Automatic Rifle", "Assault Rifle", "Bolt-Action Rifle", "Sniper Rifle", "Anti-Material Rifle") || GROUPMATCH(GET_STR(MASTER, "Weapon", ARG, "Type"), "Explosive")
+	CALLF WMN_MULTIPLY_RAW(nITEMSPool,2)
+ELSEIF GROUPMATCH(GET_STR(MASTER, "Weapon", baseWeapon, "Class"), "Shotgun")
+	CALLF WMN_MULTIPLY_RAW(nITEMSPool,2)
+ELSEIF GROUPMATCH(GET_STR(MASTER, "Weapon", baseWeapon, "Class"), "Sub-Machine Gun", "Light Machine Gun", "Medium Machine Gun", "Heavy Machine Gun")
+	CALLF WMN_MULTIPLY_RAW(nITEMSPool,2)
+	;two more components
+	nITEMSPool:681 += 2
+ELSEIF GROUPMATCH(GET_STR(MASTER, "Weapon", baseWeapon, "Type"), "Explosive")
+	nITEMSPool:621 += 5
+ELSEIF GROUPMATCH(GET_STR(MASTER, "Weapon", baseWeapon, "Class"), "Bow")
+	CALLF WMN_REMOVE_COMPONENTS(nITEMSPool)
+ELSEIF GROUPMATCH(GET_STR(MASTER, "Weapon", baseWeapon, "Type"), "Youjutsu")
+	CALLF WMN_REMOVE_COMPONENTS(nITEMSPool)
+	nITEMSPool:647 += 3
+ENDIF
+CALLF WMN_MATS_NEED_COUNT(ING,nITEMSPool)
+
+@BIONIC_MATS_NEED(ARG,ING)
+#FUNCTION
+#DIM REF ING
+#DIM DYNAMIC nITEMSPool,VARSIZE("ITEM")
+#DIM DYNAMIC WMN_COUNT
+SELECTCASE GET_INT(MASTER, "Hediff", ARG, "Tech Level")
+	CASE 0
+		;none
+	CASE 1
+	CASE 2
+		;1 wood
+		nITEMSPool:644 = 1
+	CASE 3,4
+		;2 steel + 1 component
+		nITEMSPool:680 = 2
+	CASE 5
+		;2 steel + 1 component
+		nITEMSPool:680 = 2
+	CASE 6
+		;2 steel + 1 component
+		nITEMSPool:680 = 2
+		nITEMSPool:681 = 1
+	CASE 7
+		;2 steel + 2 component
+		nITEMSPool:680 = 2
+		nITEMSPool:681 = 2
+	CASE 8
+		;4 steel + 2 component
+		nITEMSPool:680 = 4
+		nITEMSPool:681 = 2
+	CASE 9
+		;2 plasteel + 2 advanced component
+		nITEMSPool:685 = 2
+		nITEMSPool:682 = 2
+	CASE 10
+		;2 plasteel + 4 advanced component
+		nITEMSPool:685 = 2
+		nITEMSPool:682 = 4
+	CASE 11
+		;GC experimental parts
+		;2 plasteel + 4x adv + 1 rainbow dragon ore
+		nITEMSPool:685 = 2
+		nITEMSPool:682 = 4
+		nITEMSPool:647 = 1
+ENDSELECT
+CALLF WMN_MATS_NEED_COUNT(ING,nITEMSPool)
+
+@WMN_MATS_NEED_COUNT(ING,nITEMSPool)
+#FUNCTION
+#DIM REF ING
+#DIM REF nITEMSPool
+#DIM DYNAMIC WMN_COUNT
+VARSET WMN_COUNT
+FOR LOCAL,0,VARSIZE("nITEMSPool")
+IF nITEMSPool:LOCAL
+	FOR LOCAL:1,0,nITEMSPool:LOCAL
+	ING:WMN_COUNT = LOCAL
+	WMN_COUNT++
+	NEXT
+ENDIF
+NEXT
+
+@WMN_REMOVE_COMPONENTS(nITEMSPool)
+#FUNCTION
+#DIM REF nITEMSPool
+;no components or firearm parts
+nITEMSPool:681 = 0
+nITEMSPool:684 = 0
+nITEMSPool:682 = 0
+
+@WMN_MULTIPLY_RAW(nITEMSPool, nMult = 2)
+#FUNCTION
+#DIM REF nITEMSPool
+#DIM nMult
+;multiply raw material cost
+nITEMSPool:680 *= nMult
+nITEMSPool:685 *= nMult
+nITEMSPool:610 *= nMult
+
+@RECIPE_DATA_NAS(R_ID, TYPE)
+#FUNCTION
+#DIM TYPE
+#DIM ING, 8001
+#DIM AMT
+#DIM WATER
+#DIM R_ID
+#DIM LOT
+VARSET ING
+AMT = 0
+WATER = 0
+LOT = 0
+SELECTCASE R_ID
+	;No Sleep Potion
+	CASE GETNUM(ITEM, "破眠ポーション") * 10 + 4
+		ING:0 = 1120
+		AMT = 1
+		WATER = 1
+		;Overnight Kushinada
+	CASE GETNUM(ITEM, "一夜のクシナダ") * 10 + 5
+		ING:0 = 53
+		ING:1 = 1122
+		ING:2 = 1122
+		AMT = 1
+	CASE GETNUM(ITEM, "TrannyCandy") * 10 + 1
+		ING:0 = 313
+		AMT = 1
+	CASE GETNUM(ITEM, "PanielCombat")* 10 + 1, GETNUM(ITEM, "PanielDomestic")* 10 + 1, GETNUM(ITEM, "PanielSex")* 10 + 1
+		ING:0 = 711
+		ING:1 = 711
+		ING:2 = 711
+		ING:3 = 711
+		ING:4 = 711
+		ING:4 = 512
+		AMT = 1
+	CASE GETNUM(ITEM, "FirstAidKit") * 10 + 1
+		ING:0 = 59
+		ING:1 = 520
+		ING:2 = 608
+		AMT = 1
+	CASE GETNUM(ITEM, "Starship") * 10 + 1
+		ING:0 = 910
+		ING:1 = 910
+		ING:2 = 910
+		ING:3 = 911
+		ING:4 = 912
+		ING:5 = 913
+		AMT = 1
+	CASE GETNUM(ITEM, "JTDrive") * 10 + 1
+		FOR LOCAL,0,craftingMaxIngredients
+		SELECTCASE LOCAL
+			CASE 0 TO 5
+				ING:LOCAL = 682
+			CASE 6 TO 12
+				ING:LOCAL = 687
+			CASE 13 TO 27
+				ING:LOCAL = 685
+			CASE 28 TO 49
+				ING:LOCAL = 680
+		ENDSELECT
+		NEXT
+		AMT = 1
+	CASE GETNUM(ITEM, "ShipComputerCore") * 10 + 1
+		FOR LOCAL,0,craftingMaxIngredients
+		SELECTCASE LOCAL
+			CASE 0 TO 8
+				ING:LOCAL = 682
+			CASE 9 TO 16
+				ING:LOCAL = 686
+			CASE 17 TO 32
+				ING:LOCAL = 680
+		ENDSELECT
+		NEXT
+		AMT = 1
+	CASE GETNUM(ITEM, "ShipReactor") * 10 + 1
+		FOR LOCAL,0,craftingMaxIngredients
+		SELECTCASE LOCAL
+			CASE 0 TO 34
+				ING:LOCAL = 680
+			CASE 35 TO 63
+				ING:LOCAL = 685
+			CASE 64 TO 70
+				ING:LOCAL = 687
+			CASE 71 TO 78
+				ING:LOCAL = 682
+		ENDSELECT
+		NEXT
+		AMT = 1
+	CASE GETNUM(ITEM, "SensorCluster") * 10 + 1
+		FOR LOCAL,0,craftingMaxIngredients
+		SELECTCASE LOCAL
+			CASE 0 TO 34
+				ING:LOCAL = 680
+			CASE 35 TO 63
+				ING:LOCAL = 685
+			CASE 64 TO 70
+				ING:LOCAL = 687
+			CASE 71 TO 78
+				ING:LOCAL = 682
+		ENDSELECT
+		NEXT
+		AMT = 1
+	CASE GETNUM(ITEM, "Morphine") * 10 + 1
+		ING:0 = 624
+		ING:1 = 607
+		AMT = 4
+	CASE GETNUM(ITEM, "Fentanyl") * 10 + 1
+		ING:0 = 624
+		ING:1 = 624
+		ING:2 = 613
+		ING:3 = 612
+		AMT = 4
+	CASE GETNUM(ITEM, "Fentanyl") * 10 + 2
+		ING:0 = 1100
+		ING:1 = 1100
+		AMT = 2
+		WATER = 1
+	CASE GETNUM(ITEM, "Fentanyl") * 10 + 3
+		FOR LOCAL,0,6
+		SELECTCASE LOCAL
+			CASE 0 TO 5
+				ING:LOCAL = 525
+		ENDSELECT
+		NEXT
+		ING:6 = 607
+		AMT = 1
+	CASE GETNUM(ITEM, "Fentanyl") * 10 + 4
+		FOR LOCAL,0,3
+		SELECTCASE LOCAL
+			CASE 0 TO 2
+				ING:LOCAL = 1123
+		ENDSELECT
+		NEXT
+		ING:6 = 607
+		AMT = 1
+	CASE GETNUM(ITEM, "Heroin") * 10 + 1
+		ING:0 = 624
+		ING:1 = 608
+		AMT = 4
+	CASE GETNUM(ITEM, "Heroin") * 10 + 2
+		ING:0 = 525
+		ING:1 = 525
+		ING:2 = 612
+		AMT = 1
+	CASE GETNUM(ITEM, "Heroin") * 10 + 3
+		ING:0 = 1122
+		ING:1 = 635
+		AMT = 4
+	CASE GETNUM(ITEM, "お砂糖") * 10 + 1
+		ING:0 = 613
+		ING:1 = 84
+		AMT = 2
+	CASE GETNUM(ITEM, "お砂糖") * 10 + 2
+		ING:0 = 608
+		ING:1 = 603
+		ING:2 = 619
+		AMT = 1
+	CASE GETNUM(ITEM, "CrackCoke") * 10 + 1
+		ING:0 = 253
+		ING:1 = 81
+		AMT = 3
+		WATER = 1
+	CASE GETNUM(ITEM, "CrackCoke") * 10 + 2
+		ING:0 = 608
+		ING:1 = 619
+		ING:2 = 84
+		AMT = 3
+		WATER = 1
+	CASE GETNUM(ITEM, "FirearmParts") * 10 + 1
+		ING:0 = 680
+		ING:1 = 680
+		ING:2 = 681
+		AMT = 2
+	CASE GETNUM(ITEM, "Ibuprofen") * 10 + 1
+		ING:0 = 607
+		ING:1 = 607
+		AMT = 1
+	CASE GETNUM(ITEM, "KyuuKyuuNyo") * 10 + 1
+		ING:0 = 253
+		ING:1 = 512
+		ING:2 = 123
+		AMT = 1
+	CASE GETNUM(ITEM, "KyuuKyuuUn") * 10 + 1
+		ING:0 = 1122
+		ING:1 = 512
+		ING:2 = 123
+		AMT = 1
+	CASE GETNUM(ITEM, "KyuuKyuuDou") * 10 + 1
+		ING:0 = 253
+		ING:1 = 1122
+		ING:2 = 512
+		ING:3 = 512
+		ING:4 = 639
+		ING:5 = 123
+		AMT = 1
+	CASE GETNUM(ITEM, "KyuuKyuuDou") * 10 + 2
+		ING:0 = 1116
+		ING:1 = 1117
+		ING:2 = 639
+		AMT = 1
+	CASE GETNUM(ITEM, "Meth") * 10 + 1
+		ING:0 = 613
+		ING:1 = 635
+		ING:2 = 630
+		AMT = 1
+		;bionic
+	CASE (1*10) + BionicOffset + 1, (4*10) + BionicOffset + 1, (5*10) + BionicOffset + 1
+		;1 wood
+		ING:0 = 644
+		AMT = 1
+	CASE (2*10) + BionicOffset + 1, (3*10) + BionicOffset + 1
+		;1 steel
+		ING:0 = 644
+		AMT = 1
+		;wepaons
+	CASE IS > WeaponOffset + 1
+		LOCAL = (R_ID - WeaponOffset - 1)/10
+		IF R_ID % (WeaponOffset + 1) == LOCAL*10
+			;dynamic
+			CALLF WEAPON_MATS_NEED(LOCAL,ING)
+			AMT = 1
+		ELSE
+			RETURNF -1
+		ENDIF
+	CASE (6*10) + BionicOffset + 1, (7*10) + BionicOffset + 1,(8*10) + BionicOffset + 1,(9*10) + BionicOffset + 1,(10*10) + BionicOffset + 1,(11*10) + BionicOffset + 1,(12*10) + BionicOffset + 1,(13*10) + BionicOffset + 1,(14*10) + BionicOffset + 1,(15*10) + BionicOffset + 1,(16*10) + BionicOffset + 1,(17*10) + BionicOffset + 1,(18*10) + BionicOffset + 1
+		;2 steel + 2component
+		ING:0 = 680
+		ING:1 = 680
+		ING:2 = 681
+		ING:3 = 681
+		AMT = 1
+	CASE 914 * 10 + 1
+		ING:0 = 910
+		ING:1 = 910
+		ING:2 = 910
+		ING:3 = 911
+		ING:4 = 912
+		ING:5 = 913
+		AMT = 1
+	CASE (19*10) + BionicOffset + 1, (20*10) + BionicOffset + 1,(21*10) + BionicOffset + 1,(22*10) + BionicOffset + 1,(23*10) + BionicOffset + 1,(24*10) + BionicOffset + 1,(25*10) + BionicOffset + 1,(26*10) + BionicOffset + 1,(27*10) + BionicOffset + 1,(28*10) + BionicOffset + 1,(29*10) + BionicOffset + 1,(30*10) + BionicOffset + 1,(31*10) + BionicOffset + 1, (32*10) + BionicOffset + 1, (33*10) + BionicOffset + 1, (34*10) + BionicOffset + 1, (35*10) + BionicOffset + 1
+		;2 plasteel + 2 advanced component
+		ING:0 = 682
+		ING:1 = 682
+		ING:2 = 685
+		ING:3 = 685
+		AMT = 1
+		WATER = 0
+	CASE (56*10) + BionicOffset + 1, (57*10) + BionicOffset + 1,(58*10) + BionicOffset + 1,(59*10) + BionicOffset + 1,(60*10) + BionicOffset + 1,(61*10) + BionicOffset + 1,(62*10) + BionicOffset + 1,(63*10) + BionicOffset + 1,(64*10) + BionicOffset + 1,(65*10) + BionicOffset + 1,(66*10) + BionicOffset + 1,(67*10) + BionicOffset + 1,(68*10) + BionicOffset + 1, (69*10) + BionicOffset + 1, (70*10) + BionicOffset + 1, (85*10) + BionicOffset + 1, (86*10) + BionicOffset + 1
+		;1 plasteel + 1 advanced component
+		ING:0 = 682
+		ING:1 = 685
+		AMT = 1
+	CASE (37*10) + BionicOffset + 1, (38*10) + BionicOffset + 1,(40*10) + BionicOffset + 1,(41*10) + BionicOffset + 1,(42*10) + BionicOffset + 1,(43*10) + BionicOffset + 1,(44*10) + BionicOffset + 1,(45*10) + BionicOffset + 1,(46*10) + BionicOffset + 1,(47*10) + BionicOffset + 1,(48*10) + BionicOffset + 1,(49*10) + BionicOffset + 1,(51*10) + BionicOffset + 1, (52*10) + BionicOffset + 1, (53*10) + BionicOffset + 1, (54*10) + BionicOffset + 1, (55*10) + BionicOffset + 1
+		;GC experimental parts
+		;3x adv + 1 rainbow dragon ore
+		ING:0 = 682
+		ING:1 = 682
+		ING:2 = 682
+		ING:3 = 647
+		AMT = 1
+		;bionics
+	CASE BionicOffset + 1 TO WeaponOffset
+		LOCAL = (R_ID - BionicOffset - 1)/10
+		IF R_ID % (BionicOffset + 1) == LOCAL*10
+			;dynamic
+			CALLF BIONIC_MATS_NEED(LOCAL,ING)
+			AMT = 1
+		ELSE
+			SELECTCASE TYPE
+				CASE 6000, 8000
+					RETURNF 1
+				CASE 7000
+					RETURNF 0
+			ENDSELECT
+			RETURNF -1
+		ENDIF
+	CASEELSE
+		RETURNF -1
+ENDSELECT
+SELECTCASE TYPE
+	CASE 0 TO craftingMaxIngredients
+		RETURNF ING:TYPE
+	CASE 6000
+		RETURNF AMT
+	CASE 7000
+		RETURNF WATER
+	CASE 8000
+		RETURNF LOT
+ENDSELECT
+
+@PHARMACY_RANK_NAS(ARG:0)
+#FUNCTION
+;eraNAS Stuffs
+SELECTCASE ITEMNAME:(ARG:0)
+	CASE "Ibuprofen", "FirearmParts"
+		RETURNF 1
+	CASE "AntidepressantFake", "CrackCoke", "Cannabis"
+		RETURNF 2
+	CASE "FirstAidKit", "Naloxone", "Morphine"
+		RETURNF 3
+	CASE "TrannyCandy", "Meth", "お砂糖", "Heroin"
+		RETURNF 4
+	CASE "StarShip", "JTDrive", "ShipComputerCore", "ShipReactor", "SensorCluster", "MarketeersInjector"
+		RETURNF 5
+	CASE "PanielCombat", "PanielDomestic", "PanielSex", "KyuuKyuuNyo", "KyuuKyuuUn", "Fentanyl"
+		RETURNF 6
+	CASE "KyuuKyuuDou"
+		RETURNF 7
+ENDSELECT

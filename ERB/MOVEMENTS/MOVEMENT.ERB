@@ -1,0 +1,111 @@
+﻿; Modular ERB: MOVEMENT.ERB
+;FileName_MOVEMENT.ERB ----------------------------- Rev1.01
+;キャラ移動処理
+;CALL		USER
+;RETURN		VOID
+;COMMENT
+;-----------------------------------------------------------
+
+@CHARA_MOVEMENT()
+LOCAL:99 = LINECOUNT
+;PRINTL 　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　(Girls are moving...)
+;custom code, move (Girls are moving...) to the right side of the screen
+LOCALS = (소녀들이 움직이고 있다...)
+PRINTFORML %" " * (MAXWIDTH() - STRLENS(LOCALS))%%LOCALS%
+;Auto Save Timer
+IF !CFLAG:MASTER:313
+	AutoSaveTimer -= TIME_PROGRESS(TIME:1)
+	IF AutoSaveTimer <= 0
+		PRINTFORML 자동 저장 중이다.
+		CALL MidDaySave
+		AutoSaveTimer = 180
+	ENDIF
+	CALL NAS_TimerActs
+ENDIF
+;時間経過によるBASE等の自然変動、会話累積度、風呂の処理
+CALL MOVEMENT共通処理(MASTER)
+;moved this up here
+CALL 宴会参加人数再計算
+;各キャラごとのその日の仕事情報を更新
+FOR LOCAL, 0, CHARANUM
+SIF LOCAL == MASTER
+	CONTINUE
+;出禁キャラをスキマへ飛ばす
+IF CFLAG:LOCAL:出禁 && !IsDead:LOCAL:0
+	CFLAG:LOCAL:現在位置 = SUKIMA()
+ELSE
+	CALL 仕事内容設定(LOCAL)
+	CALL PASSIVE_ACTIONS(LOCAL)
+	;qol custom code
+	SIF TIME_PROGRESS(TIME:1)
+		TCVAR:LOCAL:SEEN_NOW = 0
+ENDIF
+;moved over here for optimizations
+SIF MOVEMENTスキップ判定(LOCAL)
+	CONTINUE
+CALL 寝室から追い出し(LOCAL)
+;時間経過によるBASE等の自然変動、会話累積度、風呂の処理
+CALL MOVEMENT共通処理(LOCAL)
+;不適切な位置にいるキャラを別の場所へ移動させる
+CALL 強制移動(LOCAL)
+; NEXT
+;行動順をシャッフル
+;CALL FISHER_YATES_SHAFFLE(CHARANUM)
+;MASTERを0番に移動
+;SWAP SHAFFLE_ARRAY:0 , SHAFFLE_ARRAY:(FINDELEMENT(SHAFFLE_ARRAY , 0))
+; FOR LOCAL, 0, CHARANUM
+; 	SIF LOCAL == MASTER
+; 		CONTINUE
+; 	;LOCAL = SHAFFLE_ARRAY:(LOCAL:100)
+; 	SIF MOVEMENTスキップ判定(LOCAL)
+; 		CONTINUE
+; 	CALL 寝室から追い出し(LOCAL)
+; 	;時間経過によるBASE等の自然変動、会話累積度、風呂の処理
+; 	CALL MOVEMENT共通処理(LOCAL)
+; 	;不適切な位置にいるキャラを別の場所へ移動させる
+; 	CALL 強制移動(LOCAL)
+; NEXT
+; CALL 宴会参加人数再計算
+; FOR LOCAL, 0, CHARANUM
+; 	SIF LOCAL == MASTER
+; 		CONTINUE
+;LOCAL = SHAFFLE_ARRAY:(LOCAL:100)
+SIF MOVEMENTスキップ判定(LOCAL)
+	CONTINUE
+;時間に合わせてキャラを起こす／寝かす
+CALL 起床就寝処理(LOCAL)
+;訪問フラグが立っているキャラをあなたの拠点物件に移動させる
+;キャラを自分の家に返す／在宅中の処理を行う
+CALL 訪問帰宅処理(LOCAL)
+;仕事がないキャラを外出させる
+CALL 休日移動処理(LOCAL)
+;お招き部屋にいるキャラの処理
+CALL お招き部屋処理(LOCAL)
+;同行中のキャラをあなたの移動に合わせて移動させる
+CALL 同行処理(LOCAL)
+;仕事や宴会の開始／経過／終了やメッセージの表示を行う
+CALL 仕事宴会処理(LOCAL)
+;あなたの拠点物件にいるキャラを移動させる
+CALL キャラ移動処理(LOCAL)
+;泥酔になる／泥酔からの復活
+CALL CHARA_ACTION_DRUNK(LOCAL)
+;custom code
+CALL CHARA_ACTION_FAINT(LOCAL)
+CALL NAS_FORCEMOVE(LOCAL)
+;--------------------------
+;自由行動の発生／経過／終了やメッセージの表示
+CALL 自由行動処理(LOCAL)
+CALL QOL_HUMAN_DISGUISE(LOCAL) ;qol custom code
+SIF CFLAG:LOCAL:現在位置 == 0 && SaveIsEZB ;put log rivals in the damn entrance if invalid
+	CFLAG:LOCAL:300 = ENTRANCE
+SIF CFLAG:LOCAL:現在位置 == 0
+	PRINTFORMW ### 이동 위치 오류 %CALLNAME:LOCAL%의 현재 위치가 비정상적이다 ### CHARA_NO:{LOCAL}
+NEXT
+;NAS Faction Stuff
+CALL FACTION_VISITORS_CONTROL
+;addition custom code, new banquet mechanics
+CALL ADD_BANQUET_ARRIVAL
+;CALL 宴会参加人数再計算
+;CALL ENKAI_SINKOU()
+SIF LINECOUNT == LOCAL:99 + 1
+	CLEARLINE 1

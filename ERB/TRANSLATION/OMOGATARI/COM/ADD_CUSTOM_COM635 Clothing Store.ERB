@@ -1,0 +1,333 @@
+﻿; Modular ERB: OMOGATARI/COM/ADD_CUSTOM_COM635 Clothing Store.ERB
+
+@ADD_CUSTOM_COM635
+#DIM 買うもの
+;購入条件設定
+#DIM     PAGE       ;表示中のページ
+#DIM CREDRAW
+#DIM FIRST_LINE
+FIRST_LINE = LINECOUNT
+PAGE = 1
+$REPRINT
+CLEARLINE LINECOUNT - FIRST_LINE
+CREDRAW = CURRENTREDRAW()
+REDRAW 0
+TRYCALLFORM ClothingListing(FINDELEMENT(EQUIPNAME, 表示部位:PAGE), EquipIDSTR:PAGE)
+DRAWLINE
+FOR LOCAL, 0, VARSIZE("表示ラベル")
+SIF GROUPMATCH(LOCAL, 10, 19,20,24)
+	CONTINUE
+[IF_NDEBUG]
+SIF LOCAL == VARSIZE("表示ラベル")
+	CONTINUE
+[ENDIF]
+SIF PAGE == LOCAL
+	SETCOLOR 0x00FFFF
+;exception for player character
+PRINTBUTTON "표시 라벨:LOCAL", LOCAL + 2
+RESETCOLOR
+PRINTFORM 　　
+NEXT
+PRINTFORML
+PRINTBUTTON "[0] 반환한다", 0
+DO
+INPUT
+SELECTCASE RESULT
+	CASE 0
+		RETURN 0
+	CASE 1
+		GOTO RETRY
+	CASE 2 TO VARSIZE("表示ラベル")+1
+		PAGE = RESULT-2
+	CASE IS >= 100
+		TRYCALLFORM ClothingBuyPiece(RESULT-((FINDELEMENT(EQUIPNAME, 表示部位:PAGE))*1000),FINDELEMENT(EQUIPNAME, 表示部位:PAGE), EquipIDSTR:PAGE)
+	CASEELSE
+		$RETRY
+		REUSELASTLINE Invalid Input
+		CONTINUE
+ENDSELECT
+BREAK
+LOOP 1
+GOTO REPRINT
+
+@ClothingListing(nGroup, ARGS)
+#DIM nGroup
+#DIM DYNAMIC 表示数
+#DIM DYNAMIC 表示行
+#DIM DYNAMIC nPrice
+;DRAWLINE
+;CALL LIST_ITEM("野菜")
+;DRAWLINE
+PRINTFORML 구매할 아이템을 선택해 주세요。(돈: %金額表示(MONEY)%)
+DRAWLINE
+FOR LOCAL:1,(nGroup == 6 ? 1 # 0),VAR_TEMP_MAX
+SIF CLOTHNAME(nGroup, LOCAL:1) == ""
+	CONTINUE
+;diapers require diaper flag
+SIF IsPadded(MASTER, , LOCAL:1) && !nOmutsu && nGroup == 6
+	CONTINUE
+nPrice = ClothPrice(ARGS,LOCAL:1,MASTER)
+SIF !nPrice
+	nPrice = 250
+IF BoughtClothing:nGroup:(LOCAL:1)
+	LOCALS:1 = %金額表示(nPrice)%
+	SETCOLOR C_GRAY
+ELSEIF SaveIsEZB && LegendModeStage < GET_INT(MASTER,CLOTHES_PARTS_TO_CATEGORY(EQUIPNAME:(nGroup)),LOCAL:1,"Grade")
+	LOCALS:1 = %LoG_StageName(GET_INT(MASTER,CLOTHES_PARTS_TO_CATEGORY(EQUIPNAME:(nGroup)),LOCAL:1,"Grade"))%
+	SETCOLOR C_GRAY
+ELSEIF MONEY < nPrice
+	LOCALS:1 = %金額表示(nPrice)%
+	SETCOLOR C_GRAY
+ELSE
+	LOCALS:1 = %金額表示(nPrice)%
+ENDIF
+IF nGroup == 6
+	LOCALS = [{(LOCAL:1)+(nGroup*1000),4}]%UNDIES_NAME_WITH_BRAND(MASTER,LOCAL:1)%
+ELSE
+	LOCALS = [{(LOCAL:1)+(nGroup*1000),4}]%CLOTHES_TR(CLOTHNAME(nGroup, LOCAL:1))%
+ENDIF
+PRINTFORM %LOCALS, 50, LEFT% %LOCALS:1, 11% 
+RESETCOLOR
+表示数 ++
+IF 表示数 % 3 == 0
+	PRINTL
+	表示行 ++
+ENDIF
+NEXT
+PRINTL
+;TIME += 10
+
+@ClothingDescription(ARG, nGroup, ARGS)
+#DIM nGroup
+#DIM DYNAMIC nAbsorbancy, 2
+#DIM DYNAMIC nBdyPart
+#DIMS DS_STORAGE, 3
+#DIMS HTML
+IF nGroup == 6
+	CALLF DiapeStats(MASTER,ARG,1,1)
+	DS_STORAGE:0 '= RESULTS:0
+	DS_STORAGE:1 '= RESULTS:1
+	DS_STORAGE:2 '= RESULTS:2
+	nAbsorbancy = RESULT:1
+	nAbsorbancy:1 = RESULT:2
+ENDIF
+PRINTFORMSL TW_PORT_STR(@"\@ GET_STR(MASTER, ARGS, ARG, "FullName") != "" ? %GET_STR(MASTER, ARGS, ARG, "FullName")% # %CLOTHES_TR(CLOTHNAME(nGroup, ARG))%\@")
+;;#;PRINTFORML Clothing ID: {ARG} Clothing Type: %ARGS%
+PRINTFORML %Clothes_FullDescription(ARGS, ARG, MASTER)%
+PRINTFORML
+PRINTFORML ───────────────────────────────
+IF nAbsorbancy && UndiesCanSoil("liquid",MASTER)
+	PRINTFORM %"Liquid Absorbancy",20,LEFT% 
+	CALL PRINT_COLORBAR((nAbsorbancy:0), 5000, 40, UNICODE(0x2585), UNICODE(0x2585), BARCOLORSET("赤"), RESULT:1)
+	PRINTFORML  {nAbsorbancy:0}ml 
+ENDIF
+IF nAbsorbancy:1 && UndiesCanSoil("solid",MASTER)
+	PRINTFORM %"Solid Containment",20,LEFT% 
+	CALL PRINT_COLORBAR((nAbsorbancy:1), 5000, 40, UNICODE(0x2585), UNICODE(0x2585), BARCOLORSET("赤"), RESULT:1)
+	PRINTFORML  {nAbsorbancy:1}g 
+ENDIF
+IF nRyona && (GET_INT(MASTER, ARGS, ARG, "Armor"))
+	PRINTFORM %"Armor Strength",20,LEFT% 
+	CALL PRINT_COLORBAR((GET_INT(MASTER, ARGS, ARG, "Armor")), 14, 40, UNICODE(0x2585), UNICODE(0x2585), BARCOLORSET("赤"), RESULT:1)
+	PRINTFORML  VPAM 레벨 {GET_INT(MASTER, ARGS, ARG, "Armor")}
+	PRINTFORM %"Armor Durability",20,LEFT% 
+	CALL PRINT_COLORBAR((GET_INT(MASTER, ARGS, ARG, "Armor Health")), 20000, 40, UNICODE(0x2585), UNICODE(0x2585), BARCOLORSET("赤"), RESULT:1)
+	PRINTFORML  {GET_INT(MASTER, ARGS, ARG, "Armor Health")}kJ
+	PRINTFORM %"Armor Coverage",20,LEFT% 
+	LOCALS =
+	FOR LOCAL,0, 100
+	nBdyPart = TOINT(SPLIT_SINGLE(GET_STR(MASTER, ARGS, ARG, "Armor Coverage"), LOCAL, "/"))
+	IF !nBdyPart
+		IF LOCAL == 0
+			LOCALS '= "None, "
+		ENDIF
+		PRINTFORM %SUBSTRING(LOCALS,0,STRLENS(LOCALS)-2)%
+		BREAK
+	ENDIF
+	LOCALS += @"%BDY_PART_NAME(nBdyPart)%, "
+	NEXT
+	PRINTL
+ENDIF
+IF nGroup == 6
+	PRINTFORM %"Underwear Type",20,LEFT% 
+	PRINTFORML %DS_STORAGE:2% %DS_STORAGE:0%
+ELSEIF clothing_UndiesDiscreteness(ARGS, ARG, MASTER) < 99
+	;showcases what underwear it can hide
+	PRINTFORM %"Panty Concealment",20,LEFT% 
+	PRINTFORML %TOSTR_UNDERWEARCONCEAL(clothing_UndiesDiscreteness(ARGS, ARG, MASTER))%
+ENDIF
+;PRINTL
+PRINTFORML ───────────────────────────────
+;sample
+IF nGroup == 6
+	IF DS_STORAGE:0 == "Diaper"
+		PRINTFORM %"Closures",20,LEFT%
+		IF STRFIND(DS_STORAGE:1,"pinned/") > -1
+			T = 2
+			PRINTFORML %NUM_COUNT(2,,1)% 재결합 가능한 경화강 안전 %PLURALIZER("pin",T)% 쪽당
+		ELSEIF STRFIND(DS_STORAGE:1,"belted/") > -1
+			PRINTFORML 부드러운 신축성 고리 및 루프 벨트
+		ELSE
+			T = STRFIND(DS_STORAGE:1,"four-taped/") > -1 ? 2 # 1
+			PRINTFORML %NUM_COUNT(T,,1)% %COND_STR("strong and wide ",!GROUPMATCH(DS_STORAGE:2,"Thin","Average",""))%%COND_STR("refastenable ",STRFIND(DS_STORAGE:1,"refastenable/") > -1)%테이프 %PLURALIZER("tab",T)% 쪽당
+		ENDIF
+	ENDIF
+	;PRINTFORML Comfort:  Soft and comfortable
+	PRINTFORML %"Waist band",20,LEFT% 앞면과 뒷면 스트레치 허리띠
+	IF IsPadded(MASTER,,ARG)
+		IF STRFIND(DS_STORAGE:1,"very tall leak guards/") > -1
+			LOCALS = Very tall standing leg cuffs
+		ELSEIF STRFIND(DS_STORAGE:1,"tall leak guards/") > -1
+			LOCALS = Tall standing leg cuffs
+		ELSEIF STRFIND(DS_STORAGE:1,"leak guards/") > -1
+			LOCALS '= "Standing leg cuffs"
+		ELSE
+			LOCALS '= "None"
+		ENDIF
+		PRINTFORML %"Leg gathers",20,LEFT% %LOCALS%
+		PRINTFORML %"Backing",20,LEFT%\@ STRFIND(DS_STORAGE:1,"plastic-back/") > -1 ? 강한 플라스틱 뒷면 # 천 뒷면 \@
+	ENDIF
+	PRINTFORML %"Printing",20,LEFT% 디자인에 의존했다
+	IF PANTY_HAS_WETNESS_INDICATOR(ARG)
+		HTML_PRINT @"%"Wetness Indicator",20,LEFT% %ACCIDENT_WETNESS_INDICATOR(MASTER,1,2,0)%     %ACCIDENT_WETNESS_INDICATOR(MASTER,1,2,20)%     %ACCIDENT_WETNESS_INDICATOR(MASTER,1,2,50)%     %ACCIDENT_WETNESS_INDICATOR(MASTER,1,2,80)%     %ACCIDENT_WETNESS_INDICATOR(MASTER,1,2,100)%"
+	ENDIF
+	IF GET_INT(MASTER, ARGS, ARG, "Youjutsu Soil/Liquid/0/Spell") || GET_INT(MASTER, ARGS, ARG, "Youjutsu Soil/Solid/0/Spell")
+		HTML_PRINT @"%"Magic Attunement",20,LEFT%"
+		;--20%--> Agi --40%--> Agilao --200%--> Agidyne --300%--> Agibarion --600%--> Inferno of God
+		IF GET_INT(MASTER, ARGS, ARG, "Youjutsu Soil/Liquid/0/Spell")
+			LOCALS '= @"%"・Liquid",20,LEFT%"
+			FOR LOCAL,0,10
+			IF GET_INT(MASTER, ARGS, ARG, @"Youjutsu Soil/Liquid/{LOCAL}/Level") > 0
+				LOCALS += @"--{GET_INT(MASTER, ARGS, ARG, @"Youjutsu Soil/Liquid/{LOCAL}/Level")}\%--> "
+			ENDIF
+			IF GET_INT(MASTER, ARGS, ARG, @"Youjutsu Soil/Liquid/{LOCAL}/Spell") > 0
+				TRYCALLFORM NAS_ESP_{GET_INT(MASTER, ARGS, ARG, @"유주술 토양/액체/{LOCAL}/스펠")/100}_{GET_INT(MASTER, ARGS, ARG, @"유술 토양/액체/{LOCAL}/주문")%100}
+				LOCALS += @"%NAS_ESP_NAME% "
+			ENDIF
+			NEXT
+			HTML_PRINT LOCALS
+		ENDIF
+		IF GET_INT(MASTER, ARGS, ARG, "Youjutsu Soil/Solid/0/Spell")
+			LOCALS '= @"%"・Solid",20,LEFT%"
+			FOR LOCAL,0,10
+			IF GET_INT(MASTER, ARGS, ARG, @"Youjutsu Soil/Solid/{LOCAL}/Level") > 0
+				LOCALS += @"--{GET_INT(MASTER, ARGS, ARG, @"주술의 토양/고체/{LOCAL}/레벨")}\%--> "
+			ENDIF
+			IF GET_INT(MASTER, ARGS, ARG, @"Youjutsu Soil/Solid/{LOCAL}/Spell") > 0
+				TRYCALLFORM NAS_ESP_{GET_INT(MASTER, ARGS, ARG, @"육술 토양/고체/{LOCAL}/주문")/100}_{GET_INT(MASTER, ARGS, ARG, @"육술 토양/고체/{LOCAL}/주문")%100}
+				LOCALS += @"%NAS_ESP_NAME% "
+			ENDIF
+			NEXT
+			HTML_PRINT LOCALS
+		ENDIF
+	ENDIF
+	PRINTFORML ───────────────────────────────
+ENDIF
+
+@ClothingBuyPiece(ARG, nGroup, ARGS)
+#DIM nGroup
+#DIM nPrice
+IF GET_INT(MASTER,CLOTHES_PARTS_TO_CATEGORY(EQUIPNAME:(nGroup)),ARG,"Quest Only")
+	PRINTFORMW 이 의상만 잠금 해제하기에는 요구사항이 부족합니다.
+	RETURN
+ELSEIF LegendModeStage < GET_INT(MASTER,CLOTHES_PARTS_TO_CATEGORY(EQUIPNAME:(nGroup)),ARG,"Grade") && SaveIsEZB
+	PRINTFORML 이것은 %LoG_StageName(GET_INT(MASTER,CLOTHES_PARTS_TO_CATEGORY(EQUIPNAME:(nGroup)),ARG,"Grade"))% 의 옷이다!
+	PRINTFORMW 당신은 현재 %LoG_StageName(LegendModeStage)%에만 있다.
+	RETURN
+ENDIF
+nPrice = ClothPrice(ARGS,ARG,MASTER)
+SIF !nPrice
+	nPrice = 250
+CALL ClothingDescription(ARG, nGroup, ARGS)
+DRAWLINE
+IF BoughtClothing:nGroup:ARG
+	PRINTFORML 이미 이것을 가지고 있다.
+	WAIT
+	RETURN
+ENDIF
+PRINTFORML %CLOTHES_TR(CLOTHNAME(nGroup, ARG))%를 구매한다?
+CALL PAY_YEN_OR_CM(nPrice,nPrice/CHARISMA_NOW())
+IF RESULT
+	BoughtClothing:nGroup:ARG ++
+	PRINTFORMW %CLOTHES_TR(CLOTHNAME(nGroup, ARG))%!을 구매했다.
+	RETURN
+ELSE
+	RETURN
+ENDIF
+;-------------------------------------------------
+;実行可能判定
+;-------------------------------------------------
+;八百屋
+
+@ADD_CUSTOM_COM_ABLE635
+;一括管理
+SIF GLOBAL_COMABLE(622)
+	RETURN RESULT
+;八百屋ではない場所
+SIF !CLOTHING_STORE(CFLAG:MASTER:現在位置)
+	RETURN 0
+;睡眠中
+SIF CFLAG:睡眠
+	RETURN 0
+;時間停止中
+SIF FLAG:70 && !MAXBASE:TARGET:TSP
+	RETURN 0
+RETURN 1
+
+@CLOTHING_STORE(ARG)
+#FUNCTION
+;八百屋
+SIF ARG == GET_MAP_REPLACEMENT(227)
+	RETURNF 1
+SIF ARG == GET_MAP_REPLACEMENT(1013)
+	RETURNF 1
+SIF ARG == GET_MAP_REPLACEMENT(1119)
+	RETURNF 1
+SIF GETBIT(HOME_CUSTOM_ROOM(ARG),1)
+	RETURNF 1
+RETURNF 0
+
+@CLOTHES_ID_TO_STR(ARG)
+#FUNCTIONS
+SELECTCASE ARG
+	CASE 2
+		RETURNF "頭装備"
+	CASE 3
+		RETURNF "靴"
+	CASE 4
+		RETURNF "靴下"
+	CASE 5
+		RETURNF "下半身下着_ずらし不可"
+	CASE 6
+		RETURNF "下半身下着_ずらし可能"
+	CASE 7
+		RETURNF "上半身下着_はだけ不可"
+	CASE 8
+		RETURNF "上半身下着_はだけ可能"
+	CASE 9
+		RETURNF "レオタード"
+	CASE 10
+		RETURNF "ボディースーツ"
+	CASE 11
+		RETURNF "ズボン"
+	CASE 12
+		;RETURNF "下半身上着"
+	CASE 13
+		RETURNF "ワンピース"
+	CASE 14
+		RETURNF "着物"
+	CASE 15
+		RETURNF "スカート"
+	CASE 16
+		RETURNF "上半身上着_はだけ不可"
+	CASE 17
+		RETURNF "上半身上着_はだけ可能"
+	CASE 18
+		RETURNF "外衣"
+	CASE 19, 20, 21
+		RETURNF "その他衣装"
+	CASE 22
+		RETURNF "腕部装束"
+	CASE 23
+		RETURNF "Back"
+ENDSELECT

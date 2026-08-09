@@ -1,0 +1,210 @@
+﻿; Modular ERB: 物件関連/00神社/MAP_COMM_00.ERB
+;--------------------------------------------------
+;地点名変更関数
+;--------------------------------------------------
+
+@MAP_PLACENAME_0(ARG, ARG:1) ;custom code
+#FUNCTIONS
+IF GET_MAPID(ARG) == MAIN_MAP
+	SELECTCASE ARG
+		CASE P35三妖精の家・地下室 ;qol custom code
+			IF CFLAG:MASTER:初期位置 == ARG
+				RETURNF "Three Fairies House・" + CALLNAME:MASTER + "'s Room"
+			ELSE
+				RETURNF "Three Fairies House・Basement"
+			ENDIF
+		CASE P51夢幻遺跡・倉庫 ;qol custom code
+			IF CFLAG:MASTER:初期位置 == ARG
+				RETURNF "Fantasy Ruins・" + CALLNAME:MASTER + "'s Room"
+			ELSE
+				RETURNF "Fantasy Ruins・Warehouse"
+			ENDIF
+			;---------------------------
+		CASE P53納戸
+			IF CFLAG:MASTER:初期位置 == ARG
+				RETURNF CALLNAME:MASTER + "'s Back Room"
+			ELSE
+				RETURNF "Back Room"
+			ENDIF
+		CASE SUMIKOMI_ROOM
+			IF FLAG:住み込みキャラ
+				RETURNF CALLNAME:(FLAG:住み込みキャラ) + "'s Worn-out Hut"
+			ELSE
+				RETURNF "Worn-out Hut"
+			ENDIF
+		CASE MINROOM() TO (MAXROOM - 1)
+			RETURNF ARG:1 ? STR:(ARG + 8000) # STR_TR(ARG + 8000) ;custom code
+		CASE OMANEKIBEYA()
+			RETURNF OMANEKI_PLACE()
+		CASE SUKIMA()
+			RETURNF "Gap Space"
+		CASE MAXROOM
+			RETURNF "Beyond the Approach"
+		CASEELSE
+			RETURNF "Unknown"
+	ENDSELECT
+ELSE
+	RETURNF "Beyond the Shrine"
+ENDIF
+;--------------------------------------------------
+;場所ARGがどのエリアにあるか
+;表示するマップの番号と連動（TFLAG:マップ切り替え）
+;ARG     場所ID
+;--------------------------------------------------
+
+@MAP_AREASELECT_0(ARG)
+#FUNCTION
+SELECTCASE ARG
+	;三妖精の家
+	CASE P27三妖精の家・広間 TO P35三妖精の家・地下室
+		RETURNF 3
+		;夢幻遺跡
+	CASE P36夢幻遺跡前 TO P51夢幻遺跡・倉庫
+		RETURNF 2
+		;神社周辺
+	CASE P22参道 TO P25鎮守の森
+		RETURNF 4
+		;博麗神社
+	CASEELSE
+		RETURNF 1
+ENDSELECT
+;--------------------------------------------------
+;内部構造がある場所の内部の判定
+;TFLAG:マップ切り替え  内部察知が必要なマップ番号
+;                P_ID  表示ボタンの場所ID
+;                Q_ID  判定する内部の場所ID,必ずP_IDと一致した数値も含める
+;--------------------------------------------------
+
+@GETMAP_BUILDING_0(P_ID, Q_ID)
+#FUNCTION
+#DIM P_ID
+#DIM Q_ID
+IF TFLAG:マップ切り替え == 4
+	SELECTCASE P_ID
+		;三妖精の家
+		CASE P27三妖精の家・広間
+			SELECTCASE Q_ID
+				CASE P27三妖精の家・広間 TO P35三妖精の家・地下室
+					RETURNF 1
+			ENDSELECT
+			;夢幻遺跡
+		CASE P36夢幻遺跡前
+			SELECTCASE Q_ID
+				CASE P36夢幻遺跡前 TO P51夢幻遺跡・倉庫
+					RETURNF 1
+			ENDSELECT
+	ENDSELECT
+ENDIF
+RETURNF 0
+;--------------------------------------------------
+;移動制限設定
+;ARG    場所ID
+;CHARA  移動するキャラID
+;RETURNF 1=移動できる,0=移動できない
+;TFLAG:移動不能メッセージ   ↓の@MAP_CANNOT_WORD用の設定
+;--------------------------------------------------
+
+@MAP_CAN_MOVE_0(ARG, CHARA)
+#FUNCTION
+#DIM CHARA
+SELECTCASE ARG
+	;虫かご
+	CASE P54小人の虫かご
+		;小人じゃないと入れない
+		IF TALENT:CHARA:体型 > -5
+			TFLAG:移動不能メッセージ = 2
+			RETURNF 0
+		ENDIF
+		;三妖精ハウス
+	CASE P27三妖精の家・広間 TO P35三妖精の家・地下室
+		;妖精なら入れる
+		SIF TALENT:CHARA:妖精
+			RETURNF 1
+		;中からは動ける
+		SIF INRANGE(CFLAG:CHARA:現在位置, P27三妖精の家・広間, P35三妖精の家・地下室)
+			RETURNF 1
+		;あなたは恋慕か教養LV1以上で入れる
+		IF CHARA == MASTER
+			IF TALENT:[[サニー]]:恋慕 || TALENT:[[ルナ]]:恋慕 || TALENT:[[スター]]:恋慕 || ABL:CHARA:教養 >= 1
+				RETURNF 1
+			ELSEIF INRANGE(CFLAG:MASTER:初期位置, P27三妖精の家・広間, P35三妖精の家・地下室)
+				RETURNF 1
+			ELSE
+				TFLAG:移動不能メッセージ = 1
+				RETURNF 0
+			ENDIF
+			;それ以外は入れない
+		ELSE
+			RETURNF 0
+		ENDIF
+		;夢幻遺跡,あなた以外は教養LV3が必要
+	CASE P37夢幻遺跡・一階通路 TO P51夢幻遺跡・倉庫
+		;中からは動ける
+		IF INRANGE(CFLAG:CHARA:現在位置, P37夢幻遺跡・一階通路, P51夢幻遺跡・倉庫)
+			RETURNF 1
+		ELSEIF ABL:CHARA:教養 <= 2 && CHARA != MASTER
+			RETURNF 0
+		ENDIF
+ENDSELECT
+RETURNF 1
+;--------------------------------------------------
+;移動不能時に表示されるメッセージ
+;--------------------------------------------------
+
+@MAP_CANNOT_WORD_0(ARG)
+SELECTCASE TFLAG:移動不能メッセージ
+	CASE 1
+		PRINTFORMW 너는 그것을 찾기엔 너무 경험이 부족해...
+	CASE 2
+		PRINTFORMW 들어갈 수 없다.
+ENDSELECT
+CLEARLINE 2
+REUSELASTLINE
+;-----------------------------------------
+;拠点専用の情景描写
+;WAITはかけないように
+;-----------------------------------------
+
+@MAP_UNIQUEMESSAGE_0
+SELECTCASE CFLAG:MASTER:現在位置
+	CASEELSE
+ENDSELECT
+;-----------------------------------------
+;非自宅時に差し替える場所IDを返す関数
+;ARG,対象ID
+;RETURNF,差し替え済み対象ID
+;-----------------------------------------
+
+@MAP_SEARCH_REPLACEMENT_0(ARG)
+#FUNCTION
+SELECTCASE ARG
+	CASE P1鳥居, P22参道
+		RETURNF 桜並木の鳥居
+	CASE P2境内, P5手水舎, P6物置, P20本殿の裏, P21守矢神社分社
+		RETURNF 神社境内
+		;賽銭箱,本堂
+	CASE P3賽銭箱, P4本堂
+		RETURNF 神社本堂
+		;三妖精の家
+	CASE P27三妖精の家・広間 TO P35三妖精の家・地下室
+		RETURNF 妖精の大樹
+		;夢幻遺跡
+	CASE P36夢幻遺跡前 TO P51夢幻遺跡・倉庫
+		RETURNF 夢幻遺跡
+	CASE P59Graveyard
+		RETURNF HakureiGraveyard
+	CASEELSE
+		RETURNF 神社縁側
+ENDSELECT
+RETURNF 0
+;--------------------------------------------------
+;マップの紹介文
+;--------------------------------------------------
+
+@マップ紹介_0
+;とりあえず5行
+PRINTFORML 원본 에라토호TW 지도이다. 많은 사람들이 그것과 연결되어 있어 꽤 많은 사람이 이곳에 산다.
+PRINTFORML 신사 본체 외에도 세 요정이 사는 나무와 %CALLNAME:9%와 %CALLNAME:8%가 사는 꿈의 폐허도 있다.
+PRINTFORML 많은 기본 시설이 존재하며, 많은 캐릭터들이 업무 때문에 자주 방문한다.
+PRINTFORML 게다가 충분한 지식 없이는 세 요정의 나무와 꿈의 폐허에 들어갈 수 없다.
+PRINTFORML 또한 분사를 통해 %nameArray:33:na_LastName% 신사로 워프할 수 있는 능력도 있다.

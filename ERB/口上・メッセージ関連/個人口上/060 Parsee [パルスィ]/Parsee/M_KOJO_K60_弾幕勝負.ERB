@@ -1,0 +1,540 @@
+﻿; Modular ERB: 個人口上/060 Parsee [パルスィ]/Parsee/M_KOJO_K60_弾幕勝負.ERB
+;==================================================
+;弾幕勝負
+;==================================================
+
+@M_KOJO_MESSAGE_COM_K60_DANMAKU(ARGS, 相手残機)
+#DIM 相手残機
+;全体の流れ
+;①【戦闘前】→②ダイスロールとプレイヤー選択肢、ハンデをつけた場合は【ハンデ口上】→③対応スキルが発動した場合【スキル口上】→④被弾判定、キャラが被弾したなら【被弾口上】→
+;どちらかの残機が0になっていなければ②に戻る→⑤【戦闘後口上】
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	SIF FLAG:口上色
+		TRYCALLFORM M_KOJO_COLOR_K{NO:TARGET}
+	;-------------------------------------------------
+	;小分岐
+	;-------------------------------------------------
+	;The larger the handicap, the more of a disadvantage the player is at
+	;Negative numbers mean the player has an advantage
+	;戦闘前
+	;HANDICAP_FIXED = 0
+	;HANDICAP_RAND = 0
+	;ハンデをつけることができ、数値が大きいほどあなたが不利になる　数値が負ならあなたが有利に
+	;キャラの能力に関わらずクッソ強くしたり弱くしたりできる
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	;TODO: balance this
+	;Parsee gets stronger based on her jealousy, or if she's stronger than you, the jealousy produced from the difference between your and her combat skill
+	IF LOCAL:1 && ARGS == "戦闘前"
+		HANDICAP_FIXED = 0
+		HANDICAP_RAND = 0
+		LOCAL:10 = ABL:MASTER:戦闘能力 - ABL:TARGET:戦闘能力
+		IF LOCAL:10 < 0
+			LOCAL:10 *= -2
+		ELSE
+			LOCAL:10 = K60_JEALOUSY()
+			SELECTCASE K60_ATTITUDE()
+				CASE 0
+					LOCAL:10 /= 2
+				CASE 1
+					SIF TALENT:TARGET:恋人
+						LOCAL:10 /= 2
+				CASE 2,3
+					LOCAL:10 *= 2
+			ENDSELECT
+		ENDIF
+		HANDICAP_FIXED = LOCAL:10
+		HANDICAP_RAND = 100
+		IF MARK:TARGET:反発刻印 > 0
+			SELECTCASE K60_ATTITUDE()
+				CASE 0, 1
+					PRINTFORMW 「A 단마쿠 배틀? 물론 좋아.」
+					PRINTFORMDW 파르시는 어색하게 미소 지었다.
+					LOCALS:0 = 
+					SELECTCASE MARK:TARGET:反発刻印
+						CASE 1
+							LOCALS:0 = 약간의 십자가와 함께
+						CASE 2
+							LOCALS:0 = 화가 난
+						CASE 3
+							LOCALS:0 = 극도로 화가 난 상태로
+					ENDSELECT
+					PRINTFORMW 「나는 여전히 너를 %LOCALS:0%로 생각한다.」
+					PRINTFORMW 「그냥 총으로 끝내고 지난 일은 잊어버리자.」
+					HANDICAP_FIXED = HANDICAP_FIXED * (2 * MARK:TARGET:反発刻印)
+				CASE 2, 3
+					PRINTFORMW 「A 단막 배틀? 물론이지, 네가 나한테 한 거 뒤에 제대로 두들겨줄 테니까.」
+					PRINTFORMW 「하지만 경고해두지... 난 절대로 봐주지 않을 거야.」
+					PRINTFORMDW 파르시는 차갑게 미소 지었다.
+					HANDICAP_FIXED = HANDICAP_FIXED * (3 * MARK:TARGET:反発刻印)
+			ENDSELECT
+		ELSE
+			SELECTCASE K60_ATTITUDE()
+				;Loving
+				CASE 0
+					PRINTFORML 「A 단마쿠 배틀? 물론 재밌을 것 같네.」
+					PRINTFORMW 「하지만 내가 너를 좋아한다고 해서 쉽게 봐줄 거라고 기대하진 마!」
+					;Nice, horny
+				CASE 1
+					PRINTFORML 「A 단마쿠 배틀? 나한테는 괜찮아.」
+					PRINTFORML 「하지만 내기라도 걸면 싸움이 훨씬 더 재미있지 않겠어?」
+					;yes, this is a joke about eraTohoReverse
+					PRINTFORML 「음... 내가 이기면 네가 내 발을 핥아야 해. 그리고 만약 네가-」
+					PRINTFORMW 「뭐라고? 정말 지금, 발 핥는 게 너한테 그렇게 역겨워? 재미없네...」
+					;Grumpy tsundere
+				CASE 2
+					IF ABL:MASTER:戦闘能力 > ABL:TARGET:戦闘能力
+						$PARSEE_DANMAKU_CHALLENGE_MASTER_IS_STRONGER
+						CALL M_KOJO_COLOR_K60_JEALOUS
+						PRINTFORMW 「단막인가? 너보다 약한 자들을 싸우는 데 즐거움을 느끼는가?」
+						PRINTFORMDW 파씨가 %PARSE("you")%를 향해 비웃었다.
+						PRINTFORMW 「음, 네게 예상치 못한 일이 생길지도 모르지...」
+						CALL M_KOJO_COLOR_K60
+					ELSEIF ABL:MASTER:戦闘能力 < ABL:TARGET:戦闘能力
+						PRINTFORMW 「단마쿠라고? 하지만 난 너보다 강해터지지 않았나.」
+						PRINTFORMDW 파르시가 %PARSE("you")%에게 얼굴을 찡그렸다.
+						CALL M_KOJO_COLOR_K60_JEALOUS
+						PRINTFORMW 「그럼에도 불구하고, 당신은 나에게 도전하는군요... 당신의 담력이 부럽습니다.」
+						CALL M_KOJO_COLOR_K60
+					ELSE
+						PRINTFORMW 「단막? 받아들이지.」
+						PRINTFORMW 「흠... 서로 비등한 것 같군.」
+						PRINTFORMW 「그럼 최강자가 이기길 바라네!」
+						PRINTFORMDW 파르시는 %PARSE("you")%을 노려본다.
+						CALL M_KOJO_COLOR_K60_JEALOUS
+						PRINTFORMW 「아마 네 차례겠지... 이겨도 잘난 체하지 마, 알았어?」
+						CALL M_KOJO_COLOR_K60
+					ENDIF
+					;Fake nice
+				CASE 3
+					IF ABL:MASTER:戦闘能力 > ABL:TARGET:戦闘能力
+						GOTO PARSEE_DANMAKU_CHALLENGE_MASTER_IS_STRONGER
+					ELSEIF ABL:MASTER:戦闘能力 < ABL:TARGET:戦闘能力
+						PRINTFORMW 「단마쿠? 하지만 당신은 나보다 약해터라.」
+						PRINTFORMDW 파르시는 %PARSE("you")%을 보며 미소 지었다.
+						CALL M_KOJO_COLOR_K60_JEALOUS
+						PRINTFORMW 「그럼에도 불구하고, 당신은 나에게 도전하는군요... 당신의 담력이 부럽습니다.」
+						CALL M_KOJO_COLOR_K60
+					ELSE
+						PRINTFORMW 「단막? 받아들이겠어.」
+						PRINTFORMW 「흠... 서로 대등한 것 같네.」
+						PRINTFORMW 「그럼 최고의 사람이 이기길 바라네!」
+					ENDIF
+			ENDSELECT
+		ENDIF
+		PRINTFORMW
+		PRINTFORMDL 파르시가 공중에 떠 있고 %HIS_HER(TARGET)%의 눈은 그 어느 때보다 더 녹색으로 빛난다...
+		PRINTFORML
+		PRINTDATAW
+			DATAFORM 「내 저주받은 힘을 보여주마!」
+			DATAFORM 「공포의 요괴가 가진 힘을 경험해라!」
+			DATAFORM 「내가 던전의 보스는 아닐지라도, 아직 싸울 수는 있다!」
+			DATAFORM 「재미있게 해주는 편이 좋을 거다!」
+			;From LostWord
+			DATAFORM 「이게 당신에게 맞을 거라고 추천하지 않아요!」
+		ENDDATA
+		PRINTFORML
+		RETURN 0
+	ENDIF
+	;-------------------------------------------------
+	;Handicap (doesn't apply if the character's handicap is 0)
+	;ハンデ
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARGS == "ハンデ"
+		;ハンデつけなかったら表示されないので無記入でよい
+		PRINTFORML
+		IF ABL:MASTER:戦闘能力 - ABL:TARGET:戦闘能力 > 0
+			SELECTCASE K60_ATTITUDE()
+				CASE 0, 1
+					PRINTFORMDL 파시가 %HIS_HER(TARGET)%의 얼굴에 희미한 미소를 띠고 %PARSE("your")%을 바라본다.
+					PRINTFORMDW %HE_SHE(TARGET,1)%는 %PARSE("your")%의 단마쿠 기술을 약간 질투하는 듯하다...
+				CASE 2
+					PRINTFORMDL 파시가 %PARSE("you")%과 눈이 마주치고 %PARSE("you")%을 노려본다.
+					PRINTFORMDW %HE_SHE(TARGET,1)%은(는) %PARSE("your")%의 단마쿠 기술을 질투한다...
+				CASE 3
+					PRINTFORMDL 파시가 %PARSE("your")%의 눈을 응시하며, %HIS_HER(TARGET)%의 얼굴에 차가운 미소를 짓는다.
+					PRINTFORMDW %HE_SHE(TARGET,1)%는 %PARSE("your")%의 단마쿠 기술을 질투하는 듯하다...
+			ENDSELECT
+		ELSE
+			SELECTCASE K60_ATTITUDE()
+				CASE 0, 1
+					PRINTFORMDL 파시가 %HIS_HER(TARGET)%의 얼굴에 희미한 미소를 띠고 %PARSE("your")% 눈을 응시했다.
+				CASE 2
+					PRINTFORMDL 파시가 %PARSE("you")%과 눈을 마주치고 %PARSE("you")%을 노려본다.
+				CASE 3
+					PRINTFORMDL 파시가 %HIS_HER(TARGET)%의 얼굴에 차가운 미소를 띤 채 %PARSE("your")%을 응시했다.
+			ENDSELECT
+			PRINTFORMDW %PARSE("You feel")% %HIS_HER(TARGET)%의 단막 스킬에 조금 질투했다.
+		ENDIF
+		PRINTFORML
+		RETURN 0
+	ENDIF
+	;-------------------------------------------------
+	;戦闘中TARGET被弾時口上
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARGS == "被弾"
+		;別に一律で「やられたー」だけでもいいよ
+		SELECTCASE 相手残機
+			;残り残機3が表示されるのは【洽覧深識】持ちのみ
+			CASE 2
+				PRINTFORML 「음... 나쁘지 않네.」
+				SELECTCASE K60_ATTITUDE()
+					CASE 2, 3
+						CALL M_KOJO_COLOR_K60_JEALOUS
+						PRINTFORML 「너의 강함이 부럽구나...」
+						CALL M_KOJO_COLOR_K60
+				ENDSELECT
+				PRINTFORMW 「이걸로 어때?!」
+				IF CFLAG:[[パルスィ]]:K60EN_SEEN_GEM == 0
+					PRINTFORMDW 질투의 징조 「초록 눈 괴물」!!!
+					CFLAG:[[パルスィ]]:K60EN_SEEN_GEM = 1
+				ELSEIF CFLAG:[[パルスィ]]:K60EN_SEEN_TCS == 0
+					PRINTFORMDW ――혀 자르는 참새 "겸손한 자와 부유한 자에 대한 증오"!!!
+					CFLAG:[[パルスィ]]:K60EN_SEEN_TCS = 1
+				ELSE
+					PRINTDATADW
+						DATAFORM ――질투의 징표 「초록 눈 괴물」!!!
+						DATAFORM ――하나사카 할아버지 「친절하고 사랑스러운 것에 대한 질투」!!!
+						DATAFORM ――혀 자른 참새 「겸손함과 부에 대한 증오」!!!
+						DATAFORM ――악의의 징표 「깊은 밤 신사 방문」!!!
+						DATAFORM ――질투 「질투 폭격기」!!!
+						DATAFORM ――원한의 예술 「돌아오는 원한」!!!
+						;from The Outsider Who Loved Gensokyo
+						DATAFORM ――「악의적인 휘두름」!!!
+						DATAFORM ――「짓누르는 원한」!!!
+					ENDDATA
+				ENDIF
+			CASE 1
+				SELECTCASE K60_ATTITUDE()
+					CASE 0, 1
+						PRINTFORMDW 파시가 %PARSE("you")% 부러운 듯 바라보지만 잠시 뿐이었다.
+						PRINTFORMW 「좋아... 전력을 다할 시간이야!」
+					CASE 2
+						PRINTFORMDW 파씨는 %HIS_HER(TARGET)%의 이를 갈았다.
+						CALL M_KOJO_COLOR_K60_JEALOUS
+						PRINTDATADW
+							DATAFORM 「안 돼... 지지 않을 거야! 너한테는 안 당해!」
+							;From LostWord
+							DATAFORM 「후회가 너무 많아! 이렇게 쓰러질 순 없어!」
+						ENDDATA
+						CALL M_KOJO_COLOR_K60
+					CASE 3
+						PRINTFORMDW 파르시는 %PARSE("you")%를 부러운 듯 바라본다.
+						CALL M_KOJO_COLOR_K60_JEALOUS
+						PRINTFORMW 「좋아... 전력을 다할 시간이야!」
+						CALL M_KOJO_COLOR_K60
+				ENDSELECT
+				PRINTFORMW 「이걸로 어때?!」
+				IF CFLAG:[[パルスィ]]:K60EN_SEEN_GEM == 0
+					PRINTFORMDW ――질투 「녹색 눈의 보이지 않는 괴물」!!!
+					CFLAG:[[パルスィ]]:K60EN_SEEN_GEM = 1
+				ELSEIF CFLAG:[[パルスィ]]:K60EN_SEEN_TCS == 0
+					PRINTFORMDW ――혀 자르기 참새 "큰 상자와 작은 상자"!!!
+					CFLAG:[[パルスィ]]:K60EN_SEEN_TCS = 1
+				ELSE
+					PRINTDATADW
+						DATAFORM ――질투 「녹색 눈의 보이지 않는 괴물」!!!
+						DATAFORM ――하나사카 할아버지 「시로의 재」!!!
+						DATAFORM ――혀 잘린 참새 「큰 상자와 작은 상자」!!!
+						DATAFORM ――악의 징표 「밤중에 신사에 방문한 일곱 번째 날」!!!
+						DATAFORM ――질투 「질투 폭격기」!!!
+						DATAFORM ――원한 예술 「돌아오는 원한」!!!
+						;from Touhou LostWord
+						DATAFORM — 히데키와 오니기리 「히게키리 슬래시」!!!
+						;from The Outsider Who Loved Gensokyo
+						DATAFORM ――「호로우 아나테마」!!!
+						DATAFORM ――「스파이트」!!!
+						;from Fantasy Maiden Wars
+						DATAFORM ――「격렬한 질투의 공주」!!!
+					ENDDATA
+				ENDIF
+			CASE 0
+				SELECTCASE K60_ATTITUDE()
+					CASE 0, 1
+						PRINTFORMW 「보아하니 당신은 하시히메의 마음을 얻는 것만큼 단마쿠에도 능하군요...」
+					CASE 2
+						CALL M_KOJO_COLOR_K60_VERY_JEALOUS
+						PRINTFORMW 「이걸 예상했어야 했는데...」
+						PRINTFORMDW 파르시의 눈은 이제 질투로 불타고 있다.
+						CALL M_KOJO_COLOR_K60
+					CASE 3
+						CALL M_KOJO_COLOR_K60_JEALOUS
+						PRINTFORMW 「당신이 이긴 것 같군요...」
+						CALL M_KOJO_COLOR_K60
+						PRINTFORMDW 파르시는 %PARSE("you")%를 부러운 듯 바라본다.
+				ENDSELECT
+		ENDSELECT
+	ENDIF
+	;-------------------------------------------------
+	;After the fight
+	;The case statement is for the number of lives the character has remaining
+	;戦闘後
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARGS == "戦闘後"
+		PRINTFORML
+		;Case 4 only applies to 2hus with【Deep Knowledge Of Life】, which Parsee doesn't have
+		;Cases 3-1 are for when you lose, Case 0 is for when you win
+		;残り残機4が表示されうるのは【洽覧深識】持ちのみ
+		;残機が1以上ならあなたの負け、0の場合はあなたの勝利
+		IF MARK:TARGET:反発刻印 > 0
+			IF 相手残機 > 0
+				SELECTCASE K60_ATTITUDE()
+					CASE 0, 1
+						PRINTFORMW 「좋아, 이제 끝났어.」
+						PRINTFORMDW 파르씨가 미소를 지으며 당신의 손을 잡았다.
+						CALL K60_LOSE_HATE_MARKS(1)
+					CASE 2, 3
+						PRINTFORMW 「아... 기분 좋았다. 이제 동점이다.」
+						PRINTFORMDW 파씨는 미소 지으며 당신의 손을 잡는다.
+						CALL K60_LOSE_HATE_MARKS(0)
+				ENDSELECT
+			ELSE
+				CALL M_KOJO_COLOR_K60_VERY_JEALOUS
+				PRINTFORMW 「최선을 다해도 당신을 이길 수 없었어요...」
+				CALL M_KOJO_COLOR_K60
+				PRINTFORMDW 파씨가 당신을 노려본다.
+				PRINTFORMW 「이건 끝나지 않았어, %CALLNAME:MASTER%. 오히려 나는 당신에게 더 짜증이 나거든.」
+				CALL K60_GET_ANGRY(MARK:TARGET:反発刻印 + 1)
+			ENDIF
+		ELSE
+			;Player is stronger or equally strong
+			IF ABL:MASTER:戦闘能力 >= ABL:TARGET:戦闘能力
+				SELECTCASE 相手残機
+					CASE 3
+						SELECTCASE K60_ATTITUDE()
+							CASE 0
+								PRINTFORMW 「상처 하나 없네... 이봐, %K60_MASTER()%이! 나한테 봐주지 말라고 했잖아!」
+							CASE 1
+								PRINTFORMW 「상처 하나 없었나 보네... 지난밤의 만남으로 너무 지친 거 아닐까?」
+							CASE 2
+								PRINTFORML 「상처 하나 없네... 나한테 아부하려고 싸움을 피한 거야?」
+								PRINTFORMW 「효과 없을 거다.」
+							CASE 3
+								PRINTFORML 「상처조차 없네... 혹시 다른 곳에 신경을 쓴 건가?」
+								PRINTFORMW 「아니면 그저 운이 없었던 걸까? 뭐, 이런 일은 생기는 법이지.」
+						ENDSELECT
+					CASE 2
+						SELECTCASE K60_ATTITUDE()
+							;Loving
+							CASE 0
+								PRINTFORMW 「한 번이나 나를 때릴 수 있었군... 나한테 봐주진 않았기를 바란다.」
+								;Nice, horny
+							CASE 1
+								PRINTFORML 「한 번은 나에게 성공했지... 혹시 내 매력에 정신 팔린 건가?」
+								PRINTFORMW 「네 총알이 아니라 네 몸에 집중하기 힘들었다는 걸 알아...」
+								;Grumpy tsundere
+							CASE 2
+								PRINTFORML 「나를 한 번 때려서 네가 싸움을 포기했다고 생각하게 만들려고 했니?」
+								PRINTFORMW 「나는 바보가 아니야, %K60_MASTER()%... 하지만 너는 그런 것 같네.」
+								;Fake nice
+							CASE 3
+								PRINTFORMW 「그걸 내가 이기다니 놀랍네. 운이 좋았다고 생각한다.」
+								PRINTFORMDW 파씨가 %PARSE("you")%에게 고개를 숙였다.
+						ENDSELECT
+					CASE 1
+						SELECTCASE K60_ATTITUDE()
+							CASE 0, 1
+								PRINTFORML 「나... 이겼다고?」
+								PRINTFORMW 「아마 운이 좋았던 걸 거야... 하지만 승리는 승리니까, 당신처럼 강한 상대에게는 말이야.」
+								PRINTFORMDW 파르시는 %HIS_HER(TARGET)%의 얼굴에 기쁨을 띠고 %PARSE("you")%에게 고개를 숙였다.
+								;Grumpy tsundere
+							CASE 2
+								PRINTFORMW 「내가 추측해 볼게, 싸움을 포기할 생각이었는데 당황한 거야?」
+								PRINTFORMDW 파시가 %PARSE("you")%에게 살짝 고개를 숙이며 %PARSE("you", 1)%를 노려본다.
+								;Fake nice
+							CASE 3
+								PRINTFORMW 「수고했어. 운이 좋지 않았다면 아마 졌을 거야.」
+								PRINTFORMDW 파르시는 %HIS_HER(TARGET)%의 얼굴에 희미한 미소를 지으며 %PARSE("you")%에게 고개를 숙였다.
+						ENDSELECT
+					CASE 0
+						SELECTCASE K60_ATTITUDE()
+							;Loving
+							CASE 0
+								PRINTFORMDW 파르시가 %PARSE("you")%에게 고개를 숙이지만, %PARSE("you", 1)%는 %HIS_HER(TARGET)%의 얼굴에 약간의 원한을 볼 수 있다.
+								CALL M_KOJO_COLOR_K60_JEALOUS
+								PRINTFORMW 「내일 나랑 같이 훈련해 줄 수 있어, %K60_MASTER()% ? 너처럼 강해지고 싶어...」
+								CALL M_KOJO_COLOR_K60
+								;Nice, horny
+							CASE 1
+								PRINTFORMDW 파르시가 %PARSE("you")%에게 고개를 숙이지만, %PARSE("you", 1)%는 %HIS_HER(TARGET)%의 얼굴에 약간의 원한을 볼 수 있다.
+								CALL M_KOJO_COLOR_K60_JEALOUS
+								PRINTFORMW 「졌을지도 모르지만, 그래도 적어도 좋은 운동이 됐어.」
+								PRINTFORMW 「너처럼 \@ IS_MALE(MASTER) ? 잘생기거나 # 예쁘게 유지하려면 몸 관리를 해야겠어...」 \@
+								CALL M_KOJO_COLOR_K60
+								;Grumpy tsundere
+							CASE 2
+								PRINTFORMDW 파씨는 %PARSE("you")%에게 가볍게 목례를 한다.
+								CALL M_KOJO_COLOR_K60_VERY_JEALOUS
+								PRINTFORMW 「나를 그렇게 박살 낸 후에 더 모욕해 주고 싶은 거야? 혹시 네 발이나 핥아 줄까?」
+								CALL M_KOJO_COLOR_K60
+								;Fake nice
+							CASE 3
+								CALL M_KOJO_COLOR_K60_VERY_JEALOUS
+								PRINTFORMW 「아무래도 이 판은 내가 이길 거라고 기대하지 않았어. 수고했네.」
+								CALL M_KOJO_COLOR_K60
+								PRINTFORMDW 파르세는 %PARSE("you")%에게 고개를 숙이지만, %PARSE("you")%은 %HIS_HER(TARGET)%의 얼굴에 원한을 볼 수 있다.
+						ENDSELECT
+				ENDSELECT
+			ELSE
+				SELECTCASE 相手残機
+					CASE 3
+						SELECTCASE K60_ATTITUDE()
+							;Loving
+							CASE 0
+								PRINTFORMDW 파시가 %PARSE("you")%에게 고개를 숙인다.
+								PRINTFORMW 「기분 나빠하지 마라. 모든 것을 잘하는 사람은 아무도 없다. 나는 그것을 너무나 잘 알고 있으니까...」
+								$PARSEE_TRAINING_OFFER
+								PRINTFORMW 「원한다면 내일 단마쿠로 연습할 수 있어.」
+								;Nice, horny
+							CASE 1
+								PRINTFORMDW 파시가 %PARSE("you")%에게 고개를 숙인다.
+								PRINTFORMW 「기분 나빠하지 마라. 모든 것을 잘하는 사람은 아무도 없다. 나는 그것을 너무나 잘 알고 있으니까...」
+								$PARSEE_BETTER_AT_SEX_REMINDER
+								PRINTFORMW 「게다가 너는 침대 위에서 나보다 훨씬 낫다. 자존심을 가져라!」
+							CASE 2
+								PRINTFORMDL 파씨는 당신을 차갑게 바라보며 미소 짓는다.
+								PRINTFORMDW 당신은 이를 악문다.
+								PRINTFORMDW %BREAKENG(@"%PARSE("당신")% knew %HE_SHE(TARGET)% was stronger than %PARSE("당신")%, but %PARSE("너는~하지 않았다")% expecting Parsee to crush %PARSE("당신")% without breaking a sweat.")%
+								IF IS_NONHUMAN(MASTER)
+									PRINTFORMDL 뭐가 %PARSE("were you")% 생각하는 것, 맞서다 %HIM_HER(TARGET)% 단마쿠 전투에서?
+									PRINTFORMDW %PARSE("You barely know")% 단마쿠 전투에 관한 것이라면 뭐든지
+								ELSE
+									PRINTFORMDL %PARSE("were you")%은 무슨 생각을 하는 거지, 단마쿠 전투에서 요괴와 맞서려 하다니?
+									PRINTFORMDW %PARSE("You didn't")% 단막을 소환하는 법도 모른 채 %PARSE("you came")% 로 게은쿄에
+								ENDIF
+								PRINTFORMDW ~로 %PARSE("you stare")% 그 차가운 녹색 눈 속으로, %PARSE("you feel")% 질투가 차오르다 %PARSE("your")% 마음속에
+								PRINTFORMDW %PARSE("You're")%은 %HIS_HER(TARGET)%의 힘을 부러워하고, %PARSE("You're")%는 %HIS_HER(TARGET)%의 교활함을 부러워한다.
+								PRINTFORMDW 너는 ~을 부러워하고 있어 %HIS_HER(TARGET)% 마법적 기량에 질투하는군. 너는 질투하고 있어-
+								PRINTFORML
+								PRINTFORMW 「맛있군」
+								PRINTFORMDW 파시의 미소가 넓어지고 %HE_SHE(TARGET)% 핥는다 %HIS_HER(TARGET)% 입술을 핥는다.
+								PRINTFORMW 「좀 더 모아줄 수 있어? 두 번째 접시를 먹을 수도 있을 것 같은데.」
+								PRINTFORMDW 젠장...
+								PRINTFORMDW 물론 %HE_SHE(TARGET)% 모른다 %PARSE("you")% 시간을 멈출 수 있다는 것을 %PARSE("You'll")% 결국 마지막 웃음을 갖게 될 것이다...
+							CASE 3
+								PRINTFORMDL 파르씨가 %PARSE("you")%에게 고개를 숙인다.
+								PRINTFORML 「마음 상하지 마. 모든 걸 잘할 수는 없으니까. 나도 그걸 너무나 잘 알아...」
+								PRINTFORMDL %HIS_HER(TARGET)%의 친절한 말에도 불구하고, %PARSE("you feel")% 내면에서 질투가 차오르던 순간 y-
+								PRINTFORMDW 잠깐, 뭐라고? 갑자기, %PARSE("you don't")% 더 이상 질투를 느끼지 않는다.
+								PRINTFORML 「정말 맛있어...」
+								PRINTFORMDW 파르씨는 %HIS_HER(TARGET)%의 얼굴에 황홀함을 담고 %PARSE("you")%을 응시하고 있다.
+						ENDSELECT
+					CASE 2
+						SELECTCASE K60_ATTITUDE()
+							;Loving
+							CASE 0
+								PRINTFORMDW 파르시는 %PARSE("you")%에게 고개를 숙인다.
+								IF IS_NONHUMAN(MASTER)
+									PRINTFORMW 「단막 경험이 많지 않은 사람치고는 한 번이나 나를 맞추다니! 꽤 잘했다.」
+								ELSE
+									PRINTFORMW 「나를 한 번이나 때리다니! 그건 대부분의 외부인들이 할 수 있는 일 이상이야.」
+								ENDIF
+								GOTO PARSEE_TRAINING_OFFER
+								;Nice, horny
+							CASE 1
+								PRINTFORMDW 파르시가 당신에게 고개를 숙인다.
+								IF IS_NONHUMAN(MASTER)
+									PRINTFORMW 「단막 경험이 많지 않은 사람치고는 한 번이나 나를 맞추다니! 꽤 잘했다.」
+								ELSE
+									PRINTFORMW 「나를 한 번이나 때리다니! 그건 대부분의 외부인들이 할 수 있는 일 이상이야.」
+								ENDIF
+								GOTO PARSEE_BETTER_AT_SEX_REMINDER
+								;Grumpy tsundere
+							CASE 2
+								PRINTFORML 「흠... 한 번이나 나를 때렸군.」
+								PRINTFORMW 「인간치고는 상당히 인상적이군.」
+								SIF IS_NONHUMAN(MASTER)
+									PRINTFORMW 「당신 같은 사람에게는 그 정도가 아니야.」
+								PRINTFORMDW 빌어먹을 %HIM_HER(TARGET)% 같으니...
+								PRINTFORMDW 게다가 네 질투가 그녀에게 먹이를 주고 있다는 걸 알면 더욱 화가 난다.
+								;Fake nice
+							CASE 3
+								PRINTFORML 「흠... 한 번이나 나를 맞췄네.」
+								IF IS_NONHUMAN(MASTER)
+									PRINTFORMW 「단막 경험이 많지 않은 사람치고는 꽤 잘했다.」
+								ELSE
+									PRINTFORMW 「그것은 대부분의 외부인들이 할 수 있는 일 그 이상이다.」
+								ENDIF
+						ENDSELECT
+					CASE 1
+						SELECTCASE K60_ATTITUDE()
+							CASE 0, 1
+								PRINTFORML 「네가 나를 그렇게 고생하게 할 줄은 몰랐어. 정말 깜짝 놀랄 만한 것들만 가득하구나, 그렇지?」
+								PRINTFORMW 「그것이 너를 더욱 \@ IS_MALE(MASTER) ? 잘생기게 # 아름답게 만든다 \@...」
+								;Grumpy tsundere
+							CASE 2
+								CALL M_KOJO_COLOR_K60_VERY_JEALOUS
+								PRINTFORML 「흥... 거의 이길 뻔했군.」
+								PRINTFORMW 「다른 요괴라면 너를 단 5초 만에 박살냈을 거다. 정말 질투 나네...」
+								CALL M_KOJO_COLOR_K60
+								;Fake nice
+							CASE 3
+								PRINTFORML 「정말로 그 승리를 위해 나를 애쓰게 만들었군.」
+								PRINTFORMW 「나에게 다시 붙어보지 않겠나? 어쩌면 행운이 따를지도 모르지.」
+						ENDSELECT
+					CASE 0
+						SELECTCASE K60_ATTITUDE()
+							;Loving
+							CASE 0
+								CALL M_KOJO_COLOR_K60_JEALOUS
+								PRINTFORMW 「잘 싸웠어! 네가 내 공격을 그렇게 많이 피할 줄은 몰랐어.」
+								PRINTFORMW 「너 정말 빠르네.. 나 좀 질투 난다.」
+								PRINTFORMDW Parsee가 손을 뻗어 %PARSE("you")%을 끌어안았다.
+								CALL M_KOJO_COLOR_K60
+								PRINTFORMW 「내일 나랑 단마쿠 연습할래? 그 너구리들이 네게 해를 끼치는 건 원치 않아.」
+								;Nice, horny
+							CASE 1
+								CALL M_KOJO_COLOR_K60_JEALOUS
+								PRINTFORMW 「잘 싸웠어! 네가 내 공격을 그렇게 많이 피할 줄은 몰랐어.」
+								PRINTFORMW 「너 정말 빨리 움직이네... 조금 질투 나.」
+								PRINTFORMDW 파씨는 손을 뻗어 %PARSE("you")%을 끌어안고 키스한다.
+								CALL M_KOJO_COLOR_K60
+								CALL MUTUAL_KISS
+								PRINTFORMW 「음... 만약 네가 약자였고 단마쿠에서 나를 이겼다면...」
+								PRINTFORMW 「그게 오늘 밤 침대 위에서도 내가 너를 이긴다는 뜻일까?」
+								PRINTFORMW 「아닐지도 모르지. 하지만 알아내는 건 싫지 않아...」
+								;Grumpy tsundere
+							CASE 2
+								CALL M_KOJO_COLOR_K60_VERY_JEALOUS
+								PRINTFORML 「그리하여 \@ IS_MALE(MASTER) ? 눈부시게 잘생긴 # 놀라울 정도로 아름다운 \@ 약자가 승리했다.」
+								PRINTFORMW 「혹시 나에 대한 질투를 공격으로 표출하고 있었던 건가?」
+								CALL M_KOJO_COLOR_K60
+								;Fake nice
+							CASE 3
+								CALL M_KOJO_COLOR_K60_JEALOUS
+								PRINTFORML 「너무 자만하지 마라. 나는 지하세계의 최강 요괴에 비할 바도 아니며, 게은요에도 훨씬 못 된다.」
+								PRINTFORMW 「그럼에도 불구하고, 약한 나를 이길 수 있었군. 정말 질투가 난다...」
+								CALL M_KOJO_COLOR_K60
+						ENDSELECT
+				ENDSELECT
+			ENDIF
+		ENDIF
+		;Unlock the mischief option if you saw her use GEM
+		IF CFLAG:[[パルスィ]]:K60EN_SEEN_GEM == 1
+			PRINTFORML
+			PRINTFORMDW 전투 중에, %PARSE("you saw")% 파르시가 보이지 않는 괴물을 소환한다.
+			PRINTFORMDW 만약 %PARSE("you could")% 투명해진다면 많은 장난을 칠 수 있다...
+			CFLAG:[[パルスィ]]:K60EN_SEEN_GEM = 2
+		ENDIF
+		;Unlock the clonecest option if you saw her use TCS
+		IF CFLAG:[[パルスィ]]:K60EN_SEEN_TCS == 1
+			PRINTFORML
+			PRINTFORMDW 전투 중에, %PARSE("you saw")% 파르시가 %HIM_HER(TARGET)% 자신의 복제체를 소환한다.
+			PRINTFORMDW 당신은 %HE_SHE(TARGET)%이 그것을... 다른 일에 사용할 수 있을지 궁금해진다...
+			CFLAG:[[パルスィ]]:K60EN_SEEN_TCS = 2
+		ENDIF
+	ENDIF
+	RESETCOLOR
+ENDIF
+RETURN 1

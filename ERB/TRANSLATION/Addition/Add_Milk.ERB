@@ -1,0 +1,101 @@
+﻿; Modular ERB: Addition/Add_Milk.ERB
+
+@Add_Milking(ARG, ARG:1)
+#DIM DYNAMIC nCollected
+SIF ARG:1 == 0 ;needs target
+	RETURN
+;set counters
+Qol_Info_Count_Array:ARG:Qol_Count_MilkLactated += ARG:1 * 10
+IF TEQUIP:ARG:乳首吸い
+	Qol_Info_Count_Array:ARG:Qol_Count_MilkDrankNipple += ARG:1 * 10
+	Qol_Info_Count_Array:MASTER:Qol_Count_MilkDrankNipple += ARG:1 * 10
+ENDIF
+;fringe cases, not allowed
+IF (!ITEM:瓶 || ITEM:ミルク瓶 >= 99) && (TEQUIP:ARG:搾乳機 || !SHIRAHU(ARG) || GETBIT(CFLAG:ARG:既成事実,1))
+	SIF !ITEM:瓶 && ITEM:ミルク瓶
+		PRINTFORML 당신의 일부가 속에서 죽는 것을 느낀다, 너무 많은 우유를 낭비했다는 것을 깨달았을 때...
+	SIF ITEM:ミルク瓶 >= 99
+		PRINTFORML 안타깝게도 목마르지 않아 원한다 해도 더 이상 우유를 모을 수 없다, 그저 삶의 사실일 뿐이다...
+	;hint
+	IF !ITEM:瓶 && !ITEM:ミルク瓶 && !nMilkHint
+		PRINTFORML 만약 당신에게 모을 수 있는 어떤 종류의 병이라도 있었다면 좋았을 텐데. 에이엔테이 토끼들에게 하나를 구매할 수도 있을지도 몰라요?
+		nMilkHint = 1
+	ENDIF
+	RETURN
+ENDIF
+;collecting
+IF TEQUIP:ARG:搾乳機
+	LOCALS:0 = 
+	SELECTCASE ARG:1
+		CASE 1 TO 2
+			LOCALS:0 = 몇 방울
+		CASE 3 TO 4
+			LOCALS:0 = 작은 수확
+		CASE 5 TO 6
+			LOCALS:0 = 괜찮은 한 덩이
+		CASE 7 TO 8
+			LOCALS:0 = 많은 수
+		CASEELSE
+			LOCALS:0 = 엄청난 양
+	ENDSELECT
+	PRINTFORML 유축기가 %CALLNAME:ARG%의 가슴에 부착되어 우유를 모두 짜내고, 그 결과 %LOCALS:0%가 수집된다.
+	;with milker 100%
+	nCollected += ARG:1 * 10
+	SIF !SHIRAHU(ARG)
+		Qol_Info_Count_Array:ARG:Qol_Count_UncMilked += ARG:1 * 10
+ELSE
+	IF !SHIRAHU(ARG)
+		PRINTFORML %CALLNAME:ARG%가 거의 무력해졌기 때문에, 당신이 최선을 다해 우유를 모으려고 하는 동안 그녀는 제대로 반대할 수 없다.
+		Qol_Info_Count_Array:ARG:Qol_Count_UncMilked += ARG:1 * 10
+		SIF TEQUIP:ARG:乳首吸い
+			Qol_Info_Count_Array:ARG:Qol_Count_UncMilkDrank += ARG:1 * 10
+	ELSEIF GETBIT(CFLAG:ARG:既成事実,1) ;consent
+		IF MARK:ARG:反発刻印 || CFLAG:ARG:ブチギレ
+			PRINTFORML 안타깝게도 %CALLNAME:ARG%는 당신에게 마음이 너무 상해서 그녀의 우유를 마음대로 하게 내버려 두지 않는다...
+			RETURN
+		ELSEIF TEQUIP:ARG:乳首吸い
+			PRINTFORML 마시지 못한 양의 일부를 서둘러 수집하지만, 이는 명백히 더 적은 수확을 가져온다.
+		ELSE
+			PRINTFORML 「\@ !CFLAG:うふふ ? 지역에서 모유 분비의 징후를 발견하고, 당신은 # 당신은 \@병에 최소한 그녀의 우유를 좀 담으려고 %CALLNAME:ARG%에게 달려간다.」
+		ENDIF
+		SELECTCASE CFLAG:ARG:性格傾向 ;personality reaction
+			CASE 1 ;timid
+				PRINTFORML %HE_SHE(ARG,1)%은 무언가 할 말이 있는 것 같지만 입을 가리며 조용히 있기로 결정한다.
+			CASE 2 ;confident
+				PRINTFORML %HE_SHE(ARG,1)%은(는) 당신의 행동에 약간 당황하지만 금세 평정을 되찾는다.
+			CASE 3 ;upfront
+				PRINTFORML %HE_SHE(ARG,1)%은 너에게 능글맞게 웃으며 우유를 짜내기 위해 그녀의 유두를 짜는 것도 도와준다.
+			CASE 4, 5 ;serious, other
+				PRINTFORML %HE_SHE(ARG,1)% 당신을 바라본다 %SPLIT_G(@"with a wry %FSYN("smile")%:in astonishment")%하지만 이의를 제기하지 않는다.
+		ENDSELECT
+	ENDIF
+	nCollected += ARG:1 * RAND(6, 11)
+	;random loss
+	nCollected = MULTIPLY(nCollected, RAND(40, 81))
+ENDIF
+;process the yield
+IF nCollected
+	;when enough is gathered to fill a bottle (300 units maybe?), add bottle of milk item
+	nMilkCount += nCollected
+	Qol_Info_Count_Array:ARG:Qol_Count_MilkCollected += nCollected
+	CALL COLORMESSAGE(@"수집된 우유: {nCollected}, 비축량 총합: {nMilkCount}/300",C_YELLOW,1)
+	LOCAL:9 = nMilkCount
+	SIF nMilkCount >= 300
+		CALL COLORMESSAGE(@"분유를 처리한다...",C_YELLOW,1)
+	WHILE nMilkCount >= 300
+	;if run out of bottles or hit full
+	IF !ITEM:瓶
+		CALL COLORMESSAGE(@"병이 충분하지 않아 포기해야 했다...",C_RED,1)
+		BREAK
+	ELSEIF ITEM:ミルク瓶 >= 所持数制限
+		CALL COLORMESSAGE(@"우유를 가득 마셨나 보네, 그래서 포기해야 했어...",C_RED,1)
+		BREAK
+	ENDIF
+	nMilkCount -= 300
+	CALL LOST_ITEM("瓶", 1, 1)
+	CALL GET_ITEM("ミルク瓶", 1, 1)
+	WEND
+	nMilkCount = MAX(0, nMilkCount) ;normalize
+	SIF LOCAL:9 != nMilkCount
+		CALL COLORMESSAGE(@"남은 우유: {nMilkCount}/300",C_YELLOW,1)
+ENDIF

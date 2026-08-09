@@ -1,0 +1,387 @@
+﻿; Modular ERB: COMF/外出系/COMF604 散策する.ERB
+
+@COM604
+#DIM LPCOUNT
+#DIM 現在地点
+#DIM P_ID
+#DIM 所要時間
+#DIM 時間補正
+#DIM 時間停止ジャンプ
+#DIM 特殊ワープ
+#DIM ANIMATION_SEED
+#DIM PREV_REDRAW
+;散策する
+時間停止ジャンプ = FLAG:時間停止 || (GETBIT(FLAG:瞬間移動, AT_HOME(MASTER)) && !FLAG:デート相手) ;bug fix for auto-tsp movement
+FLAG:自室施錠 = 0 ;custom code, unlocks door
+ANIMATION_SEED = 0
+PREV_REDRAW = CURRENTREDRAW()
+;Map Animation Code
+$MAPANIMATION
+LINESTART = LINECOUNT
+SIF ANIMATERECOLOREDMAPS && !FLAG:70
+	ANIMATION_SEED ++
+VARSET LOCAL
+DRAWLINEFORM ～
+IF RECOLOREDMAPS
+	CALL DRAW_COLOREDMAP(ANIMATION_SEED, "ODEKAKE")
+ELSE
+	CALL DRAW_MAP("ODEKAKE")
+ENDIF
+DRAWLINEFORM ～
+PRINTL 목적지를 선택한다.
+現在地点 = CFLAG:MASTER:現在位置 % 100 / 10
+FOR LPCOUNT, 1, 10
+P_ID = CFLAG:MASTER:デート中 * 100 + LPCOUNT * 10
+SIF NAME_FROM_PLACE(P_ID) == ""
+	CONTINUE
+IF LPCOUNT == 現在地点
+	PRINTPLAINFORM [  0] - %NAME_FROM_PLACE(P_ID), 37, LEFT%
+	CALL COLORMESSAGE(@" 당신은 여기에 있다　", C_GREEN, 3)
+ELSE
+	時間補正 = 0
+	IF 時間停止ジャンプ
+		LOCALS = TSP
+	ELSE
+		;小町の能力
+		SIF FLAG:デート相手 == [[小町]]
+			時間補正 += -50
+		;わかさぎ姫の負担
+		SIF FLAG:デート相手 == [[わかさぎ姫]] && !GETBIT (FLAG:プール, 0)
+			時間補正 += 100
+		;地点ごとのショートカット効果
+		SIF SHORTCUT(CFLAG:MASTER:デート中, -1)
+			時間補正 += -50
+		LOCALS = 미니
+	ENDIF
+	所要時間 = 散策所要時間(CFLAG:MASTER:現在位置, P_ID, 時間補正)
+	PRINTFORM [{LPCOUNT, 3}] - %NAME_FROM_PLACE(P_ID), 37, LEFT%
+	IF 時間補正 < 0
+		SETCOLOR C_L_GREEN
+	ELSEIF 時間補正 > 0
+		SETCOLOR C_ROYAL_BLUE
+	ENDIF
+	PRINTFORM %@"{所要時間, 3} %LOCALS%", 15%
+	RESETCOLOR
+ENDIF
+LOCAL ++
+SIF LOCAL % 2 == 0
+	PRINTL
+NEXT
+SIF LOCAL % 2 == 1
+	PRINTL
+;特殊ワープ
+特殊ワープ = ODEKAKEMAP_SETTING(CFLAG:MASTER:現在位置, "特殊ワープ")
+IF 特殊ワープ
+	所要時間 = 時間停止ジャンプ ? 30 # 10
+	PRINTFORML [{特殊ワープ, 3}] - %NAME_FROM_PLACE(特殊ワープ), 37, LEFT%%@"{所要時間, 3} %LOCALS%", 15%
+ENDIF
+PRINTFORML [100] - %"Return", 52, LEFT% [ 99] - 다른 지역으로 이동한다
+$INPUT_LOOP
+;Map Animation Code
+IF ANIMATERECOLOREDMAPS && !FLAG:70
+	REDRAW PREV_REDRAW
+	;qol custom code, keep synced with actual time
+	TINPUT ANIMATERECOLOREDMAPS - (GETMILLISECOND() % ANIMATERECOLOREDMAPS),1234,0,""
+ELSE
+	INPUT
+ENDIF
+IF INRANGE(RESULT, 1, 9)
+	P_ID = CFLAG:MASTER:デート中 * 100 + RESULT * 10
+	;所要時間は消費TSPも込みになっているので注意
+	所要時間 = 散策所要時間(CFLAG:MASTER:現在位置, P_ID, 時間補正)
+ENDIF
+;戻る
+IF RESULT == 100 || RESULT == 0
+	RETURN -1
+	;他の地域に移動
+ELSEIF RESULT == 99
+	DRAWLINE
+	CALL OTHERREGIONS("散策する")
+	IF RESULT == 100
+		RESTART
+	ELSE
+		RETURN 1
+	ENDIF
+ELSEIF FLAG:70 && FLAG:デート相手 != MASTER ;bug fix
+	;NAS: Non 0 Master
+	PRINTFORMW 데이트 상대를 두고 떠나서는 안 된다.
+	RESTART
+	;特殊ワープ,10分/30TSP固定
+ELSEIF 特殊ワープ && RESULT == 特殊ワープ
+	IF !FLAG:70 && GETBIT(FLAG:瞬間移動, AT_HOME(MASTER)) && 所要時間 > BASE:MASTER:TSP ;bug fix for auto-tsp movement
+		時間停止ジャンプ = 0
+		所要時間 /= 3
+	ENDIF
+	IF FLAG:時間停止 && BASE:MASTER:TSP <= 30 ;bug fix
+		PRINTW TSP가 부족합니다.
+		RESTART
+	ELSEIF 時間停止ジャンプ
+		BASE:MASTER:TSP -= 30
+	ELSE
+		TIME += 10
+	ENDIF
+	PRINTFORML 당신은 틈으로 발을 들였고, 어느새 %NAME_FROM_PLACE(特殊ワープ)%에 서 있게 된다...
+	P_ID = 特殊ワープ
+	CFLAG:MASTER:現在位置 = P_ID
+	CFLAG:MASTER:デート中 = GET_MAPID(P_ID)
+	IF FLAG:デート相手 != MASTER
+		CFLAG:(FLAG:デート相手):現在位置 = P_ID
+		CFLAG:(FLAG:デート相手):デート中 = GET_MAPID(P_ID)
+		IF MOREDATE
+			FOR LOCAL:10, 0, NumberOfDates
+			CFLAG:(Datees:(LOCAL:10)):現在位置 = P_ID
+			CFLAG:(Datees:(LOCAL:10)):デート中 = GET_MAPID(P_ID)
+			NEXT
+		ENDIF
+	ELSEIF TFLAG:運搬
+		CFLAG:(TFLAG:運搬):現在位置 = P_ID
+		CFLAG:(TFLAG:運搬):デート中 = GET_MAPID(P_ID)
+	ENDIF
+	RETURN 1
+ELSEIF RESULT == 1234
+	PREV_REDRAW = CURRENTREDRAW()
+	REDRAW 0
+	CLEARLINE LINECOUNT - LINESTART
+	GOTO MAPANIMATION
+	;散策移動
+ELSEIF INRANGE(RESULT, 1, 9) && NAME_FROM_PLACE(P_ID) != ""
+	;移動できるかチェック
+	CALL SANSAKU_UNIQUEPLACE(P_ID)
+	IF RESULT
+		;P_IDへ移動
+		P_ID = RESULT
+		CFLAG:MASTER:現在位置 = P_ID ;moved down
+		IF !FLAG:70 && GETBIT(FLAG:瞬間移動, AT_HOME(MASTER)) && 所要時間 > BASE:MASTER:TSP ;bug fix for auto-tsp movement
+			時間停止ジャンプ = 0
+			所要時間 /= 3
+		ENDIF
+		IF FLAG:デート相手 != MASTER
+			CFLAG:(FLAG:デート相手):現在位置 = P_ID
+			TIME += 所要時間
+		ELSEIF FLAG:時間停止 && BASE:MASTER:TSP <= 所要時間 ;bug fix
+			PRINTW 시간 정지(TSP)가 부족합니다.
+			RESTART
+		ELSEIF 時間停止ジャンプ
+			BASE:MASTER:TSP -= 所要時間
+		ELSE
+			TIME += 所要時間
+		ENDIF
+		SIF TFLAG:運搬 != MASTER
+			CFLAG:(TFLAG:運搬):現在位置 = P_ID
+		RETURN 1
+	ENDIF
+	;qol custom code
+	[IF_DEBUG]
+ELSEIF RESULT == -1001
+	ANIMATION_SEED--
+	SIF ANIMATION_SEED < 0
+		ANIMATION_SEED = 19
+	MAP_ANIMATION_PAUSE = 1
+	CLEARLINE LINECOUNT - LINESTART
+	GOTO MAPANIMATION
+ELSEIF RESULT == -1002
+	ANIMATION_SEED++
+	MAP_ANIMATION_PAUSE = 1
+	CLEARLINE LINECOUNT - LINESTART
+	GOTO MAPANIMATION
+ELSEIF RESULT == -1003
+	MAP_ANIMATION_PAUSE = !MAP_ANIMATION_PAUSE
+	CLEARLINE LINECOUNT - LINESTART
+	GOTO MAPANIMATION
+	[ENDIF]
+ENDIF
+RESTART
+;-------------------------------------------------
+;実行可能判定
+;-------------------------------------------------
+;散策する
+
+@COM_ABLE604
+SIF TFLAG:妄想中
+	RETURN 0
+;一括管理
+SIF GLOBAL_COMABLE(604)
+	RETURN RESULT
+;デート中以外
+SIF AT_HOME(MASTER)
+	RETURN 0
+SIF CFLAG:MASTER:現在位置 == OMANEKIBEYA()
+	RETURN 0
+SIF CFLAG:うふふ
+	RETURN 0
+;潜伏モード中は不可
+SIF GETBIT(FLAG:潜伏,0)
+	RETURN 0
+;デート道中
+SIF TFLAG:デート道中
+	RETURN 0
+;妄想中
+SIF TFLAG:妄想中 == 1
+	RETURN 0
+;NAS: Lucid Dream
+SIF inTrain == 3
+	RETURN 0
+RETURN 1
+;-----------------------------------------------------------
+;現在地→移動先の散策にかかる所要時間
+;時間停止中は消費TSP
+;二次元座標間の距離を算出してる,例えば12→64だったら5+2=7
+;-----------------------------------------------------------
+
+@散策所要時間(現在地ID, 移動先ID, 時間補正)
+#FUNCTION
+#DIM 現在地ID
+#DIM 移動先ID
+#DIM 時間補正
+#DIM 現在地座標
+#DIM 移動先座標
+現在地座標 = ODEKAKEMAP_SETTING(現在地ID, "座標")
+移動先座標 = ODEKAKEMAP_SETTING(移動先ID, "座標")
+LOCAL = (ABS(現在地座標 / 10 - 移動先座標 / 10) + ABS(現在地座標 % 10 - 移動先座標 % 10)) * 2
+LOCAL = LOCAL * (100 + MAX(時間補正, -50)) / 100
+SIF FLAG:時間停止 || (GETBIT(FLAG:瞬間移動, AT_HOME(MASTER)) && FLAG:デート相手 == MASTER) ;bug fix for auto-tsp movement
+	LOCAL *= 3
+RETURNF LOCAL
+;-----------------------------------------------------------
+;散策時に移動できるかを返す関数
+;散策版MAP_CAN_MOVE, メッセージもここで表示する
+;ARG     移動先の場所ID
+;RETRUN  0=移動できない, 0以外=移動先
+;-----------------------------------------------------------
+
+@SANSAKU_UNIQUEPLACE(ARG)
+SELECTCASE ARG
+	CASE 妖精の大樹
+		IF ABL:MASTER:教養 < UniversalRank("D")
+			PRINTFORMW 너는 그것을 찾기에 충분히 교양 있지 못하다...
+			RETURN 0
+		ENDIF
+	CASE 彼岸, 白玉楼庭, 白玉楼, 天界, 地獄, 畜生界, 霊長園
+		IF ABL:MASTER:教養 < UniversalRank("D") && ABL:(FLAG:デート相手):教養 < UniversalRank("D")
+			PRINTFORMW 당신은 충분히 교양을 갖추지 못했다, 너무 위험하다.
+			RETURN 0
+		ENDIF
+	CASE 月の都, 綿月亭, 玉兎の街, 桃林～砂浜, 静かの海
+		IF ABL:MASTER:教養 < UniversalRank("C") && ABL:(FLAG:デート相手):教養 < UniversalRank("C")
+			PRINTFORMW 당신은 교육받을 만큼 충분하지 않아요, 너무 위험해요.
+			RETURN 0
+		ENDIF
+	CASE 正邪の隠れ家前
+		;本人は入れる;恋慕があれば入れてもらえる;前世で正邪が恋慕or恋人なら場所は分かる
+		;if you are knowledgeable enough you can find it anyway
+		IF SignificantRelationship(97) || PLAYING_AS(97) || ABL:MASTER:教養 < UniversalRank("S") || GETBIT (CFLAG:[[正邪]]:引き継ぎ, 0) || GETBIT (CFLAG:[[正邪]]:引き継ぎ, 1)
+		ELSE
+			PRINTFORMW 그것을 찾을 수 없어...
+			RETURN 0
+		ENDIF
+	CASE 仙人の屋敷
+		;華扇が恋慕;本人は入れる
+		IF TALENT:[[華扇]]:恋慕 || FLAG:なりきり == [[華扇]]
+			;デート相手が天子か自分が天子
+		ELSEIF FLAG:デート相手 == [[天子]] || FLAG:なりきり == [[天子]]
+		ELSEIF FLAG:デート相手 == [[小町]] || FLAG:なりきり == [[小町]] ;qol custom code
+			;教養が足りないとたどり着けない
+		ELSEIF ABL:MASTER:教養 < UniversalRank("B")
+			PRINTFORMW 그것을 향해 걸어가도 거리가 줄어드는 것 같지 않다...
+			PRINTFORMW 빙글빙글 도는 기분이다.
+			RETURN 0
+			;それ以外は戦闘力3以上必要
+		ELSEIF GetCombatAbility(MASTER) < UniversalRank("B") && !FLAG:時間停止
+			PRINTFORMW 정원에서 숨어 있던 호랑이가 당신을 보자 나와 한 번 으르렁거린다.
+			PRINTFORMW 다가가지 않는 것이 좋을 것 같다.
+			RETURN 0
+		ENDIF
+	CASE 永遠亭奥ノ院
+		IF FLAG:時間停止
+			PRINTFORMW 허가 없이 진입했다.
+		ELSEIF !永遠亭侵入許可()
+			PRINTL 안으로 들어가려 하지만 토끼들이 길을 막고 있다.
+			RETURN 永遠亭
+		ENDIF
+	CASE 350
+		;NAS customs: SDM perms
+		IF !CanMelingFuckOff() && !FLAG:70
+			PRINTFORML %CALLNAME:58%는 당신이 카지노에 들어서는 동안 당신을 예의주시했다.
+		ENDIF
+	CASE 360, 370, 380
+		;NAS customs: SDM perms
+		IF FLAG:時間停止
+			PRINTFORMW 허가 없이 진입했다.
+		ELSEIF !CanMelingFuckOff()
+			PRINTFORML 당신이 안으로 들어가려 하지만, %CALLNAME:58%가 길을 막는다.
+			CALL PRINT_GPC("W", @"「%PRINT_MALE("Sir", MASTER)%, 여긴 카지노로 가는 길이 아니야. 내가 안내해 줄까?」", 58)
+			CALL ASK_M( @"포기한다", 1, @"[Speech] 블러프", 1, @"「\@ RequesterInArea(3) ? [Request」 누군가에게 부탁할 것이 있다. #  \@]", RequesterInArea(3), )
+			;Speech bluff
+			SELECTCASE RESULT
+				CASE 0
+					RETURN 340
+				CASE 1
+					PRINTFORMW 네가 접근 권한을 얻으려고 %CALLNAME:58%에게 달콤하게 말을 걸어본다.
+					IF ABL:MASTER:41 >= UniversalRank("B")
+						CALL PRINT_GPC("W", @"「%PRINT_MALE("Sir", MASTER)%, 네가 해야 했던 건 그냥 부탁하는 것뿐이었어.」", 58)
+						CALL PRINT_GPC("W", @"「재미있게 놀아라, 하지만 이상한 짓은 하지 마라.」", 58)
+						SETCOLOR C_YELLOW
+						CALL sdmIndoorUnlockNotify("bluff")
+						RESETCOLOR
+					ELSE
+						PRINTFORML %CALLNAME:58%은(는) %HIS_HER(58)%의 고개를 흔든다.
+						CALL PRINT_GPC("W", @"「아니, 가고 네 일이나 신경 써. 흥미로운 건 아무것도 없어.」", 58)
+						RETURN 340
+					ENDIF
+				CASE 2
+					CALL PRINT_GPC("W", @"「좋아. 다 끝내고 나가.」", 58)
+					CALL PRINT_GPC("W", @"「우리 물건에 코만 킁킁거리지 마.」", 58)
+					TFLAG:SDMTimedAllow = 1
+			ENDSELECT
+		ENDIF
+	CASE 連れ込み宿, ラブホ
+		IF !FLAG:デート相手
+			PRINTW 혼자서는 들어갈 수 없다.
+			RETURN 0
+		ELSEIF (!MOREDATE && MONEY < 3000) || (MOREDATE && MONEY < (1500 + 1500 * (NumberOfDates)))
+			PRINTW 돈이 부족합니다.
+			RETURN 0
+		ENDIF
+		IF !GETBIT(CFLAG:(FLAG:デート相手):既成事実 , 1) && !TALENT:(FLAG:デート相手):合意誤認 ;qol custom code
+			PRINTFORML 연애 호텔에 가는 것을 제안하고 싶으신가요?
+			CALL ASK_YN
+			SIF RESULT
+				RETURN 0
+		ENDIF
+		;----------------------------------------------------------------
+		IF MOREDATE && NumberOfDates > 1
+			CALL MOREDATES_LOVEHOTEL_ASK(ARG)
+			SIF !RESULT
+				RETURN 0
+		ELSE
+			SIF !GETBIT(CFLAG:(FLAG:デート相手):既成事実 , 1) && !TALENT:(FLAG:デート相手):合意誤認 ;hypnosis patch
+				CALL 抱き寄せ(FLAG:デート相手)
+			IF TCVAR:(FLAG:デート相手):抱き寄せ初回 >= 6 && !TCVAR:(FLAG:デート相手):泥酔 && !CFLAG:(FLAG:デート相手):負け犬
+				PRINTFORMW %CALLNAME:(FLAG:デート相手)%은(는) 제안을 거절한다.
+				SIF TCVAR:(FLAG:デート相手):抱き寄せ初回 == 6
+					PRINTFORMW 하지만 %HE_SHE(FLAG:デート相手)%는 그렇게 짜증 난 것 같지는 않다.
+				RETURN 0
+			ELSE
+				PRINTFORML 비용은 %金額表示(3000)%이다. 괜찮은가?
+				CALL ASK_YN
+				CFLAG:(FLAG:デート相手):うふふ = 0
+				CFLAG:MASTER:うふふ = 0
+				IF RESULT == 0
+					MONEY -= 3000
+					IF TCVAR:(FLAG:デート相手):泥酔
+						;custom code
+						PRINTFORMW 당신은 만취한 %CALLNAME:(FLAG:デート相手)%를 %NAME_FROM_PLACE_THE(ARG)%에게 데려간다.
+					ELSEIF CFLAG:(FLAG:デート相手):負け犬
+						;custom code
+						PRINTFORMW 당신은 저항하는 %CALLNAME:(FLAG:デート相手)%를 %NAME_FROM_PLACE_THE(ARG)%에게 데려간다.
+					ELSE
+						;custom code
+						PRINTFORMW 당신은 %CALLNAME:(FLAG:デート相手)%를 %NAME_FROM_PLACE_THE(ARG)%로 데려간다.
+					ENDIF
+				ELSE
+					RETURN 0
+				ENDIF
+			ENDIF
+		ENDIF
+ENDSELECT
+RETURN ARG

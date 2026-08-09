@@ -1,0 +1,1209 @@
+﻿; Modular ERB: OMOGATARI/HealthInsurance.ERB
+
+@UNIQUE_COM_ChimataServices
+#DIM SS_LINECOUNT
+#DIM PAGE
+#DIM SS_INPUT
+#DIMS DISP_NAME = "General", "Insurance"
+PAGE = 0
+CALL M_KOJO_COLOR_K102
+PRINTFORMDW %CALLNAME:141%이 당신을 향해 미소 짓는다.
+CALL SPTALK, 141, "笑顔", 0 , @"「그래 그래. 뭘 원하는 거지?」", 1
+RESETCOLOR
+CUSTOMDRAWLINE ━
+SS_LINECOUNT = LINECOUNT
+DO
+CLEARLINE LINECOUNT - SS_LINECOUNT
+RESETCOLOR
+TRYCALLFORM ChimataServices_Page_{PAGE}
+SETCOLOR C_GRAY
+CUSTOMDRAWLINE ━
+RESETCOLOR
+FOR LOCAL, 0, VARSIZE("DISP_NAME")
+SIF !STRLENS(DISP_NAME:LOCAL)
+	CONTINUE
+SIF PAGE == LOCAL
+	SETCOLOR 0x00FFFF
+;exception for player character
+PRINTBUTTON DISP_NAME:LOCAL, LOCAL + 8000
+RESETCOLOR
+PRINTFORM 　　
+NEXT
+PRINTL
+CUSTOMDRAWLINE ━
+PRINTFORML [999] 신경 쓰지 마
+INPUT
+SS_INPUT = RESULT
+SELECTCASE SS_INPUT
+	CASE 8000 TO VARSIZE("DISP_NAME")+8000
+		PAGE = SS_INPUT-8000
+	CASE 999
+		;CALL M_KOJO_COLOR_K102
+		RETURN 1
+	CASEELSE
+		TRYCALLFORM ChimataServices_Input_{PAGE}(SS_INPUT)
+ENDSELECT
+LOOP 1
+
+@ChimataServices_Page_0
+
+@ChimataServices_Page_1
+PRINTFORM 당신의 계획: 
+IF HealthInsuranceLevel
+	PRINTFORMSL HealthInsuranceLabels:HealthInsuranceLevel
+	PRINTFORML %PRINT_DATE_F(HealthInsuranceSignDay+31)%을 갱신한다.
+ELSE
+	SETCOLOR C_RED
+	PRINTFORML NONE
+	PRINTL
+	RESETCOLOR
+ENDIF
+PRINTL
+IF HealthInsuranceLevel
+	PRINTFORML [100] - 구독 등급 변경
+	PRINTFORML [101] - 보험 해지
+ELSE
+	PRINTFORML [100] - 가입
+ENDIF
+PRINTFORML [110] - 약국
+
+@ChimataServices_Input_1(nInput)
+#DIM nInput,2
+SELECTCASE nInput
+	CASE 100
+		PRINTFORML 구독 레벨을 선택해라
+		FOR LOCAL, 1, 5
+		PRINTFORM [{LOCAL,2}] - [%HealthInsuranceLabels:LOCAL%] (%金額表示(HealthInsuranceCost:LOCAL)%/월)
+		SIF LOCAL == HealthInsuranceLevel
+			PRINTFORM (현재)
+		PRINTL
+		NEXT
+		PRINTL
+		PRINTFORML [-1] 뒤로
+		INPUT
+		nInput:1 = RESULT
+		SELECTCASE nInput:1
+			CASE 1 TO 4
+				CALL MarketeersInsuranceDescribe_Chimata(nInput:1)
+				PRINTL
+				PRINTFORML 「이 플랜에 가입하시겠습니까?」
+				PRINTFORML 「월 비용은 %金額表示(HealthInsuranceCost:(nInput:1))%/월입니다」
+				CALL ASK_YN()
+				SELECTCASE RESULT
+					CASE 0
+						CALL PAY_MONEY_YEN(HealthInsuranceCost:(nInput:1), 1)
+						HealthInsuranceLevel = nInput:1
+						HealthInsuranceSignDay = DAY
+						SIF !HealthInsuranceFirstSignDay
+							HealthInsuranceFirstSignDay = DAY
+						PRINTFORMW 「가입해 주셔서 감사합니다!」
+						; Thanks for coming back to us!
+						PRINTL
+						PRINTFORML 「당신의 구독은 한 달 동안 유효합니다.」
+						PRINTFORMW 「그것은 31일 후에 자동 갱신될 것입니다.」
+					CASEELSE
+						RETURN
+				ENDSELECT
+		ENDSELECT
+	CASE 101
+		CALL MarketeersInsuranceDescribe_Chimata(0)
+		CALL ASK_YN()
+		IF !RESULT
+			HealthInsuranceLevel = 0
+			HealthInsuranceSignDay = 0
+			PRINTFORML 계약은 해지될 것이다.
+		ELSE
+		ENDIF
+	CASE 110
+		CALL MarketeersPharmacy
+ENDSELECT
+;A shop much like Reisen's and Tewi's.
+;List of Items:
+;# Combat Medicine
+;- (Yagokoro) Painkiller『Achelief』
+;- (Yagokoro) Kaolin Combat Gauze『YAMERO』
+;- (Marketeers) Mirasac blood bag
+;Universal blood bag.
+;saco -> bag
+;- (Marketeers) Mirarca medical kit
+;arca -> box/ark
+;- (Marketeers) Mirapiz healing autoinjector
+;lapiz -> pencil
+;- (Yagokoro) Field Surgery Kit『Dr. Now』
+; Everything you need to do a surgery in the middle of nowhere.
+;- (ArmTeck) ATS-5 knockout syringe
+; Auto-injecting tranquilizer syringe
+;- (Yagokoro) Adrenaline shot『Resussita』
+; +1000 STA, will resuscitate unconscious 2hus.
+; Decreases AGONY
+; Lore-friendly version of the Defibrillator
+; Single use
+; Craftable with rank B Drug Synthesis.
+; Uses Rare ingredients
+;- (Klimovsk) YS-Stream acid syringe
+; "YS-Stream (Yedkiy Shprits) is a caustic syringe filled with acids, meant to be injected to cause poison that kills in minutes."
+;- () RapiStop Coagulation Syringe
+;- (BumBuster) Diabin mending syringe
+; "War"
+; Heals Touhous and heals some of their injuries
+; Decreases AGONY
+;- Strengthening Syringe
+;
+;# Daily Medicine
+;- (Yagokoro) Powder Diuretic『TSpike N1』
+;- (Yagokoro) Powder Laxative『TSpike N2』
+;- (Yagokoro) Ovulation Drug『Last Nova』
+;- (Yagokoro) Medical Drug『Tengen Toppa』
+;- (Marketeers) Miracaca enema
+;
+;# Pads
+;- (Marketeers) Miratisu sanitary pad
+; Zero feel sanitary pads for menstrual flow.
+;   - tisú -> tissue
+;- (LastLeak) PiddlePeq urine pad
+;- (LastLeak) PiddleGran underwear liner
+;- (LastLeak) Secreta pull-up
+;- (LastLeak) ComfiDry tape-on diaper
+;- (LastLeak) SquareDry disposable underpad
+; Pads for bedwetters. Useful for nighttime leaks
+;- (Unimu) Fukinai diaper rash cream
+; Gets rid of diaper rash. Keep wearing that soiled underwear!
+;- (Unimu) Kusanai scented baby powder
+; Makes it harder for you to get bad smells
+;# Fakes
+;- Ibuprofen: Saved! (Great Value parody) Opipill (Real: )
+;     - Effect: Same as laxatives
+;- Bandages:
+;     - Effect: Rip on use (tending power same as a herb)
+;- Morphine: Illicit Morphine (Real: Marketeers Mirapiz-M)
+;     - Effect: 80% Kills you on use (impure morphine). 20% works fine
+;- fake pads that don't absorb and just leak
+;- Laxative: BumBuster Easy Lax (Real: Powder Laxative『TSpike N2』)
+;     - Effect: Laxative effect but also gives uncontrollable bowel attacks that force you to poop on the spot, akin to IBS.
+;- Aphrodisiac: AmRulet (American Roulette) She-Says (Real: Gensou-chan ELICT (Extract of the Lily In Clyndrical Tube))
+;     - Generic: Value Aphrodisiac
+;     - Effect: Various. They either work just fine, make you depressed and lose all energy, be poison that slowly drains your stamina, or just kills you
+;- Anaphrodisiac: AmRulet
+;     - Effect: Dumps a ton of trauma on the user
+;- Antidepressants: Saved! Blue-Be-Gone (Real: Yagokoro FluxFlux)
+;     - Generic: Powdery antidepressants
+;     - Effect: Just a lethal dose of fentanyl. Fatal for non drug addicts
+;- Tumeric Drink:
+;     - Effect: Causes flat damage on the user's liver
+;- Contraceptive Pill: AmRulet (American Roulette) Plan A
+;     - Effect: Reduced chance of working, more likely to just do nothing
+;- Ovulation Drug: (Real: Yagokoro Ovulation Drug『Last Cast』)
+;     - Effect: Randomizes the pregnancy multiplier, from 150 to 4000)
+;- Condom: BumBuster Nai
+;     - Generic: Thin Comdom
+;     - Effect: Doesn't do anything against pregnancy
+;- Potion: Green Potion
+;     - Effect: Poisons the user (rn just damages the user)
+;- Elixir: Elixir?
+;     - Effect: Gives the insane diuretic effect, but nothing else.
+
+@MarketeersPharmacy
+#DIM DYNAMIC nInput
+#DIM DYNAMIC nCurrentPage
+#DIM DYNAMIC nTempItem
+#DIM DYNAMIC nPrice
+#DIM DYNAMIC nColCount
+#DIM DYNAMIC nThingOffset
+#DIM DYNAMIC nThingGroup
+#DIM DYNAMIC nThingCount,2
+#DIM DYNAMIC nColLoop
+#DIMS pharmacyCategories = "medCombat", "medDaily", "sexToy", "medIncontinence", "medBionic"
+nCurrentPage = 0
+;for some reason if the pharmacy does not have any items in
+IF !DT_EXIST("MarketeersPharmacy")
+	CALL MarketeersPharmacyInvTablePopulate
+	CALL MarketeersPharmacySellingTablePopulate
+ENDIF
+$REDO_LINE
+PRINTDATAL
+	DATAFORM 「한번 보시죠.」
+	DATAFORM 「%CALLNAME:47%은 죽이는 도구를 팔지 몰라도 나는 구하는 도구를 판다.」
+	DATAFORM 「마케터스 보험 구독으로 약국 내에서 더욱 많은 비용을 절약할 수 있다.」
+	DATAFORM 「나는 고객들을 만족시키기 위해 시장 가치보다 20\% 낮게 물건을 판매한다.」
+	DATAFORM \@ nOmutsu ? 겐소우쨩이 제일 좋은 기저귀를 만들어줘. 내 기저귀 갈아줘. # REFRESH \@
+	DATAFORM \@ nPee ? 좋은 이뇨제로 소변을 보게 해라. 방광이 비어 있게 도와준다. # REFRESH \@
+ENDDATA
+IF HTML_GETPRINTEDSTR() == "REFRESH"
+	;refresh if genned line doesn't fit within fetish toggles
+	CLEARLINE 1
+	GOTO REDO_LINE
+ENDIF
+gLineCount = LINECOUNT
+DO
+FOR LOCAL, 0, VARSIZE("ITEM")
+CALL ITEMDATA(LOCAL, "SALES")
+ITEMSALES:LOCAL = RESULT
+NEXT
+CLEARLINE LINECOUNT-gLineCount
+nColCount = 0
+PRINTFORML 마케터스 약국
+CALL COLOR_LINE
+; {
+; DT_ROW_ADD @"MarketeersPharmacyAllItems",
+; "defID", itemIsFake ? DT_CELL_GET("MarketeersPharmacyAllItems",LOCAL,"fakeID",0) # DT_CELL_GET("MarketeersPharmacyAllItems",LOCAL,"defID",0),
+; "stock", DT_CELL_GET("MarketeersPharmacyAllItems",LOCAL,"stock",0),
+; "itemType", DT_CELL_GETS("MarketeersPharmacyAllItems",LOCAL,"itemType",0),
+; "category", DT_CELL_GETS("MarketeersPharmacyAllItems",LOCAL,"category",0),
+; "price", itemIsFake ? DT_CELL_GET("MarketeersPharmacyAllItems",LOCAL,"fakePrice",0) # DT_CELL_GET("MarketeersPharmacyAllItems",LOCAL,"price",0),
+; }
+VARSET nThingCount
+FOR nColLoop,0,DT_ROW_LENGTH("MarketeersPharmacy")
+SIF DT_CELL_GETS("MarketeersPharmacy",nColLoop,"category",0) != pharmacyCategories:nCurrentPage
+	CONTINUE
+nThingCount:1++
+NEXT
+FOR nColLoop,0,DT_ROW_LENGTH("MarketeersPharmacy")
+nTempItem = DT_CELL_GET("MarketeersPharmacy",nColLoop,"defID",0)
+nThingOffset = 0
+SIF DT_CELL_GETS("MarketeersPharmacy",nColLoop,"category",0) != pharmacyCategories:nCurrentPage
+	CONTINUE
+nThingCount:0++
+; ;diapers require diaper flag
+; SIF IsPadded(MASTER, , nColLoop:1) && !nOmutsu && nGroup == 6
+; 	CONTINUE
+nPrice = DT_CELL_GET("MarketeersPharmacy",nColLoop,"price",0)
+SELECTCASE DT_CELL_GETS("MarketeersPharmacy",nColLoop,"itemType",0)
+	CASE "clothes"
+		nThingGroup = nTempItem/10000
+		nTempItem = nTempItem%10000
+		nThingOffset = nThingGroup*10000
+		IF BoughtClothing:nThingGroup:(nTempItem)
+			LOCALS:1 = Sold-out
+			SETCOLOR C_GRAY
+		ELSEIF MONEY < nPrice
+			LOCALS:1 = %金額表示(nPrice)%
+			SETCOLOR C_GRAY
+		ELSE
+			LOCALS:1 = %金額表示(nPrice)%
+		ENDIF
+	CASE "hediff"
+		nThingGroup = -2
+		nTempItem = nTempItem%1000000
+		nThingOffset = 1000000
+		IF HasBionic:(nTempItem-100) >= 所持数制限
+			LOCALS:1 = Full
+			SETCOLOR C_GRAY
+		ELSEIF MONEY < nPrice
+			LOCALS:1 = %金額表示(nPrice)%
+			SETCOLOR C_GRAY
+		ELSE
+			LOCALS:1 = %金額表示(nPrice)%
+		ENDIF
+	CASEELSE
+		nThingGroup = -1
+		SELECTCASE ITEMSTOCK(nTempItem, nPrice)
+			CASE 1
+				LOCALS:1 = Unavail.
+				CONTINUE
+			CASE 2
+				LOCALS:1 = Sold-out
+				SETCOLOR C_GRAY
+			CASE 3
+				LOCALS:1 = %金額表示(nPrice)%
+				SETCOLOR C_GRAY
+			CASE 4
+				LOCALS:1 = Sealed
+				CONTINUE
+			CASE 5
+				LOCALS:1 = Full
+				SETCOLOR C_GRAY
+			CASEELSE
+				LOCALS:1 = %金額表示(nPrice)%
+		ENDSELECT
+ENDSELECT
+LOCALS '= UNDIES_NAME_WITH_BRAND(MASTER,nTempItem,0,nThingGroup)
+PRINTBUTTON @"%LOCALS, 48, LEFT% %LOCALS:1, 11% ", (nTempItem+nThingOffset)
+RESETCOLOR
+nColCount ++
+IF nColCount % 3 == 0 || nThingCount:0 == (nThingCount:1)
+	PRINTL 
+	;表示行 ++
+ENDIF
+NEXT
+CALL COLOR_LINE
+FOR nColLoop, 0, VARSIZE("pharmacyCategories")
+SIF nColLoop == nCurrentPage
+	SETCOLOR C_AQUA
+PRINTBUTTON @"%MarketeersPharmacyCategoryLabel(pharmacyCategories:nColLoop)%   ", -1000-nColLoop
+RESETCOLOR
+NEXT
+PRINTL
+PRINTFORML [-99] - 나가기
+INPUT
+nInput = RESULT
+VARSET LOCAL
+SELECTCASE nInput
+	CASE -99
+		RETURN
+	CASE IS <= -1000
+		nCurrentPage = (nInput+1000)*(-1)
+	CASE IS >= 1000000
+		LOCAL:2 = DT_SELECT("MarketeersPharmacy", @"defID = {nInput}")
+		LOCAL:1 = RESULT:1
+		nTempItem = nInput%1000000
+		IF LOCAL:2
+			IF HasBionic:(nTempItem-100)
+				PRINTW 더 이상 들 수 없다.
+				CONTINUE
+			ELSE
+				LOCAL:3 = DT_CELL_GET("MarketeersPharmacy",LOCAL:1,"price",1)
+				PRINTFORML %UNDIES_NAME_WITH_BRAND(MASTER,nTempItem,1,nThingGroup)%을 구매할 것인가?
+				PRINTFORML 비용: %MONEYSTR(LOCAL:3)%
+				LOCAL:4 = 1
+				CALL PAY_YEN_OR_CM((LOCAL:3*LOCAL:4),(LOCAL:3*LOCAL:4)/CHARISMA_NOW())
+				IF RESULT
+					HasBionic:(nTempItem-100) ++
+				ENDIF
+			ENDIF
+		ELSE
+			PRINTFORMW 바이오닉 아이디 {nTempItem}(항목 {nInput}의 항목)에 대한 항목을 찾을 수 없습니다! 이것을 보고하세요!
+		ENDIF
+	CASE IS >= 10000
+		LOCAL:2 = DT_SELECT("MarketeersPharmacy", @"defID = {nInput}")
+		LOCAL:1 = RESULT:1
+		nThingGroup = nInput/10000
+		nTempItem = nInput%10000
+		nThingOffset = nThingGroup*10000
+		IF LOCAL:2
+			IF BoughtClothing:nThingGroup:(nTempItem)
+				PRINTL 이미 가지고 있습니다.
+				PRINTW (이 아이템을 장착하려면 방으로 가세요.)
+				CONTINUE
+			ELSE
+				LOCAL:3 = DT_CELL_GET("MarketeersPharmacy",LOCAL:1,"price",1)
+				PRINTFORML 구매 %UNDIES_NAME_WITH_BRAND(MASTER,nTempItem,1,nThingGroup)%?
+				PRINTFORML 비용: %MONEYSTR(LOCAL:3)%
+				LOCAL:4 = 1
+				CALL PAY_YEN_OR_CM((LOCAL:3*LOCAL:4),(LOCAL:3*LOCAL:4)/CHARISMA_NOW())
+				IF RESULT
+					BoughtClothing:nThingGroup:nTempItem ++
+				ENDIF
+			ENDIF
+		ELSE
+			PRINTFORMW 의류 아이디 {nInput}에 대한 항목을 찾을 수 없습니다! 이것을 보고하세요!
+		ENDIF
+	CASE 0 TO 9999
+		LOCAL:2 = DT_SELECT("MarketeersPharmacy", @"defID = {nInput}")
+		LOCAL:1 = RESULT:1
+		IF LOCAL:2
+			SELECTCASE ITEMSTOCK(nInput)
+				CASE 1, 4
+					PRINTW 잘못된 입력
+				CASE 2
+					PRINTW 품절입니다.
+				CASE 5
+					PRINTW 더 이상 들 수 없다.
+				CASEELSE
+					LOCAL:3 = DT_CELL_GET("MarketeersPharmacy",LOCAL:1,"price",1)
+					CALL PRINT_ITEM_DESC(nInput)
+					IF ITEMSALES:nInput != 1
+						LOCAL:5 = MAX(MONEY/LOCAL:3,(MONEY:2*CHARISMA_NOW())/(LOCAL:3))
+						PRINTFORML 구매할 %ItemName_Full(nInput)%의 원하는 수량을 선택해 주십시오. (개당 비용 %MONEYSTR(LOCAL:3)%, 보유량: {ITEM:nInput})
+						PRINTL [   1] １　　
+						SIF MIN(所持数制限 - ITEM:nInput, LOCAL:5) >= 5
+							PRINTL [   5] ５　　
+						SIF MIN(所持数制限 - ITEM:nInput, LOCAL:5) >= 10
+							PRINTL [  10] １０　
+						SIF MIN(所持数制限 - ITEM:nInput, LOCAL:5) >= 20
+							PRINTL [  20] ２０　
+						SIF MIN(所持数制限 - ITEM:nInput, LOCAL:5) >= 50
+							PRINTL [  50] ５０　
+						SIF MIN(所持数制限 - ITEM:nInput, LOCAL:5) >= 100
+							PRINTL [ 100] １００
+						SIF MIN(所持数制限 - ITEM:nInput, LOCAL:5) >= 250
+							PRINTL [ 250] ２５０
+						SIF MIN(所持数制限 - ITEM:nInput, LOCAL:5) >= 500
+							PRINTL [ 500] ５００
+						SIF MIN(所持数制限 - ITEM:nInput, LOCAL:5) >= 1000
+							PRINTL [1000] １０００
+						PRINTFORML [최소(보유수 제한 - 아이템:nInput, LOCAL:5), 4] 가능한 한 많이
+						PRINTL
+						PRINTFORML [-1] 뒤로
+						INPUT
+						LOCAL:4 = RESULT
+						IF LOCAL:4 <= 0
+							CONTINUE
+						ENDIF
+					ELSE
+						PRINTFORML %ItemName_Full(nInput)%을 구매한다?
+						LOCAL:4 = 1
+					ENDIF
+					CALL PAY_YEN_OR_CM((LOCAL:3*LOCAL:4),(LOCAL:3*LOCAL:4)/CHARISMA_NOW())
+					IF RESULT
+						CALL GET_ITEM(ITEMNAME:nInput, LOCAL:4, 2)
+					ENDIF
+			ENDSELECT
+		ELSE
+			PRINTFORMW 아이템 ID {nInput}에 대한 항목을 찾을 수 없다! 이것을 보고해라!
+		ENDIF
+ENDSELECT
+LOOP 1
+;begin making the marketeers table
+;this is the possible loot items
+
+@MarketeersPharmacyInvTableStart(ARGS = "MarketeersPharmacyAllItems")
+#FUNCTION
+#DIMS nTableName
+nTableName '= ARGS
+DT_CREATE nTableName
+DT_COLUMN_ADD nTableName, "defID", "int32"
+;id for the counterfeit item. an ID of -1 means no fakes
+DT_COLUMN_ADD nTableName, "fakeID", "int32"
+;probability of the item being a counterfeit daily
+;0 means always real, 255 means always fake
+DT_COLUMN_ADD nTableName, "fakeChance", "int8"
+;amount that will be sold.
+DT_COLUMN_ADD nTableName, "stock", "int8"
+;available types: "item", "weapon", "clothes"
+DT_COLUMN_ADD nTableName, "itemType"
+;price before insurance discounts
+;by default this is 80% of the base price.
+DT_COLUMN_ADD nTableName, "price", "int32"
+;price of the counterfeit
+DT_COLUMN_ADD nTableName, "fakePrice", "int32"
+;category of the item in the shop
+DT_COLUMN_ADD nTableName, "category"
+
+@MarketeersPharmacySellingTableStart(ARGS = "MarketeersPharmacy")
+#FUNCTION
+#DIMS nTableName
+nTableName '= ARGS
+DT_CREATE nTableName
+DT_COLUMN_ADD nTableName, "defID", "int32"
+;amount that will be sold.
+DT_COLUMN_ADD nTableName, "stock", "int8"
+;available types: "item", "weapon", "clothes"
+DT_COLUMN_ADD nTableName, "itemType"
+;price before insurance discounts
+;by default this is 80% of the base price.
+DT_COLUMN_ADD nTableName, "price", "int32"
+;category of the item in the shop
+DT_COLUMN_ADD nTableName, "category"
+;populate the tables
+
+@MarketeersPharmacyInvTablePopulate
+#DIM nCurrentID,2
+;destroy table and recreate
+DT_RELEASE "MarketeersPharmacyAllItems"
+CALLF MarketeersPharmacyInvTableStart
+;==================================================
+;Combat Medicine
+;==================================================
+;Bandage
+nCurrentID = 520
+nCurrentID:1 = 1106
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", nCurrentID:1, "fakeChance", 10, "stock", 255, "itemType", "item", "category", "medCombat", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", (ITEMPRICE:(nCurrentID:1))*80/100,
+;Medkit
+nCurrentID = 523
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "item", "category", "medCombat", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;Defibrillator
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", 532, "fakeID", -1, "fakeChance", 0, "stock", 1, "itemType", "item", "category", "medCombat", "price", (ITEMPRICE:532)*80/100, "fakePrice", 0,
+;Defibrillator
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", 1110, "fakeID", -1, "fakeChance", 0, "stock", 1, "itemType", "item", "category", "medCombat", "price", (ITEMPRICE:1110)*80/100, "fakePrice", 0,
+;Potion
+nCurrentID = 512
+nCurrentID:1 = 1115
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", nCurrentID:1, "fakeChance", 10, "stock", 255, "itemType", "item", "category", "medCombat", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", (ITEMPRICE:(nCurrentID:1))*80/1000,
+;Peerless Patriot
+nCurrentID = 515
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "item", "category", "medCombat", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;Morphine
+nCurrentID = 525
+nCurrentID:1 = 1101
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", nCurrentID:1, "fakeChance", 0, "stock", 255, "itemType", "item", "category", "medCombat", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", (ITEMPRICE:(nCurrentID:1))*80/100,
+;Marketeers Injector
+nCurrentID = 539
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "item", "category", "medCombat", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;==================================================
+;Daily Meds
+;==================================================
+;Anaphrodisiac
+nCurrentID = 42
+nCurrentID:1 = 1111
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", nCurrentID:1, "fakeChance", 25, "stock", 1, "itemType", "item", "category", "medDaily", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", (ITEMPRICE:(nCurrentID:1))*80/100,
+;Green Juice
+nCurrentID = 500
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "item", "category", "medDaily", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;Energy Drink
+nCurrentID = 501
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "item", "category", "medDaily", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;Gin Gin Z
+nCurrentID = 503
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "item", "category", "medDaily", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;Gin Gin X
+nCurrentID = 505
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "item", "category", "medDaily", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;Potion
+nCurrentID = 507
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "item", "category", "medDaily", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;Magic Potion
+nCurrentID = 508
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "item", "category", "medDaily", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;No Sleep Potion
+nCurrentID = 509
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "item", "category", "medDaily", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;Tumeric Drink
+nCurrentID = 510
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "item", "category", "medDaily", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;Antidepressant/Fluvoxamine
+nCurrentID = 316
+nCurrentID:1 = 1100
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", nCurrentID:1, "fakeChance", 25, "stock", 255, "itemType", "item", "category", "medDaily", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", (ITEMPRICE:(nCurrentID:1))*80/100,
+;==================================================
+;Sex Toys
+;==================================================
+;Aphrodisiac
+nCurrentID = 41
+nCurrentID:1 = 1109
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", nCurrentID:1, "fakeChance", 25, "stock", 255, "itemType", "item", "category", "sexToy", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", (ITEMPRICE:(nCurrentID:1))*80/100,
+;Love Potion
+nCurrentID = 41
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", nCurrentID:1, "fakeChance", 0, "stock", 255, "itemType", "item", "category", "sexToy", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;Vigor Drink
+nCurrentID = 502
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "item", "category", "sexToy", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;Tengen Toppa
+nCurrentID = 506
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "item", "category", "sexToy", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;Ovulation Drug
+nCurrentID = 91
+nCurrentID:1 = 1113
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 25, "stock", 255, "itemType", "item", "category", "medDaily", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", (ITEMPRICE:(nCurrentID:1))*80/100,
+;Contraceptive Pill
+nCurrentID = 49
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 25, "stock", 255, "itemType", "item", "category", "medDaily", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;Condom
+nCurrentID = 45
+nCurrentID:1 = 1102
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 25, "stock", 255, "itemType", "item", "category", "medDaily", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", (ITEMPRICE:(nCurrentID:1))*80/100,
+;Emergency Contraceptive
+nCurrentID = 80
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "item", "category", "medDaily", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;Rotor
+nCurrentID = 0
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "item", "category", "sexToy", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;Massager
+nCurrentID = 1
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 1, "itemType", "item", "category", "sexToy", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;Clit Cap
+nCurrentID = 2
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 1, "itemType", "item", "category", "sexToy", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;Onahole
+nCurrentID = 3
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 1, "itemType", "item", "category", "sexToy", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;Vibrator
+nCurrentID = 4
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 1, "itemType", "item", "category", "sexToy", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;Anal Vibrator
+nCurrentID = 5
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 1, "itemType", "item", "category", "sexToy", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;Anal Beads
+nCurrentID = 6
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 1, "itemType", "item", "category", "sexToy", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;Inflating Plug
+nCurrentID = 8
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 1, "itemType", "item", "category", "sexToy", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;==================================================
+;Continence Management
+;==================================================
+;Diuretic
+nCurrentID = 42
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", nCurrentID:1, "fakeChance", 25, "stock", 255, "itemType", "item", "category", "medIncontinence", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;Laxative
+nCurrentID = 314
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", nCurrentID:1, "fakeChance", 25, "stock", 255, "itemType", "item", "category", "medIncontinence", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;Antidiuretic
+nCurrentID = 1119
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", nCurrentID:1, "fakeChance", 0, "stock", 255, "itemType", "item", "category", "medIncontinence", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;Antidiarrheal
+nCurrentID = 1118
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", nCurrentID:1, "fakeChance", 0, "stock", 255, "itemType", "item", "category", "medIncontinence", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;Incontinence Drop
+nCurrentID = 1108
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", nCurrentID:1, "fakeChance", 25, "stock", 255, "itemType", "item", "category", "medIncontinence", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;Tissue
+nCurrentID = 300
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "item", "category", "medIncontinence", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;Catheter
+nCurrentID = 304
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "item", "category", "medIncontinence", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;Bed Pad
+nCurrentID = 1203
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "item", "category", "medIncontinence", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+;Diapers
+IF nOmutsu
+	; ;Pull-ups
+	; nCurrentID = 6072
+	; nCurrentID:1 = -1
+	; {
+	; DT_ROW_ADD @"MarketeersPharmacyAllItems",
+	; "defID", nCurrentID,
+	; "fakeID", -1,
+	; "fakeChance", 0,
+	; "stock", 255,
+	; "itemType", "clothes",
+	; "category", "medIncontinence",
+	; "price", (ClothPrice("下半身下着_ずらし可能",nCurrentID%1000,MASTER))*80/100,
+	; "fakePrice", 0,
+	; }
+	; ;Night undies
+	; nCurrentID = 6073
+	; nCurrentID:1 = -1
+	; {
+	; DT_ROW_ADD @"MarketeersPharmacyAllItems",
+	; "defID", nCurrentID,
+	; "fakeID", -1,
+	; "fakeChance", 0,
+	; "stock", 255,
+	; "itemType", "clothes",
+	; "category", "medIncontinence",
+	; "price", (ClothPrice("下半身下着_ずらし可能",nCurrentID%1000,MASTER))*80/100,
+	; "fakePrice", 0,
+	; }
+	;Trainy-Ups
+	nCurrentID = 60135
+	nCurrentID:1 = -1
+	DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "clothes", "category", "medIncontinence", "price", (ClothPrice("下半身下着_ずらし可能",nCurrentID%1000,MASTER))*80/100, "fakePrice", 0,
+	;Printy-ups
+	nCurrentID = 60074
+	nCurrentID:1 = -1
+	DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "clothes", "category", "medIncontinence", "price", (ClothPrice("下半身下着_ずらし可能",nCurrentID%1000,MASTER))*80/100, "fakePrice", 0,
+	;Printy-Ups+
+	nCurrentID = 60164
+	nCurrentID:1 = -1
+	DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "clothes", "category", "medIncontinence", "price", (ClothPrice("下半身下着_ずらし可能",nCurrentID%1000,MASTER))*80/100, "fakePrice", 0,
+	;Diaper
+	nCurrentID = 60101
+	nCurrentID:1 = -1
+	DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "clothes", "category", "medIncontinence", "price", (ClothPrice("下半身下着_ずらし可能",nCurrentID%1000,MASTER))*80/100, "fakePrice", 0,
+	;Crinkly Diaper
+	nCurrentID = 60102
+	nCurrentID:1 = -1
+	DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "clothes", "category", "medIncontinence", "price", (ClothPrice("下半身下着_ずらし可能",nCurrentID%1000,MASTER))*80/100, "fakePrice", 0,
+	;Ko-FantastaBab
+	nCurrentID = 60134
+	nCurrentID:1 = -1
+	DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "clothes", "category", "medIncontinence", "price", (ClothPrice("下半身下着_ずらし可能",nCurrentID%1000,MASTER))*80/100, "fakePrice", 0,
+	;FantastaBab
+	nCurrentID = 60103
+	nCurrentID:1 = -1
+	DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "clothes", "category", "medIncontinence", "price", (ClothPrice("下半身下着_ずらし可能",nCurrentID%1000,MASTER))*80/100, "fakePrice", 0,
+	;Dai-Diaper
+	nCurrentID = 60104
+	nCurrentID:1 = -1
+	DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "clothes", "category", "medIncontinence", "price", (ClothPrice("下半身下着_ずらし可能",nCurrentID%1000,MASTER))*80/100, "fakePrice", 0,
+	;FantastaBab+
+	nCurrentID = 60171
+	nCurrentID:1 = -1
+	DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "clothes", "category", "medIncontinence", "price", (ClothPrice("下半身下着_ずらし可能",nCurrentID%1000,MASTER))*80/100, "fakePrice", 0,
+	;Dai-Diaper+
+	nCurrentID = 60178
+	nCurrentID:1 = -1
+	DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "clothes", "category", "medIncontinence", "price", (ClothPrice("下半身下着_ずらし可能",nCurrentID%1000,MASTER))*80/100, "fakePrice", 0,
+	;Diaper Booster
+	nCurrentID = 303
+	nCurrentID:1 = -1
+	DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", nCurrentID:1, "fakeChance", 0, "stock", 255, "itemType", "item", "category", "medIncontinence", "price", (ITEMPRICE:nCurrentID)*80/100, "fakePrice", 0,
+ENDIF
+;==================================================
+;Cybernetics
+;==================================================
+;Prostethic Leg
+nCurrentID = 1000106
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "hediff", "category", "medBionic", "price", (GET_INT(MASTER,"Hediff",nCurrentID%1000000,"Price"))*80/100, "fakePrice", 0,
+;Prostethic Arm
+nCurrentID = 1000107
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "hediff", "category", "medBionic", "price", (GET_INT(MASTER,"Hediff",nCurrentID%1000000,"Price"))*80/100, "fakePrice", 0,
+;Prostethic Hand
+nCurrentID = 1000108
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "hediff", "category", "medBionic", "price", (GET_INT(MASTER,"Hediff",nCurrentID%1000000,"Price"))*80/100, "fakePrice", 0,
+;Prostethic Foot
+nCurrentID = 1000109
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "hediff", "category", "medBionic", "price", (GET_INT(MASTER,"Hediff",nCurrentID%1000000,"Price"))*80/100, "fakePrice", 0,
+;Prostethic Heart
+nCurrentID = 1000110
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "hediff", "category", "medBionic", "price", (GET_INT(MASTER,"Hediff",nCurrentID%1000000,"Price"))*80/100, "fakePrice", 0,
+;Coichlear Implant
+nCurrentID = 1000111
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "hediff", "category", "medBionic", "price", (GET_INT(MASTER,"Hediff",nCurrentID%1000000,"Price"))*80/100, "fakePrice", 0,
+;Denture
+nCurrentID = 1000112
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "hediff", "category", "medBionic", "price", (GET_INT(MASTER,"Hediff",nCurrentID%1000000,"Price"))*80/100, "fakePrice", 0,
+;Prostethic Spine
+nCurrentID = 1000115
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "hediff", "category", "medBionic", "price", (GET_INT(MASTER,"Hediff",nCurrentID%1000000,"Price"))*80/100, "fakePrice", 0,
+;Prostethic Penis
+nCurrentID = 1000116
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "hediff", "category", "medBionic", "price", (GET_INT(MASTER,"Hediff",nCurrentID%1000000,"Price"))*80/100, "fakePrice", 0,
+;Hydraulic Vagina
+nCurrentID = 1000117
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "hediff", "category", "medBionic", "price", (GET_INT(MASTER,"Hediff",nCurrentID%1000000,"Price"))*80/100, "fakePrice", 0,
+;Hydraulic Breasts
+nCurrentID = 1000118
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "hediff", "category", "medBionic", "price", (GET_INT(MASTER,"Hediff",nCurrentID%1000000,"Price"))*80/100, "fakePrice", 0,
+;Toughskin
+nCurrentID = 1000156
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "hediff", "category", "medBionic", "price", (GET_INT(MASTER,"Hediff",nCurrentID%1000000,"Price"))*80/100, "fakePrice", 0,
+;Armorskin
+nCurrentID = 1000157
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "hediff", "category", "medBionic", "price", (GET_INT(MASTER,"Hediff",nCurrentID%1000000,"Price"))*80/100, "fakePrice", 0,
+;Stoneskin
+nCurrentID = 1000158
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "hediff", "category", "medBionic", "price", (GET_INT(MASTER,"Hediff",nCurrentID%1000000,"Price"))*80/100, "fakePrice", 0,
+;Painstopper
+nCurrentID = 1000161
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "hediff", "category", "medBionic", "price", (GET_INT(MASTER,"Hediff",nCurrentID%1000000,"Price"))*80/100, "fakePrice", 0,
+;Enabler MK1
+nCurrentID = 1000227
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "hediff", "category", "medBionic", "price", (GET_INT(MASTER,"Hediff",nCurrentID%1000000,"Price"))*80/100, "fakePrice", 0,
+;Enabler MK2
+nCurrentID = 1000228
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "hediff", "category", "medBionic", "price", (GET_INT(MASTER,"Hediff",nCurrentID%1000000,"Price"))*80/100, "fakePrice", 0,
+;Sandy MK 1
+nCurrentID = 1000222
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "hediff", "category", "medBionic", "price", (GET_INT(MASTER,"Hediff",nCurrentID%1000000,"Price"))*80/100, "fakePrice", 0,
+;Sandy MK 2
+nCurrentID = 1000223
+nCurrentID:1 = -1
+DT_ROW_ADD @"MarketeersPharmacyAllItems", "defID", nCurrentID, "fakeID", -1, "fakeChance", 0, "stock", 255, "itemType", "hediff", "category", "medBionic", "price", (GET_INT(MASTER,"Hediff",nCurrentID%1000000,"Price"))*80/100, "fakePrice", 0,
+
+@MarketeersPharmacySellingTablePopulate
+#DIM DYNAMIC fakeChance
+#DIM DYNAMIC itemIsFake
+DT_RELEASE "MarketeersPharmacy"
+CALLF MarketeersPharmacySellingTableStart
+FOR LOCAL, 0, DT_ROW_LENGTH("MarketeersPharmacyAllItems")
+fakeChance = DT_CELL_GET("MarketeersPharmacyAllItems",LOCAL,"fakeChance",0)
+itemIsFake = 0
+IF !fakeChance || DT_CELL_GET("MarketeersPharmacyAllItems",LOCAL,"fakeID",0) < 0
+	itemIsFake = 0
+ELSE
+	IF RAND(256) <= fakeChance
+		itemIsFake = 1
+	ENDIF
+ENDIF
+DT_ROW_ADD @"MarketeersPharmacy", "defID", itemIsFake ? DT_CELL_GET("MarketeersPharmacyAllItems",LOCAL,"fakeID",0) # DT_CELL_GET("MarketeersPharmacyAllItems",LOCAL,"defID",0), "stock", DT_CELL_GET("MarketeersPharmacyAllItems",LOCAL,"stock",0), "itemType", DT_CELL_GETS("MarketeersPharmacyAllItems",LOCAL,"itemType",0), "category", DT_CELL_GETS("MarketeersPharmacyAllItems",LOCAL,"category",0), "price", itemIsFake ? DT_CELL_GET("MarketeersPharmacyAllItems",LOCAL,"fakePrice",0) # DT_CELL_GET("MarketeersPharmacyAllItems",LOCAL,"price",0),
+NEXT
+;i18n-ready labels.
+
+@MarketeersPharmacyCategoryLabel(ARGS)
+#FUNCTIONS
+SELECTCASE ARGS
+	CASE "medCombat"
+		RETURNF "Combat Medicine"
+	CASE "medDaily"
+		RETURNF "Daily Medicine"
+	CASE "sexToy"
+		RETURNF "Sexual Wellness"
+	CASE "medIncontinence"
+		RETURNF "Continence Management"
+	CASE "medBionic"
+		RETURNF "Cybernetics"
+ENDSELECT
+RETURNF ARGS
+
+@MarketeersRecoverChara(ARG,ARG:1)
+#DIM medBill
+SELECTCASE ARG:1
+	CASE 0
+		;auto call
+		CALL PRINT_GP("W", @"땅 위에 있는 %PARSE("you lie",,,ARG)%에서, 당신은 작은 토끼 소녀 부대가 %PARSE("you",6,,ARG)% 쪽으로 걸어가는 것을 볼 수 있다.")
+		$RecoveryTransistion
+		CALL PRINT_GP("W", @"흰색과 빨간색 옷을 입고 등에 소총을 메고 있는 그들은 당신이 등록한 의료진인 것 같다.%COND_STR(" "+PARSE("you",6,,ARG),ARG != MASTER)% 가입했던")
+		; IF TALENT:ARG:100 < -1
+		;     SELECTCASE TALENT:ARG:100
+		;     CASE -2
+		;         LOCALS:1 '= "seems to be a child"
+		;     CASE -3
+		;         LOCALS:1 '= "toddler-sized"
+		;     CASE -4
+		;         LOCALS:1 '= "most likely a newborn baby"
+		;     CASE -5
+		;         LOCALS:1 '= "a tiny inchling. Be careful"
+		;     ENDSELECT
+		; ELSE
+		;     SELECTCASE CharaAge:ARG:0
+		;     CASE IS < 20
+		;         LOCALS:1 '= @"in %HIS_HER(ARG)% teens"
+		;     CASE IS >= 60
+		;         LOCALS:1 '= @"an elder"
+		;     CASEELSE
+		;         LOCALS:1 '= @"in %HIS_HER(ARG)% {CharaAge:ARG:0/10*10}s"
+		;     ENDSELECT
+		; ENDIF
+		; CALL PRINT_GPC("W", @"「We got a %PRINT_MALE("boy",ARG)%, %LOCALS:1%.」", , C_PURPLE)
+		CALL PRINT_GP("W", @"토끼가 %PARSE("you",,,ARG)% 위로 내려와 %PARSE("your",5,,ARG)% 목 옆에 손가락을 몇 개 대었다.")
+		IF IsDead:ARG:0
+			CALL PRINT_GP("W", @"그들은 %PARSE("your",5,,ARG)% 맥박을 확인했다... 아무것도 없다.")
+			CALL PRINT_GPC("W", @"「우리가 너무 늦었다고 생각하나?」", , C_PURPLE)
+			CALL PRINT_GPC("W", @"「늦었다고 생각할 때도 결코 너무 늦지 않다.」", , C_PURPLE)
+			CALL PRINT_GP("W", @"토끼 소녀가 다른 이에게 %PARSE("your",,,ARG)% 부상을 돌보고 %PARSE("you",6,,ARG)% 소생시키라고 명령한다.")
+			CALL PRINT_GPC("W", @"「...알았어!」", , C_PURPLE)
+			CALL PRINT_GP("W", @"%PARSE("You",,,ARG)% 천천히 %PARSE("regain",,,ARG)% 흰색과 빨간 드레스를 입은 토끼 소녀로서 의식을 충격으로 몰아넣는다 %PARSE("your",5,,ARG)% 제세동기로 가슴을 때린다.")
+			CALL PRINT_GPC("W", @"「%HIM_HER(ARG)% 안정화시켰다, 옮기자.」", , C_PURPLE)
+		ELSE
+			CALL PRINT_GPC("W", @"「%HES_SHES(ARG,1)%은 맥박이 있다.」", , C_PURPLE)
+			CALL PRINT_GP("W", @"그 토끼는 ~하는 경향이 있다 %PARSE("your",,,ARG)% 부상을, 그것들을 신중하게 붕대로 감아 막다 %PARSE("your",5,,ARG)% 상처가 피는 것을 막기 위해")
+		ENDIF
+		$TransportMC
+		PRINTL
+		CALL PRINT_GPC("W", @"「괜찮아질 거야.」", , C_PURPLE)
+		CALL PRINT_GP("W", @"토끼들은 바닥에서 %PARSE("you",,,ARG)%을 들어 들고 %PARSE("you",6,,ARG)%를 들것 위에 놓았다.")
+		CALL PRINT_GP("W", @"두 소녀가 들것의 앞뒤를 잡고 %PARSE("you",,,ARG)%을 공중에 올렸다.")
+		IF ARG == MASTER
+			CALL PRINT_GP("W", @"정신을 잃어가면서 당신은 토끼 중 한 마리의 시선이 자신을 향해 미소 짓는 것을 부드럽게 본다.")
+			PRINTFORMW ...
+			PRINTFORMW ..   
+			PRINTFORMW .
+			CALL MarketeersRecoverChara_After
+		ELSE
+			CALL MarketeersRecoverChara_BillPlayer(ARG)
+			CALL PRINT_GP("W", @"토끼들은 %CALLNAME:ARG%를 안고 안전한 곳으로 날아간다.")
+			CALL MarketeersRecoverChara_NPC(ARG)
+			TARGET = MASTER
+		ENDIF
+	CASE 2
+		;manual call
+		CALL PRINT_GP("W", @"당신은 회복팀에게 %PARSE("you",,,ARG)%을 처리하라고 부른다.")
+		CALL PRINT_GP("W", @"흰색과 빨간색 옷을 입은 작은 토끼 소녀 무리가 당신의 구역으로 날아와 %PARSE("you",,,ARG)%의 부상을 돌보기 시작한다.")
+		CALL PRINT_GP("W", @"회복 과정은 빠르며, %PARSE("you are",,,ARG)% 최고의 상태로 돌아온다.")
+		CALL MarketeersRecoverChara_BillPlayer(ARG)
+		CALL PRINT_GP("W", @"분대는 또 다른 부름에 응하기 위해 날아간다.")
+		CALLF HESOYAM(ARG)
+	CASE 3
+		;prank call
+		CALL PRINT_GP("W", @"당신은 회복팀에게 %PARSE("you",,,ARG)%을 처리하라고 부른다.")
+		CALL PRINT_GP("W", @"작은 토끼 소녀 분대 하나가 당신의 구역으로 날아오지만, %PARSE("you are",,,ARG)%는 완벽하게 괜찮은 것을 본다.")
+		PRINTL
+		CALL PRINT_GP("W", @"분대는 당신에게 의료 회복 시스템을 오용했으므로 %金額表示(5000)%를 벌금으로 부과하고 날아갔다.")
+		CALL MarketeersDebtAdd(5000)
+	CASE 80
+		;npc manual call for recovery
+		CALL PRINT_GP("W", @"당신은 \@ IsDead:ARG:0 ? 생명 없는 # 의식을 잃은 \@ %CALLNAME:ARG%를 돌보기 위해 회복팀을 부른다.")
+		CALL PRINT_GP("W", @"작은 토끼 소녀 분대 하나가 당신의 지역으로 날아오지만, 목표가 땅에 쓰러져 있는 것을 본다.")
+		GOTO RecoveryTransistion
+	CASE 81
+		;dead npc manual call for recovery (wooden or permadeath)
+		CALL PRINT_GP("W", @"당신은 생명 없는 %PARSE("you",,,ARG)%을 처리하기 위해 회복 팀을 부른다.")
+		CALL PRINT_GP("W", @"작은 버니걸 분대 하나가 당신의 구역으로 날아오지만 목표가 바닥에 쓰러져 있는 것을 본다.")
+		CALL PRINT_GP("W", @"그들은 %HIS_HER(ARG)%의 맥박을 확인한다... 아무것도 없다.")
+		IF PermaDeath >= 2
+			CALL PRINT_GP("W", @"분대는 구출하기에 너무 멀어서 생명 없는 %CALLNAME:ARG%를 돌보기를 거부한다.")
+		ELSE
+			CALL PRINT_GP("W", @"분대는 당신의 보험 플랜이 불충분하여 생명 없는 %CALLNAME:ARG%를 돌보기를 거부한다.")
+		ENDIF
+		; PRINTL
+		; CALL PRINT_GP("W", @"The squad fines you %金額表示(5000)% for misusing the medic recovery system.")
+		; CALL MarketeersDebtAdd(5000)
+	CASE 87
+		;dead player recovery (permadeath)
+		CALL PRINT_GP("W", @"회복 대원이 와서 당신의 몸에 다가온다.")
+		CALL PRINT_GP("W", @"그들은 당신의 맥박을 확인한다... 아무것도 없다.")
+		CALL PRINT_GP("W", @"분대는 당신의 몸을 땅에 버리고 날아가 버린다.")
+	CASE 88
+		;dead player recovery (stone+)
+		CALL PRINT_GP("W", @"네가 생명 없는 시신으로 땅에 누워 있는 것을 보며 작은 부대의 토끼 소녀들이 너에게 걸어오는 것이 보인다.")
+		CALL PRINT_GP("W", @"흰색과 빨간색 옷을 입고 등에 소총을 메고 있는 그들은 당신이 등록한 의무병들인 것 같다.")
+		PRINTL
+		CALL PRINT_GP("W", @"회복 소대가 와서 당신의 몸에 접근한다.")
+		CALL PRINT_GP("W", @"그들은 당신의 맥박을 확인한다... 아무것도 없다.")
+		CALL PRINT_GP("W", @"한 멤버가 당신의 %HealthInsuranceLabels:HealthInsuranceLevel% 등급 보험 카드를 발견하고, 당신의 몸을 들것 위에 올려놓았다.")
+		CALL PRINT_GP("W", @"분대가 당신의 시신을 회수하고 날아간다.")
+		PRINTFORMW ...
+		PRINTFORMW ..
+		PRINTFORMW .
+		CALL MarketeersRecoverChara_After
+ENDSELECT
+
+@MarketeersRecoverChara_BillPlayer(ARG)
+#DIM DYNAMIC medBill
+SELECTCASE HealthInsuranceLevel
+	CASE IS >= 3
+		;iron or diamond
+		RETURN
+	CASE 1
+		medBill = 40000
+	CASE 2
+		IF IsDead:ARG:0
+			medBill = 40000
+		ELSEIF !SHIRAHU(ARG)
+			medBill = 18000
+		ELSE
+			medBill = 7500
+		ENDIF
+ENDSELECT
+IF medBill
+	PRINTFORML 한 분대원이 당신에게 의료비를 건넨다.
+	PRINTFORMW 그 청구서는 %金額表示(medBill)%를 요구한다.
+	IF MONEY >= medBill
+		PRINTFORML 당신이 간호사에게 필요한 돈을 주면, 분대는 날아간다.
+		CALL PAY_MONEY_YEN(medBill,2)
+	ELSE
+		PRINTFORML 하지만, 당신은 그것을 전부 지불할 돈이 없다.
+		PRINTFORML 당신은 가지고 있는 나머지 돈으로 청구서를 지불하고 팀에게 나중에 지불하겠다고 말한다.
+		CALL MarketeersDebtAdd(medBill-MONEY)
+		MONEY = 0
+	ENDIF
+ENDIF
+
+@MarketeersRecoverChara_After
+#DIM medBill
+medBill = 40000
+PRINTFORML 당신은 지역 병원으로 이송되어 의사들에게 치료를 받았다.
+PRINTFORMW 당신은 3일 후 병원에서 퇴원하고 집으로 돌아간다.
+PRINTFORMW 대체로 괜찮다고 느끼며, 복구된 자신의 몸을 본 모습에 전율을 느낀다.
+SELECTCASE HealthInsuranceLevel
+	CASE IS >= 3
+		medBill = 0
+		PRINTFORMW 간호사가 당신에게 진료비를 주지만, 건강보험 등급 덕분에 당신의 비용은 아주 두툼한 0이다.
+		PRINTFORMW 당신은 영수증을 쓰레기통에 넣으며 미소를 지은 채 클리닉을 나선다.
+	CASEELSE
+		IF HealthInsuranceLevel == 2
+			medBill = 18000
+			SIF IsDead:MASTER:0
+				medBill = 40000
+		ENDIF
+		PRINTFORML 간호사가 당신에게 진료비를 건다.
+		PRINTFORMW 그 청구서는 %金額表示(medBill)%을 요구한다.
+		IF MONEY >= medBill
+			PRINTFORML 당신은 간호사에게 필요한 돈을 주고 병원을 떠난다.
+			PRINTFORMW 간호사는 행복해 보인다.
+			CALL PAY_MONEY_YEN(medBill,2)
+		ELSE
+			PRINTFORML 하지만, 당신은 그것을 전부 지불할 돈이 없다.
+			PRINTFORML 남은 돈으로 청구서를 내고 간호사에게 나중에 지불하겠다고 말한다.
+			CALL MarketeersDebtAdd(medBill-MONEY)
+			MONEY = 0
+		ENDIF
+ENDSELECT
+CALLF HESOYAM(MASTER)
+FOR LOCAL, 0, 3
+;PRINTFORMW DAY:3 - {DAY:3}
+DAY ++
+DAY:3 ++
+CALL CHANGE_MONTH
+;PRINTFORMW AFTER {DAY:3}
+NEXT
+CFLAG:MASTER:現在位置 = CFLAG:MASTER:初期位置
+CFLAG:MASTER:就寝時間 = DAY * 1440 + TIME
+;day ends here
+BASE:MASTER:体力 = 0
+RETURN 1
+
+@MarketeersDebtAdd(ARG)
+SIF ARG <= 0
+	RETURN
+SETCOLOR C_RED
+PRINTFORMW 의료 부채: {(ARG)}
+RESETCOLOR
+CALL PRINT_GP("W", @"이 벌금은 다음 계획 갱신 시 지불됩니다.")
+HealthInsuranceDebt += (ARG)
+;npc recovery
+
+@MarketeersRecoverChara_NPC(ARG)
+CALLF HESOYAM(ARG)
+CALLF BEGONE(ARG)
+BASE:ARG:体力 = 0
+
+@MarketeersInsuranceDescribe_Chimata(ARG)
+SELECTCASE ARG
+	CASE 0
+		PRINTFORML 계획을 취소하시겠습니까?
+		PRINTFORML 그렇게 하면 귀하의 혜택은 즉시 종료될 것입니다.
+		PRINTL
+		PRINTFORML 플랜을 취소하면 다음과 같은 일이 발생합니다:
+		PRINTFORML - 더 이상 저희 의료진으로부터 치료를 받을 수 없습니다. 
+		IF HealthInsuranceLevel >= 2
+			PRINTFORML 실신이나 사망 시 회복되지 않는다.
+			PRINTFORML 영원제에서 서비스를 이용할 경우 전액을 지불해야 한다. 
+			IF HealthInsuranceLevel >= 3
+				PRINTFORML 자동 주입기 접근 권한을 잃는다.
+				IF HealthInsuranceLevel >= 4
+					PRINTFORML  이것은 당신의 플랜에 있는 모든 사람에게 영향을 미칠 것이다.
+				ENDIF
+			ENDIF
+		ENDIF
+		PRINTL
+		PRINTFORML 정말로 취소하고 싶으신가요?
+	CASE 1
+		PRINTFORML 저소득층 가구를 위한 배려 차원에서, 우드 플랜은 예산 보험 플랜이다.
+		PRINTFORML 우드 플랜으로 우리 의료 서비스에 기본적으로 접근할 수 있다.
+		PRINTFORML 필요하다면 언제든지 전문 전투 의료팀을 불러 치료를 받을 수 있다.
+		PRINTL
+		PRINTFORML 하지만 이것은 몇 가지 심각한 제한이 따른다.
+		PRINTFORML 치료를 받으려면 당신의 지역에 의료진을 배치해야 한다.
+		PRINTFORML 현장 비용은 15000엔이지만, 회복 비용은 40000엔이다.
+		PRINTFORML 그리고 사망에 대한 보장은 없다.
+	CASE 2
+		PRINTFORML 스톤 플랜은 대부분의 사람들이 선택하는 중간 가격대의 플랜이다, 특히 환상향이라는 혼란스러운 상태에서.
+		PRINTFORML 우리의 상위 등급 구독을 이용하면 더 저렴한 치유와 회복, 그리고 사망 보장을 받을 수 있다.
+		PRINTFORML 그리고 가장 중요한 것: 자동 회복.
+		PRINTFORML 예기치 않게 실신하거나 맥이 없을 경우, 우리는 자동으로 의료팀을 보내 당신의 회복을 도울 것이다.
+		PRINTFORML 미리 우리에게 전화할 필요가 없다.
+		PRINTL
+		PRINTFORML 나무 계획처럼 필요하면 의료진을 불러 치유할 수 있다.
+		PRINTFORML 현장 비용은 7500엔, 회복 비용은 18000엔, 부활 비용은 40000엔이다.
+		PRINTFORML 영원대(Eienitei) 서비스와 우리 약국은 30\% 할인된다.
+	CASE 3
+		PRINTFORML 아이언은 삶의 끝에서 사는 사람들이 가는 곳이다.
+		PRINTFORML 공급된 자동 주입기로 당신 자신이나 소중한 사람을 죽음의 문턱에서 최고의 상태로 되돌릴 수 있다.
+		PRINTFORML 사용 다음 날 새 것을 보내줄 테니, 사용을 두려워하지 마라.
+		PRINTL
+		PRINTFORML 또한 우리는 치유, 회복, 그리고 부활에 관련된 모든 비용을 부담할 것이다.
+		PRINTFORML 스톤과 마찬가지로 기절하거나 죽으면 회복 서비스가 자동으로 호출된다.
+		PRINTFORML 또한 모든 영원제이테이 서비스와 우리 약국은 65\% 할인된다.
+	CASE 4
+		PRINTFORML 마케터스 패밀리로서 다이아몬드는 당신뿐만 아니라 당신과 함께하는 사람들에게도 봉사한다.
+		PRINTFORML 당신에게 빠진 누구든 당신의 계정만으로 우리의 서비스를 이용할 수 있다.
+		PRINTL
+		PRINTFORML 자동 회복? 자동 주입기? 무료 치유? 전부 얻는다.
+		PRINTFORML 거래를 달콤하게 하기 위해, 다이아몬드 플랜 이용자들에게 에이엔테이 서비스 및 약국 전 품목에 대해 80\% 할인을 제공한다.
+ENDSELECT
+;first time event
+;
+
+@MarketeersInjectorGet()
+CALL PRINT_GP("W", @"당신의 문 앞에 소포가 도착했다. 라벨에는 다음과 같이 인쇄되어 있는 것 같다.")
+LOCALS '= @"GENBU 우선 메일/"
+LOCALS += @"마케터 약국/"
+LOCALS += @"418 영원제이/"
+LOCALS += @"대나무 숲, 이상향(幻想郷), 일본/"
+LOCALS += @"배송지: "
+LOCALS += @"%LOCALS:4%/"
+LOCALS += @"{CFLAG:MASTER:311} %STR_TR(8000+CFLAG:MASTER:311)%/"
+SELECTCASE MAIN_MAP
+	CASE 10
+		LOCALS += @"월의 수도, 달/"
+	CASE 11
+		LOCALS += @"마카이/"
+	CASEELSE
+		LOCALS += @"%GET_MAPNAME(GET_MAPID(CFLAG:MASTER:311))%, 근원의 땅, 일본"
+ENDSELECT
+CALL PRINT_LETTER(@"%LOCALS%", , 40)
+CALL PRINT_GP("W", @"호기심에 너는 그것을 네 방 안으로 들인다.")
+CALL PRINT_GP("W", @"예상대로 일반적인 갈색 상자 안에 들어있지만, 그것을 포장을 풀고 나면 미래적인 주사기 같은 것을 보여주는 전문적으로 디자인된 상자가 남는다.")
+CALL PRINT_GP("W", @"상자를 열면 인쇄된 쪽을 발견한다.")
+LOCALS '= "안녕하세요, 마케터 구독자님."
+LOCALS += "아이언 또는 그 이상의 플랜에 구독해 주셔서 감사합니다. 보너스로 저희 미라피즈 자동 주입기 중 하나를 드립니다./"
+LOCALS += "이 인젝터는 누군가를 완전히 치유하고 그들의 스태미나를 채워준다."
+LOCALS += "이 인젝터가 사용되면 구독 조건에 따라 자동으로 새 것을 보내드릴 것입니다."
+CALL PRINT_LETTER(@"%LOCALS%", , 40)
+SIF nVNGlobals
+	PRINTW
+CALL PRINT_GP("W", @"당신은 쪽지를 찢고 상자를 읽기 시작한다.")
+;miracle pencil
+CALL PRINT_GP("W", @"「마케터스 약국 소속 미라피즈」")
+CALL PRINT_GP("W", @"「기적의 치유 연필」")
+CALL PRINT_GP("W", @"「중등도에서 중증의 부상에 대하여」")
+CALL PRINT_GP("W", @"「비이뇨성 육술 강화 회복 포뮬러를 단일 3ml 용량으로 전달한다」")
+PRINTL
+CALL PRINT_GP("W", @"상자를 열자 박스 아트에 나왔던 것과 똑같은 만년필 같은 것이 나타났다.")
+CALL PRINT_GP("W", @"순백색이며, 마케터 약국 로고를 제외한다.")
+CALL PRINT_GP("W", @"한쪽 끝에는 바늘이 명확하게 숨겨진 주황색 캡이 있다.")
+CALL PRINT_GP("W", @"펜의 한쪽 면에 새겨진 문구를 읽기 시작한다.")
+CALL PRINT_GP("W", @"「미라피즈」")
+CALL PRINT_GP("W", @"「빠른 치유를 위한 3ml 주사」")
+PRINTL
+CALL PRINT_GP("W", @"당신은 펜을 다른 면으로 뒤집어 거기에 적힌 표시를 읽는다.")
+CALL PRINT_GP("W", @"「1. 캡을 제거한다」")
+CALL PRINT_GP("W", @"「2. 허벅지에 대고 누르세요」")
+CALL PRINT_GP("W", @"「3. 5초 동안 유지한다」")
+CALL PRINT_GP("W", @"「치유는 즉시 시작되어야 한다. 그렇지 않다면 마케터에게 전화하여 응급 회복을 요청하라.」")
+PRINTL
+CALL PRINT_GP("W", @"만족감을 느끼며, 당신은 자동 주입기를 주머니에 넣고 상자를 버린다.")
+PRINTFORML 
+
+@MarketeersInjectorUse(ARG)
+CALL PRINT_GP("W", @"당신은 펜을 뽑고 안전캡을 벗긴 뒤 바늘 끝으로 %PARSE("your",,,ARG)% 허벅지를 찌르고 다섯 초 동안 그대로 유지한다.")
+CALL PRINT_GP("W", @"치유는 빠르지만 짧다.")
+CALL PRINT_GP("W", @"약이 떨어지자 펜을 버린다.")
+CALL DrugStuffNoFluff(ARG,539)
+RETURN 1
+
+@MarketeersInsuranceRenew
+#DIM renewCost
+IF HealthInsuranceLevel
+	renewCost = HealthInsuranceCost:HealthInsuranceLevel
+	renewCost += HealthInsuranceDebt
+	; SIF !MAIN_MAP
+	;     renewCost = 30
+	IF MONEY:2 < renewCost
+		PRINTFORML 돈이 떨어져서 보험 계약이 종료되었다.
+		HealthInsuranceLevel = 0
+		HealthInsuranceSignDay = 0
+	ELSE
+		;custom code, show cm cost and current charisma
+		PRINTFORML 건강 보험 계약을 갱신하시겠습니까?
+		PRINTFORML 현재 플랜: %HealthInsuranceLabels:HealthInsuranceLevel% (%金額表示(renewCost)%)
+		PRINTFORML 부채: %金額表示(HealthInsuranceDebt)%
+		PRINTFORML 갱신 비용: %金額表示(renewCost)%
+		PRINTL
+		PRINTFORML 현재 금액: %金額表示(MONEY)%
+		CALL ASK_YN
+		IF !RESULT
+			PRINTFORMW 계약이 갱신되었다.
+			CALL PAY_MONEY_YEN(renewCost, 2)
+			HealthInsuranceSignDay = DAY
+			HealthInsuranceDebt = 0
+		ELSE
+			HealthInsuranceLevel = 0
+			HealthInsuranceSignDay = 0
+			PRINTFORMW 계약은 해지될 것이다.
+		ENDIF
+	ENDIF
+ENDIF

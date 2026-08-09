@@ -1,0 +1,545 @@
+﻿; Modular ERB: NEWGAME.ERB
+;-----------------------------------------------------------
+;はじめから
+;-----------------------------------------------------------
+
+@NEWGAME
+CALL NAS_START_LOADING
+CALL ANIMATION_LOAD_NAS(0, 0, 5, @"초기화 중이다..." ) ;nas loading
+ゲーム開始処理中 = 1
+;本体バージョンを記録
+SAVESTR:本体バージョン = %eraTW_Version%
+;added
+SAVESTR:NAS_SAVE_VER = %NAS_VERSION%
+SAVESTR:ATW_SAVE_VER = %ATW_VERSION%
+;クラス関数初期化
+CALL ANIMATION_LOAD_NAS(0, 0, 5, @"클래스 초기화 중이다..." ) ;nas loading
+CALL MAKE_ALL_CLASS_LIST
+;デフォルトオプション
+CALL ANIMATION_LOAD_NAS(0, 0, 5, @"기본 옵션을 초기화한다..." ) ;nas loading
+CALL DEFAULT_OPTION
+;カリスマ初期化
+CALL SET_CHARISMA("NEW")
+PBAND = 12
+;日付１日目
+DAY = 1
+DAY:2 = 1
+DAY:3 = 1
+;FLAG:酒虫 = 1
+VAR_FERMENT = ただの水
+;(天候パッチ)冷害発生回数・風害発生回数・水害発生回数・連続降水カウンターをリセット
+IS_COLD_CROP_DAMAGE = 0
+IS_STORM_CROP_DAMAGE = 0
+IS_FLOOD_CROP_DAMAGE = 0
+CONTINUOUS_RAINFALL = 0
+;(天候パッチ)降雪・雪崩判定を解除
+CONTINUOUS_SNOWFALL = 0
+SNOW_COVERAGE = 0
+POSSIBLITY_AVALANCHE = 0
+;(天候パッチ)時間帯をリセット
+WEATHER_TIMEZOME = 0
+;(天候パッチ)長期天候傾向をリセット
+YEAR_WEATHER_CONTROL = 0
+;(天候パッチ)短期予報を行う
+CALL ANIMATION_LOAD_NAS(0, 0, 5, @"날씨를 초기화한다..." ) ;nas loading
+CALL WEATHER_FORECAST_1TERM
+;(天候パッチ)1日予報を行う
+CALL WEATHER_FORECAST_1DAY
+;NAS: Eras
+[IF_DEBUG]
+IF benchMarkStart
+	StartingYear = 2023
+	CALL SET_START_YEAR
+ELSE
+	IF DevTest != 3 && !DevTestOptions:14
+		CALL NAS_EraSet
+	ELSEIF DevTest != 3 && DevTestOptions:14
+		StartingYear = DevTestOptions:14
+		CALL SET_START_YEAR
+	ENDIF
+ENDIF
+[ENDIF]
+SELECTCASE ViewingTitlePage
+	CASE 0
+	CASE 1
+		SaveIsEZB = ViewingTitlePage ;EZB
+	CASE 2
+		CALL SET_QUEST_FLAG(LSScarletAlias,QLSScarletActive,1) ;LS
+ENDSELECT
+IF SaveIsEZB && LoG_DisableTutorial
+	LoG_TutorialProgress = 90
+ENDIF
+;//////////////////////
+CALL INIT_FACTIONS
+IF benchMarkStart
+	CALL BENCHMARK_ADVANCE_STAGE
+	CALL BENCHMARK_START_STAGE
+ENDIF
+;キャラ生成
+CALL ADD_ALL_CHARACTERS
+CALL AddMissingRelations
+CALL ModImg_Set ;image tweak custom code
+IF benchMarkStart
+	CALL BENCHMARK_CHARASET
+	CALL BENCHMARK_ADVANCE_STAGE
+ENDIF
+;MASTER生成
+CALL NAS_LOAD_END
+CALL NEWGAME_MAKE
+SIF RESULT == -8888
+	RETURN -8888
+CALL SET_ALTERNATIVE_DEFAULTS
+FLAG:CHILD_SUPPORT_RELIEF = 1
+FLAG:MOB_PREGNANCY_TYPES = 1
+FLAG:TWINS_CHANCE = 10
+FLAG:TRIPLETS_CHANCE = 2
+IF !DevTest && !benchMarkStart ;dev test
+	FOR LOCAL, 1, CHARANUM
+	CALL KOJO_COUNT_CHECK(LOCAL)
+	NEXT
+	gDialogueUpdateInit = 1
+	CALL Alternate_Dialogue_Toggles
+	gDialogueUpdateInit = 0
+ENDIF
+;----------------------
+;recolored map or default
+CALL DEFAULT_MAP_COLOR
+;achievement rework custom code
+CALL MakeAchievementListTemp
+;NAS stuff
+CALLF PantyTableCreate
+;SIF !DT_EXIST(@"PANTS_TEMP")
+CALLF PantyTableCreate(1)
+CALLF CREATE_WEAPON_LIST_TABLE
+CALLF UNDIES_TAG_LIST()
+CALL InitSavedTempStats
+CALL PlayerHouseFixBrokenTenants
+;===============================
+;atw edit, hardcore content toggle
+;CALL HARDCORE_CONTENT_DEFAULT
+SIF !nOnboardingProgress:0 && !DevTest && !benchMarkStart ;dev test
+	CALL NAS_NewGame_FetishSettings
+;NAS Stuffs
+CALLF UNDIES_TAG_LIST
+FOR LOCAL,0,CHARANUM
+CALLF MAKE_PANTY_PREFERENCE(LOCAL)
+NEXT
+VARSET FacionPropagandaSign, -1
+;===============================
+;住居設定
+IF SaveIsEZB || benchMarkStart
+	;LEGEND OF GENSOKYO
+	MAIN_MAP = 2
+	TRYCALLFORM ROOMSETTING_{2}
+	拠点_大家 = MASTER
+	CFLAG:MASTER:初期位置 = 230
+	デフォルト初期位置 = CFLAG:MASTER:初期位置
+	ゲーム開始処理中 = 0
+	ゲーム引き継ぎ処理中 = 0
+	CALL MAP_DEFAULTRESIDENT(MAIN_MAP)
+ELSEIF LS_ACTIVE() == "Scarlet"
+	;LUNATIC SURVIVAL
+	MAIN_MAP = 3
+	TRYCALLFORM ROOMSETTING_{3}
+	拠点_大家 = MASTER
+	CFLAG:MASTER:初期位置 = 301
+	デフォルト初期位置 = CFLAG:MASTER:初期位置
+	ゲーム開始処理中 = 0
+	ゲーム引き継ぎ処理中 = 0
+	CALL MAP_DEFAULTRESIDENT(MAIN_MAP)
+ELSEIF !FLAG:なりきり && (!MASTER || nStartingBackstory == 32) && !DevTest
+	SELECTCASE nStartingBackstory
+		CASE IS < 20
+			MAIN_MAP = nStartingBackstory
+			TRYCALLFORM ROOMSETTING_{nStartingBackstory}
+			TRYCALLFORM DEFAULT_OWNER_{nStartingBackstory}
+			ゲーム開始処理中 = 0
+			ゲーム引き継ぎ処理中 = 0
+			CALL MAP_DEFAULTRESIDENT(MAIN_MAP)
+		CASE 32
+			COPYCHARA MASTER,0
+			TALENT:0:194 = 0
+			IF !nBackstoryChoices
+				CALL SET_HISTORY_DEATH(0,0,"Shimachau")
+			ELSE
+				CALLF DamageBodyPart(0,1,10000,nBackstoryChoices,0,"Unknown Origin", 0)
+			ENDIF
+			CALL CrippleEffects(0)
+			HasGrave:0:0 = TPToGraveyard(0)
+			DeathDay:0:0 = -99
+			KnowsDeadBodies:29:0 = -99
+			CFLAG:0:出禁 = 30
+			MAIN_MAP = TPToGraveyard(0)/100
+			TRYCALLFORM ROOMSETTING_{TPToGraveyard(0)/100}
+			CFLAG:MASTER:311 = TPToGraveyard(0)
+			;TRYCALLFORM DEFAULT_OWNER_{TPToGraveyard(0)/100}
+			拠点_大家 = MASTER
+			デフォルト初期位置 = TPToGraveyard(0)
+			ゲーム開始処理中 = 0
+			ゲーム引き継ぎ処理中 = 0
+			CALL MAP_DEFAULTRESIDENT(MAIN_MAP)
+		CASE 35
+			MAIN_MAP = PlayerLandID
+			TRYCALLFORM ROOMSETTING_{PlayerLandID}
+			TRYCALLFORM DEFAULT_OWNER_{PlayerLandID}
+			ゲーム開始処理中 = 0
+			ゲーム引き継ぎ処理中 = 0
+			CALL MAP_DEFAULTRESIDENT(MAIN_MAP)
+		CASEELSE
+			CALL SET_MAINHOME
+	ENDSELECT
+ELSE
+	;custom code: Devtest
+	CALLF RelocateMakaiIdiots(MASTER)
+	;This is for touhous WITH a home
+	IF CFLAG:MASTER:自宅位置
+		MAIN_MAP = CFLAG:MASTER:自宅位置/100
+		TRYCALLFORM ROOMSETTING_{CFLAG:MASTER:自宅位置/100}
+		拠点_大家 = MASTER
+		デフォルト初期位置 = CFLAG:MASTER:初期位置
+		ゲーム開始処理中 = 0
+		ゲーム引き継ぎ処理中 = 0
+		CALL MAP_DEFAULTRESIDENT(MAIN_MAP)
+	ELSE
+		;If there's no home then we call set home anyway
+		PRINTFORML %조사처리(CALLNAME:MASTER,"는")% 설정된 집이 없습니다. 집을 선택해 주세요.
+		CALL SET_MAINHOME
+	ENDIF
+	CALL RANDOM_MC(0)
+ENDIF
+;オプション
+IF !DevTest && !benchMarkStart
+	IF SaveIsEZB
+		CALL EZB_NEWGAME_BONUSES
+	ELSE
+		CALL NEWGAME_OPTION
+	ENDIF
+ENDIF
+;キャラ設定
+GLOBAL:997 = EQUIP:MASTER:6 ;NAS: Store underwear being worn
+FOR LOCAL,0,CHARANUM
+;開始位置
+CFLAG:LOCAL:現在位置 = CFLAG:LOCAL:初期位置
+;服装
+CALL SELECT_CLOTHES(LOCAL, "今日の衣装")
+CALL CTRL_CLOTHES_SET(LOCAL, "現在衣装の変更_普段着")
+CALL CLOTHES_SETTING_TRAIN(LOCAL)
+CALL 下着確認リセット(LOCAL)
+CVARSET BASE, GETNUM(BASE, "酒気"), 0
+NEXT
+CALL GiveFreeClothesSet()
+;MASTER起床時間セット（7時）
+IF !MASTER
+	TIME:3 = 420
+ELSE
+	TIME:3 = CSVCFLAG(NO:MASTER,355)
+ENDIF
+;MASTER睡眠中フラグON
+CALL SET_SLEEP(1,MASTER,0)
+ゲーム開始処理中 = 0
+CALL INIT_STARTINGLV ;custom code
+CALL ADD_EXTENDED_TRAITS_SET_ALL() ;addition custom code
+CALL INIT_QUESTS() ;Custom code, initialize quests.
+CALL LS_SETUP(1) ;Custom code, set up Lunatic Survival.
+;custom code: Reset Narikiri to 0 so all dialogue shows
+SIF DevTest
+	FLAG:なりきり = 0
+BREWING_KNOWN_DRINKS_CHECKED = 1 ;qol custom code
+BREWING_KNOWN_DRINKS:1 = 1 ;qol custom code
+;NAS: Lucid Dream
+IF DevTest == 3
+	ABL:MASTER:43 = MaxNonHLevel
+	ABL:MASTER:50 = MaxNonHLevel
+	TCVAR:MASTER:906 = 1
+	TIME = TIME:3
+	TIME:1 = TIME + 1440 * DAY
+	TFLAG:あなた起床 = TIME:1
+	CALLF PANTY_REWORK_CHANGE(MASTER,今日のぱんつ(MASTER))
+	CALLF PeeMe(MASTER,4)
+	CALLF PooMe(MASTER,4)
+	CALLF Hornyme(MASTER,2)
+	CALL DAILY_CONDITION_EV901
+ENDIF
+RETURN 0
+;FileName_SHOP_CUSTOM.ERB -------------------------- Rev1.00
+;CALL		USER
+;ARG		NONE
+;RETURN		VOID
+;COMMENT
+;キャラを追加したときにいちいちここをいじる必要の無いように
+;キャラクタ数上限はERHファイルで定義
+;-----------------------------------------------------------
+
+@ADD_ALL_CHARACTERS(ARG) ;custom arg to skip muiltiple dialogue choice
+;addition custom code
+;CALL ADD_SET_RELATION
+;LOCAL:5 = !RESULT
+;Custom Character Custom code
+;needed for custom character checks
+#DIM CHARA
+LOCAL:5 = 1
+TARGET = 0
+REDRAW 0
+FOR LOCAL,CHARANUM,キャラクタ数上限
+SIF !EXISTCSV(LOCAL)
+	BREAK
+CALL ADDCHARA_INIT(LOCAL) ;custom code
+SIF inCharaCreator && !DAY; character creator
+	CONTINUE
+CALL SET_MINIMUM_EXP_ALL(LOCAL)
+;Custom Character Custom code
+;Preventing null pointers
+;- Mr Pops Alot
+SIF CHARA >= CHARANUM
+	CHARA = CHARANUM-1
+IF !EXP:CHARA:キス経験
+	TALENT:CHARA:キス未経験 = 1
+ENDIF
+CALL CustomTraits(LOCAL) ;added
+CALL PREGNANCY_TYPES_NEWGAME_SET() ;custom code
+CALL SetOmoStats(LOCAL)
+;NAS: This is handled using the update function
+CALL KOJO_MULTIPLE(LOCAL,1)
+SIF LOCAL%10 == 0
+	CALL ANIMATION_LOAD_NAS(LOCAL, 0, CSV_CHARANUM(), @"캐릭터 추가하기") ;nas loading
+NEXT
+;character creator
+SIF inCharaCreator && !DAY
+	RETURN
+;do it again for relations
+FOR LOCAL,0,キャラクタ数上限
+SIF LOCAL:5
+	CALL ADD_SET_RELATION_PROC(LOCAL)
+;Unfair Mode Stuff
+IF LOCAL < CHARANUM
+	IF GETBIT(nUnfair,0) && LOCAL < CHARANUM
+		CALL CHARACTER_DIALOG_STATUS(LOCAL)
+		SIF STRFIND(RESULTS, "vinumsabbathi") > -1
+			MAXBASE:LOCAL:TSP = 4000
+		SIF STRFIND(RESULTS, "Mr Pops Alot") > -1
+			TALENT:LOCAL:OmoGuardian = 4
+		IF STRFIND(RESULTS, "Pedy") > -1
+			TALENT:LOCAL:21 = 2
+			ABL:LOCAL:Melee = MAX(ABL:LOCAL:Melee,UniversalRank("Extra"))
+		ENDIF
+	ENDIF
+	IF GETBIT(nUnfair,1)
+		;Family Names
+		CALL RandomName(LOCAL, 5)
+		IF BloodlineName:LOCAL:0 == ""
+			BloodlineName:LOCAL:0 = %nameArray:LOCAL:na_LastName%
+			;CALLNAME:(LOCAL) = %nameArray:(LOCAL):na_FirstName%
+		ELSE
+			nameArray:LOCAL:na_LastName = %BloodlineName:LOCAL:0%
+			CALLNAME:(LOCAL) = %nameArray:(LOCAL):na_FirstName%
+		ENDIF
+		NAME:(LOCAL) = %NameChecker(LOCAL)%
+		FOR LOCAL:1, 0, CHARANUM
+		IF !CharaFamily:LOCAL:(LOCAL:1)
+			CONTINUE
+		ELSE
+			SIF BloodlineName:(LOCAL:1):0 == ""
+				BloodlineName:(LOCAL:1):0 = %BloodlineName:LOCAL:0%
+			nameArray:(LOCAL:1):na_LastName = %BloodlineName:(LOCAL:1):0%
+			CALLNAME:(LOCAL:1) = %nameArray:(LOCAL:1):na_FirstName%
+			NAME:(LOCAL:1) = %NameChecker(LOCAL:1)%
+		ENDIF
+		NEXT
+	ELSE
+		;NAS: Set blood line name as last name if not set
+		SIF STRLENS(nameArray:LOCAL:na_LastName) && !STRLENS(BloodlineName:LOCAL:0)
+			BloodlineName:LOCAL:0 = %nameArray:LOCAL:na_LastName%
+	ENDIF
+ENDIF
+NEXT
+;legend of gensokyo
+IF SaveIsEZB
+	DELCHARA CHARANUM-1
+	CALL LoG_MakeAllRivals
+ENDIF
+;-----------------------------------------------------------
+;設定変更
+;-----------------------------------------------------------
+
+@NEWGAME_OPTION
+#DIMS choices, 100
+;初期化
+;甲斐性なし、農民
+SETBIT FLAG:1000, 1
+SETBIT FLAG:1000, 2
+;TINKO
+SIF !TALENT:MASTER:形状
+	TALENT:MASTER:形状 = 3
+;服
+SIF !CFLAG:MASTER:基本服装セット
+	CALL MASTER_CLOTHES_INIT
+;
+;SIF !ゲーム開始処理中
+;	ニューゲーム特典 '= "なし"
+;選択肢
+VARSET choices
+PRINTL
+PRINTL
+PRINTL 게임이 시작되기 전에 다양한 설정을 할 수 있다.
+DRAWLINE
+;あなた設定
+SIF !FLAG:なりきり
+	choices:0 '= @"자신을 다시 꾸미기"
+SIF HAS_PENIS(MASTER)
+	choices:1 '= @"당신의 성기는 현재 %TINKO_SIMPLE(MASTER)%이다."
+choices:2 '= @"당신은 %MASTER_CLOTHES_NAME(CFLAG:MASTER:基本服装セット)%을 입고 있다."
+IF FLAG:甲斐性無
+	choices:3 '= @"당신은 고백할 담력이 없다."
+ELSE
+	choices:3 '= @"고백할 수 있다"
+ENDIF
+SIF FLAG:LUSTMODE
+	choices:3 += "(Lust mode enabled)"
+IF FLAG:地主
+	choices:4 '= @"당신은 지주인 %CALLNAME:(FLAG:地主)%를 위해 일하는 농부이다."
+ELSE
+	choices:4 '= @"당신은 자유로운 %PRINT_MALE("man", MASTER)%이다"
+ENDIF
+SIF nStartingBackstory > 20
+	choices:5 '= @"거주지: %GET_MAPNAME(MAIN_MAP)% %STR_TR(デフォルト初期位置 + (MAIN_MAP ? 8000 # 0) )%"
+;------------------------------------------------------------------------------------------------------
+;Custom code, Lunatic Survival option.
+RESULTS =
+TRYCALLF LS_NEW_GAME_OPTION_TEXT
+choices:6 '= RESULTS
+;------------------------------------------------------------------------------------------------------
+;幻想郷
+;custom code, commented out since it's replaced by EN QoL
+;choices:10 '= @"Change who is or is not a virgin"
+choices:11 '= @"모든 사람의 몸을 바꾸기"
+IF FLAG:POSTAL == -1
+	choices:12 '= @"환상향은 폭력이 없는 평화로운 장소이다."
+ELSEIF !FLAG:POSTAL
+	choices:12 '= @"이상한 곳은 평화로운 장소이지만, 누군가 총을 겨누면 준비된 자들이 있다."
+ELSEIF FLAG:POSTAL == 1
+	choices:12 '= @"이상향은 개방된 국가다."
+ELSEIF FLAG:POSTAL == 2
+	choices:12 '= @"전설의 마을은 강력한 무기를 보여주는 것을 부끄러워하지 않는다."
+ELSEIF FLAG:POSTAL == 3
+	choices:12 '= @"당신은 이제 이상향의 가장 수배된 존재다."
+ELSEIF FLAG:POSTAL == 4
+	choices:12 '= @"모두가 서로를 미워하고 그들과 당신이 죽기를 원한다."
+ENDIF
+SELECTCASE PermaDeath
+	CASE -1
+		choices:13 '= "All characters will resurrect the day after their death"
+	CASE 0
+		choices:13 '= "Gods, ghosts, and fairies can die, but they'll resurrect the day after"
+	CASE 1
+		choices:13 '= "Characters will never automatically resurrect. They must be resurrected by other means."
+	CASE 2
+		choices:13 '= "Dead is dead. If a character dies, they are permanently dead."
+ENDSELECT
+;特典
+choices:20 '= NEWGAMEBONUS_TEXT()
+IF ゲーム引き継ぎ処理中
+	choices:21 '= 周回特典_表示()
+ENDIF
+CALL ASK_CHOICES(choices, 100, "Finished")
+SELECTCASE RESULT
+	CASE 0
+		IF !FLAG:なりきり
+			CALL CHAR_EDITOR_NAS(MASTER)
+			CALL SET_MAINHOME
+		ENDIF
+	CASE 100
+		CALL VIRGIN_SET_APPLY
+		CALL SET_BODY_APPLY
+		CALL NEWGAME_BONUS_APPLY
+		CALL SET_APPLY_NOUMIN
+		;CALL 周回特典_適用
+		ITEM:安物食材 = 10
+		RETURN
+	CASE 1
+		SIF HAS_PENIS(MASTER)
+			CALL TINKO_DECIDE(MASTER)
+	CASE 2
+		CALL MASTER_CLOTHES
+	CASE 3
+		CALL KAISYONASI
+	CASE 4
+		CALL RESET_NOUMIN
+		CALL SET_NOUMIN
+	CASE 5
+		CALL SET_MAINHOME
+		;------------------------------------------------------------------------------------------------------
+		;Custom code, Lunatic Survival.
+		SELECTCASE MAIN_MAP
+			;Disable Lunatic Survival if another map is picked.
+			CASE 3
+			CASEELSE
+				CALL SET_QUEST_FLAG(LSScarletAlias,QLSScarletActive,0)
+		ENDSELECT
+	CASE 6
+		CALL LS_NEW_GAME_OPTION
+		;------------------------------------------------------------------------------------------------------
+		;custom code, commented out since it's replaced by EN QoL
+		;CASE 10
+		;CALL VIRGIN_SET
+	CASE 11
+		CALL BODY_SET
+	CASE 12
+		CALL OPEN_CARY_SET
+	CASE 13
+		CALL PERMADEATH_SET
+	CASE 20
+		CALL NEWGAME_BONUS_SELECT
+	CASE 21
+		IF ゲーム引き継ぎ処理中
+			CALL 周回特典
+		ENDIF
+ENDSELECT
+RESTART
+;-----------------------------------------------------------
+;設定変更
+;-----------------------------------------------------------
+
+@NEWGAME_VERUP
+;恋人修正済フラグを立てる
+SETBIT FLAG:1000, 3
+SETBIT FLAG:1000, 4
+CALL VERSION_UP
+PRINTW Game setup complete.
+;SAVEDATA 99, "はじめから"
+PRINTL Autosave complete
+;custom code, Update Menu update, force execute basic updates since it's done way quicker now
+;skipped character set up questions because you usually get to set them up during first meet, warn me if I'm wrong
+PRINTL
+PRINTL 필수 업데이트를 지금 실행 중이다...
+DRAWLINE
+gDialogueUpdateInit = 1
+Update_Behavior_FullUpdate = 1
+CALL Update_TR
+FOR LOCAL,1,CHARANUM - 1
+CALL Update_Dialogue_Individual(LOCAL, 1)
+CharaDialogueAmount_History:LOCAL = DialogueCount_Result
+NEXT
+gDialogueUpdateInit = 0
+Update_Behavior_FullUpdate = 0
+FullUpdate_NotFirstTimeRun = 1
+PRINTFORML 
+PRINTFORML 필수 업데이트가 완료되었습니다.
+PRINTFORML 일부 캐릭터는 메인 메뉴에서 UPDATE를 통해 추가적인 적절한 설정이 필요합니다.
+PRINTFORMW 건너뛰어도 괜찮지만, 캐릭터 능력과 관련하여 예상치 못한 문제가 발생할 수 있습니다.
+;custom code, set all abilities up to date upon the start
+
+@INIT_STARTINGLV
+;don't think most people care about this
+;#;PRINTFORML Normalizing Ability & Experience levels, and setting custom CFLAGs...
+SKIPDISP 1
+FOR LOCAL,0,CHARANUM
+SIF CFLAG:LOCAL:出禁
+	CONTINUE
+CALL SET_MINIMUM_EXP_ALL(LOCAL, 1)
+CALL SOURCE_ABLUP(LOCAL)
+SIF EXP:LOCAL:キス経験 == 0 && TALENT:LOCAL:キス未経験 == 0 && CFLAG:LOCAL:ファーストキス喪失対象 != 1 ;set never kissed
+	TALENT:LOCAL:キス未経験 = 1
+CALL KOJO_MESSAGE_SEND("FLAGSETTING", 0, LOCAL) ;added, set character specific flags
+NEXT
+CALL SHOW_ABLUP_SELECT
+SKIPDISP 0

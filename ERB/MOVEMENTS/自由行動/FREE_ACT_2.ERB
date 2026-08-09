@@ -1,0 +1,93 @@
+﻿; Modular ERB: 自由行動/FREE_ACT_2.ERB
+;食事
+
+@EXIST_FreeAct2
+#LOCALSIZE 1
+#LOCALSSIZE 1
+;オブジェクト本体
+
+@FreeAct2(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+#DIM 経過時間
+経過時間 = Activity_Duration:TARGET
+SELECTCASE O_DATA
+	CASE "名称"
+		CALLF MAKE_STR(V_NAME, "一緒に食事する")
+	CASE "CHAIN"
+		;他キャラに連鎖する場合コメントアウト外すこと
+		CALLF MAKE_INT(V_NAME, 1)
+	CASE "経過時間"
+		;自由行動に付き合うコマンドでの経過時間
+		;未入力だと最大30分
+		CALLF MAKE_INT(V_NAME, 経過時間)
+ENDSELECT
+
+@自由行動内容_2(CHARA, ARGS, 時間係数, CHAIN)
+#DIM CHARA
+#DIM CHAIN
+#DIM 現在地
+#DIM メッセージ表示
+#DIM 時間係数
+#DIM 経過時間
+現在地 = CFLAG:CHARA:現在位置
+メッセージ表示 = 現在地 == CFLAG:MASTER:現在位置 ? 1 # 0
+SELECTCASE ARGS
+	CASE "発生"
+		SIF !憩いスペース(現在地) && 現在地 != CFLAG:CHARA:神社在住
+			RETURN 0
+		SIF TIME_PROGRESS(TCVAR:CHARA:空腹時刻) <= 0
+			RETURN 0
+		SIF メッセージ表示
+			PRINTFORMW %CALLNAME:CHARA% \@ CHAIN ? joins in on %CALLNAME:CHAIN%'s meal# starts preparing a meal\@.
+		;行動が始まった段階で空腹は満たされる,以降も行動が終わるまで一定の満腹を得る,この時点では満腹だけ
+		TCVAR:CHARA:空腹時刻 = 1440 * DAY + TIME + 120
+		RETURN 60 + RAND:30
+	CASE "行動中"
+		CALL 自由行動食事(CHARA)
+		SIF メッセージ表示
+			PRINTFORMW %CALLNAME:CHARA%은(는) 식사를 하고 있다.
+	CASE "完了"
+		CALL 自由行動食事(CHARA)
+		SIF メッセージ表示
+			PRINTFORMW %CALLNAME:CHARA%은(는) %HIS_HER(CHARA)% 식사를 마친 것 같다.
+	CASE "中断"
+		CALL 自由行動食事(CHARA)
+	CASE "付き合う"
+		PRINTFORML 당신과 %조사처리(CALLNAME:TARGET,"는")% 함께 식사를 한다.
+		IF TFLAG:193 < 0
+			PRINTFORML 불행하게도 너는 그렇게 배고프지 않았다...
+		ELSE
+			PRINTFORML 당신들은 느긋하고 다정한 시간을 함께 보낸다...
+		ENDIF
+	CASE "ソース"
+		CALL FreeActMeal(TARGET, 時間係数)
+ENDSELECT
+
+@FreeActMeal(ARG, 時間係数)
+#DIM 時間係数
+#DIM 経過時間
+経過時間 = Activity_Duration:ARG
+IF TIME_PROGRESS(TCVAR:MASTER:空腹時刻) <= 0
+	;空腹でなかったら効果減少
+	TFLAG:193 = -1
+	SOURCE:ARG:歓楽 = (50 + ((ABL:ARG:親密 + 好感度係数(ARG)) * 25)) * 時間係数
+	SOURCE:ARG:受動 = (30 + ((ABL:ARG:従順 + 好感度係数(ARG)) * 15)) * 時間係数
+	SOURCE:ARG:征服 = (30 + (ABL:ARG:サドっ気 * 10)) * 時間係数
+	TCVAR:MASTER:空腹時刻 = MAX(1440 * DAY + TIME + 120, TCVAR:MASTER:空腹時刻 + 120) ;bugfix
+	CALL RECOVER(MASTER, 1 * 経過時間, "体力", "식사로 회복한다")
+	CALL RECOVER(MASTER, 1 * 経過時間, "気力", "식사를 통해 회복한다.")
+	TFLAG:98 = 1
+ELSE
+	SOURCE:ARG:歓楽 = (100 + ((ABL:ARG:親密 + 好感度係数(ARG)) * 50)) * 時間係数
+	SOURCE:ARG:受動 = (60 + ((ABL:ARG:従順 + 好感度係数(ARG)) * 30)) * 時間係数
+	SOURCE:ARG:征服 = (60 + (ABL:ARG:サドっ気 * 10)) * 時間係数
+	;TARGETは自由行動処理で食事する
+	TCVAR:MASTER:空腹時刻 = 1440 * DAY + TIME + 120
+	CALL RECOVER(MASTER, 3 * 経過時間, "体力", "식사를 통해 회복한다")
+	CALL RECOVER(MASTER, 3 * 経過時間, "気力", "식사를 통해 회복한다.")
+	TFLAG:98 = 2
+ENDIF

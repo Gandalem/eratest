@@ -1,0 +1,959 @@
+﻿; Modular ERB: 能力表示.ERB
+
+@SHOW_CHARA_LIST(LIST_TYPE = "存在するキャラリスト", DISP_TYPE = "体力気力", OP)
+#DIMS LIST_TYPE                     ;リストの種別
+#DIMS DISP_TYPE                     ;一行表示での表示内容
+#DIMS OP                            ;機能オプション
+#DIM  GET_LIST = 1                  ;リスト更新フラグ
+#DIM  L_ID                          ;リスト上の番号（ループカウンタ）、登録番号にあらず
+#DIM  L_CLASS_ID                    ;リストのクラス内ID
+#DIM  CHARA_LIST , キャラクタ数上限 ;リスト本体、登録番号にて記録
+#DIM  CHARA_CNT                     ;リストに該当したキャラの数
+#DIMS INPUT_STR                     ;入力内容の一時保持
+#DIM  INPUT_INT                     ;入力内容をINT化したモノ
+#DIM  NOW_GROUP = 1                 ;表示中のキャラグループ
+#DIM  LAST_GROUP                    ;キャラグループ総数
+#DIM  DISP_PAGE                     ;ページ数（情報表示の項目の切替）
+#DIMS SORT_TYPE                     ;キャラリストのソートタイプ
+;表示タイプの名称
+#DIMS CONST DISP_NAME , 5 = "体力気力", "感度など", "性技", "刻印", "好感度"
+;表示項目の名称
+#DIMS CONST DISP_MEMO , 25 = "体力", "気力", "Ｃ感", "Ｖ感", "Ａ感", "Ｂ感", "Ｍ感", "親密", "従順", "欲望", "技巧", "指技", "舌技", "胸技", "腰技", "膣技", "Ａ技", "苦痛", "快楽", "不埒", "反発", "時姦", "好感", "信頼", "欲求"
+CALL SHOW_CHARA_LIST_TR(LIST_TYPE, DISP_TYPE, OP)
+RETURN RESULT
+;情報表示用
+DISP_PAGE = FINDELEMENT(DISP_NAME, DISP_TYPE)
+IF GET_LIST
+	CALL MAKE_CHARA_LIST(LIST_TYPE, L_CLASS_ID, CHARA_LIST, CHARA_CNT)
+	GET_LIST = 0
+	VARSET SORT_TYPE
+ENDIF
+DRAWLINE
+;項目なし
+IF CHARA_CNT <= 0
+	PRINTFORML 해당 없음 %LIST_TYPE%
+	PRINTFORML 
+	DRAWLINE
+	FOR LOCAL, 0, 20
+	PRINTL
+	NEXT
+	;項目あり
+ELSE
+	;現在のタイプの総グループ数を更新
+	LAST_GROUP = 1 + (CHARA_CNT - 1) / 20
+	PRINTFORML (해당{CHARA_CNT}명 {NOW_GROUP}/{LAST_GROUP}) %LIST_TYPE% 색깔이 있는 캐릭터는 구상 있음
+	PRINTFORM 
+	CALL CHARA_BUTTON(-1, , DISP_TYPE, SORT_TYPE)
+	DRAWLINE
+	FOR L_ID, (NOW_GROUP - 1) * 20, NOW_GROUP * 20
+	IF INRANGE(L_ID, 0, CHARA_CNT - 1)
+		CALL CHARA_BUTTON(L_ID, CHARA_LIST:L_ID, DISP_TYPE, SORT_TYPE)
+	ELSE
+		PRINTL
+	ENDIF
+	NEXT
+ENDIF
+DRAWLINE
+PRINTFORM 　　　　　　　　　　　
+SIF CHARA_CNT > 0 && NOW_GROUP > 1
+	PRINTBUTTON "[888] - 이전 캐릭터　", "888"
+PRINTFORML 
+IF STRCOUNT(OP, "「情報固定」")
+	PRINTFORM 　　　　　　　　　　　
+ELSE
+	PRINTBUTTON @"[444] - 　　%DISP_NAME:((DISP_PAGE - 1 + 5) % 5), 8%　", "444"
+ENDIF
+IF STRCOUNT(OP, "「条件変更」")
+	PRINTBUTTON "[555] - 조건 변경　", "555"
+ELSE
+	PRINTFORM 　　　　　　　　　　　
+ENDIF
+IF STRCOUNT(OP, "「情報固定」")
+	PRINTFORM 　　　　　　　　　　　
+ELSE
+	PRINTBUTTON @"[666] - 　　%DISP_NAME:((DISP_PAGE + 1 + 5) % 5), 8%　", "666"
+ENDIF
+PRINTFORML 
+PRINTFORM 　　　　　　　　　　　
+SIF CHARA_CNT > 0 && NOW_GROUP < LAST_GROUP
+	PRINTBUTTON "[222] 다음 캐릭터　", "222"
+PRINTFORML 
+PRINTFORML 
+PRINTBUTTON "[999] - 돌아간다　", "999"
+PRINTFORML 
+VARSET INPUT_STR
+VARSET INPUT_INT
+DO
+INPUTS
+INPUT_STR '= RESULTS
+SIF !STRLENS(INPUT_STR)
+	GOTO RETRY
+IF ISNUMERIC(INPUT_STR)
+	INPUT_INT = TOINT(INPUT_STR)
+	SELECTCASE INPUT_INT
+		;先にシステム系を処理、222なら余裕あるっしょ（Kでは使えんわな）
+		CASE 888
+			SIF !(CHARA_CNT > 0 && NOW_GROUP > 1)
+				GOTO RETRY
+			NOW_GROUP --
+			RESTART
+		CASE 222
+			SIF !(CHARA_CNT > 0 && NOW_GROUP < LAST_GROUP)
+				GOTO RETRY
+			NOW_GROUP ++
+			RESTART
+		CASE 444
+			SIF STRCOUNT(OP, "「情報固定」")
+				GOTO RETRY
+			DISP_TYPE '= DISP_NAME:((DISP_PAGE - 1 + 5) % 5)
+			RESTART
+		CASE 555
+			SIF !STRCOUNT(OP, "「条件変更」")
+				GOTO RETRY
+			CALL CHANGE_LIST(LIST_TYPE, OP)
+			GET_LIST = 1
+			NOW_GROUP = 1
+			RESTART
+		CASE 666
+			SIF STRCOUNT(OP, "「情報固定」")
+				GOTO RETRY
+			DISP_TYPE '= DISP_NAME:((DISP_PAGE + 1 + 5) % 5)
+			RESTART
+		CASE 999
+			;REFで配列作れば多キャラ選択も行けそう
+			;受け渡しはともかくとして表示まわりがめんどいか
+			GET_LIST = 1
+			NOW_GROUP = 1
+			RETURN 999
+		CASEELSE
+			;キャラが選択された時
+			IF !INRANGE(INPUT_INT, MAX(0, (NOW_GROUP - 1) * 20), MIN(CHARA_CNT - 1, NOW_GROUP * 20))
+				PRINTFORMW {INPUT_INT} 범위 외
+				GOTO RETRY
+			ELSEIF L_CLASS_ID == -1 && !CHECK_CHARA(CHARA_LIST:INPUT_INT, LIST_TYPE)
+				PRINTFORMW {INPUT_INT} 목록이 아니야
+				GOTO RETRY
+			ELSEIF L_CLASS_ID > 0 && !GET_INT(CHARA_LIST:INPUT_INT, "キャラリスト", L_CLASS_ID, "判定")
+				PRINTFORMW {INPUT_INT} 목록에서 제외된다
+				GOTO RETRY
+			ENDIF
+			;ここだけDO-LOOPぬけます
+			BREAK
+			$RETRY
+			REUSELASTLINE 無効な入力です
+			CONTINUE
+	ENDSELECT
+ELSE
+	;STRで受け取った時、SORT処理なので処理が可能な場合は全てRESTART
+	;妙な文字列を受け取った場合にはCONTINUE
+	;DO-LOOPを脱出できるのはINTかつ、リスト上のキャラを選択した場合のみ
+	SELECTCASE DISP_TYPE
+		CASE "体力気力"
+			FOR LOCAL:0, 0, 2
+			IF INPUT_STR == @"%DISP_MEMO:(LOCAL:0)%昇順" || INPUT_STR == @"%DISP_MEMO:(LOCAL:0)%降順"
+				SORT_TYPE '= INPUT_STR
+				CALL SORT_LIST(INPUT_STR, CHARA_LIST, CHARA_CNT)
+				RESTART
+			ENDIF
+			NEXT
+			GOTO RETRY
+		CASE "感度など"
+			FOR LOCAL:0, 2, 11
+			IF INPUT_STR == @"%DISP_MEMO:(LOCAL:0)%昇順" || INPUT_STR == @"%DISP_MEMO:(LOCAL:0)%降順"
+				SORT_TYPE '= INPUT_STR
+				CALL SORT_LIST(INPUT_STR, CHARA_LIST, CHARA_CNT)
+				RESTART
+			ENDIF
+			NEXT
+			GOTO RETRY
+		CASE "性技"
+			FOR LOCAL:0, 11, 17
+			IF INPUT_STR == @"%DISP_MEMO:(LOCAL:0)%昇順" || INPUT_STR == @"%DISP_MEMO:(LOCAL:0)%降順"
+				SORT_TYPE '= INPUT_STR
+				CALL SORT_LIST(INPUT_STR, CHARA_LIST, CHARA_CNT)
+				RESTART
+			ENDIF
+			NEXT
+			GOTO RETRY
+		CASE "刻印"
+			FOR LOCAL:0, 17, 22
+			IF INPUT_STR == @"%DISP_MEMO:(LOCAL:0)%昇順" || INPUT_STR == @"%DISP_MEMO:(LOCAL:0)%降順"
+				SORT_TYPE '= INPUT_STR
+				CALL SORT_LIST(INPUT_STR, CHARA_LIST, CHARA_CNT)
+				RESTART
+			ENDIF
+			NEXT
+			GOTO RETRY
+		CASE "好感度"
+			FOR LOCAL:0, 22, 25
+			IF INPUT_STR == @"%DISP_MEMO:(LOCAL:0)%昇順" || INPUT_STR == @"%DISP_MEMO:(LOCAL:0)%降順"
+				SORT_TYPE '= INPUT_STR
+				CALL SORT_LIST(INPUT_STR, CHARA_LIST, CHARA_CNT)
+				RESTART
+			ENDIF
+			NEXT
+			GOTO RETRY
+		CASEELSE
+			THROW 異常なDISP_TYPE　%DISP_TYPE%
+	ENDSELECT
+ENDIF
+LOOP 1
+IF STRCOUNT(OP, "「情報表示」")
+	CALL LIST_CHARA_STATE(CHARA_LIST, INPUT_INT, CHARA_CNT, OP)
+	SIF !RESULT
+		RESTART
+	NOW_GROUP = 1
+	GET_LIST = 1
+	;一応RESULTが正になるのは「最終確認」のみだが念のために判定
+	SIF STRCOUNT(OP, "「最終確認」")
+		RETURN RESULT
+ELSE
+	NOW_GROUP = 1
+	GET_LIST = 1
+	RETURN CHARA_LIST:INPUT_INT
+ENDIF
+;使用リストの切替関数
+;てぬき
+;現状では不要だけどOPを渡してあるので"SHOP表示"以外への切替も容易です
+
+@CHANGE_LIST(LIST_TYPE, OP)
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS REF LIST_TYPE;現在使用中の表示内容
+#DIMS OP           ;実行オプション
+PRINTFORML 리스트 표시 조건 변경(현재 설정: %LIST_TYPE%)
+PRINTFORML 
+CALL CLASS_LIST("キャラリスト", "SHOP表示")
+PRINTFORML 
+PRINTFORML [999] - 그만두다
+DO
+INPUT
+SELECTCASE RESULT
+	CASE 999
+		RETURN
+	CASEELSE
+		IF !STRLENS(GET_STR(0, "キャラリスト", RESULT, "名前"))
+		ELSEIF GET_INT(0, "キャラリスト", RESULT, "SHOP表示")
+			LIST_TYPE '= GET_STR(0, "キャラリスト", RESULT, "名前")
+			RETURN
+		ENDIF
+		REUSELASTLINE 無効な入力です
+		CONTINUE
+ENDSELECT
+LOOP 1
+;単キャラ情報表示関数
+;主に行動中のMASTERの情報表示用
+
+@SINGLE_CHARA_STATE(C_ID, OP)
+#DIM  C_ID ;登録番号
+#DIMS OP   ;実行オプション
+#DIM  PAGE ;表示中のページ
+#DIMS CONST DISP_NAME , 6 = "能力", "経験と宝珠", "個人情報", "好き嫌い", "身体情報", "所持道具"
+CALL CHARA_STATE(C_ID, PAGE, OP)
+DRAWLINE
+PRINTBUTTON @"[4] - 　　　%DISP_NAME:((PAGE - 1 + 詳細能力表示最大ページ番号) % 詳細能力表示最大ページ番号), 10%", 4
+PRINTFORM 　　　　　　　　　　　
+PRINTBUTTON @"[6] - 　　　%DISP_NAME:((PAGE + 1 + 詳細能力表示最大ページ番号) % 詳細能力表示最大ページ番号), 10%", 6
+IF STRCOUNT(OP, "「最終確認」")
+	PRINTFORML 
+	PRINTBUTTON "[1] 이 캐릭터로 결정한다", 0
+	PRINTFORM 　　　　　　　　　
+	PRINTBUTTON "[0] - 취소", 0
+	PRINTFORML 
+ELSE
+	PRINTFORML 
+	PRINTBUTTON "[0] 돌아간다.", 0
+ENDIF
+DO
+INPUT
+SELECTCASE RESULT
+	CASE 1
+		SIF STRCOUNT(OP, "「最終確認」")
+			RETURN C_ID
+		GOTO RETRY
+	CASE 0
+		RETURN 0
+		;表示項目の変更
+	CASE 4
+		PAGE = (PAGE - 1 + 詳細能力表示最大ページ番号) % 詳細能力表示最大ページ番号
+	CASE 6
+		PAGE = (PAGE + 1 + 詳細能力表示最大ページ番号) % 詳細能力表示最大ページ番号
+		;表示・非表示の切替
+	CASE 160 TO 168
+		TFLAG:RESULT = !TFLAG:RESULT
+	CASEELSE
+		$RETRY
+		REUSELASTLINE 無効な入力です
+		CONTINUE
+ENDSELECT
+BREAK
+LOOP 1
+RESTART
+;調教中ターゲット用のリスト表示関数
+;ふつうにTARGETを渡すとTARGET:0が重複してしまうのでそのままでは使えなかった
+;リストにMASTERを含めるように改良
+
+@TARGET_LIST_STATE
+#DIM TARGET_LIST, キャラクタ数上限
+#DIM TARGET_NUM
+#DIM VIEW
+VARSET TARGET_LIST
+TARGET_NUM = FINDELEMENT(TARGET, 0) - 1
+VIEW = TARGET
+SIF TARGET_NUM <= 0
+	RETURN
+ARRAYCOPY "TARGET", "TARGET_LIST"
+TARGET_LIST:0 = MASTER
+VIEW = FINDELEMENT(TARGET_LIST, TARGET)
+SIF VIEW == -1
+	VIEW = 0
+;Custom code
+CALL LIST_CHARA_STATE_TR(TARGET_LIST, VIEW, TARGET_NUM + 1, "「調教中」")
+;リストがある時専用の情報表示関数
+;CHARA_LISTにTARGETを渡せばTARGET順番で表示してくれる
+
+@LIST_CHARA_STATE(CHARA_LIST, C_VIEW, CHARA_CNT, OP)
+#DIM REF CHARA_LIST ;リスト本体、登録番号にて記録
+#DIM     C_VIEW     ;表示中キャラのリスト上の位置
+#DIM     CHARA_CNT  ;リストに該当したキャラの数
+#DIMS    OP         ;実行オプション
+#DIM     C_ID       ;登録番号
+#DIM     PAGE       ;表示中のページ
+#DIMS CONST DISP_NAME , 6 = "能力", "経験と宝珠", "個人情報", "好き嫌い", "身体情報", "陥落条件"
+CALL CHARA_STATE(CHARA_LIST:C_VIEW, PAGE, OP)
+DRAWLINE
+PRINTFORM 　　　　　　　　　　　
+PRINTBUTTON "[8] - 이전 캐릭터", 8
+PRINTFORML 
+PRINTBUTTON @"[4] - 　　　%DISP_NAME:((PAGE - 1 + 詳細能力表示最大ページ番号) % 詳細能力表示最大ページ番号), 10%", 4
+PRINTFORM 　　　　　　　　　　　
+PRINTBUTTON @"[6] - 　　　%DISP_NAME:((PAGE + 1 + 詳細能力表示最大ページ番号) % 詳細能力表示最大ページ番号), 10%", 6
+PRINTFORML 
+PRINTFORM 　　　　　　　　　　　
+PRINTBUTTON "[2] 다음 캐릭터", 2
+PRINTFORML 
+IF STRCOUNT(OP, "「最終確認」")
+	PRINTFORML 
+	PRINTBUTTON "[1] 이 캐릭터로 결정한다", 1
+	PRINTFORM 　　　　　　　　　
+	PRINTBUTTON "[0] - 취소", 0
+	PRINTFORML 
+ELSE
+	PRINTFORML 
+	PRINTBUTTON "[0] 돌아가다", 0
+ENDIF
+DO
+INPUT
+SELECTCASE RESULT
+	CASE 1
+		SIF STRCOUNT(OP, "「最終確認」")
+			RETURN CHARA_LIST:C_VIEW
+		GOTO RETRY
+	CASE 0
+		RETURN 0
+		;キャラ移動
+	CASE 8
+		C_VIEW = (C_VIEW - 1 + CHARA_CNT) % CHARA_CNT
+	CASE 2
+		C_VIEW = (C_VIEW + 1 + CHARA_CNT) % CHARA_CNT
+		;表示項目の変更
+	CASE 4
+		PAGE = (PAGE - 1 + 詳細能力表示最大ページ番号) % 詳細能力表示最大ページ番号
+	CASE 6
+		PAGE = (PAGE + 1 + 詳細能力表示最大ページ番号) % 詳細能力表示最大ページ番号
+		;表示・非表示の切替
+	CASE 160 TO 169
+		TFLAG:RESULT = !TFLAG:RESULT
+	CASE 画像切り替え
+		IF !FLAG:画像表示
+			FLAG:画像表示 = !FLAG:画像表示
+			FLAG:立ち絵種類 = 0
+		ELSEIF !FLAG:立ち絵種類
+			FLAG:立ち絵種類 = !FLAG:立ち絵種類
+		ELSEIF FLAG:立ち絵種類
+			FLAG:画像表示 = !FLAG:画像表示
+		ENDIF
+	CASE 98
+		SIF CFLAG:(CHARA_LIST:C_VIEW):別顔有 || CFLAG:(CHARA_LIST:C_VIEW):別立ち有
+			CFLAG:(CHARA_LIST:C_VIEW):差し替え適用 += 1
+		SIF CFLAG:(CHARA_LIST:C_VIEW):差し替え適用 > CFLAG:(CHARA_LIST:C_VIEW):別顔有 && CFLAG:(CHARA_LIST:C_VIEW):差し替え適用 > CFLAG:(CHARA_LIST:C_VIEW):別立ち有
+			CFLAG:(CHARA_LIST:C_VIEW):差し替え適用 = 0
+	CASEELSE
+		$RETRY
+		REUSELASTLINE 無効な入力です
+		CONTINUE
+ENDSELECT
+BREAK
+LOOP 1
+RESTART
+;基礎情報表示関数
+;@CHARA_STATEから共通要素を抜き出しただけ（長ったらしいので）
+;BASE系と劣情を基礎情報に含ませる
+
+@BASIC_STATE(C_ID, OP)
+#DIM C_ID
+#DIMS OP
+;NAS: Replaced
+CALL BASIC_STATE_HTML(C_ID,OP)
+RETURN RESULT
+DRAWLINEFORM ━
+PRINTFORM ■%NAME:C_ID%
+;custom code
+[IF_DEBUG]
+PRINTFORM (ID:{C_ID}, NO:{NO:C_ID})
+[ENDIF]
+;qol custom code, no longer shows the Favor & Trust of MASTER, moved MASTER's case up here
+;MASTERならば所持金を記載
+IF C_ID == MASTER
+	PRINTFORM (돈: %金額表示(MONEY)%)
+	PRINTFORM  (카리스마: %三桁区切(MONEY:2)%CM)
+	PRINTFORM  (모리야 빈칸: {ITEM:131})
+	SIF KOMAFUDA:MASTER ;qol custom code
+		PRINTFORM  (도박장 칩: {KOMAFUDA:MASTER})
+ELSE
+	PRINTFORM (호의:)
+	CALL PRINT_RANK(CFLAG:C_ID:好感度, "MAX_50000")
+	PRINTFORM  {CFLAG:C_ID:好感度}: 신뢰도:
+	CALL PRINT_RANK(CFLAG:C_ID:信頼度, "MAX_20000")
+	PRINTFORM  {CFLAG:C_ID:信頼度}) 
+ENDIF
+IF FLAG:生理周期可視化 && TALENT:C_ID:性別 != 2
+	IF STRCOUNT(OP, "「調教中」")
+		CALL CYCLE_PRINT(C_ID)
+		;モブ物色中判定
+	ELSEIF SELECTCOM == 444
+		CALL CYCLE_PRINT(C_ID)
+	ELSE
+		CALL CYCLE_PRINT翌日(C_ID)
+	ENDIF
+ENDIF
+;SIF C_ID != MASTER && FLAG:生理周期可視化
+SIF C_ID != MASTER && NOTICE_CYCLE(C_ID) ;bugfix custom code
+	SETCOLOR C_AQUA
+IF CFLAG:C_ID:生解禁 == 2
+	PRINT  위험한 날에는 보호받지 못하는 성관계를 허용한다.
+ELSEIF CFLAG:C_ID:生解禁 == 1
+	PRINT  무방비 상태의 성관계를 허용한다.
+ELSEIF GETBIT(CFLAG:C_ID:既成事実, 1)
+	PRINT  성관계에 동의했다.
+ENDIF
+;Added
+SIF GETBIT(CFLAG:C_ID:既成事実, 5)
+	PRINT  시간 정지 섹스에 동의했다.
+SIF GETBIT(CFLAG:C_ID:既成事実, 6)
+	PRINT  최면을 당하는 것에 동의했다.
+RESETCOLOR
+;ここだけBASE基本表示で独立させてもいいかもって感じに使い勝手良さそう
+PRINTL 　
+CALL Add_STAMINA_BAR(C_ID, 28, 1) ;custom code: replaced bars with one that shows true stamina
+PRINTFORM 　　
+CALL BASE_BAR(C_ID, "気力", 28, "青", "「改行」")
+SIF BASE:C_ID:酒気
+	CALL BASE_BAR(C_ID, "酒気", 28, "赤", "「改行」")
+IF C_ID == MASTER
+	CALL BASE_BAR(MASTER, "精力", 28, "黄")
+	PRINTFORM 　　
+	CALL BASE_BAR(C_ID, "TSP", 28, "水色", "「改行」")
+ELSE
+	IF NOTICE_LUST(C_ID)
+		;記述が整理できるという理由で微妙に閾値変更
+		SELECTCASE CFLAG:C_ID:溜まってる度
+			CASE IS >= 665
+				SETCOLOR C_RED
+			CASE IS >= 332
+				SETCOLOR C_YELLOW
+		ENDSELECT
+		PRINTFORMD 성적 좌절감: 
+		PRINTFORM {CFLAG:C_ID:溜まってる度 / 10}
+		PRINTFORMD ％
+		RESETCOLOR
+	ENDIF
+	PRINTFORM 　　
+	SIF CFLAG:(C_ID):弾幕勝負勝利 == 1
+		PRINTFORM ★단막에서 패배했다
+	SIF CFLAG:(C_ID):ムシバトル直接勝利 == 1
+		PRINTFORM 버그 배틀에서 패배했다
+	SIF CFLAG:(C_ID):料理勝負勝利 == 1
+		PRINTFORM 요리 대결에서 패배했다.
+	;qol custom code, show currently used dialogue
+	;first see if we have something on the current line to determine if we want to add extra spacing
+	SIF CFLAG:(C_ID):弾幕勝負勝利 || CFLAG:(C_ID):ムシバトル直接勝利 == 1 || CFLAG:(C_ID):料理勝負勝利 == 1
+		PRINTFORM 　　　　
+	CALL QoL_DetailedInfo(Qol_Info_Dialogue, C_ID)
+	PRINTFORML
+ENDIF
+;CONQUEST!
+;キャラ情報表示関数
+;登録番号とページ番号、オプションを指定して情報を表示する
+
+@CHARA_STATE(C_ID, PAGE, OP)
+#DIM  C_ID
+#DIM  PAGE
+#DIMS OP
+;#DIM STARTLINE
+;STARTLINE = LINECOUNT
+CALL BASIC_STATE(C_ID, OP)
+SELECTCASE PAGE
+	CASE 0
+		CALL PRINT_STATE_IMAGE(C_ID)
+		CALL SHOW_SIZE(C_ID)
+		PRINTLC [99] 이미지 표시
+		SIF (FLAG:立ち絵種類 == 1 && CFLAG:C_ID:別顔有) || (FLAG:立ち絵種類 == 0 && CFLAG:C_ID:別立ち有) ;custom code to show which alt image below
+			PRINTFORMLC [98] 대체 이미지: \@ CFLAG:C_ID:差し替え適用 ? ON({CFLAG:C_ID:差し替え適用}) # OFF \@
+		PRINTL
+		SIF FLAG:画像表示
+			CALL PRINT_STATE_IMAGE(C_ID)
+		CALL PRINT_STATE_CLOTH(C_ID)
+		CALL PRINT_STATE_TALENT(C_ID)
+		PRINTL
+		CALL SHOW_ABILITY(C_ID)
+	CASE 1
+		PRINTL
+		CALL PRINT_STATE_EXP(C_ID)
+		PRINTL
+		;現状マスターは妊娠しないはずだが将来の機能拡張を考えるとこれでいいのか？
+		SIF !(C_ID == MASTER) && (TALENT:C_ID:妊娠 || CFLAG:C_ID:子供人数 > 0)
+			CALL 妊娠関連(C_ID)
+		IF STRCOUNT(OP, "「調教中」")
+			CALL PRINT_STATE_EX(C_ID)
+		ELSEIF !(C_ID == MASTER)
+			CALL PRINT_STATE_JUEL(C_ID)
+		ENDIF
+		PRINTL
+		IF C_ID == MASTER
+			CALL 予定
+		ELSE
+			CALL パンツ収集状況(C_ID)
+		ENDIF
+	CASE 2
+		CALL PRINT_STATE_PERSONAL(C_ID)
+		CALL SHOW_RELATION(C_ID)
+	CASE 3
+		CALL PRINT_STATE_PREFERENCE(C_ID)
+		CALL PRINT_STATE_GIFTDATA(C_ID, 15)
+	CASE 4
+		CALL 肉体情報(C_ID)
+	CASE 5
+		IF C_ID == MASTER
+			CALL SHOW_ALLITEM_INFO
+		ELSE
+			CALL 陥落条件表示(C_ID)
+			CALL 浮気把握状況(C_ID)
+		ENDIF
+	CASEELSE
+		THROW 異常なPAGE {PAGE}
+ENDSELECT
+;WHILE (680/GETCONFIG("一行の高さ"))-(LINECOUNT-STARTLINE) > 0
+;	PRINTL
+;WEND
+;刻印と能力を一括して表示する
+;縦幅を圧縮したい
+
+@SHOW_ABILITY(C_ID)
+#DIM  C_ID
+#DIMS CONST DISP_NAME , 42 = "苦痛",     "親密",     "教養", "Ｃ感覚", "指技術", "マゾっ気", "自慰中毒", "快楽",     "従順", "話術技能", "Ｖ感覚", "膣技術", "サドっ気", "精液中毒", "不埒",     "欲望", "戦闘能力", "Ａ感覚", "Ａ技術", "レズっ気", "レズ中毒", "反発",     "技巧", "清掃技能", "Ｂ感覚", "胸技術", "ホモっ気", "ゲイ中毒", "履歴", "奉仕精神", "料理技能", "Ｍ感覚", "舌技術",         "", "膣射中毒", "時姦",   "露出癖", "音楽技能",       "", "腰技術",         "", "肛射中毒",
+PRINT □ 
+CALL PRINTBUTTON_EX("能力", 162, TFLAG:162)
+PRINTL  □---------------------------------------------------------------------------
+SIF TFLAG:能力表示
+	RETURN
+FOR LOCAL, 0, 42
+CALL PRINT_ABILITY(C_ID, DISP_NAME:LOCAL, LOCAL)
+SIF LOCAL % 7 == 6
+	PRINTFORML 
+NEXT
+;↑専用の表示関数
+
+@PRINT_ABILITY(C_ID, DISP_NAME, VIEW)
+#DIM  C_ID
+#DIMS DISP_NAME
+#DIM  VIEW
+#DIM CONST DISP_ID , 42 = 0,  9, 43, 0, 50, 15, 30, 1, 10, 41, 1, 54, 16, 31, 2, 11, 42, 2, 55, 17, 32, 3, 12, 40, 3, 52, 18, 33, 4, 13, 44, 4, 51,  0, 34, 5, 14, 45, 0, 53,  0, 35,
+PRINTFORM 　
+SELECTCASE DISP_NAME
+	CASE ""
+		$SHOW_BLANK
+		PRINTFORM 　　　　　　　　
+	CASE "苦痛", "快楽", "不埒", "反発", "履歴", "時姦"
+		IF C_ID == MASTER
+			PRINTFORM %"　" * 6%
+		ELSEIF GROUPMATCH(DISP_NAME, "反発", "履歴")
+			PRINTFORM %DISP_NAME, 4%：
+			CALL COLOR_STAMP(MARK:C_ID:(DISP_ID:VIEW), 3, "×", C_RED)
+		ELSE
+			PRINTFORM %DISP_NAME, 4%：
+			CALL COLOR_STAMP(MARK:C_ID:(DISP_ID:VIEW), 3, "★", 0xFFFF00)
+		ENDIF
+	CASE "指技術", "膣技術", "Ａ技術", "胸技術", "舌技術", "腰技術", "清掃技能", "話術技能", "戦闘能力",     "教養", "料理技能", "音楽技能"
+		PRINTFORM %DISP_NAME, 8%：
+		CALL PRINT_RANK(ABL:C_ID:(DISP_ID:VIEW), "MAX_6")
+		PRINTFORM  {ABL:C_ID:(DISP_ID:VIEW), 3}
+	CASEELSE
+		SIF GROUPMATCH(DISP_NAME, "レズっ気", "レズ中毒") && !GETBIT(TALENT:C_ID:2, 0)
+			GOTO SHOW_BLANK
+		SIF GROUPMATCH(DISP_NAME, "ホモっ気", "ゲイ中毒") && GETBIT(TALENT:C_ID:2, 0)
+			GOTO SHOW_BLANK
+		PRINTFORM %DISP_NAME, 8%：
+		CALL PRINT_RANK(ABL:C_ID:(DISP_ID:VIEW), "MAX_99")
+		PRINTFORM  {ABL:C_ID:(DISP_ID:VIEW), 3}
+ENDSELECT
+;ソート用ボタン作成関数
+;無造作に扱えるが
+;同一リスト内のB_NAMEは横幅を揃えたほうがみばえがよろしい
+
+@MAKE_SORT_BUTTON(SORT_TYPE, B_NAME)
+#DIMS SORT_TYPE ;現在のソートタイプ
+#DIMS B_NAME    ;基本のボタン名
+IF SORT_TYPE == @"%B_NAME%降順"
+	PRINTBUTTON @"▼%B_NAME%", @"%B_NAME%昇順"
+ELSEIF SORT_TYPE == @"%B_NAME%昇順"
+	PRINTBUTTON @"▲%B_NAME%", @"%B_NAME%降順"
+ELSE
+	PRINTBUTTON @"　%B_NAME%", @"%B_NAME%降順"
+ENDIF
+;一行情報表示関数
+;キャラの情報を一行で表示しつつボタンとして扱う
+;元々は@ShowStatusBodyと@ShowStatusHeaderあたり
+;ラベル（ボタンとしての番号）と登録番号を別々に指定する必要がある
+
+@CHARA_BUTTON(LABEL, C_ID, DISP_TYPE = "体力気力", SORT_TYPE)
+#DIM  LABEL
+#DIM  C_ID
+#DIMS DISP_TYPE
+#DIMS SORT_TYPE
+#DIMS 表示文
+#DIM  表示ステータス番号
+#DIM  CONST バー長さ = 10
+;LABELが負数はありえないので表示内容のアナウンスに流用してます
+IF LABEL >= 0
+	SIF CFLAG:C_ID:口上実装状況
+		SETCOLOR 103,228,126
+	PRINTFORM [{LABEL, 3}] %CALLNAME:C_ID, 14, LEFT%
+	RESETCOLOR
+ENDIF
+SELECTCASE DISP_TYPE
+	CASE "体力気力"
+		IF LABEL < 0
+			PRINTFORM %"　" * 9%
+			CALL MAKE_SORT_BUTTON(SORT_TYPE, "体力")
+			PRINTFORM %"　" * 9%
+			CALL MAKE_SORT_BUTTON(SORT_TYPE, "気力")
+		ELSE
+			CALL BASE_BAR(C_ID, "体力", 10, "緑", "「種類表記無し」")
+			CALL BASE_BAR(C_ID, "気力", 10, "青", "「種類表記無し」")
+		ENDIF
+		PRINTFORML 
+	CASE "感度など"
+		IF LABEL < 0
+			PRINTFORM %"　" * 4%능력%"　" * 4%
+			CALL MAKE_SORT_BUTTON(SORT_TYPE, "Ｃ感")
+			PRINT |
+			CALL MAKE_SORT_BUTTON(SORT_TYPE, "Ｖ感")
+			PRINT |
+			CALL MAKE_SORT_BUTTON(SORT_TYPE, "Ａ感")
+			PRINT |
+			CALL MAKE_SORT_BUTTON(SORT_TYPE, "Ｂ感")
+			PRINT |
+			CALL MAKE_SORT_BUTTON(SORT_TYPE, "Ｍ感")
+			PRINT |
+			CALL MAKE_SORT_BUTTON(SORT_TYPE, "親密")
+			PRINT |
+			CALL MAKE_SORT_BUTTON(SORT_TYPE, "従順")
+			PRINT |
+			CALL MAKE_SORT_BUTTON(SORT_TYPE, "欲望")
+			PRINT |
+			CALL MAKE_SORT_BUTTON(SORT_TYPE, "技巧")
+		ELSE
+			FOR 表示ステータス番号, 0, 13
+			SIF ABLNAME:表示ステータス番号 == ""
+				CONTINUE
+			CALL PRINT_RANK(ABL:C_ID:表示ステータス番号, "MAX_99")
+			PRINTFORM {ABL:C_ID:表示ステータス番号, 4}|
+			NEXT
+		ENDIF
+		PRINTFORML 
+	CASE "性技"
+		IF LABEL < 0
+			PRINTFORM %"　" * 4%성적 기술%"　" * 4%
+			CALL MAKE_SORT_BUTTON(SORT_TYPE, "指技")
+			PRINT |
+			CALL MAKE_SORT_BUTTON(SORT_TYPE, "舌技")
+			PRINT |
+			CALL MAKE_SORT_BUTTON(SORT_TYPE, "胸技")
+			PRINT |
+			CALL MAKE_SORT_BUTTON(SORT_TYPE, "腰技")
+			PRINT |
+			CALL MAKE_SORT_BUTTON(SORT_TYPE, "膣技")
+			PRINT |
+			CALL MAKE_SORT_BUTTON(SORT_TYPE, "Ａ技")
+		ELSE
+			;超適当につき修正の余地あり
+			FOR 表示ステータス番号, 50, 56
+			SIF ABLNAME:表示ステータス番号 == ""
+				CONTINUE
+			CALL PRINT_RANK(ABL:C_ID:表示ステータス番号, "MAX_6")
+			PRINTFORM {ABL:C_ID:表示ステータス番号, 4}|
+			NEXT
+		ENDIF
+		PRINTFORML 
+	CASE "刻印"
+		IF LABEL < 0
+			PRINTFORM %"　" * 4% 각인 %"　" * 4%
+			CALL MAKE_SORT_BUTTON(SORT_TYPE, "苦痛")
+			PRINT |
+			CALL MAKE_SORT_BUTTON(SORT_TYPE, "快楽")
+			PRINT |
+			CALL MAKE_SORT_BUTTON(SORT_TYPE, "不埒")
+			PRINT |
+			CALL MAKE_SORT_BUTTON(SORT_TYPE, "反発")
+			PRINT |
+			CALL MAKE_SORT_BUTTON(SORT_TYPE, "時姦")
+		ELSE
+			;超適当につき修正の余地あり
+			FOR 表示ステータス番号, 0, 6
+			IF MARKNAME:表示ステータス番号 == ""
+				CONTINUE
+			ENDIF
+			;反発刻印履歴は表示しないように
+			SIF 表示ステータス番号 == 4
+				CONTINUE
+			IF 表示ステータス番号 == 3
+				CALL COLOR_STAMP(MARK:C_ID:表示ステータス番号, 3, "×", C_RED)
+			ELSE
+				CALL COLOR_STAMP(MARK:C_ID:表示ステータス番号, 3, "★", 0xFFFF00)
+			ENDIF
+			PRINTFORM |
+			NEXT
+		ENDIF
+		PRINTFORML 
+	CASE "好感度"
+		IF LABEL < 0
+			PRINTFORM %"　" * 11%
+			CALL MAKE_SORT_BUTTON(SORT_TYPE, "好感")
+			PRINT |　
+			CALL MAKE_SORT_BUTTON(SORT_TYPE, "信頼")
+			PRINT |
+			SIF TALENT:MASTER:劣情察知
+				CALL MAKE_SORT_BUTTON(SORT_TYPE, "欲求")
+		ELSE
+			;好感度
+			CALL PRINT_RANK(CFLAG:C_ID:好感度, "MAX_1M")
+			PRINTFORM {CFLAG:C_ID:好感度, 6}|
+			;信頼度
+			CALL PRINT_RANK(CFLAG:C_ID:信頼度, "MAX_20000")
+			PRINTFORM {CFLAG:C_ID:信頼度, 6}|
+			;欲求
+			IF TALENT:MASTER:劣情察知
+				SELECTCASE CFLAG:C_ID:溜まってる度
+					CASE IS >= 665
+						SETCOLOR C_RED
+					CASE IS >= 332
+						SETCOLOR C_YELLOW
+				ENDSELECT
+				PRINTFORM {CFLAG:C_ID:溜まってる度 / 10, 4}
+				RESETCOLOR
+				PRINT ％|
+			ENDIF
+			;陥落
+			IF TALENT:C_ID:恋人
+				SETCOLOR C_RED
+				表示文 = 恋人
+			ELSEIF TALENT:C_ID:恋慕 == 1
+				SETCOLOR 0xEE60EE
+				表示文 = 恋慕
+			ELSEIF TALENT:C_ID:愛欲 == 1
+				SETCOLOR 0x2E8B57
+				表示文 = 愛欲
+			ELSEIF TALENT:C_ID:セフレ == 2
+				SETCOLOR 0xFF6347
+				表示文 = 愛人
+			ELSEIF TALENT:C_ID:思慕 == 1
+				SETCOLOR 0xFFFF00
+				表示文 = 思慕
+			ELSEIF TALENT:C_ID:セフレ == 1
+				SETCOLOR 0x7CFC00
+				表示文 = セフレ
+			ELSE
+				表示文 =
+			ENDIF
+			PRINTFORM %表示文, 6, LEFT%
+			RESETCOLOR
+			PRINT |
+			;既成事実
+			SELECTCASE CFLAG:(C_ID):生解禁
+				CASE 2
+					表示文 = 危険日生Ｈ解禁
+				CASE 1
+					表示文 = 生Ｈ解禁
+				CASE 0
+					IF GETBIT(CFLAG:(C_ID):既成事実,1)
+						表示文 = 合意取得
+					ELSE
+						表示文 =
+					ENDIF
+			ENDSELECT
+			PRINTFORM %表示文, 14, LEFT%|
+			IF CFLAG:(C_ID):弾幕勝負勝利 == 1
+				PRINTFORM 패배했다 
+			ELSE
+				PRINTFORM 　　　 
+			ENDIF
+			;生理周期可視化
+			IF NOTICE_CYCLE(C_ID)
+				PRINT |
+				CALL PRINT_CYCLE_翌日(C_ID)
+			ENDIF
+			IF CFLAG:(C_ID):出産経過日 > 0
+				PRINT |
+				PRINTFORM 수유 
+			ENDIF
+			RESETCOLOR
+			;恋人かどうかはすぐ左に表示されるのでいらないはず
+			;SIF GETBIT(CFLAG:(C_ID):既成事実,2)
+			;	PRINTFORM 恋人同士
+			;弱み
+			IF CFLAG:(C_ID):弱み握り && CFLAG:(C_ID):弱み握られ
+				PRINTFORM %조사처리(CALLNAME:MASTER,"와")% 서로의 약점을 잡고 있다 
+			ELSEIF CFLAG:(C_ID):弱み握り
+				PRINTFORM %조사처리(CALLNAME:MASTER,"의")% 약점을 잡고 있다. 
+				;SIF GETBIT(CFLAG:(C_ID):弱み,0)
+				;	PRINTFORM ぱんつを没収された
+				;SIF GETBIT(CFLAG:(C_ID):弱み,1)
+				;	PRINTFORM 情事を見られた
+			ELSEIF CFLAG:(C_ID):弱み握られ
+				PRINTFORM %조사처리(CALLNAME:MASTER,"에게")% 자위하는 현장을 목격당한 적이 있다.
+			ENDIF
+		ENDIF
+		PRINTFORML 
+	CASEELSE
+		THROW 異常なDISP_TYPE　%DISP_TYPE%
+ENDSELECT
+
+@陥落条件表示(ARG)
+#DIM 自覚絶頂
+自覚絶頂 = EXP:ARG:絶頂経験 - EXP:ARG:無自覚絶頂経験
+;custom code: replaced with reworked version
+CALL SHOW_FALL_STATE_REV_REQUIREMENTS(ARG,0)
+RETURN RESULT
+;custom code - show current value
+PRINTFORML %"-"*(132)%
+CALL COLORMESSAGE(@"연모를 얻기 위한 조건",C_AQUA,1)
+PRINTFORML 
+IF TALENT:ARG:恋慕
+	PRINT 　
+	CALL COLORMESSAGE(@"획득",C_YELLOW,1)
+ELSEIF TALENT:ARG:愛欲 && !FLAG:陥落路線変化 ;qol custom code
+	PRINT 　
+	CALL COLORMESSAGE(@"불가능하다.",C_RED,1)
+ELSE
+	CALL KOJO_CHECK(ARG, "FALL_STATE_OVERRIDE", "LOVE") ;addition custom code
+	IF RESULT
+		IF RESULT < 0 ;no conditions should be set in "FALL_STATE" check
+			PRINT 　
+			CALL COLORMESSAGE(@"불가능하다",C_RED,1)
+		ENDIF
+		GOTO CUSTOM_LOVE
+	ENDIF
+	PRINT 　
+	CALL COND_COLORMESSAGE(CFLAG:ARG:2 >= REQUIRED_FAVOR_恋慕,@"{REQUIRED_FAVOR_恋慕} 호의(현재:{CFLAG:ARG:2})가 필요함")
+	PRINT 　
+	CALL COND_COLORMESSAGE(CFLAG:ARG:4 >= REQUIRED_TRUST_恋慕,@"{REQUIRED_TRUST_恋慕} 신뢰도 (현재:{CFLAG:ARG:4})")
+	PRINT 　
+	CALL COND_COLORMESSAGE(ABL:ARG:親密 >= REQUIRED_AFFECTION_恋慕,@"{REQUIRED_AFFECTION_恋慕} 친밀도 (현재:{ABL:ARG:親密})")
+	PRINT 　
+	CALL COND_COLORMESSAGE(!MARK:ARG:反発刻印,@"반발 각인 없음 (현재:{MARK:ARG:反発刻印})")
+	$CUSTOM_LOVE
+	CALL ADD_PRINT_FALL_STATES("LOVE", ARG) ;addition custom code
+ENDIF
+PRINTFORML %"-"*(132)%
+CALL COLORMESSAGE(@"사모를 얻기 위한 조건",C_AQUA,1)
+PRINTFORML 
+IF TALENT:ARG:恋慕 || TALENT:ARG:思慕
+	PRINT 　
+	CALL COLORMESSAGE(@"획득",C_YELLOW,1)
+ELSEIF TALENT:ARG:セフレ && !FLAG:陥落路線変化 ;qol custom code
+	PRINT 　
+	CALL COLORMESSAGE(@"불가능하다",C_RED,1)
+ELSE
+	CALL KOJO_CHECK(ARG, "FALL_STATE_OVERRIDE", "YEARNING") ;addition custom code
+	IF RESULT
+		IF RESULT < 0 ;no conditions should be set in "FALL_STATE" check
+			PRINT 　
+			CALL COLORMESSAGE(@"불가능하다",C_RED,1)
+		ENDIF
+		GOTO CUSTOM_YEARNING
+	ENDIF
+	PRINT 　
+	CALL COND_COLORMESSAGE(CFLAG:ARG:2 >= REQUIRED_FAVOR_思慕,@"{REQUIRED_FAVOR_思慕} 호의 (현재:{CFLAG:ARG:2})")
+	PRINT 　
+	CALL COND_COLORMESSAGE(CFLAG:ARG:4 >= REQUIRED_TRUST_思慕,@"{REQUIRED_TRUST_思慕} 신뢰 (현재:{CFLAG:ARG:4})")
+	PRINT 　
+	CALL COND_COLORMESSAGE(ABL:ARG:親密 >= REQUIRED_AFFECTION_思慕,@"{REQUIRED_AFFECTION_思慕} 친밀함 (현재:{ABL:ARG:親密})")
+	$CUSTOM_YEARNING
+	CALL ADD_PRINT_FALL_STATES("YEARNING", ARG) ;addition custom code
+ENDIF
+PRINTFORML %"-"*(132)%
+CALL COLORMESSAGE(@"욕망을 얻는 조건",C_AQUA,1)
+PRINTFORML 
+IF TALENT:ARG:恋慕
+	PRINT 　
+	CALL COLORMESSAGE(@"불가능",C_RED,1)
+ELSEIF TALENT:ARG:愛欲
+	PRINT 　
+	CALL COLORMESSAGE(@"획득",C_YELLOW,1)
+ELSE
+	CALL KOJO_CHECK(ARG, "FALL_STATE_OVERRIDE", "LUST")
+	IF RESULT
+		IF RESULT < 0 ;no conditions should be set in "FALL_STATE" check
+			PRINT 　
+			CALL COLORMESSAGE(@"불가능하다",C_RED,1)
+		ENDIF
+		GOTO CUSTOM_LUST
+	ENDIF
+	PRINT 　
+	CALL COND_COLORMESSAGE(CFLAG:ARG:2 >= REQUIRED_FAVOR_愛欲,@"{REQUIRED_FAVOR_愛欲} 호의 (현재:{CFLAG:ARG:2})")
+	PRINT 　
+	CALL COND_COLORMESSAGE(ABL:ARG:欲望 >= REQUIRED_DESIRE_愛欲,@"{REQUIRED_DESIRE_愛欲} 욕망 (현재:{ABL:ARG:欲望})")
+	PRINT 　
+	CALL COND_COLORMESSAGE(自覚絶頂 >= REQUIRED_ECSTACY_愛欲,@"{REQUIRED_ECSTACY_愛欲} 무의식적인 것들보다 더 많은 총 오르가즘(현재: {自覚絶頂})")
+	PRINT 　
+	;custom code
+	CALL COND_COLORMESSAGE((ABL:ARG:欲望 - ABL:ARG:親密) >= 1,@"욕망이 친밀보다 크다 (현재:{ABL:ARG:欲望} 대 {ABL:ARG:親密})")
+	$CUSTOM_LUST
+	CALL ADD_PRINT_FALL_STATES("LUST", ARG) ;addition custom code
+ENDIF
+PRINTFORML %"-"*(132)%
+CALL COLORMESSAGE(@"섹프를 획득하기 위한 조건",C_AQUA,1)
+PRINTFORML 
+;Custom code, lover blocks sex friend as well
+IF TALENT:ARG:恋慕 || TALENT:ARG:恋人
+	PRINT 　
+	CALL COLORMESSAGE(@"불가능하다",C_RED,1)
+ELSEIF TALENT:ARG:セフレ
+	PRINT 　
+	CALL COLORMESSAGE(@"획득",C_YELLOW,1)
+ELSE
+	CALL KOJO_CHECK(ARG, "FALL_STATE_OVERRIDE", "SEX FRIEND") ;addition custom code
+	IF RESULT
+		IF RESULT < 0 ;no conditions should be set in "FALL_STATE" check
+			PRINT 　
+			CALL COLORMESSAGE(@"불가능하다",C_RED,1)
+		ENDIF
+		GOTO CUSTOM_SEX_FRIEND
+	ENDIF
+	PRINT 　
+	;Custom code, wrong conditions, technically printing-related so not a proper bugfix
+	CALL COND_COLORMESSAGE(CFLAG:ARG:2 >= REQUIRED_FAVOR_セフレ,@"{REQUIRED_FAVOR_セフレ} 호의(현재:{CFLAG:ARG:2})")
+	PRINT 　
+	CALL COND_COLORMESSAGE(ABL:ARG:欲望 >= REQUIRED_DESIRE_セフレ,@"{REQUIRED_DESIRE_セフレ} 욕망 (현재:{ABL:ARG:欲望})")
+	PRINT 　
+	CALL COND_COLORMESSAGE(自覚絶頂 >= REQUIRED_ECSTACY_セフレ,@"{REQUIRED_ECSTACY_セフレ}의 의식 속 오르가즘보다 무의식 속 오르가즘이 더 많다 (현재:{自覚絶頂})")
+	PRINT 　
+	;custom code
+	CALL COND_COLORMESSAGE((ABL:ARG:欲望 - ABL:ARG:親密) >= 0,@"욕망이 친밀도보다 크거나 같다 (현재: {ABL:ARG:欲望} 대 {ABL:ARG:親密})")
+	$CUSTOM_SEX_FRIEND
+	CALL ADD_PRINT_FALL_STATES("SEX FRIEND", ARG) ;addition custom code
+ENDIF
+;PRINTFORML
+;qol custom code, show extra tips for unlocking sex traits
+CALL QoL_UnlockExtraTraitsInfo(ARG)

@@ -1,0 +1,1036 @@
+﻿; Modular ERB: OMOGATARI/Factions/FactionUI.ERB
+
+@AllFactionList(C_ID = -1, LIST_TYPE = "ID", DISP_TYPE = 0, OP)
+#DIM AFL_FACTION
+#DIM AFL_LINECOUNT
+#DIMS LIST_TYPE                     ;List String ID
+#DIMS LIST_TYPE_TR                  ;Translated String
+#DIM  DISP_TYPE                     ;Handle the type as int, rather than string
+#DIMS OP                            ;List Options
+#DIM  GET_LIST = 1                  ;List Available Flag
+#DIM  L_ID                          ;リスト上の番号（ループカウンタ）、登録番号にあらず
+#DIM  L_CLASS_ID                    ;List Class ID
+#DIM  FACTION_LIST , MaxFactions    ;リスト本体、登録番号にて記録
+#DIM  FACTION_CNT                   ;リストに該当したキャラの数
+#DIMS INPUT_STR                     ;入力内容の一時保持
+#DIM  INPUT_INT                     ;入力内容をINT化したモノ
+#DIM  NOW_GROUP = 1                 ;表示中のキャラグループ
+#DIM  LAST_GROUP                    ;キャラグループ総数
+#DIM  SORT_TYPE                     ;キャラリストのソートタイプ
+#DIM  C_ID							;NAS Custom Code: Needed or else futa medicine and stuff will fail
+#DIM CONST ENTRIES_PER_PAGE = 25
+;表示タイプの名称
+#DIMS CONST DISP_NAME = "Main Stats", "Units", "Technical Ability", "Map Coverage", "Friendly Relations", "Hostile Relations"
+SIF C_ID == -1
+	C_ID = MASTER
+AFL_LINECOUNT = LINECOUNT
+REDRAW 0
+DO
+$REPRINT
+CLEARLINE LINECOUNT - AFL_LINECOUNT
+SELECTCASE LIST_TYPE
+	CASE "ID"
+		LIST_TYPE_TR = 모든 진영 목록 보기
+	CASE "FriendlyOnly"
+		LIST_TYPE_TR = 우호적인 세력들
+	CASE "HostileOnly"
+		LIST_TYPE_TR = 반감하는 세력들
+	CASE "NeutralOnly"
+		LIST_TYPE_TR = 중립적인 세력
+	CASE "GensokyoOnly"
+		LIST_TYPE_TR = 근육계의 세력들
+	CASE "OutsideOnly"
+		LIST_TYPE_TR = 외부 세계에서 온 세력들
+ENDSELECT
+IF GET_LIST
+	CALLF MAKE_FACTION_LIST(LIST_TYPE, L_CLASS_ID, FACTION_LIST, FACTION_CNT, C_ID)
+	GET_LIST = 0
+	SORT_TYPE = -1
+ENDIF
+DRAWLINE
+;項目なし
+IF FACTION_CNT <= 0
+	PRINTFORML ＜N/A＞　%LIST_TYPE_TR%
+	PRINTFORML 
+	DRAWLINE
+	FOR LOCAL, 0, ENTRIES_PER_PAGE
+	PRINTL
+	NEXT
+	;項目あり
+ELSE
+	;現在のタイプの総グループ数を更新
+	LAST_GROUP = 1 + (FACTION_CNT - 1) / ENTRIES_PER_PAGE
+	PRINTFORML ({FACTION_CNT}개의 진영에 해당한다 {NOW_GROUP}/{LAST_GROUP}) %LIST_TYPE_TR%
+	PRINTFORM 
+	CALL FACTION_BUTTON(-1, , DISP_TYPE, SORT_TYPE, C_ID, (STRCOUNT(OP, "「Page Only」") > 0))
+	DRAWLINE
+	FOR L_ID, (NOW_GROUP - 1) * ENTRIES_PER_PAGE, NOW_GROUP * ENTRIES_PER_PAGE
+	IF INRANGE(L_ID, 0, FACTION_CNT - 1)
+		CALL FACTION_BUTTON(L_ID, FACTION_LIST:L_ID, DISP_TYPE, SORT_TYPE, C_ID, (STRCOUNT(OP, "「Page Only」") > 0))
+	ELSE
+		PRINTL
+	ENDIF
+	NEXT
+ENDIF
+IF STRCOUNT(OP, "「Page Only」")
+	RETURN
+ENDIF
+DRAWLINE
+IF STRCOUNT(OP, "「Fixed Info」")
+	PRINTFORM %" "*20%
+ELSE
+	PRINTBUTTON @"<- %DISP_NAME:((DISP_TYPE - 1 + VARSIZE("DISP_NAME")) % VARSIZE("DISP_NAME")), 20, LEFT%", 444
+ENDIF
+;modded to have infinite scroll
+IF LAST_GROUP == 1
+	SETCOLOR 0x606060
+	PRINTFORM %"Prev page",15,LEFT%
+	RESETCOLOR
+ELSE
+	PRINTBUTTON @"%"Prev page",15,LEFT%", 888
+ENDIF
+PRINTFORM 
+IF LAST_GROUP == 1
+	SETCOLOR 0x606060
+	PRINTFORM %"Next page",15,LEFT%
+	RESETCOLOR
+ELSE
+	PRINTBUTTON @"%"Next page",15,LEFT%", 222
+ENDIF
+IF STRCOUNT(OP, "「Fixed Info」")
+	PRINTFORM 　　　　　　　　　　　
+ELSE
+	PRINTBUTTON @"%DISP_NAME:((DISP_TYPE + 1 + VARSIZE("DISP_NAME")) % VARSIZE("DISP_NAME")), 20, LEFT% ->", 666
+ENDIF
+PRINTFORML 
+PRINTFORML 
+PRINTBUTTON "[999] 리턴　", 999
+PRINTFORM                
+SIF STRCOUNT(OP, "「Change Conditions」")
+	PRINTBUTTON "[500] 목록 변경", 555
+PRINTFORML 
+INPUT
+SELECTCASE RESULT
+	;modded to have infinite scroll + tweaked goto's to prevent crashing when entering incorrect values
+	CASE 222, 888
+		SIF LAST_GROUP == 1
+			CONTINUE
+		NOW_GROUP = PAGE_HANDLE(RESULT, 888, NOW_GROUP, 1, LAST_GROUP)
+	CASE 444
+		SIF STRCOUNT(OP, "「Fixed Info」")
+			GOTO RETRY
+		DISP_TYPE = (DISP_TYPE - 1 + VARSIZE("DISP_NAME")) % VARSIZE("DISP_NAME")
+	CASE 555
+		SIF !STRCOUNT(OP, "「Change Conditions」")
+			GOTO RETRY
+		CALL CHANGE_LIST_TR(LIST_TYPE, OP)
+		GET_LIST = 1
+		NOW_GROUP = 1
+	CASE 666
+		SIF STRCOUNT(OP, "「Fixed Info」")
+			GOTO RETRY
+		DISP_TYPE = (DISP_TYPE + 1 + VARSIZE("DISP_NAME")) % VARSIZE("DISP_NAME")
+	CASE 999
+		;REFで配列作れば多キャラ選択も行けそう
+		;受け渡しはともかくとして表示まわりがめんどいか
+		GET_LIST = 1
+		NOW_GROUP = 1
+		RETURN
+	CASE 1000 TO 1079 ;the max range after TO is DISP_MEMO-1*2?
+		;PRINTFORMW {RESULT} Sort: {RESULT%SortListSize}
+		SORT_TYPE = RESULT
+		CALL SORT_LIST_FACTION(RESULT, FACTION_LIST, FACTION_CNT, C_ID)
+		GOTO REPRINT
+	CASEELSE
+		IF FACTION_LIST:RESULT == 99 && !FactionExist(99)
+			CALL FormingNewFaction
+			GOTO REPRINT
+		ENDIF
+		;キャラが選択された時
+		IF !INRANGE(RESULT, MAX(0, (NOW_GROUP - 1) * 40), MIN(FACTION_CNT - 1, NOW_GROUP * 40))
+			PRINTFORMW {RESULT}은 범위 밖에 있다!
+		ELSEIF L_CLASS_ID == -1 && !CHECK_FACTION(FACTION_LIST:RESULT, LIST_TYPE)
+			PRINTFORMW {RESULT}는 리스트가 아니다!
+		ELSEIF L_CLASS_ID > 0 && !GET_INT(FACTION_LIST:RESULT, "キャラリスト", L_CLASS_ID, "判定")
+			PRINTFORMW {RESULT}는 리스트에 없다!
+		ENDIF
+		;ここだけDO-LOOPぬけます
+		BREAK
+ENDSELECT
+LOOP 1
+$RETRY
+IF STRCOUNT(OP, "「Display Info」")
+	CALL LIST_FACTION_STATE(C_ID, FACTION_LIST, RESULT, FACTION_CNT, OP)
+	;CALL LIST_CHARA_STATE_TR(FACTION_LIST, RESULT, FACTION_CNT, OP)
+	SIF !RESULT
+		GOTO REPRINT
+	NOW_GROUP = 1
+	GET_LIST = 1
+	;一応RESULTが正になるのは「最終確認」のみだが念のために判定
+	SIF STRCOUNT(OP, "「Confirmation」")
+		RETURN RESULT
+ELSE
+	NOW_GROUP = 1
+	GET_LIST = 1
+	PRINTFORMW {FACTION_LIST:RESULT}
+	RETURN FACTION_LIST:RESULT
+ENDIF
+;#####################################################
+
+@MAKE_FACTION_LIST(LIST_TYPE, L_ID, FACTION_LIST, FACTION_CNT, C_ID)
+#FUNCTION
+#DIMS LIST_TYPE
+#DIM F_ID
+#DIM REF L_ID       ;リストのクラスID
+#DIM REF FACTION_LIST ;キャラ一覧
+#DIM REF FACTION_CNT  ;キャラカウンタ
+#DIM C_ID
+VARSET FACTION_LIST
+VARSET FACTION_CNT
+L_ID = -1
+FOR LOCAL, 0, MaxFactions
+F_ID = LOCAL
+SIF F_ID >= MaxFactions
+	BREAK
+SIF !CHECK_FACTION(F_ID, LIST_TYPE, C_ID)
+	CONTINUE
+FACTION_LIST:FACTION_CNT = F_ID
+FACTION_CNT ++
+NEXT
+IF !FactionExist(99)
+	;if we didn't make our own faction
+	FACTION_LIST:FACTION_CNT = 99
+	FACTION_CNT ++
+ENDIF
+;#####################################################
+
+@CHECK_FACTION(F_ID, ARGS, C_ID = -1)
+#FUNCTION
+#DIM F_ID
+#DIM DYNAMIC C_ID
+SIF C_ID == -1
+	C_ID = MASTER
+SIF !FactionExist(F_ID)
+	RETURNF 0
+SELECTCASE ARGS
+	CASEELSE
+		;ID
+		RETURNF 1
+ENDSELECT
+;#####################################################
+
+@FACTION_BUTTON(LABEL, F_ID, DISP_TYPE = 0, SORT_TYPE, C_ID, noButton = 0)
+#DIM  LABEL
+#DIM  F_ID
+#DIM  C_ID
+#DIM DISP_TYPE
+#DIM SORT_TYPE
+#DIMS 表示文
+#DIM  表示ステータス番号
+#DIM  CONST バー長さ = 10
+#DIM DYNAMIC noButton
+;LABELが負数はありえないので表示内容のアナウンスに流用してます
+#DIMS CONST DISP_NAME = "Main Stats", "Units", "Technical Ability", "Map Coverage", "Friendly Relations", "Hostile Relations"
+;#####################################################
+IF LABEL >= 0
+	SIF !noButton
+		PRINTFORM [{LABEL, 3}]  
+	IF F_ID == 99 && !FactionExist(99)
+		PRINTFORM [PLAYER] 
+		PRINTFORM %"Form Faction",30,LEFT%  
+	ELSE
+		PRINTFORM [%FactionAbriv(F_ID),6,LEFT%%COND_STR(" ",F_ID == 10)%] 
+		PRINTFORM %FactionName(F_ID),30,LEFT%  
+	ENDIF
+	RESETCOLOR
+ENDIF
+SELECTCASE DISP_TYPE
+	CASE 0 ;Main Stats
+		IF LABEL < 0
+			PRINTFORM %" " * 8%메인 스탯
+			PRINTFORM %" "*21%
+			SIF !noButton
+				PRINTFORM %" "*7%
+			FOR LOCAL, 0,7
+			SELECTCASE LOCAL
+				CASE 0
+					PRINTFORM %" "*10%
+				CASE 2
+				CASEELSE
+			ENDSELECT
+			CALL MAKE_SORT_BUTTON_TR(SORT_TYPE, LOCAL, 1)
+			PRINT |
+			NEXT
+		ELSE
+			FOR LOCAL, 0,7
+			SELECTCASE LOCAL
+				CASE 0
+					PRINTFORM %@"%FACTION_RANK_STRING(C_ID,F_ID)%",14%
+					PRINT |
+				CASE 1
+					SETCOLOR Color_Gradient_PER(GETCONFIG("TEXT COLOR"),C_GREEN,MIN(FactionFame:C_ID:F_ID/1000,100))
+					PRINTFORM {FactionFame:C_ID:F_ID,6}
+					RESETCOLOR
+					PRINT |
+				CASE 2
+					PRINTFORM %" "*2%
+					SETCOLOR Color_Gradient_PER(GETCONFIG("TEXT COLOR"),C_D_RED,MIN(FactionInfamy:C_ID:F_ID/1000,100))
+					PRINTFORM {FactionInfamy:C_ID:F_ID,6}
+					RESETCOLOR
+					PRINT |
+				CASE 3
+					PRINTFORM %" "*3%
+					SELECTCASE FactionRelationCompElse(C_ID,F_ID)
+						CASE IS > 0
+							SETCOLOR Color_Gradient_PER(GETCONFIG("TEXT COLOR"),C_GREEN,MIN(FactionFameCompElse(C_ID,F_ID)/1000,100))
+						CASE IS < 0
+							SETCOLOR Color_Gradient_PER(GETCONFIG("TEXT COLOR"),C_D_RED,MIN(FactionInfamyCompElse(C_ID,F_ID)/1000,100))
+					ENDSELECT
+					PRINTFORM {FactionRelationCompElse(C_ID,F_ID),7}
+					RESETCOLOR
+					PRINT |
+				CASE 4
+					PRINTFORM %PALAM_NUM_NAS(FactionThreatPoints(-1,F_ID)),7%
+					PRINT |
+				CASE 5
+					CALL FactionThreatPrint(C_ID,F_ID)
+					PRINT |
+				CASE 6
+					SELECTCASE FactionRelationCompElse(C_ID,F_ID)
+						CASE IS > 0
+							SETCOLOR Color_Gradient_PER(GETCONFIG("TEXT COLOR"),C_GREEN,MIN(FactionFameCompElse(C_ID,F_ID)/1000,100))
+						CASE IS < 0
+							SETCOLOR Color_Gradient_PER(GETCONFIG("TEXT COLOR"),C_D_RED,MIN(FactionInfamyCompElse(C_ID,F_ID)/1000,100))
+					ENDSELECT
+					PRINTFORM %FACTION_RELATION_STRING(C_ID,F_ID)%
+					RESETCOLOR
+				CASEELSE
+					PRINTFORM %"Test",6%
+					PRINT |
+			ENDSELECT
+			NEXT
+		ENDIF
+		PRINTFORML 
+	CASE 1
+		IF LABEL < 0
+			PRINTFORM %" " * 8%유닛 수
+			PRINTFORM %" "*27% 
+			FOR LOCAL, 7,13
+			SELECTCASE LOCAL
+				CASEELSE
+			ENDSELECT
+			CALL MAKE_SORT_BUTTON_TR(SORT_TYPE, LOCAL, 1)
+			PRINT |
+			NEXT
+		ELSE
+			FOR LOCAL, 7,13
+			SELECTCASE LOCAL
+				CASE 8
+					PRINTFORM %" "*6%
+				CASE 9
+					PRINTFORM %" "*3%
+				CASE 10
+					PRINTFORM %" "*6%
+				CASE 11
+					PRINTFORM %" "*2%
+				CASE 12
+					PRINTFORM %" "*6%
+				CASEELSE
+			ENDSELECT
+			PRINTFORM %PALAM_NUM_NAS(FactionUnits:F_ID:((6)-(LOCAL-7))),6%
+			PRINT |
+			NEXT
+		ENDIF
+		PRINTFORML
+	CASE 2
+		IF LABEL < 0
+			PRINTFORM %" " * 8%기술 능력
+			PRINTFORM %" "*28% 
+			FOR LOCAL, 13,(15+nMaxTech)
+			SELECTCASE LOCAL
+				CASE 15 TO 26
+					SETCOLOR TechLevelColor(LOCAL-14)
+					SELECTCASE LOCAL
+						CASE 22
+							PRINTFORM %" "*3%
+						CASE 23,24
+							PRINTFORM %" "*1%
+					ENDSELECT
+				CASEELSE
+			ENDSELECT
+			CALL MAKE_SORT_BUTTON_TR(SORT_TYPE, LOCAL, 1)
+			RESETCOLOR
+			PRINT |
+			NEXT
+		ELSE
+			FOR LOCAL, 13,(15+nMaxTech)
+			SELECTCASE LOCAL
+				CASE 13
+					PRINTFORM %" "*6%
+					SETCOLOR TechLevelColor(MIN(FactionTech:F_ID,nMaxTech))
+					PRINTFORM %AllTechLevels(MIN(FactionTech:F_ID,nMaxTech)),16%
+					RESETCOLOR
+				CASE 14
+					PRINTFORM %金額表示(FactionWealth:F_ID),8%
+				CASE 15 TO 26
+					SELECTCASE LOCAL
+						CASE 15,16,17,18,19,20,21,22,24
+							PRINTFORM %" "*1%
+						CASE 23
+							PRINTFORM %" "*2%
+					ENDSELECT
+					PRINTFORM {RESEARCH_COUNT(F_ID,LOCAL-14),3}/{RESEARCH_COUNT(-1,LOCAL-14),3,LEFT}
+				CASEELSE
+			ENDSELECT
+			PRINT |
+			NEXT
+		ENDIF
+		PRINTFORML
+	CASE 3
+		IF LABEL < 0
+			PRINTFORM %" " * 8%지도 커버리지
+			PRINTFORM %" "*28% 
+			FOR LOCAL, 26,38
+			SELECTCASE LOCAL
+				CASEELSE
+			ENDSELECT
+			CALL MAKE_SORT_BUTTON_TR(SORT_TYPE, LOCAL, 1)
+			PRINT |
+			NEXT
+		ELSE
+			FOR LOCAL, 26,38
+			SELECTCASE LOCAL
+				CASE 26
+					PRINTFORM %" "*5% 
+				CASE 29
+					PRINTFORM %" "*2% 
+				CASE 31
+					PRINTFORM %" "*2% 
+				CASE 36
+					PRINTFORM %" "*3% 
+				CASEELSE
+					PRINTFORM %" "*4% 
+			ENDSELECT
+			IF FactionMainArea:(LOCAL-26) == F_ID
+				SETCOLOR C_YELLOW
+				PRINTFORM %"☆",2%
+			ELSEIF GETBIT(FactionPatrolArea:F_ID, (LOCAL-26))
+				SETCOLOR C_GREEN
+				PRINTFORM %"○",2%
+			ELSE
+				PRINTFORM %"－",2%
+			ENDIF
+			RESETCOLOR
+			PRINT |
+			NEXT
+		ENDIF
+		PRINTFORML
+	CASE 4
+		IF LABEL < 0
+			PRINTFORM %" "*48% 
+			CALL MAKE_SORT_BUTTON_TR(SORT_TYPE, 38, 1)
+		ELSE
+			VARSET LOCALS
+			FOR LOCAL, 0, MAXFACTIONS
+			SIF !FactionExist(LOCAL)
+				CONTINUE
+			SIF FactionTeamFame:(F_ID):(LOCAL) - FactionTeamInfamy:(F_ID):(LOCAL) < 25000
+				CONTINUE
+			LOCALS += @"@HEX@{Color_Gradient_PER(GETCONFIG("TEXT COLOR"),C_GREEN,MIN(FactionTeamFame:(F_ID):(LOCAL)/1000,100))}@"+FactionAbriv(LOCAL)+"@、"
+			IF GETBIT(FactionWarring:F_ID:LOCAL,1)
+				LOCALS += "(Truce)"
+			ELSEIF GETBIT(FactionWarring:F_ID:LOCAL,2)
+				LOCALS += "(Alliance)"
+			ENDIF
+			NEXT
+			CALL PRINT_STR(LIST_IN_STRING(LOCALS,,","),,,,,,,,,,1)
+		ENDIF
+		PRINTFORML
+	CASE 5
+		IF LABEL < 0
+			PRINTFORM %" "*48% 
+			CALL MAKE_SORT_BUTTON_TR(SORT_TYPE, 39, 1)
+		ELSE
+			VARSET LOCALS
+			FOR LOCAL, 0, MAXFACTIONS
+			SIF !FactionExist(LOCAL)
+				CONTINUE
+			SIF FactionTeamInfamy:(F_ID):(LOCAL) - FactionTeamFame:(F_ID):(LOCAL) < 25000 && !FactionWarring:F_ID:LOCAL
+				CONTINUE
+			LOCALS += @"@HEX@{Color_Gradient_PER(GETCONFIG("TEXT COLOR"),C_D_RED,(FactionWarring:F_ID:LOCAL ? 100 # MIN(FactionTeamInfamy:(F_ID):(LOCAL)/1000,100)))}@"+FactionAbriv(LOCAL)
+			IF GETBIT(FactionWarring:F_ID:LOCAL,0)
+				LOCALS += "(At War)"
+			ENDIF
+			LOCALS += "@、"
+			NEXT
+			CALL PRINT_STR(LIST_IN_STRING(LOCALS,,","),,,,,,,,,,1)
+		ENDIF
+		PRINTFORML
+	CASEELSE
+		PRINTFORML
+ENDSELECT
+;CALL FACTION_UI(C_ID, FACTION_LIST, RESULT, FACTION_CNT, OP)
+
+@SINGLE_LIST_FACTION_STATE(C_ID, FACTION_LIST, OP)
+#DIM FACTION_LIST
+#DIM C_ID
+#DIMS    OP         ;実行オプション
+OP += "「Single Faction」"
+CALL LIST_FACTION_STATE(C_ID, FACTION_LIST, 0, 0, OP)
+RETURN RESULT
+
+@LIST_FACTION_STATE(C_ID, FACTION_LIST, F_VIEW, FACTION_CNT, OP)
+#DIM REF FACTION_LIST ;リスト本体、登録番号にて記録
+#DIM     F_VIEW     ;表示中キャラのリスト上の位置
+#DIM     FACTION_CNT  ;リストに該当したキャラの数
+#DIMS    OP         ;実行オプション
+#DIM     C_ID       ;登録番号
+#DIM     PAGE       ;表示中のページ
+#DIM 	 FU_LINECOUNT
+#DIM 	 FU_FACTION
+#DIM 	 FU_CALC,5
+#DIM 	 FU_RESULT, 3
+#DIM     FU_RES_PAGE
+#DIM 	 nRecruiter
+#DIMS CONST DISP_NAME = "Basic Information", "Relations", "Technical Ability", "Units"
+FU_LINECOUNT = LINECOUNT
+$REPRINT
+VARSET FU_RESULT
+REDRAW 0
+FU_FACTION = FACTION_LIST:F_VIEW
+;no recruiter
+nRecruiter = FACTION_RECRUITER(FU_FACTION)
+CLEARLINE LINECOUNT - FU_LINECOUNT
+CALL FACTION_UI(C_ID,FU_FACTION,PAGE,OP,FU_RES_PAGE)
+DRAWLINE
+FOR LOCAL, 0, VARSIZE("DISP_NAME")
+SIF PAGE == LOCAL
+	SETCOLOR 0x00FFFF
+;exception for player character
+PRINTBUTTON DISP_NAME:LOCAL, LOCAL + 2
+RESETCOLOR
+PRINTFORM 　　
+NEXT
+PRINTL
+;PRINTFORML
+IF !STRCOUNT(OP, "「Single Faction」")
+	PRINTBUTTON @"[{VARSIZE("DISP_NAME")+3}] 이전 세력", VARSIZE("DISP_NAME")+3
+	PRINTFORM   
+	PRINTBUTTON @"[{VARSIZE("DISP_NAME")+4}] 다음 세력", VARSIZE("DISP_NAME")+4
+	PRINTFORML 
+ENDIF
+IF STRCOUNT(OP, "「Confirmation」")
+	PRINTBUTTON "[1] 이 파벌을 선택한다", 1
+	PRINTFORM 　　　　　　　　　
+	PRINTBUTTON "[0] 반환한다", 0
+	PRINTFORML 
+ELSEIF STRCOUNT(OP, "「Faction Status」") && C_ID == MASTER
+	PRINTBUTTON "[0] 반환한다", 0
+	PRINTFORM 　　
+	PRINTBUTTON "[-1] 기부", -1
+	PRINTFORM 　　
+	IF FactionRank:C_ID:FU_FACTION > 0
+		IF STRLENS(IRAI_CHARA_TO_PROGRESS(nRecruiter)) && CFLAG:nRecruiter:依頼状況 < 100
+			PRINTBUTTON "[-2] 요청 확인", -2
+			PRINTFORM 　　
+		ENDIF
+		PRINTBUTTON "[-3] 미션 요청", -3
+		PRINTFORM 　　
+	ENDIF
+	IF FactionRank:C_ID:FU_FACTION >= 4
+		PRINTBUTTON "[-5] 진영 설정", -5
+		PRINTFORM 　　
+	ENDIF
+	IF FactionRank:C_ID:FU_FACTION >= 5
+		PRINTBUTTON "[-6] 다른 진영 관계", -6
+		PRINTFORM 　　
+	ENDIF
+	SIF FactionRank:C_ID:FU_FACTION
+		PRINTBUTTON "[-99] 사임하다", -99
+ELSE
+	PRINTBUTTON "[0] 반환한다", 0
+ENDIF
+DO
+INPUT
+FU_RESULT = RESULT
+SELECTCASE FU_RESULT
+	CASE 0
+		RETURN
+	CASE 1
+		SIF STRCOUNT(OP, "「Confirmation」")
+			RETURN 1
+		GOTO RETRY
+	CASE -1
+		SIF !STRCOUNT(OP, "「Faction Status」")
+			GOTO RETRY
+		CALL FACTION_DONATE_MENU(FU_FACTION)
+	CASE -2
+		SIF !STRCOUNT(OP, "「Faction Status」")
+			GOTO RETRY
+		SIF FactionRank:C_ID:FU_FACTION <= 0
+			GOTO RETRY
+		TARGET = nRecruiter
+		CALL COM366
+	CASE -3
+		SIF !STRCOUNT(OP, "「Faction Status」")
+			GOTO RETRY
+		SIF FactionRank:C_ID:FU_FACTION <= 0
+			GOTO RETRY
+		IF TALENT:nRecruiter:301 && CFLAG:nRecruiter:出禁
+			CALLF HESOYAM(nRecruiter)
+			CFLAG:nRecruiter:出禁 = 0
+			LOCAL:7 = CFLAG:nRecruiter:出禁
+		ENDIF
+		PRINTFORML 수행할 세력 임무를 선택하라.
+		FOR LOCAL,0,100
+		SIF !GET_INT(0, "一般依頼", LOCAL:0, "Faction Only")
+			CONTINUE
+		PRINTFORML [{LOCAL,3}] - %GET_STR(0, "一般依頼", LOCAL:0, "依頼名")%
+		NEXT
+		PRINTL
+		PRINTFORML [999] - 취소
+		INPUT
+		FU_RESULT:1 = RESULT
+		SELECTCASE FU_RESULT:1
+			CASE 999
+			CASEELSE
+				SIF !GET_INT(0, "一般依頼", FU_RESULT:1, "Faction Only")
+					CONTINUE
+				CALLF Add_SPECIAL_REQUEST_CREATION(nRecruiter, FU_RESULT:1, 100, 1, 1)
+				SIF TALENT:nRecruiter:301 && LOCAL:7
+					CFLAG:nRecruiter:出禁 = 2
+				TARGET = nRecruiter
+				CALL COM366
+		ENDSELECT
+	CASE -5
+		SIF !STRCOUNT(OP, "「Faction Status」")
+			GOTO RETRY
+		SIF FactionRank:C_ID:FU_FACTION < 4
+			GOTO RETRY
+		CALL FACTION_EDIT(FU_FACTION, 0)
+	CASE -6
+		CALL SELECT_FACTION_DIPLOMACY(FU_FACTION)
+	CASE -99
+		SIF !STRCOUNT(OP, "「Faction Status」")
+			GOTO RETRY
+		PRINTFORML 당신은 이 파벌에서 사임하길 정말로 원합니까?
+		PRINTFORML 요구 사항을 충족하면 다시 가입할 수 있습니다.
+		PRINTL
+		PRINTFORML 다시 합류하면 당신의 계급과 경험치를 유지할 수 있습니다.
+		CALL ASK_YN()
+		SELECTCASE RESULT
+			CASE 0
+				PRINTFORML 당신은 %FactionName(FU_FACTION)%에서 사임했다.
+				CALL JoinFaction(C_ID,FU_FACTION,1)
+				RETURN
+			CASE 1
+		ENDSELECT
+	CASE VARSIZE("DISP_NAME")+3
+		F_VIEW = (F_VIEW - 1 + FACTION_CNT) % MAX(1,FACTION_CNT)
+	CASE VARSIZE("DISP_NAME")+4
+		F_VIEW = (F_VIEW + 1 + FACTION_CNT) % MAX(1,FACTION_CNT)
+	CASE 2 TO VARSIZE("DISP_NAME")+2
+		PAGE = RESULT-2
+	CASE IS >= 95000
+		FU_RES_PAGE = RESULT-95000
+	CASEELSE
+		$RETRY
+		REUSELASTLINE Invalid Input
+		CONTINUE
+ENDSELECT
+BREAK
+LOOP 1
+GOTO REPRINT
+
+@FACTION_UI(C_ID,FU_FACTION, PAGE, OP, FU_RES_PAGE)
+#DIMS    	OP         ;実行オプション
+#DIM     	C_ID       ;登録番号
+#DIM     	PAGE       ;表示中のページ
+#DIM 	 	FU_FACTION
+#DIM CONST	FU_MEMBER_PADDING = 40
+#DIM 		FU_C_LINE
+#DIM 	    FU_RES_PAGE
+VARSET FU_C_LINE
+PRINTL
+SELECTCASE PAGE
+	CASE 0
+		CALL PRINTLINE, "Description"
+		SETCOLOR C_GRAY
+		PRINTFORM [%FactionAbriv(FU_FACTION)%] 
+		RESETCOLOR
+		PRINTFORM %FactionName(FU_FACTION)% 
+		PRINTL
+		SETCOLOR C_GRAY
+		PRINTFORML %GET_STR(C_ID, "Faction", FU_FACTION, "Unit")%
+		RESETCOLOR
+		PRINTL
+		PRINTFORML 부의: %金額表示(FactionWealth:FU_FACTION),8%
+		PRINTFORML 힘: %PALAM_NUM_NAS(FactionThreatPoints(-1,FU_FACTION))%
+		PRINTFORML 일일 재산 증가량: %金額表示(FACTION_TREASURY_DAILY(FU_FACTION)),8%
+		PRINTL
+		PRINTFORML %GET_STR(C_ID, "Faction", FU_FACTION, "Desc")%
+		CALL PRINTLINE, "Employment Status"
+		IF FactionRank:C_ID:FU_Faction
+			PRINTFORML 순위: %FACTION_RANK_STRING(C_ID,FU_FACTION)%
+			LOCALS:1 = 
+			IF FactionRank:C_ID:FU_Faction < 6
+				LOCALS:1 = (%FACTION_RANK_STRING_INDE(FU_Faction,FactionRank:C_ID:FU_Faction+1,FactionDivision:C_ID:FU_Faction)%를 위해 {EXP_DEMAND_FACTION_RANK(FactionRank:C_ID:FU_Faction+1)}만큼 더 필요하다)
+			ELSE
+				LOCALS:1 = (최고 등급에서)
+			ENDIF
+			PRINTFORML 경험치: {FactionExperience:C_ID:FU_Faction}/{EXP_DEMAND_FACTION_RANK(FactionRank:C_ID:FU_Faction+1)} %LOCALS:1%
+		ELSE
+			CALL SHOW_FACTION_JOIN_REQUIREMENTS(C_ID,FU_FACTIOn)
+		ENDIF
+		CALL PRINTLINE, "Territory"
+		FOR LOCAL,0,20
+		SIF !GET_EXISTMAP(LOCAL)
+			CONTINUE
+		PRINTFORM %GET_MAPNAME(LOCAL),30,LEFT%: 
+		IF FactionMainArea:LOCAL == FU_FACTION
+			SETCOLOR C_YELLOW
+			LOCALS = Owned
+		ELSEIF GETBIT(FactionPatrolArea:FU_FACTION,LOCAL)
+			LOCALS = Patroling
+		ELSE
+			SETCOLOR C_GRAY
+			LOCALS = Not Patroling
+		ENDIF
+		PRINTFORM %LOCALS,15,LEFT%
+		RESETCOLOR
+		SELECTCASE FactionAreaControl:FU_FACTION:LOCAL/10
+			CASE IS > 90
+				SETCOLOR BARCOLORSET("青")
+			CASE IS > 75
+				SETCOLOR BARCOLORSET("緑")
+			CASE IS > 50
+				SETCOLOR BARCOLORSET("黄色")
+			CASE IS > 25
+				SETCOLOR BARCOLORSET("オレンジ")
+			CASE IS > 0
+				SETCOLOR BARCOLORSET("赤")
+			CASE IS <= 0
+				SETCOLOR C_GRAY
+		ENDSELECT
+		PRINTFORM %@"%DecimalPlace(FactionAreaControl:FU_FACTION:LOCAL,1),5,RIGHT%\% 제어권",15,LEFT%
+		RESETCOLOR
+		PRINTL
+		NEXT
+		CALL PRINTLINE, "Notable Members"
+		FOR LOCAL,0,CHARANUM
+		SIF TALENT:LOCAL:300 ; mob
+			CONTINUE
+		SIF !FactionRank:LOCAL:FU_FACTION && TALENT:LOCAL:Recruiter != FU_FACTION+1
+			CONTINUE
+		PRINTFORM %@"%NAME:LOCAL% (%COND_STR("[R] ", TALENT:LOCAL:Recruiter == FU_FACTION+1)%%FACTION_RANK_STRING(LOCAL,FU_FACTION)%)",FU_MEMBER_PADDING,LEFT%
+		FU_C_LINE ++
+		IF FU_C_LINE % (MAXWIDTH()/FU_MEMBER_PADDING) == 0
+			PRINTL
+			VARSET FU_C_LINE
+		ENDIF
+		NEXT
+		SIF FU_C_LINE % (MAXWIDTH()/FU_MEMBER_PADDING) != 0
+			PRINTL
+	CASE 1
+		CALL LIST_FACTION_RELATIONS(FU_FACTION)
+	CASE 2
+		PRINTFORML 기술 능력: %AllTechLevels(MIN(FactionTech:FU_Faction,nMaxTech))%
+		PRINTFORML 기술 능력: %金額表示(FactionWealth:FU_FACTION),8%
+		CALL RESEARCH_MENU(FU_Faction,0,"「Ability Listing」「Completed Only」「No Buttons」",FU_RES_PAGE)
+	CASE 3
+		;FOR LOCAL,0,10
+		FOR LOCAL:1,1,7
+		IF LOCAL:1 == 6 && !FactionUnits:FU_Faction:(LOCAL:1)
+			SETCOLOR C_RED
+		ENDIF
+		PRINTFORML %FACTION_RANK_STRING_INDE(FU_FACtION,LOCAL:1),15,LEFT%: %PALAM_NUM_NAS(FactionUnits:FU_Faction:(LOCAL:1))%
+		RESETCOLOR
+		NEXT
+		;NEXT
+ENDSELECT
+
+@LIST_FACTION_RELATIONS(FU_FACTION, LFR_BUTTON = -1)
+#DIM FU_FACTION
+#DIM LFR_BUTTON
+PRINTFORM %"Faction Name",40,LEFT%
+PRINTFORM  | 
+PRINTFORM %"Fame",7,LEFT%
+PRINTFORM  | 
+PRINTFORM %"Infamy",7,LEFT%
+PRINTFORM  | 
+PRINTFORM %"Relation",7,LEFT%
+PRINTL
+DRAWLINE
+FOR LOCAL,0,MaxFactions
+SIF !FactionExist(LOCAL)
+	CONTINUE
+SIF LOCAL == FU_FACTION
+	CONTINUE
+IF LFR_BUTTON > -1
+	PRINTBUTTON @"%FactionName(LOCAL),40,LEFT%",LOCAL+LFR_BUTTON
+ELSE
+	PRINTFORM %FactionName(LOCAL),40,LEFT%
+ENDIF
+PRINTFORM  | 
+SETCOLOR Color_Gradient_PER(GETCONFIG("TEXT COLOR"),C_GREEN,MIN(FactionTeamFame:(FU_Faction):(LOCAL)/1000,100))
+PRINTFORM {FactionTeamFame:FU_Faction:LOCAL,7,LEFT}
+RESETCOLOR
+PRINTFORM  | 
+SETCOLOR Color_Gradient_PER(GETCONFIG("TEXT COLOR"),C_D_RED,MIN(FactionTeamInfamy:(FU_Faction):(LOCAL)/1000,100))
+PRINTFORM {FactionTeamInfamy:FU_Faction:LOCAL,7,LEFT}
+RESETCOLOR
+PRINTFORM  | 
+SELECTCASE FactionTeamFame:FU_Faction:LOCAL-FactionTeamInfamy:FU_Faction:LOCAL
+	CASE IS > 0
+		SETCOLOR Color_Gradient_PER(GETCONFIG("TEXT COLOR"),C_GREEN,MIN(FactionTeamFame:(FU_Faction):(LOCAL)/1000,100))
+	CASE IS < 0
+		SETCOLOR Color_Gradient_PER(GETCONFIG("TEXT COLOR"),C_D_RED,MIN(FactionTeamInfamy:(FU_Faction):(LOCAL)/1000,100))
+ENDSELECT
+PRINTFORM {FactionTeamFame:FU_Faction:LOCAL-FactionTeamInfamy:FU_Faction:LOCAL,7,LEFT} 
+RESETCOLOR
+IF GETBIT(FactionWarring:FU_Faction:LOCAL,0)
+	SETCOLOR C_RED
+	PRINTFORM 전쟁 상태
+	RESETCOLOR
+ELSEIF GETBIT(FactionWarring:FU_Faction:LOCAL,1)
+	SETCOLOR C_TEAL
+	PRINTFORM 휴전
+	RESETCOLOR
+ELSEIF GETBIT(FactionWarring:FU_Faction:LOCAL,2)
+	SETCOLOR C_N_BLUE
+	PRINTFORM 동맹
+	RESETCOLOR
+ENDIF
+PRINTL
+NEXT
+IF LFR_BUTTON > -1
+	PRINTBUTTON @"%"Non-Members",40,LEFT%",MaxFactions+LFR_BUTTON
+ELSE
+	PRINTFORM %"Non-Members",40,LEFT%
+ENDIF
+PRINTFORM  | 
+SETCOLOR Color_Gradient_PER(GETCONFIG("TEXT COLOR"),C_GREEN,MIN(FactionNonMemberFame:(FU_Faction)/1000,100))
+PRINTFORM {FactionNonMemberFame:FU_Faction,7,LEFT}
+RESETCOLOR
+PRINTFORM  | 
+SETCOLOR Color_Gradient_PER(GETCONFIG("TEXT COLOR"),C_D_RED,MIN(FactionNonMemberInfamy:(FU_Faction)/1000,100))
+PRINTFORM {FactionNonMemberInfamy:FU_Faction,7,LEFT}
+RESETCOLOR
+PRINTFORM  | 
+SELECTCASE FactionNonMemberFame:FU_Faction-FactionNonMemberInfamy:FU_Faction
+	CASE IS > 0
+		SETCOLOR Color_Gradient_PER(GETCONFIG("TEXT COLOR"),C_GREEN,MIN(FactionNonMemberFame:(FU_Faction)/1000,100))
+	CASE IS < 0
+		SETCOLOR Color_Gradient_PER(GETCONFIG("TEXT COLOR"),C_D_RED,MIN(FactionNonMemberInfamy:(FU_Faction)/1000,100))
+ENDSELECT
+PRINTFORM {FactionNonMemberFame:FU_Faction-FactionNonMemberInfamy:FU_Faction,7,LEFT}
+RESETCOLOR
+PRINTL
+
+@LIST_UNIT(nFaction,nUnit)
+#DIM nFaction
+#DIM nUnit
+
+@SORT_LIST_FACTION(SORT_TYPE, FACTION_LIST, CHARA_CNT, C_ID)
+#DIM      SORT_TYPE  ;ソート内容の指示
+#DIM      MEMO_TYPE  ;今回のソート項目、CSVでの要素数
+#DIMS     CHECK_VAR  ;チェック対象となる変数名
+#DIMS     CHECK_TYPE ;比較演算子の種類
+#DIM      NUM_LOOP   ;ループ回数
+#DIM  REF FACTION_LIST ;キャラリストの内容配列
+#DIM      CHARA_CNT  ;リストに含まれるキャラ数
+#DIM 	  C_ID
+;ソート項目の種別
+#DIMS CONST DISP_MEMO = "FactionRank", "FactionFame", "FactionInfamy", "FactionRelation", "FactionPower", "FactionThreat", "Title", "FactionUnits", "FactionUnits", "FactionUnits", "FactionUnits", "FactionUnits", "FactionUnits", "FactionTech", "FactionWealth", "FactionResearch", "FactionResearch", "FactionResearch", "FactionResearch", "FactionResearch", "FactionResearch", "FactionResearch", "FactionResearch", "FactionResearch", "FactionResearch", "FactionResearch", "FactionAreaControl", "FactionAreaControl", "FactionAreaControl", "FactionAreaControl", "FactionAreaControl", "FactionAreaControl", "FactionAreaControl", "FactionAreaControl", "FactionAreaControl", "FactionAreaControl", "FactionAreaControl","FactionAreaControl", "FactionFriendlyCount", "FactionEnemyCount"
+;ソート項目の各キャラ変数における位置
+#DIM CONST MEMO_ID = 0, 0, 0, 0, 0, 0, 0, 6, 5, 4, 3, 2, 1, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 0
+;ソート項目の検索
+MEMO_TYPE = 0
+NUM_LOOP = SortListSize
+MEMO_TYPE = SORT_TYPE%SortListSize
+;PRINTFORMW {MEMO_TYPE} (size {NUM_LOOP})
+SELECTCASE DISP_MEMO:MEMO_TYPE ;refer to CHARA_COMPARE for CHECK_VAR
+	CASE "Title"
+		RETURN
+	CASEELSE
+		CHECK_VAR '= DISP_MEMO:MEMO_TYPE
+ENDSELECT
+IF SORT_TYPE < 1044
+	CHECK_TYPE '= ">="
+ELSEIF SORT_TYPE >= 1044
+	CHECK_TYPE '= "<="
+ENDIF
+;ソート実処理
+LOCAL:0 = 1
+WHILE LOCAL:0 < CHARA_CNT
+SIF !(LOCAL:0)
+	LOCAL:0 ++
+;PRINTW Okay, wait, so, what?
+IF FACTION_COMPARE(CHECK_VAR, MEMO_ID:MEMO_TYPE, FACTION_LIST:(LOCAL:0 - 1), CHECK_TYPE, FACTION_LIST:(LOCAL:0), C_ID)
+	LOCAL:0 ++
+ELSE
+	SWAP FACTION_LIST:(LOCAL:0 - 1), FACTION_LIST:(LOCAL:0)
+	LOCAL:0 --
+ENDIF
+WEND
+
+@FACTION_COMPARE(VAR_NAME, VAR_ID, FACTION_A, TYPE, FACTION_B, C_ID)
+#FUNCTION
+#DIMS VAR_NAME ;比較対象キャラ変数
+#DIM  VAR_ID   ;比較対象キャラ変数のID
+#DIM  FACTION_A  ;比較対象キャラAの登録番号
+#DIMS TYPE     ;比較内容
+#DIM  FACTION_B  ;比較対象キャラBの登録番号
+#DIM C_ID
+#DIM FC_VARS,3
+SELECTCASE VAR_NAME
+	CASE "FactionUnits", "FactionAreaControl"
+		SELECTCASE TYPE
+			CASE "=="
+				RETURNF GETVAR(@"%VAR_NAME%:{FACTION_A}:{VAR_ID}") == GETVAR(@"%VAR_NAME%:{FACTION_B}:{VAR_ID}")
+			CASE ">"
+				RETURNF GETVAR(@"%VAR_NAME%:{FACTION_A}:{VAR_ID}") > GETVAR(@"%VAR_NAME%:{FACTION_B}:{VAR_ID}")
+			CASE ">="
+				RETURNF GETVAR(@"%VAR_NAME%:{FACTION_A}:{VAR_ID}") >= GETVAR(@"%VAR_NAME%:{FACTION_B}:{VAR_ID}")
+			CASE "<"
+				RETURNF GETVAR(@"%VAR_NAME%:{FACTION_A}:{VAR_ID}") < GETVAR(@"%VAR_NAME%:{FACTION_B}:{VAR_ID}")
+			CASE "<="
+				RETURNF GETVAR(@"%VAR_NAME%:{FACTION_A}:{VAR_ID}") <= GETVAR(@"%VAR_NAME%:{FACTION_B}:{VAR_ID}")
+			CASEELSE
+				THROW 不明なTYPE　%TYPE%
+		ENDSELECT
+	CASE "FactionWealth", "FactionTech"
+		SELECTCASE TYPE
+			CASE "=="
+				RETURNF GETVAR(@"%VAR_NAME%:{FACTION_A}") == GETVAR(@"%VAR_NAME%:{FACTION_B}")
+			CASE ">"
+				RETURNF GETVAR(@"%VAR_NAME%:{FACTION_A}") > GETVAR(@"%VAR_NAME%:{FACTION_B}")
+			CASE ">="
+				RETURNF GETVAR(@"%VAR_NAME%:{FACTION_A}") >= GETVAR(@"%VAR_NAME%:{FACTION_B}")
+			CASE "<"
+				RETURNF GETVAR(@"%VAR_NAME%:{FACTION_A}") < GETVAR(@"%VAR_NAME%:{FACTION_B}")
+			CASE "<="
+				RETURNF GETVAR(@"%VAR_NAME%:{FACTION_A}") <= GETVAR(@"%VAR_NAME%:{FACTION_B}")
+			CASEELSE
+				THROW 不明なTYPE　%TYPE%
+		ENDSELECT
+	CASE "FactionFame", "FactionInfamy", "FactionRank"
+		SELECTCASE TYPE
+			CASE "=="
+				RETURNF GETVAR(@"%VAR_NAME%:{C_ID}:{FACTION_A}") == GETVAR(@"%VAR_NAME%:{C_ID}:{FACTION_B}")
+			CASE ">"
+				RETURNF GETVAR(@"%VAR_NAME%:{C_ID}:{FACTION_A}") > GETVAR(@"%VAR_NAME%:{C_ID}:{FACTION_B}")
+			CASE ">="
+				RETURNF GETVAR(@"%VAR_NAME%:{C_ID}:{FACTION_A}") >= GETVAR(@"%VAR_NAME%:{C_ID}:{FACTION_B}")
+			CASE "<"
+				RETURNF GETVAR(@"%VAR_NAME%:{C_ID}:{FACTION_A}") < GETVAR(@"%VAR_NAME%:{C_ID}:{FACTION_B}")
+			CASE "<="
+				RETURNF GETVAR(@"%VAR_NAME%:{C_ID}:{FACTION_A}") <= GETVAR(@"%VAR_NAME%:{C_ID}:{FACTION_B}")
+			CASEELSE
+				THROW 不明なTYPE　%TYPE%
+		ENDSELECT
+	CASE "FactionRelation"
+		FC_VARS:0 = FactionRelationCompElse(C_ID,FACTION_A)
+		FC_VARS:1 = FactionRelationCompElse(C_ID,FACTION_B)
+		SELECTCASE TYPE
+			CASE "=="
+				RETURNF FC_VARS:0 == FC_VARS:1
+			CASE ">"
+				RETURNF FC_VARS:0 > FC_VARS:1
+			CASE ">="
+				RETURNF FC_VARS:0 >= FC_VARS:1
+			CASE "<"
+				RETURNF FC_VARS:0 < FC_VARS:1
+			CASE "<="
+				RETURNF FC_VARS:0 <= FC_VARS:1
+			CASEELSE
+				THROW 不明なTYPE　%TYPE%
+		ENDSELECT
+	CASE "FactionPower"
+		FC_VARS:0 = FactionThreatPoints(-1,FACTION_A)
+		FC_VARS:1 = FactionThreatPoints(-1,FACTION_B)
+		SELECTCASE TYPE
+			CASE "=="
+				RETURNF FC_VARS:0 == FC_VARS:1
+			CASE ">"
+				RETURNF FC_VARS:0 > FC_VARS:1
+			CASE ">="
+				RETURNF FC_VARS:0 >= FC_VARS:1
+			CASE "<"
+				RETURNF FC_VARS:0 < FC_VARS:1
+			CASE "<="
+				RETURNF FC_VARS:0 <= FC_VARS:1
+			CASEELSE
+				THROW 不明なTYPE　%TYPE%
+		ENDSELECT
+	CASE "FactionThreat"
+		FC_VARS:0 = FactionThreatPoints(C_ID,FACTION_A)
+		FC_VARS:1 = FactionThreatPoints(C_ID,FACTION_B)
+		SELECTCASE TYPE
+			CASE "=="
+				RETURNF FC_VARS:0 == FC_VARS:1
+			CASE ">"
+				RETURNF FC_VARS:0 > FC_VARS:1
+			CASE ">="
+				RETURNF FC_VARS:0 >= FC_VARS:1
+			CASE "<"
+				RETURNF FC_VARS:0 < FC_VARS:1
+			CASE "<="
+				RETURNF FC_VARS:0 <= FC_VARS:1
+			CASEELSE
+				THROW 不明なTYPE　%TYPE%
+		ENDSELECT
+	CASE "FactionFriendlyCount"
+		FC_VARS:0 = FactionFriendlyCount(FACTION_A)
+		FC_VARS:1 = FactionFriendlyCount(FACTION_B)
+		SELECTCASE TYPE
+			CASE "=="
+				RETURNF FC_VARS:0 == FC_VARS:1
+			CASE ">"
+				RETURNF FC_VARS:0 > FC_VARS:1
+			CASE ">="
+				RETURNF FC_VARS:0 >= FC_VARS:1
+			CASE "<"
+				RETURNF FC_VARS:0 < FC_VARS:1
+			CASE "<="
+				RETURNF FC_VARS:0 <= FC_VARS:1
+			CASEELSE
+				THROW 不明なTYPE　%TYPE%
+		ENDSELECT
+	CASE "FactionEnemyCount"
+		FC_VARS:0 = FactionEnemyCount(FACTION_A)
+		FC_VARS:1 = FactionEnemyCount(FACTION_B)
+		SELECTCASE TYPE
+			CASE "=="
+				RETURNF FC_VARS:0 == FC_VARS:1
+			CASE ">"
+				RETURNF FC_VARS:0 > FC_VARS:1
+			CASE ">="
+				RETURNF FC_VARS:0 >= FC_VARS:1
+			CASE "<"
+				RETURNF FC_VARS:0 < FC_VARS:1
+			CASE "<="
+				RETURNF FC_VARS:0 <= FC_VARS:1
+			CASEELSE
+				THROW 不明なTYPE　%TYPE%
+		ENDSELECT
+	CASE "FactionResearch"
+		FC_VARS:0 = RESEARCH_COUNT(FACTION_A,VAR_ID)
+		FC_VARS:1 = RESEARCH_COUNT(FACTION_B,VAR_ID)
+		SELECTCASE TYPE
+			CASE "=="
+				RETURNF FC_VARS:0 == FC_VARS:1
+			CASE ">"
+				RETURNF FC_VARS:0 > FC_VARS:1
+			CASE ">="
+				RETURNF FC_VARS:0 >= FC_VARS:1
+			CASE "<"
+				RETURNF FC_VARS:0 < FC_VARS:1
+			CASE "<="
+				RETURNF FC_VARS:0 <= FC_VARS:1
+			CASEELSE
+				THROW 不明なTYPE　%TYPE%
+		ENDSELECT
+	CASEELSE
+		THROW 不明なVAR_NAME　%VAR_NAME%
+ENDSELECT

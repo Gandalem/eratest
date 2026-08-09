@@ -1,0 +1,147 @@
+﻿; Modular ERB: 睡眠深度処理.ERB
+;FileName_SOURCE1.ERB ------------------------------ Rev1.00
+;睡眠深度の減少処理
+;ARG		キャラNO
+;-----------------------------------------------------------
+
+@睡眠深度減少(ARG)
+SIF CFLAG:MASTER:イタズラ != 2
+	RETURN
+LOCAL:1 += CUP:ARG:不快 * 10 + CUP:ARG:苦痛 * 10 + CUP:ARG:恐怖 + CUP:ARG:反感 + CUP:ARG:抑鬱 / 2
+SELECTCASE CUP:ARG:欲情
+	CASE 50 TO 100
+		LOCAL:1 += 50
+	CASE 101 TO 500
+		LOCAL:1 += 250
+	CASE 501 TO 1000
+		LOCAL:1 += 500
+	CASE IS > 1000
+		LOCAL:1 += 1000
+	CASEELSE
+ENDSELECT
+;		PRINTFORM 睡眠深度基礎値{LOCAL:1}
+SELECTCASE EXP:MASTER:睡眠姦経験
+	CASE 100 TO 500
+		LOCAL:1 -= 100
+	CASE 501 TO 1000
+		LOCAL:1 -= 250
+	CASE IS > 1000
+		LOCAL:1 -= 500
+	CASEELSE
+ENDSELECT
+SELECTCASE EXP:TARGET:睡眠姦経験
+	CASE 100 TO 500
+		LOCAL:1 -= 100
+	CASE 501 TO 1000
+		LOCAL:1 -= 250
+	CASE IS > 1000
+		LOCAL:1 -= 500
+	CASEELSE
+ENDSELECT
+LOCAL:1 = MAX(LOCAL:1, 0)
+SIF TCVAR:TARGET:睡眠薬強度 == 1
+	LOCAL:1 = LOCAL:1 / 2
+SIF TCVAR:TARGET:睡眠薬強度 == 2
+	LOCAL:1 = LOCAL:1 / 4
+SIF TCVAR:TARGET:睡眠薬強度 == 3
+	LOCAL:1 = 0
+;PRINTFORM 睡眠深度が{LOCAL:1}減った
+TCVAR:ARG:睡眠深度 -= LOCAL:1
+;FileName_TRACHECK.ERB ----------------------------- Rev1.00
+;好感度上昇計算処理
+;CALL		USER
+;ARG		0:キャラNO
+;RETURN		VOID
+;COMMENT
+;-----------------------------------------------------------
+
+@睡眠姦発覚(ARG)
+SIF TCVAR:ARG:睡眠薬強度 == 3 && 睡眠時間(ARG) || FLAG:70 || IsDead:ARG:0 || CharaTrauma:LOCAL:0 >= 5
+	RETURN
+;custom code - changed checks by ARG for consistency
+;昏睡だと起きない
+PRINTFORML %CALLNAME:ARG%는 잠에서 깬다.
+IF !TEQUIP:ARG:縄
+	;縄で縛っていない
+	IF TALENT:ARG:恋慕 || (!TALENT:ARG:セフレ && (TCVAR:Common_Sense_Alteration_Status > 50 || FLAG:催眠強度 > 50)) ;hypnosis patch
+		PRINTFORML %CALLNAME:ARG%는 %HIS_HER(ARG)%의 옷이 슬픈 상태인 것을 알아차리자 혼란스러운 듯 당신을 올려다본다.
+		PRINTFORMW %BREAKENG(@"%HE_SHE(ARG,1)%가볍게 꾸짖으며 그런 장난에 조심하라고 말하는데, %HE_SHE(ARG)%가 %HIS_HER(ARG)%의 옷을 정돈하기 시작한다.")%
+		CFLAG:ARG:好感度 += ABL:ARG:欲望
+		PRINTFORML 호의 + {ABL:ARG:欲望}
+		CALL CHARA_AWAKE(ARG,1,1)
+		CALL SET_PRANK(0,ARG,2)
+		CALL ENDUFUFU(ARG)
+	ELSEIF TALENT:ARG:セフレ || TALENT:ARG:愛欲
+		PRINTFORML %CALLNAME:ARG%은 당신을 응시하며 깨어나고, %HIS_HER(ARG)%는 야수처럼 쾌락을 갈망하는 몸이다.
+		PRINTFORMW %HE_SHE(ARG,1)%는 더욱 외설적인 자세를 취하며, %HE_SHE(ARG)%는 당신에게 하던 곳부터 계속하라고 초대한다...
+		CFLAG:ARG:好感度 += ABL:ARG:欲望 * 2
+		PRINTFORML 호의 + {ABL:ARG:欲望 * 2}
+		CALL CHARA_AWAKE(ARG,1,1)
+		CALL SET_PRANK(0,ARG,2)
+		FOR LOCAL, 1, GET_TARGETNUM() + 1
+		CFLAG:(TARGET:LOCAL):うふふ = 1
+		CFLAG:(TARGET:LOCAL):LAST_SEX_DAY = DAY ;qol custom code
+		NEXT
+	ELSE
+		PRINTFORML %CALLNAME:ARG%당신을 믿을 수 없다는 듯 노려본다. 왜냐하면 %HIS_HER(ARG)%의 옷이 얼마나 흐트러져 있는지 %HE_SHE(ARG)%가 알아차렸기 때문이다.
+		PRINTFORMW %HE_SHE(ARG,1)%'s 분노가...
+		IF MARK:ARG:反発刻印 <= 4
+			MARK:ARG:反発刻印 = 4
+			PRINTFORML %HIS_HER(ARG,1)%의 얼굴은 분노로 일그러지고 %HE_SHE(ARG)%이 저주를 내뱉는다...
+			SETCOLOR C_RED
+			PRINTFORMW %CALLNAME:ARG%은(는) 증오 각인 Lv4를 얻었다!
+			RESETCOLOR
+		ENDIF
+		CALL CHARA_AWAKE(ARG,1,1)
+		CALL SET_PRANK(0,ARG,2)
+		CALL ENDUFUFU(ARG)
+	ENDIF
+ELSE
+	;縄でしばってるならそのままヤッちゃう
+	IF TALENT:ARG:恋慕 || (!TALENT:ARG:セフレ && TCVAR:ARG:Common_Sense_Alteration_Status > 50) ;hypnosis patch
+		PRINTFORML %CALLNAME:ARG%은(는) %HE_SHE(ARG)%이 속박 상태에 있다는 것을 깨닫는다.
+		PRINTFORMW 당신을 범인으로 여기며, %HE_SHE(ARG)%은 짜증스럽게 눈을 굴리더니 서둘러서 %HIM_HER(ARG)%를 놓으라고 말한다...
+		CALL CHARA_AWAKE(ARG,1,1)
+		CALL SET_PRANK(0,ARG,2)
+		FOR LOCAL,1, GET_TARGETNUM() + 1
+		CFLAG:(TARGET:LOCAL):うふふ = 1
+		NEXT
+	ELSEIF TALENT:ARG:セフレ || TALENT:ARG:愛欲
+		PRINTFORML %CALLNAME:ARG%기분 좋은 감각에 깨어나 당신이 %HIM_HER(ARG)%를 묶고 범했음을 알게 된다.
+		PRINTFORMW %CALLNAME:ARG% %HIS_HER(ARG)%는 엉덩이를 흔들며 당신에게 %HIM_HER(ARG)%를 더 박도록 유혹한다...
+		CFLAG:ARG:好感度 += ABL:ARG:欲望 * 3
+		PRINTFORML 호감도 + {ABL:ARG:欲望 * 3}
+		CALL CHARA_AWAKE(ARG,1,1)
+		CALL SET_PRANK(0,ARG,2)
+		FOR LOCAL,1, GET_TARGETNUM() + 1
+		CFLAG:(TARGET:LOCAL):うふふ = 1
+		CFLAG:(TARGET:LOCAL):LAST_SEX_DAY = DAY ;qol custom code
+		NEXT
+	ELSE
+		PRINTFORML %CALLNAME:ARG%는 기분 좋은 감각에 눈을 뜨고 당신이 %HIM_HER(ARG)%를 묶어 범했다는 것을 알게 된다.
+		IF TALENT:ARG:度胸 < 0
+			PRINTFORMW %CALLNAME:ARG% 눈물 속에서 그만두라고 애원한다 %HIS_HER(ARG)% 눈에...
+		ELSE
+			PRINTFORMW %CALLNAME:ARG%은(는) %HIS_HER(ARG)%의 얼굴이 원한으로 어두워지면서 당신에게 저주를 퍼붓는다.
+		ENDIF
+		IF MARK:ARG:反発刻印 <= 4
+			MARK:ARG:反発刻印 = 4
+			IF TALENT:ARG:度胸 < 0
+				PRINTFORM %CALLNAME:ARG%의 뺨을 눈물이 흘러내린다.
+			ELSE
+				PRINTFORM %CALLNAME:ARG%의 얼굴이 분노로 일그러진다.
+			ENDIF
+			PRINTFORML  %HE_SHE(ARG)%이 저주를 내뱉는다...
+			SETCOLOR C_RED
+			PRINTFORMW %CALLNAME:ARG%은(는) 증오의 각인 Lv4를 얻었다!
+			RESETCOLOR
+		ENDIF
+		CALL CHARA_AWAKE(ARG,1,1)
+		CALL SET_PRANK(0,ARG,2)
+		FOR LOCAL,1, GET_TARGETNUM() + 1
+		CFLAG:(TARGET:LOCAL):うふふ = 1
+		NEXT
+		TCVAR:ARG:無理矢理 = 1
+	ENDIF
+ENDIF
+CFLAG:ARG:眠姦発覚 = 1

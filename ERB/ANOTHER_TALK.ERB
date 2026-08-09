@@ -1,0 +1,1282 @@
+﻿; Modular ERB: ANOTHER_TALK.ERB
+;FileName_ANOTHER_TALK.ERB ------------------------- Rev1.01
+;TARGET以外メンバー会話
+;CALL		USER
+;ARG		VOID
+;RETURN		VOID
+;COMMENT
+;-----------------------------------------------------------
+
+@ANOTHERTARGET_TALK
+#DIM TALKER,2
+#DIM HATAKE
+VARSET LOCAL
+VARSET HATAKE
+;DEBUGPRINTL 【ANOTHERTARGET_TALK】CALL ANOTHERTARGET_TALK
+;CHARA_ARRAYフォルト対策
+SIF CHARANUM > キャラクタ数上限
+	RETURN 0
+;話者の決定処理
+CALL ANOTHER_TALK_SET_TALKER(TALKER)
+HATAKE = INT_NOUMIN(FLAG:地主, "場所ID")
+;DEBUGPRINTFORML 【ANOTHERTARGET_TALK】会話者１ = {TALKER:0} 会話者２ = {TALKER:1}
+;Custom code, add additional messages during Lunatic Survival.
+TRYCALL LS_MESSAGE_TALK
+;Custom code, work sites for commissions.
+RESULT = 0
+LOCAL:1 = 0
+TRYCALL COMMISSION_WORK_SITE(CFLAG:MASTER:現在位置)
+SIF RESULT
+	LOCAL:1 = 1
+IF (TCVAR:TARGET:仕事開始 - TIME:0 <= 30 && TCVAR:TARGET:仕事開始 - TIME:0 > 0) && !FLAG:70
+	CALL MESSAGE_TALK(12)
+ELSEIF CFLAG:TARGET:睡眠
+	CALL MESSAGE_TALK(3)
+	;ELSEIF GETBIT(FLAG:潜伏,0)
+	;	CALL MESSAGE_TALK(16)
+ELSEIF TFLAG:描写中の子供 || EXP:MASTER:出産経験
+	CALL MESSAGE_TALK(14)
+ELSEIF ((CFLAG:TARGET:就寝時間 - TIME:0 <= 30 && CFLAG:TARGET:就寝時間 - TIME:0 > 0) || (TCVAR:睡眠薬強度 >= 2 && !RAND:3)) && !FLAG:70
+	CALL MESSAGE_TALK(13)
+ELSEIF TALKER:0 && TALKER:1 && (!FLAG:70 || CFLAG:TARGET:344 == 1)
+	CALL MESSAGE_TALK(2, TALKER:0, TALKER:1)
+ELSEIF 宴会場所在判定(MASTER)
+	CALL MESSAGE_TALK(1)
+ELSEIF TALENT:MASTER:形状 == 4 && TIME > 1140 && CFLAG:MASTER:デート中 && (CFLAG:MASTER:現在位置 % 100) % 10 && CFLAG:MASTER:現在位置 != OMANEKIBEYA()
+	CALL MESSAGE_TALK(5,0,0)
+ELSEIF CFLAG:MASTER:現在位置 == GET_MAP_REPLACEMENT(HATAKE) && FLAG:地主
+	CALL MESSAGE_TALK(8)
+	;畑拡張実装までは暫定的に畑0で決め打ち
+ELSEIF 家庭菜園可(CFLAG:MASTER:現在位置) && PLANT_COUNT("growing") ;custom code
+	;家庭菜園情景描写
+	;CALL MESSAGE_TALK(10)
+	;qol custom code - replace
+	CALL Qol_FieldList
+ELSEIF 物干し可(CFLAG:MASTER:現在位置) && TIME:5 < 2
+	CALL MESSAGE_TALK(11)
+ELSE
+	;Custom code, suppress normal mob messages if the work site specifies.
+	IF !LOCAL:1
+		RESULT = 0
+		TRYCALLFORM MAP_UNIQUEMESSAGE_{GET_MAPID(CFLAG:MASTER:現在位置)} ;addition custom code
+	ENDIF
+	;どれにも引っかからなければ天気
+	SIF OUTROOF(CFLAG:MASTER:現在位置) && !RESULT && !GROUPMATCH(TIME:5, 0, 2, 3, 6, 7, 10, 11)
+		CALL MESSAGE_TALK(4)
+	;SIF+コメント行は不具合を起こすので調整
+	;SIF OUTROOF(CFLAG:MASTER:現在位置) && !RESULT
+	;どれにも引っかからなければ天気
+	;	CALL MESSAGE_TALK(4)
+ENDIF
+;NAS STuffs
+SIF (clothing_DiapieBulgie(MASTER) || (SoiledSelf:MASTER:0 || SoiledSelf:MASTER:1)) && !FLAG:70 && GET_TARGETNUM() > 0 && SHIRAHU(TARGET) && EQUIP:MASTER:6 && !TALENT:TARGET:NonSentient ;diapie bulgie
+	HTML_PRINT @"◆%PANTY_SEE(MASTER,TARGET)%"
+SIF (WetBed || MessyBed || BedWetterPadID:(BedProtectSettings:1)) && CFLAG:MASTER:現在位置 == CFLAG:MASTER:初期位置
+	CALL MESSAGE_TALK(131)
+SIF !RAND:4 && !CFLAG:TARGET:睡眠 && !FLAG:70 && GET_TARGETNUM() > 0 && SHIRAHU(TARGET) && nSmellFetish ;target bath
+	CALL MESSAGE_TALK(132)
+SIF FacionPropagandaSign:(CFLAG:MASTER:300) > -1
+	CALL MESSAGE_TALK(133)
+SIF PottyLinePosition(TARGET) > -1 || PottyLinePosition(MASTER) > -1
+	CALL MESSAGE_TALK(134)
+;===============================
+SIF GETBIT(FLAG:潜伏,0) ;custom code, show concealment status even if other things are up
+	CALL MESSAGE_TALK(16)
+;Custom code, fertilized eggs in a layer's home.
+CALL NESTING_MESSAGE
+CALL QOL_DISTANT_WATCHERS() ;qol custom code
+;##########QOL NOTE: Don't forget to address 描写中の子供 flag at the very bottom in case you want the description to disable child interactions
+;graveyards
+SIF IS_GRAVEYARD(CFLAG:MASTER:現在位置)
+	CALL MESSAGE_TALK(31)
+SIF CFLAG:MASTER:現在位置 == 拠点_酒虫 && VAR_FERMENT != "" ;qol custom code, show the contents of sake bug
+	CALL MESSAGE_TALK(99)
+;Custom code, Tupai in the mansion's parlor.
+SIF MAIN_MAP == 3 && CFLAG:MASTER:現在位置 == 315
+	CALL MESSAGE_TALK(94)
+;Custom code, fertilized eggs in a layer's home.
+CALL NESTING_MESSAGE
+IF !(FLAG:70 || CFLAG:うふふ || CFLAG:イタズラ || CFLAG:添い寝中) ;qol custom code, show radio hint, supposed to be in your room originally but it can be accessed anywhere now
+	SELECTCASE TIME:0
+		CASE 345 TO 359, 375 TO 389, 405 TO 419, 435 TO 449, 465 TO 479, 525 TO 539, 585 TO 599, 705 TO 719, 735 TO 749, 825 TO 839, 885 TO 899, 945 TO 959, 1005 TO 1019, 1065 TO 1079, 1125 TO 1139, 1185 TO 1199, 1245 TO 1259, 1305 TO 1319, 1365 TO 1379
+			;天気予報(15分間)(05:45 06:15 06:45 07:15 07:45 08:45 09:45 11:45 12:15 13:45 14:45 15:45 16:45 17:45 18:45 19:45 20:45 21:45 22:45)
+			CALL MESSAGE_TALK(97, 0)
+		CASE 300 TO 329, 360 TO 374, 420 TO 434, 540 TO 554, 600 TO 614, 660 TO 674, 720 TO 734, 780 TO 794, 840 TO 854, 900 TO 914, 1020 TO 1034, 1140 TO 1184, 1200 TO 1214, 1260 TO 1274, 1380 TO 1394, 0 TO 14, 60 TO 74, 120 TO 134, 180 TO 194, 240 TO 254
+			;ニュース(原則15分間)(05:00~05:29 06:00 07:00 09:00 10:00 11:00 12:00 13:00 14:00 15:00 17:00 19:00~19:44 20:00 21:00 23:00 24:00 01:00 02:00 03:00 04:00)
+			CALL MESSAGE_TALK(97, 1)
+		CASE 960 TO 989
+			;気象通報(16:00~16:29)
+			CALL MESSAGE_TALK(97, 2)
+	ENDSELECT
+ENDIF
+;qol, describe sweating characters, make sure to keep in line with CHECK_SWEAT
+IF DAY:2 == 2 && 時間帯 == 3 && INRANGE(天候, 0, 1)
+	FOR LOCAL, 1, GET_TARGETNUM() + 1
+	IF (OUTROOF(CFLAG:(TARGET:LOCAL):現在位置) || GET_MAPID(CFLAG:(TARGET:LOCAL):現在位置) == 9)
+		CALL MESSAGE_TALK(96)
+		BREAK
+	ENDIF
+	NEXT
+ENDIF
+;addition custom code
+SIF ADD_ACTIVE_BANQUET_AT_LOCATION(CFLAG:MASTER:現在位置) >= 0
+	CALL MESSAGE_TALK(95)
+;qol custom code, show working/idling charas
+FOR LOCAL, 1, GET_TARGETNUM() + 1
+IF WORKING(TARGET:LOCAL, 1) || Activity_Duration:(TARGET:LOCAL)
+	CALL MESSAGE_TALK(98)
+	BREAK
+ENDIF
+NEXT
+RETURN 0
+;話者の決定処理
+;渡されたTALKERを直接書き換える
+
+@ANOTHER_TALK_SET_TALKER(TALKER)
+#DIM REF     TALKER
+#DIM DYNAMIC CHARA, キャラクタ数上限
+#DIM DYNAMIC CNT_CHARA
+VARSET TALKER
+;対象キャラ選定
+FOR LOCAL, 0, GET_TARGETNUM() + 1
+;MASTERの相手をしていたらスキップ
+SIF LOCAL == MASTER ;NAS: Non 0 Master
+	CONTINUE
+SIF TARGET:LOCAL == TARGET:0
+	CONTINUE
+SIF CFLAG:(TARGET:LOCAL):現在位置 != CFLAG:MASTER:現在位置
+	CONTINUE
+;qol custom code, block during sex
+SIF CFLAG:(TARGET:LOCAL):うふふ
+	CONTINUE
+;対象キャラID取得
+CHARA:(CNT_CHARA) = TARGET:LOCAL
+CNT_CHARA ++
+NEXT
+SIF CNT_CHARA < 2
+	RETURN
+LOCAL = RAND:(CNT_CHARA)
+TALKER:0 = CHARA:LOCAL
+ARRAYREMOVE CHARA, LOCAL, 1
+CNT_CHARA --
+;対象キャラ間の相性チェック
+FOR LOCAL, 0, CNT_CHARA
+;相性の良いキャラが同室か
+SIF !RELATION:(TALKER:0):(CHARA:LOCAL) || RELATION:(TALKER:0):(CHARA:LOCAL) == 100 ;NAS: 100% Relation fix
+	CONTINUE
+;相性を見て会話者２以上なら会話者を更新
+SIF TALKER:1 && RELATION:(TALKER:0):(TALKER:1) >= RELATION:(TALKER:0):(CHARA:LOCAL)
+	CONTINUE
+TALKER:1 = CHARA:LOCAL
+NEXT
+;FileName_ANOTHER_TALK.ERB ------------------------- Rev1.03
+;Info枠内メッセージ表示処理
+;CALL		USER
+;ARG		0:メッセージNO, 1:会話者１, 2:会話者２（メンバー会話時のみ）
+;RETURN		VOID
+;COMMENT	CASEの番号が若いほど出力優先度が高い
+;-----------------------------------------------------------
+
+@MESSAGE_TALK(ARG,ARG:1,ARG:2)
+#DIMS 会場
+#DIMS 子供の名前
+#DIMS 子供の行動
+#DIM CHARA
+#DIM CHILDNUM
+#DIM 同室
+#DIM FilthThreshold, 5
+;機能チェック
+;SIF !GETBIT(FLAG:3,2)
+;RETURN 0
+PRINTFORM ◆
+;#; PRINTFORM (ID {ARG})
+SELECTCASE ARG
+	CASE 99 ;qol custom code
+		PRINTFORML 사케 버그 단지에는 %VAR_FERMENT_TR(VAR_FERMENT)%이 가득하다...\@ ABL:MASTER:教養 >= UniversalRank("B") && DAY:10 > 0 ? %" "%당신은 그것이 %PRINT_PLUR("day", DAY:10)%만큼의 양으로 빚어졌다는 것을 알 수 있다. #  \@
+	CASE 98 ;qol custom code
+		CALL QOL_PRINT_NPC_ACTIVITIES
+	CASE 97 ;qol custom code
+		LOCALS =
+		SELECTCASE ARG:1
+			CASE 0
+				;天気予報(15分間)(05:45 06:15 06:45 07:15 07:45 08:45 09:45 11:45 12:15 13:45 14:45 15:45 16:45 17:45 18:45 19:45 20:45 21:45 22:45)
+				LOCALS = The weather forecast
+			CASE 1
+				;ニュース(原則15分間)(05:00~05:29 06:00 07:00 09:00 10:00 11:00 12:00 13:00 14:00 15:00 17:00 19:00~19:44 20:00 21:00 23:00 24:00 01:00 02:00 03:00 04:00)
+				LOCALS = News
+			CASE 2
+				;気象通報(16:00~16:29)
+				LOCALS = The weather report
+			CASEELSE
+		ENDSELECT
+		SIF STRLENS(LOCALS)
+			PRINTFORML 라디오가 지직거리는 소리가 들린다... %LOCALS%는 지금 켜져 있는 것 같다.
+	CASE 96 ;qol custom code
+		LOCALS =
+		FOR LOCAL, 1, GET_TARGETNUM() + 1
+		LOCALS += @"%CALLNAME:(TARGET:LOCAL)%、"
+		NEXT
+		IF OUTROOF(CFLAG:(TARGET:LOCAL):現在位置)
+			PRINTFORML %BREAKENG(@"%LIST_IN_STRING(LOCALS)%\@ GET_TARGETNUM() == 1 ? 이다 # 이들이다 \@ 뜨거운 여름 태양 아래에서 비 오듯 땀을 흘리고 있다...")%
+		ELSEIF GET_MAPID(CFLAG:(TARGET:LOCAL):現在位置)
+			PRINTFORML %BREAKENG(@"%LIST_IN_STRING(LOCALS)%\@ GET_TARGETNUM() == 1 ? 이다 # 이들이다 \@ 지옥의 무더운 여름 기후 속에서 식은땀을 비 오듯 흘리고 있다...")%
+		ENDIF
+	CASE 95 ;addition custom code, replacement for CASE 1
+		CALL ADD_BANQUET_MESSAGE_TALK
+	CASE 94
+		;Custom code, Tupai in the mansion's parlor.
+		PRINTFORML Tupai는 \@ TIME <= 360 || TIME >= 1080 ? %SPLIT_G("sits in:watches you from")% # 매달린 우리에서 잔다 \@.
+	CASE 95 ;qol custom code
+		CALL QOL_DISTANT_WATCHERS
+	CASE 1
+		IF CHK_DATENOW(CFLAG:MASTER:デート中) && CFLAG:MASTER:現在位置 != OMANEKIBEYA()
+			会場 = %DATENAME_PLACE()%
+		ELSE
+			;custom code
+			会場 = %NAME_FROM_PLACE_THE(TFLAG:宴会場)%
+		ENDIF
+		;参加者が居なければ表示されない
+		IF FLAG:参加人数 > 0
+			;宴会の規模に応じて分岐
+			IF FLAG:宴会規模 <= 1500 || FLAG:参加人数 <= 3
+				PRINTFORML %会場%에서 열리고 있는 소박한 연회에는 \@ FLAG:参加人数 == 1 ? 한 명의 참가자 # 약 %PRINT_PLUR("participant", FLAG:参加人数)% \@뿐이다...
+			ELSE
+				PRINTFORML 현재 %会場%에서 열리고 있는 연회에는 대략 %PRINT_PLUR("participant", FLAG:参加人数)%이(가)... 참석했다.
+			ENDIF
+			;日を跨いだ場合
+			IF DAY > FLAG:開始日
+				;経過時間に応じて分岐
+				IF TIME >= (FLAG:開始時間 + 240) - 1440 * (DAY - FLAG:開始日)
+					IF FLAG:参加人数 <= 3
+						PRINTFORML 여기엔 몇 명의 끝까지 남은 자들만 남아 있는 것 같네...
+					ELSE
+						PRINTFORML 누군가 떠나기 시작한 것 같다...
+					ENDIF
+				ELSEIF TIME >= (FLAG:開始時間 + 180) - 1440 * (DAY - FLAG:開始日)
+					PRINTFORML 곧 마무리될 것 같은데...
+				ELSEIF TIME >= (FLAG:開始時間 + 60) - 1440 * (DAY - FLAG:開始日)
+					PRINTFORML 연회는 끊이지 않는 웃음과 소리로 보아 한창이다...
+					;まだ始まったばかり
+				ELSE
+					PRINTFORML 여기 꽤 사람이 많네...
+				ENDIF
+			ELSE
+				;経過時間に応じて分岐
+				IF TIME >= (FLAG:開始時間 + 240)
+					IF FLAG:参加人数 <= 3
+						PRINTFORML 여기엔 죽을 때까지 버티는 자들만 몇 명 남은 것 같다...
+					ELSE
+						PRINTFORML 어떤 사람들은 떠나기 시작한 것 같다...
+					ENDIF
+				ELSEIF TIME >= (FLAG:開始時間 + 180)
+					PRINTFORML 곧 마무리될 것 같다...
+				ELSEIF TIME >= (FLAG:開始時間 + 60)
+					PRINTFORML 연회는 끊이지 않는 웃음소리와 소리들로 보아 만개했다...
+					;まだ始まったばかり
+				ELSE
+					PRINTFORML 여기 꽤 사람이 많네...
+				ENDIF
+			ENDIF
+		ELSE
+			PRINTFORML 베테랑은 (술꾼들은) 마침내 잠이 들었다.
+			;custom code
+			PRINTFORML %NAME_FROM_PLACE_THE(TFLAG:宴会場)%연회로 인해 망가졌다...
+		ENDIF
+	CASE 2
+		;対話表示
+		;どっちも相性高め
+		IF RELATION:(ARG:1):(ARG:2) > 100 && RELATION:(ARG:2):(ARG:1) > 100
+			IF SignificantRelationship(ARG:1) && SignificantRelationship(ARG:2)
+				PRINTFORML %CALLNAME:(ARG:1)%과 %CALLNAME:(ARG:2)%는 멍하니 당신을 응시한다.
+			ELSEIF SignificantRelationship(ARG:1) || SignificantRelationship(ARG:2)
+				PRINTFORML \@ SignificantRelationship(ARG:1) ? %CALLNAME:(ARG:1)% # %CALLNAME:(ARG:2)%로 당신을 바라본다 \@ looks at you with passionate eyes despite being engaged in smalltalk with \@ SignificantRelationship(ARG:1) ? %CALLNAME:(ARG:2)% # %CALLNAME:(ARG:1)% \@.
+			ELSE
+				IF RAND:2
+					PRINTFORML 「\@ CFLAG:(ARG:1):310 > CFLAG:(ARG:2):310 ? %CALLNAME:(ARG:1)% # %CALLNAME:(ARG:2)% \@ gently strokes \@ CFLAG:(ARG:1):310 > CFLAG:(ARG:2):310 ? %CALLNAME:(ARG:2)% # %CALLNAME:(ARG:1)% \@의 머리를.」
+				ELSE
+					PRINTFORML %CALLNAME:(ARG:1)%와 %CALLNAME:(ARG:2)%는 서로 즐거운 대화를 나누고 있다.
+				ENDIF
+			ENDIF
+			;どちらかが相性高め
+		ELSEIF (RELATION:(ARG:1):(ARG:2) > 100 && RELATION:(ARG:2):(ARG:1) < 100) || (RELATION:(ARG:1):(ARG:2) < 100 && RELATION:(ARG:2):(ARG:1) > 100)
+			IF SignificantRelationship(ARG:1) && SignificantRelationship(ARG:2)
+				PRINTFORML %CALLNAME:(ARG:1)%와 %CALLNAME:(ARG:2)%는 잡담을 나누고 있지만, 열병에 걸린 듯한 시선으로 당신을 보고 있다...
+			ELSEIF SignificantRelationship(ARG:1) || SignificantRelationship(ARG:2)
+				PRINTFORML \@ SignificantRelationship(ARG:1) ? %CALLNAME:(ARG:1)% # %CALLNAME:(ARG:2)% \@glances at you despite being engaged in smalltalk with \@ SignificantRelationship(ARG:1) ? %CALLNAME:(ARG:2)% # %CALLNAME:(ARG:1)% \@와 소소한 대화를 나누고 있음에도.
+			ELSE
+				PRINTFORM \@ RELATION:(ARG:1):(ARG:2) > 100 ? %CALLNAME:(ARG:1)%이(가) %CALLNAME:(ARG:2)%에게 이야기한다 # %CALLNAME:(ARG:2)%이(가) %CALLNAME:(ARG:1)%에게 이야기한다 \@ 이야기를 했다
+				PRINTDATAL
+					DATAFORM  하지만 \@ RELATION:(ARG:1):(ARG:2) > 100 ? %CALLNAME:(ARG:2)% # %CALLNAME:(ARG:1)% \@의 얼굴에 나타난 불만스러운 표정이 분명했다...
+					DATAFORM  하지만 %HE_SHE(RELATION:(ARG:1):(ARG:2) > 100 ? ARG:2 # ARG:1)%는 심지어 %HIM_HER(RELATION:(ARG:1):(ARG:2) > 100 ? ARG:1 # ARG:2)%를 보고 있지도 않았다...
+					DATAFORM , 하지만 %HE_SHE(RELATION:(ARG:1):(ARG:2) > 100 ? ARG:2 # ARG:1)%는 그저 동의하며 고개를 끄덕일 뿐이었다...
+				ENDDATA
+			ENDIF
+			;どちらも相性低め
+		ELSEIF RELATION:(ARG:1):(ARG:2) < 100 && RELATION:(ARG:2):(ARG:1) < 100
+			IF SignificantRelationship(ARG:1) && SignificantRelationship(ARG:2)
+				PRINTFORML %CALLNAME:(ARG:1)%과 %CALLNAME:(ARG:2)%는 다투지만 때때로 당신을 보며 미소 짓는다.
+			ELSEIF SignificantRelationship(ARG:1) || SignificantRelationship(ARG:2)
+				PRINTFORML \@ SignificantRelationship(ARG:1) ? %CALLNAME:(ARG:1)%은/는 %CALLNAME:(ARG:2)%에게 주의를 기울이지 않는다 # %CALLNAME:(ARG:2)%가/이 %CALLNAME:(ARG:1)%의 이야기에 주의를 기울이지 않고 당신에게 손을 흔든다. \@
+			ELSE
+				PRINTFORM %CALLNAME:(ARG:1)%과 %CALLNAME:(ARG:2)%는 
+				PRINTDATAL
+					DATAFORM 무언가에 대해 다투고 있다...
+					DATAFORM 시무룩한 표정으로 서로를 바라보고 있다...
+					DATAFORM 싸우고 있다...
+				ENDDATA
+			ENDIF
+		ENDIF
+		;PRINTL
+	CASE 3
+		IF IsDead:TARGET:0
+			PRINTFORML %조사처리(CALLNAME:TARGET,"의")% 생기 없는 시신이 땅 위에 누워있다...
+			LOCALS '= @"%GET_STR(KilledBy:TARGET:0, "Weapon", TOINT(KilledWith:TARGET:0), "Ammo")%"
+			SELECTCASE LOCALS
+				CASE "12.7x99mm"
+					PRINTFORML 앞뒤로 입은 심각한 피해는 %HE_SHE(TARGET)%이 대전차 소총에 맞았음을 나타낸다...
+				CASE "Arrow"
+					PRINTFORML 피투성이 시체인 %CALLNAME:TARGET%에게서 화살 하나가 박혀 있었다.
+				CASE "7.62x39mm", "7.62x51mm", "10.9x29mmR"
+					PRINTFORML 중간 크기의 출혈과 탈출 상처는 %HE_SHE(TARGET)%가 전용 구경 소총에 맞았음을 나타낸다...
+				CASE "5.56x45mm", "5.7x28mm", "5.45x39mm"
+					PRINTFORML 가벼운 입구 및 출구 상처는 %HE_SHE(TARGET)%가 중간 구경 소총에 맞았음을 나타낸다...		
+				CASE "9x19mm", "18.5x70mm", "9x29mmR", "9x33mmR", "9x18mm"
+					PRINTFORML 가벼운 출혈 상처는 %HE_SHE(TARGET)%이 권총이나 산탄총으로 맞았음을 나타낸다...
+				CASEELSE
+					IF GET_STR(KilledBy:TARGET:0, "Weapon", TOINT(KilledWith:TARGET:0), "Type") == "Explosive"
+						PRINTFORML 시신은 폭발로 인해 검게 그을려 있었다...
+					ELSEIF STRCOUNT(GET_STR(KilledBy:TARGET:0, "Weapon", TOINT(KilledWith:TARGET:0), "Class"), "Blade")
+						PRINTFORML %조사처리(CALLNAME:TARGET,"의")% 시체에 칼에 의한 상처가 있다...
+					ELSE
+						PRINTFORML 시체는 완벽하게 온전하다...
+					ENDIF
+			ENDSELECT
+		ELSE
+			PRINTFORML %조사처리(CALLNAME:TARGET,"는")%(는) 깊이 잠들어 있다...
+		ENDIF
+	CASE 4
+		PRINTS "   "
+		IF TIME:7
+			SELECTCASE TIME:7
+				;虹
+				CASE 1
+					IF FLAG:70
+						PRINTL 단색의 무지개가 하늘에 걸려있다...
+					ELSE
+						PRINTL 무지개가 하늘에 걸려 있다...
+					ENDIF
+					;ダイヤモンドダスト
+				CASE 2
+					PRINTL 눈 결정들이 햇빛 아래 반짝이며 빛난다... 당신의 숨결이 하얀 안개를 남긴다...
+					;流れ星
+				CASE 3
+					IF FLAG:70
+						PRINTL 떨어지는 별들이 밤하늘에 얼어있다...
+					ELSE
+						PRINTL 떨어지는 별들이 가끔 밤하늘을 가로지른다...
+					ENDIF
+					;流星群
+				CASE 4
+					IF FLAG:70
+						PRINTL 유성우가 밤하늘에 얼어붙어 있다...
+					ELSE
+						PRINTL 밤하늘은 떨어지는 별들로 가득했다.
+					ENDIF
+			ENDSELECT
+		ELSE
+			SELECTCASE TIME:5
+				;お天道様
+				CASE 1
+					IF TIME:2 >= 2 && TIME:2 <= 4
+						IF DAY:2 == 2
+							PRINTL 구름 없는 하늘에서 태양이 자비 없이 내리쬐었다...
+						ELSE
+							PRINTL 하늘은 상쾌하게 맑다.
+						ENDIF
+					ELSEIF TIME:2 >= 5 && TIME:2 <= 7 ;custom code
+						PRINTL 하늘에서 별들이 반짝이고 있다.
+					ENDIF
+					;雨
+					;(天候パッチ)強風時の文章追加
+				CASE 4
+					IF FLAG:70
+						PRINTL 작은 물방울들이 공중에 떠 있었다...
+					ELSEIF WIND_VELOCITY >= 1
+						PRINTL 비가 옆으로 내린다.
+					ELSE
+						PRINTL 비가 내리고 있다...
+					ENDIF
+					;大雨
+					;(天候パッチ)強風時の文章追加
+				CASE 5
+					IF FLAG:70
+						PRINTL 빗방울들이 공중에 떠 있다...
+					ELSEIF WIND_VELOCITY >= 1
+						PRINTL 세찬 비가 쏟아지고 있다...
+					ELSE
+						PRINTL 비가 세차게 내리고 있다...
+					ENDIF
+					;大雨
+					;(天候パッチ)豪雨時の文章追加
+				CASE 14
+					IF FLAG:70
+						PRINTL 큰 빗방울이 공중에 떠 있었다...
+					ELSEIF WIND_VELOCITY >= 1
+						PRINTL 바람과 비가 너무 강해서 숨쉬기도 힘들다…
+					ELSE
+						PRINTL 비가 너무 세서 숨 막힐 정도다... 앞으로 뭐가 보일지 정말 보기 힘들다...
+					ENDIF
+					;霧・霧雨・霧雪
+					;(天候パッチ)濃霧時の文章追加
+				CASE 6, 7, 11
+					PRINTL 온통 안개로 하얗다...
+					;雪
+					;(天候パッチ)強風時の文章追加
+				CASE 8
+					IF FLAG:70
+						PRINTL 눈송이들이 공중에 떠 있었다...
+					ELSEIF WIND_VELOCITY >= 1
+						PRINTL 얼어붙는 눈보라가 몰아친다... 당신의 따뜻한 숨결조차 하얗게 변한다...
+					ELSE
+						PRINTL 눈이 게으르게 공중을 떠다닌다... 당신의 숨결에서 하얀 안개가 피어올랐다...
+					ENDIF
+					;大雪
+					;(天候パッチ)強風時の文章追加・大雪に変更
+				CASE 9
+					IF FLAG:70
+						PRINTL 셀 수 없이 많은 눈송이들이 공중에 떠 있다...
+					ELSEIF WIND_VELOCITY >= 1
+						PRINTL 거센 눈보라가 몰아치고 있다... 길을 잃지 않도록 주의해야 한다...
+					ELSE
+						PRINTL 정말 눈보라다! 앞이 잘 보이지 않게 만들고 있어...
+					ENDIF
+					;みぞれ
+				CASE 12
+					IF FLAG:70
+						PRINTL 이슬이 정지해 있다...
+					ELSE
+						PRINTL 차가운 이슬비가 내린다... 숨을 쉬면 흰 안개가 남는다...
+					ENDIF
+					;あられ
+				CASE 13
+					IF FLAG:70
+						PRINTL 우박조차 정지해 있다...
+					ELSE
+						PRINTL 거센 우박이 몰아치고 있다...
+					ENDIF
+					;(天候パッチ)ひょう
+				CASE 15
+					IF FLAG:70
+						PRINTL 심지어 거센 우박 폭풍조차 정지 상태다...
+					ELSE
+						PRINTL 무거운 우박 폭풍이 땅을 때리고 있었다...
+					ENDIF
+			ENDSELECT
+		ENDIF
+		PRINTL
+	CASE 5
+		PRINTFORML 당신의 페니스는 어두운 길 위에서 어느 정도 마음의 안정을 준다...
+	CASE 7
+		IF CFLAG:MASTER:現在位置 == 210
+			PRINTFORML 군중이 %CALLNAME:(ARG:1)%를 에워쌌다.
+			IF 充填率(ARG:1,3) >= 10
+				IF !RAND:10
+					PRINTFORML 당신은 %CALLNAME:(ARG:1)%의 얼굴이 굳어가는 것을 보고, 그들이 알아챌까 봐 걱정한다...
+				ELSE
+					PRINTFORML 호기심 많은 구경꾼들은 %HIS_HER(ARG:1)%의 배가 \@ 充填率(ARG:1,3) >= 30 ? 완전히 가득 찼다 # 가득 찼다 \@는 것을 당신의 정액으로 알아차리지 못했다.
+				ENDIF
+			ENDIF
+		ELSE
+			IF FLAG:70
+			ELSE
+				PRINTL 광장은 활동의 북적임으로 시끄럽다.
+			ENDIF
+		ENDIF
+	CASE 8
+		SIF !FLAG:地主
+			RETURN
+		PRINTFORML %CALLNAME:(FLAG:地主)%의 %FARM_FIELD_TR(STR_NOUMIN(FLAG:地主, "畑の種類"))%이 여기 있다.
+		;custom code
+		LOCALS = %CROP_NAME_TR(STR_NOUMIN(FLAG:地主, "作物"))%
+		;(天候パッチ)冷害・風害発生時は表示
+		SELECTCASE FLAG:畑仕事の成果
+			CASE IS < 20
+				IF (IS_COLD_CROP_DAMAGE >= 1 && IS_STORM_CROP_DAMAGE >= 1) || (IS_COLD_CROP_DAMAGE >= 1 && IS_FLOOD_CROP_DAMAGE >= 1) || (IS_FLOOD_CROP_DAMAGE >= 1 && IS_STORM_CROP_DAMAGE >= 1)
+					PRINTFORM 일련의 자연재해로 인해 
+				ELSEIF IS_COLD_CROP_DAMAGE >= 1
+					PRINTFORM 추위에 의한 피해 때문에 
+				ELSEIF IS_STORM_CROP_DAMAGE >= 1
+					PRINTFORM 바람 피해로 인해 
+				ELSEIF IS_FLOOD_CROP_DAMAGE >= 1
+					PRINTFORM 홍수로 인해 
+				ELSE
+					PRINTFORM 그 
+				ENDIF
+				PRINTFORML %LOCALS% \@ CROP_NAME_PLURAL(LOCALS) ? 자라나는 기미를 보이지 않는다 # 자라나는 기미를 보이지 않는다 \@.
+			CASE 20 TO 60
+				IF (IS_COLD_CROP_DAMAGE >= 1 && IS_STORM_CROP_DAMAGE >= 1) || (IS_COLD_CROP_DAMAGE >= 1 && IS_FLOOD_CROP_DAMAGE >= 1) || (IS_FLOOD_CROP_DAMAGE >= 1 && IS_STORM_CROP_DAMAGE >= 1)
+					PRINTFORM 일련의 자연재해로 인해 
+				ELSEIF IS_COLD_CROP_DAMAGE >= 1
+					PRINTFORM 냉해로 인해 
+				ELSEIF IS_STORM_CROP_DAMAGE >= 1
+					PRINTFORM 바람 피해로 인해, 그 
+				ELSEIF IS_FLOOD_CROP_DAMAGE >= 1
+					PRINTFORM 홍수로 인해 
+				ELSE
+					PRINTFORM 그 
+				ENDIF
+				PRINTFORML %LOCALS% \@ CROP_NAME_PLURAL(LOCALS) ? 그렇게 많이 자라지 않았어 # 자라지 않았어 . \@
+			CASE 61 TO 100
+				IF (IS_COLD_CROP_DAMAGE >= 1 && IS_STORM_CROP_DAMAGE >= 1) || (IS_COLD_CROP_DAMAGE >= 1 && IS_FLOOD_CROP_DAMAGE >= 1) || (IS_FLOOD_CROP_DAMAGE >= 1 && IS_STORM_CROP_DAMAGE >= 1)
+					PRINTFORM 일련의 자연재해에도 불구하고 
+				ELSEIF IS_COLD_CROP_DAMAGE >= 1
+					PRINTFORM 추위 피해에도 불구하고 
+				ELSEIF IS_STORM_CROP_DAMAGE >= 1
+					PRINTFORM 바람 피해에도 불구하고, 그 
+				ELSEIF IS_FLOOD_CROP_DAMAGE >= 1
+					PRINTFORM 홍수에도 불구하고, 그 
+				ELSE
+					PRINTFORM 그 
+				ENDIF
+				PRINTFORML %LOCALS% \@ CROP_NAME_PLURAL(LOCALS) ? are # is \@ 자라고 있나.
+			CASEELSE
+				IF (IS_COLD_CROP_DAMAGE >= 1 && IS_STORM_CROP_DAMAGE >= 1) || (IS_COLD_CROP_DAMAGE >= 1 && IS_FLOOD_CROP_DAMAGE >= 1) || (IS_FLOOD_CROP_DAMAGE >= 1 && IS_STORM_CROP_DAMAGE >= 1)
+					PRINTFORM 일련의 자연재해에도 불구하고 
+				ELSEIF IS_COLD_CROP_DAMAGE >= 1
+					PRINTFORM 추위 피해에도 불구하고, 그 
+				ELSEIF IS_STORM_CROP_DAMAGE >= 1
+					PRINTFORM 바람 피해에도 불구하고, 
+				ELSEIF IS_FLOOD_CROP_DAMAGE >= 1
+					PRINTFORM 홍수에도 불구하고, 
+				ELSE
+					PRINTFORM 그 
+				ENDIF
+				PRINTFORML %LOCALS% \@ CROP_NAME_PLURAL(LOCALS) ? 익었는가 # 익었다 \@.
+		ENDSELECT
+	CASE 9
+		;口上表示
+		PRINTS "   "
+		CALL KOJO_MESSAGE_SEND("INFO")
+	CASE 10 ;note this part is unused and replaced by qol gardening
+		;家庭菜園情景描写
+		PRINTFORM %HATAKE_NAME:0% 식물 
+		IF PLANT_DRY > 3 || PLANT_GROW > 10
+			PRINT 시들었다.
+		ELSE
+			SELECTCASE PLANT_GROW
+				CASE 10
+					IF HATAKE_NAME:0 == "ローター"
+						PRINTFORM 익어서 건강하게 진동하는 소리가 들린다.
+					ELSE
+						PRINT 익어서 수확할 준비가 되었다.
+					ENDIF
+				CASE 8,9
+					PRINT 열매를 맺기 시작했다.
+				CASE 6,7
+					PRINT 꽃들이 피었다
+				CASE 4,5
+					PRINT 잎이 자라기 시작했다.
+				CASEELSE
+					PRINT 모종들이 싹을 틔우고 있다.
+			ENDSELECT
+			IF PLANT_DRY == 2
+				PRINT 토양이 건조해지고 있다.
+			ELSEIF PLANT_DRY == 0
+				SETCOLOR C_AQUA
+				PRINT 토양은 축축하다
+				RESETCOLOR
+			ENDIF
+			IF PLANT_FOOD
+				SETCOLOR C_CREAM
+				IF FLAG:天滴坤神
+					PRINT 토양은 카미의 축복을 받고 있다.
+				ELSE
+					PRINT 토양은 비료로 영양을 공급받는다.
+				ENDIF
+				RESETCOLOR
+			ENDIF
+			PRINTL .
+		ENDIF
+	CASE 11
+		PRINTFORML 빨래가 마르고 있다.
+		;PRINTFORML その脇には短冊が吊るされた笹飾りがある
+	CASE 12
+		PRINTFORML %조사처리(CALLNAME:TARGET,"의")% 작업이 곧 시작된다.
+	CASE 13
+		PRINT 약간 졸리면서, 
+		IF CFLAG:TARGET:うふふ
+			PRINTFORML %조사처리(CALLNAME:TARGET,"는")% %HIM_HER(TARGET)% 자신이 즐거움에 빠지는 것을 못 하는 것 같다.
+		ELSE
+			PRINTFORML %조사처리(CALLNAME:TARGET,"는")%(는) 하품을 참았다.
+		ENDIF
+	CASE 14
+		;自立後
+		IF TFLAG:描写中の子供 > 1000
+			CHARA = TFLAG:描写中の子供 % 1000
+			CHILDNUM = TFLAG:描写中の子供 / 1000
+			;育児中
+		ELSE
+			CHARA = TFLAG:描写中の子供
+			CHILDNUM = TALENT:CHARA:育児中
+		ENDIF
+		LOCAL:10 = CFLAG:CHARA:出産経過日 ;store current age
+		FOR LOCAL:11, 0, nChildrenPresentCount
+		CHARA = nChildrenPresent:(LOCAL:11) % 1000
+		CHILDNUM = nChildrenPresent:(LOCAL:11) / 1000
+		LOCAL:10 = CFLAG:CHARA:出産経過日 ;store current age
+		CFLAG:CHARA:出産経過日 = DAY - CHILD_BIRTHDAY:CHARA:CHILDNUM + 1
+		子供の名前 = %CHILDNAME:CHARA:CHILDNUM%
+		子供の行動 = %CHILD_ACT:CHARA:CHILDNUM%
+		SIF 子供の名前 == ""
+			RETURN
+		SELECTCASE 子供の行動
+			CASE "睡眠"
+				;幼少期以降は例外として自室外だと表示されず、フラグをオフにする（寝室に帰る描写があるため）
+				IF CFLAG:CHARA:出産経過日 >= CHILD_語彙 && !自室自宅判定(CFLAG:MASTER:現在位置, CHARA)
+					TFLAG:描写中の子供 = 0
+				ELSE
+					PRINTFORM %子供の名前%은(는) %SPLIT_G("fast asleep:sleeping peacefully")%이다.
+				ENDIF
+			CASE "起床"
+				IF CFLAG:CHARA:出産経過日 < CHILD_語彙
+					PRINTFORM %子供の名前%은 배고프다.
+				ELSE
+					PRINTDATA
+						DATAFORM %子供の名前%는 하품을 삼킨다.
+						DATAFORM %子供の名前%는 졸려 한다.
+						DATAFORM %子供の名前%는 %HIS_HER_CHILD(CHARA,,CHILDNUM)%를 뒤로 기지개를 켠다.
+						DATAFORM %子供の名前%는 %HIS_HER_CHILD(CHARA,,CHILDNUM)%의 눈을 비빈다.
+						DATAFORM %子供の名前%는 졸리다.
+					ENDDATA
+				ENDIF
+			CASE "入浴"
+				IF CFLAG:CHARA:出産経過日 < CHILD_語彙
+					PRINTFORM %子供の名前%가 목욕하고 있다.
+				ELSE
+					PRINTDATA
+						DATAFORM %子供の名前%이 열까지 세고 있다.
+						DATAFORM %子供の名前%이 목욕에서 뛰어놀고 있다.
+						DATAFORM %子供の名前%이 거품을 만들며 그것들과 놀고 있다.
+						DATAFORM %子供の名前%이 물속에서 놀고 있다.
+						DATAFORM %子供の名前%이 %HIS_HER_CHILD(CHARA,,CHILDNUM)%의 머리를 감기고 있다.
+						DATAFORM %子供の名前%이 %HIS_HER_CHILD(CHARA,,CHILDNUM)%의 몸을 감기고 있다.
+					ENDDATA
+				ENDIF
+			CASE "食事"
+				IF CFLAG:CHARA:出産経過日 < CHILD_離乳
+					PRINTFORM %子供の名前%은(는) 모유 수유를 하고 있다.
+				ELSEIF CFLAG:CHARA:出産経過日 < CHILD_語彙
+					PRINTFORM %子供の名前%은(는) 이유식을 먹고 있다.
+				ELSE
+					SELECTCASE TIME
+						CASE 300 TO 540
+							PRINTFORM %子供の名前%은 아침 식사를 하고 있다.
+						CASE 660 TO 900
+							PRINTFORM %子供の名前%은(는) 점심을 먹는다.
+						CASE 1020 TO 1200
+							PRINTFORM %子供の名前%은(는) 저녁 식사를 하고 있다.
+						CASE 1200 TO 1440
+							PRINTFORM %子供の名前%은 저녁 식사를 한다.
+						CASE 0 TO 180
+							PRINTFORM %子供の名前%은(는) 야식을 먹는다.
+						CASEELSE
+							PRINTFORM %子供の名前%는 음식을 먹는다.
+					ENDSELECT
+				ENDIF
+			CASE "玩具"
+				IF CFLAG:CHARA:出産経過日 < CHILD_自立前
+					PRINTFORM %子供の名前%은(는) 장난감으로 놀고 있다.
+				ELSE
+					PRINTFORM %子供の名前%은(는) 장난감을 응시하고 있다.
+				ENDIF
+			CASE "お絵かき"
+				PRINTFORM %子供の名前%은(는) 그림을 그리고 있다.
+			CASE "遊び"
+				PRINTDATA
+					DATAFORM %子供の名前%은(는) 활기차게 뛰어다닌다.
+					DATAFORM %子供の名前%은(는) 단마쿠를 하는 척한다.
+					DATAFORM %子供の名前%은(는) 폴짝거리며 뛰어다닌다.
+					DATAFORM %子供の名前%은(는) 구르며 놀고 있다.
+					DATAFORM %子供の名前%은(는) 빙글빙글 돌며 춤을 추듯 움직인다.
+					DATAFORM %子供の名前%은(는) 춤을 추며 돌아다닌다.
+					DATAFORM %子供の名前%은(는) 칼싸움을 흉내낸다.
+					DATAFORM %子供の名前%은(는) 즐겁게 뛰어논다.
+					DATAFORM %子供の名前%은(는) 구슬치기 놀이를 한다.
+					DATAFORM %子供の名前%은(는) 줄넘기를 한다.
+				ENDDATA
+			CASE "勉強"
+				PRINTFORM %子供の名前%은 공부한다.
+			CASE "読書"
+				PRINTFORM %子供の名前%은(는) 조용히 책을 읽느라 몰두하고 있다.
+			CASE "料理"
+				PRINTDATA
+					DATAFORM %子供の名前%이(가) 지저분하게 요리한다.
+					DATAFORM %子供の名前%이(가) 어색하게 요리한다.
+					DATAFORM %子供の名前%이(가) 레시피를 응시하고 있다.
+					DATAFORM %子供の名前%이(가) 음식을 조심스럽게 자른다.
+					DATAFORM %子供の名前%이(가) 열을 주의 깊게 살핀다.
+					DATAFORM %子供の名前%이(가) 재료를 세심하게 계량한다.
+				ENDDATA
+			CASE "絵描き"
+				PRINTDATA
+					DATAFORM %子供の名前%이(가) 콘셉트를 작업하고 있다.
+					DATAFORM %子供の名前%이(가) 오래된 그림을 꺼냈다.
+					DATAFORM %子供の名前%이(가) 새 종이를 꺼냈다.
+					DATAFORM %子供の名前%이(가) %HIS_HER_CHILD(CHARA,,CHILDNUM)%의 여가 시간에 그림을 그리고 있다.
+					DATAFORM %子供の名前%이(가) 열정적으로 그림을 그리고 있다.
+					DATAFORM %子供の名前%이(가) 그림에 몰두하고 있다.
+					DATAFORM %子供の名前%이(가) 노래를 흥얼거리며 %HE_SHE_CHILD(CHARA,,CHILDNUM)%은(는) 그림을 그린다.
+					DATAFORM %子供の名前%이(가) 당신을 바라보면서 그림을 그리고 있다.
+					DATAFORM %子供の名前%이(가) 그림에 색을 칠하고 있다.
+				ENDDATA
+			CASE "歌唱"
+				PRINTDATA
+					DATAFORM %子供の名前%가 즐겁게 노래한다.
+					DATAFORM %子供の名前%는 %HIS_HER_CHILD(CHARA,,CHILDNUM)% 여가 시간에 노래한다.
+					DATAFORM %子供の名前%는 노래에 몰두하고 있다.
+					DATAFORM %子供の名前%는 기쁨을 안고 노래한다.
+					DATAFORM %子供の名前%는 자랑스럽게 노래한다.
+					DATAFORM %子供の名前%가 리듬을 타기 시작했다.
+					DATAFORM %子供の名前%가 춤을 춘다.
+					DATAFORM %子供の名前%는 악기를 연주하는 것을 흉내 낸다.
+					DATAFORM %子供の名前%가 포즈를 취한다.
+				ENDDATA
+			CASE "掃除"
+				PRINTFORM %子供の名前%은 방을 청소한다.
+			CASE "支度"
+				PRINTFORM %子供の名前%은(는) 절 학교에 가기 위해 준비한다.
+			CASE "登校"
+				PRINTFORM %子供の名前%는 등교한다...
+			CASE "授業"
+				PRINTFORM %子供の名前%은(는) 수업을 듣고 있다.
+			CASE "帰宅"
+				;寺子屋で見送った場合は表示されず、フラグをオフにする
+				IF !自室自宅判定(CFLAG:MASTER:現在位置, CHARA) && CFLAG:MASTER:現在位置 != CFLAG:CHARA:現在位置
+					TFLAG:描写中の子供 = 0
+				ELSE
+					PRINTFORM %子供の名前%은(는) %HIS_HER_CHILD(CHARA,,CHILDNUM)%(캐릭터, 자녀번호) 가방을 던진다.
+				ENDIF
+			CASE "仕事"
+				PRINTFORM %子供の名前%는 열심히 일하고 있다.
+			CASE "散歩"
+				PRINTDATA
+					DATAFORM %子供の名前%이(가) 누군가에게 말을 건다.
+					DATAFORM %子供の名前%은(는) 반대 성별의 인물과 함께 있다.
+					DATAFORM %子供の名前%이(가) 가만히 서 있다.
+					DATAFORM %子供の名前%이(가) 차를 마시고 있다.
+					DATAFORM %子供の名前%이(가) 하품을 참는다.
+					DATAFORM %子供の名前%이(가) %HIS_HER_CHILD(CHARA,,CHILDNUM)%의 공책에 무언가를 쓰고 있다.
+					DATAFORM %子供の名前%이(가) 주변을 둘러보고 있다.
+					DATAFORM %子供の名前%이(가) 졸려 보인다.
+					DATAFORM %子供の名前%이(가) 당신을 살피고 있다.
+				ENDDATA
+			CASE "SWIMMING" ;addition custom code, swimming
+				IF CFLAG:CHARA:出産経過日 < CHILD_語彙
+					PRINTFORM %子供の名前%은(는) %CALLNAME:CHARA%에 의해 안겨져 있다.
+				ELSE
+					PRINTDATA
+						DATAFORM %子供の名前%은(는) 물에서 놀고 있다.
+						DATAFORM %子供の名前%은(는) %ADD_SWIMMING_DESCRIPTION(CFLAG:MASTER:現在位置)% 근처를 달리고 있다.
+						DATAFORM %子供の名前%은(는) 주변을 헤엄치고 있다.
+						DATAFORM %子供の名前%은(는) 스트레칭을 하고 있다.
+						DATAFORM %子供の名前%은(는) \@ nChildrenPresentCount > 1 ? 다른 아이들과 # 혼자서 놀고 있다 \@.
+					ENDDATA
+				ENDIF
+				;その他の行動,ここでCHILD_ACTを決めちゃう
+			CASEELSE
+				IF CFLAG:MASTER:現在位置 == CFLAG:CHARA:現在位置
+					同室 = 1
+				ELSE
+					同室 = 0
+				ENDIF
+				;描写の抽選と固定
+				IF LOCAL:1 != TIME || LOCAL:2 != 同室
+					IF CFLAG:CHARA:出産経過日 < CHILD_語彙
+						LOCAL = RAND:16
+					ELSEIF CFLAG:CHARA:出産経過日 < CHILD_自立前
+						IF 同室
+							LOCAL = RAND:24
+						ELSE
+							LOCAL = RAND:14
+						ENDIF
+					ELSE
+						IF 同室
+							LOCAL = RAND:26
+						ELSE
+							LOCAL = RAND:11
+						ENDIF
+					ENDIF
+					LOCAL:1 = TIME
+					LOCAL:2 = 同室
+				ENDIF
+				IF CFLAG:CHARA:出産経過日 < CHILD_語彙
+					SELECTCASE LOCAL
+						CASE 1, 2, 3, 4
+							PRINTFORM %子供の名前%는 %CALLNAME:CHARA%에 의해 안겨 있다.
+							CHILD_ACT:CHARA:CHILDNUM = 幼児期_抱かれる
+						CASE 5, 6
+							PRINTFORM %子供の名前%는 %CALLNAME:CHARA%의 품에서 매우 졸려 보인다.
+							CHILD_ACT:CHARA:CHILDNUM = 幼児期_眠たそう
+						CASE 7, 8
+							PRINTFORM %子供の名前%는 %CALLNAME:CHARA%의 품에 조용히 앉아있다.
+							CHILD_ACT:CHARA:CHILDNUM = 幼児期_大人しい
+						CASE 9, 10, 11, 12
+							PRINTFORM %子供の名前%은(는) %CALLNAME:CHARA%에게 안겨 당신을 바라보고 있다.
+							CHILD_ACT:CHARA:CHILDNUM = 幼児期_こちらを見る
+						CASE 13
+							PRINTFORM %子供の名前%는 %CALLNAME:CHARA%에게 안겨 있으면서 무언가를 원하는 것 같다.
+							CHILD_ACT:CHARA:CHILDNUM = 幼児期_何かを訴える
+						CASE 14
+							PRINTFORM %子供の名前%은(는) %HIS_HER_CHILD(CHARA,,CHILDNUM)%의 눈으로 무언가를 따라가고 있다.
+							CHILD_ACT:CHARA:CHILDNUM = 幼児期_何かを目で追う
+						CASEELSE
+							PRINTFORM %CALLNAME:CHARA%는 %子供の名前%를 달래준다.
+							CHILD_ACT:CHARA:CHILDNUM = 幼児期_あやされる
+					ENDSELECT
+				ELSEIF CFLAG:CHARA:出産経過日 < CHILD_自立前
+					IF 同室
+						SELECTCASE LOCAL
+							CASE 1, 2
+								PRINTFORM %CALLNAME:CHARA%와 %子供の名前%는 대화를 즐기고 있다.
+								CHILD_ACT:CHARA:CHILDNUM = 幼少期_会話
+							CASE 3, 4
+								PRINTFORM %CALLNAME:CHARA%가 %子供の名前%에게 무언가를 가르치고 있다.
+								CHILD_ACT:CHARA:CHILDNUM = 幼少期_教わる
+							CASE 5, 6
+								PRINTFORM %CALLNAME:CHARA%가 %子供の名前%와 대화하고 있다.
+								CHILD_ACT:CHARA:CHILDNUM = 幼少期_会話
+							CASE 7, 8
+								PRINTFORM %CALLNAME:CHARA%은(는) %子供の名前%를 훈육한다.
+								CHILD_ACT:CHARA:CHILDNUM = 幼少期_しつけられる
+							CASE 9
+								PRINTFORM %子供の名前%은(는) %CALLNAME:CHARA%와 놀고 있다.
+								CHILD_ACT:CHARA:CHILDNUM = 幼少期_親子遊び
+							CASE 10
+								PRINTFORM %子供の名前%은(는) %CALLNAME:CHARA%에게 열정적으로 이야기한다. 
+								CHILD_ACT:CHARA:CHILDNUM = 幼少期_会話
+							CASE 11
+								PRINTFORM %子供の名前%은(는) 혼자 놀고 있다.
+								CHILD_ACT:CHARA:CHILDNUM = 幼少期_一人遊び
+							CASE 12
+								PRINTFORM %子供の名前%가 행동하고 있다.
+								CHILD_ACT:CHARA:CHILDNUM = 幼少期_大人しい
+							CASE 13
+								PRINTFORM %子供の名前%는 깊은 생각에 잠겨 있다.
+								CHILD_ACT:CHARA:CHILDNUM = 幼少期_考え事
+							CASE 14
+								PRINTFORM %子供の名前%는 졸려 한다.
+								CHILD_ACT:CHARA:CHILDNUM = 幼少期_眠そう
+							CASE 15
+								PRINTFORM %子供の名前%은/는 %HIMSELF_HERSELF_CHILD(CHARA,,CHILDNUM)%을 즐기고 있다.
+								CHILD_ACT:CHARA:CHILDNUM = 幼少期_はしゃぐ
+							CASE 16
+								PRINTFORM %子供の名前%이(가) 돌아다니고 있다.
+								CHILD_ACT:CHARA:CHILDNUM = 幼少期_うろちょろ
+							CASE 17
+								PRINTFORM %子供の名前%는 무언가를 하고 싶어 안달이다.
+								CHILD_ACT:CHARA:CHILDNUM = 幼少期_うずうず
+							CASE 18
+								PRINTFORM %子供の名前%은(는) 당신을 똑바로 응시하고 있다.
+								CHILD_ACT:CHARA:CHILDNUM = 幼少期_見つめる
+							CASE 19, 20
+								PRINTFORM %子供の名前%가 당신과 놀고 싶어 한다.
+								CHILD_ACT:CHARA:CHILDNUM = 幼少期_遊ぼう
+							CASE 21, 22
+								PRINTFORM %子供の名前%는 물건들을 반복적으로 만지고 때린다.
+								CHILD_ACT:CHARA:CHILDNUM = 幼少期_ぺたぺた
+							CASEELSE
+								PRINTFORM %子供の名前%은(는) 당신의 관심을 원하는 것 같다.
+								CHILD_ACT:CHARA:CHILDNUM = 幼少期_かまって
+						ENDSELECT
+						;単独
+					ELSE
+						SELECTCASE LOCAL
+							CASE 1
+								PRINTFORM %子供の名前%은(는) 혼자 놀고 있다.
+								CHILD_ACT:CHARA:CHILDNUM = 幼少期_一人遊び
+							CASE 2
+								PRINTFORM %子供の名前%가 행동하고 있다.
+								CHILD_ACT:CHARA:CHILDNUM = 幼少期_大人しい
+							CASE 3
+								PRINTFORM %子供の名前%는 깊은 생각에 잠겨 있다.
+								CHILD_ACT:CHARA:CHILDNUM = 幼少期_考え事
+							CASE 4
+								PRINTFORM %子供の名前%는 졸려 한다.
+								CHILD_ACT:CHARA:CHILDNUM = 幼少期_眠そう
+							CASE 5
+								PRINTFORM %子供の名前%은(는) %HIMSELF_HERSELF_CHILD(CHARA,,CHILDNUM)%을 즐기고 있다.
+								CHILD_ACT:CHARA:CHILDNUM = 幼少期_はしゃぐ
+							CASE 6
+								PRINTFORM %子供の名前%이(가) 돌아다니고 있다.
+								CHILD_ACT:CHARA:CHILDNUM = 幼少期_うろちょろ
+							CASE 7
+								PRINTFORM %子供の名前%은(는) 무언가를 하고 싶어 안달한다.
+								CHILD_ACT:CHARA:CHILDNUM = 幼少期_うずうず
+							CASE 8
+								PRINTFORM %子供の名前%가 당신을 똑바로 응시하고 있다.
+								CHILD_ACT:CHARA:CHILDNUM = 幼少期_見つめる
+							CASE 9, 10
+								PRINTFORM %子供の名前%은(는) 당신과 놀고 싶어 한다.
+								CHILD_ACT:CHARA:CHILDNUM = 幼少期_遊ぼう
+							CASE 11, 12
+								PRINTFORM %子供の名前%은(는) 계속 물건을 만지고 때린다.
+								CHILD_ACT:CHARA:CHILDNUM = 幼少期_ぺたぺた
+							CASEELSE
+								PRINTFORM %子供の名前%가 당신의 관심을 원하는 것 같다.
+								CHILD_ACT:CHARA:CHILDNUM = 幼少期_かまって
+						ENDSELECT
+					ENDIF
+				ELSE
+					IF 同室
+						SELECTCASE LOCAL
+							CASE 1, 2
+								PRINTFORM %CALLNAME:CHARA%와 %子供の名前%는 대화를 즐기고 있다.
+								CHILD_ACT:CHARA:CHILDNUM = 自立前_会話
+							CASE 3, 4
+								PRINTFORM %CALLNAME:CHARA%가 %子供の名前%에게 무언가를 가르치고 있다.
+								CHILD_ACT:CHARA:CHILDNUM = 自立前_教わる
+							CASE 5, 6
+								PRINTFORM %CALLNAME:CHARA%가 %子供の名前%와 대화하고 있다.
+								CHILD_ACT:CHARA:CHILDNUM = 自立前_会話
+							CASE 7
+								PRINTFORM %CALLNAME:CHARA%은(는) %子供の名前%를 훈육한다.
+								CHILD_ACT:CHARA:CHILDNUM = 自立前_しつけられる
+							CASE 8
+								PRINTFORM %CALLNAME:CHARA%은(는) %子供の名前%와 서로 속삭이며 당신을 바라본다.
+								CHILD_ACT:CHARA:CHILDNUM = 自立前_ひそひそ話
+							CASE 9
+								PRINTFORM %子供の名前%가 %CALLNAME:CHARA%에 대해 투덜거리고 있다.
+								CHILD_ACT:CHARA:CHILDNUM = 自立前_文句
+							CASE 10
+								PRINTFORM %子供の名前% 공유하고 있다 %HIS_HER_CHILD(CHARA,,CHILDNUM)% ~에 대한 의견 %CALLNAME:CHARA%.
+								CHILD_ACT:CHARA:CHILDNUM = 自立前_主張
+							CASE 11
+								PRINTFORM %子供の名前%은(는) %CALLNAME:CHARA%와 함께 미소 짓는다.
+								CHILD_ACT:CHARA:CHILDNUM = 自立前_笑い合う
+							CASE 12, 13
+								PRINTFORM %子供の名前%은(는) %CALLNAME:CHARA%에게 %HIM_HER_CHILD(CHARA,,CHILDNUM)%를 가르쳐 달라고 하고 있다.
+								CHILD_ACT:CHARA:CHILDNUM = 自立前_教えて
+							CASE 14, 15
+								PRINTFORM %子供の名前%은(는) %CALLNAME:CHARA%를 도와주고 있다.
+								CHILD_ACT:CHARA:CHILDNUM = 自立前_手伝い
+							CASE 16, 17
+								PRINTFORM %子供の名前%은(는) 혼자 놀고 있다.
+								CHILD_ACT:CHARA:CHILDNUM = 自立前_一人遊び
+							CASE 18
+								PRINTFORM %子供の名前%는 깊은 생각에 잠겨 있다.
+								CHILD_ACT:CHARA:CHILDNUM = 自立前_考え事
+							CASE 19
+								PRINTFORM %子供の名前%는 졸려 한다.
+								CHILD_ACT:CHARA:CHILDNUM = 自立前_眠そう
+							CASE 20, 21, 22, 23
+								PRINTFORM %子供の名前%은(는) 당신과 이야기하고 싶어 한다.
+								CHILD_ACT:CHARA:CHILDNUM = 自立前_話したい
+							CASE 24
+								PRINTFORM %子供の名前%은(는) 당신에게 궁금해한다.
+								CHILD_ACT:CHARA:CHILDNUM = 自立前_気にする
+							CASE 25
+								PRINTFORM %子供の名前%은(는) 당신에게 수줍어하는 것 같다.
+								CHILD_ACT:CHARA:CHILDNUM = 自立前_遠慮
+							CASEELSE
+								PRINTFORM %子供の名前%이(가) 당신을 노려보고 있다.
+								CHILD_ACT:CHARA:CHILDNUM = 自立前_睨む
+						ENDSELECT
+						;単独
+					ELSE
+						SELECTCASE LOCAL
+							CASE 1, 2
+								PRINTFORM %子供の名前%은(는) 혼자 놀고 있다.
+								CHILD_ACT:CHARA:CHILDNUM = 自立前_一人遊び
+							CASE 3, 4
+								PRINTFORM %子供の名前%는 깊은 생각에 잠겨 있다.
+								CHILD_ACT:CHARA:CHILDNUM = 自立前_考え事
+							CASE 5
+								PRINTFORM %子供の名前%는 졸려 한다.
+								CHILD_ACT:CHARA:CHILDNUM = 自立前_眠そう
+							CASE 6, 7, 8, 9
+								PRINTFORM %子供の名前%은(는) 당신과 이야기하고 싶어 한다.
+								CHILD_ACT:CHARA:CHILDNUM = 自立前_話したい
+							CASE 10
+								PRINTFORM %子供の名前%은(는) 당신에게 궁금해한다.
+								CHILD_ACT:CHARA:CHILDNUM = 自立前_気にする
+							CASE 11
+								PRINTFORM %子供の名前%은(는) 당신에게 수줍어하는 것 같다.
+								CHILD_ACT:CHARA:CHILDNUM = 自立前_遠慮
+							CASEELSE
+								PRINTFORM %子供の名前%은(는) 당신을 노려보고 있다.
+								CHILD_ACT:CHARA:CHILDNUM = 自立前_睨む
+						ENDSELECT
+					ENDIF
+				ENDIF
+		ENDSELECT
+		PRINTL 
+		CFLAG:CHARA:出産経過日 = LOCAL:10
+		NEXT
+	CASE 15
+		IF !CHARA_HOLIDAY(30) && BETWEENTIME(540, 719)
+			IF !FLAG:70
+				IF RAND:2
+					PRINTFORML 가장 질서 정연한 방식으로%CALLNAME:(30)%%SPLIT_G("proceeds with the trial:continues passing judgement")%%COND_STR(@" with %HIS_HER(30)% %SHOW_BOTTOM(ARG:1,1)% completely soaked", 充填率(30,3) >= 10)%...
+				ELSE
+					;custom code
+					LOCALS =
+					IF 充填率(30,3) >= 10
+						IF 充填率(30,3) >= 30
+							LOCALS = %" "%with %HIS_HER(30)% belly chock-full of semen
+						ELSE
+							LOCALS = %" "%with semen splashing in %HIS_HER(30)% belly
+						ENDIF
+					ENDIF
+					PRINTFORML %CALLNAME:(30)% %SPLIT_G("conducts a trial:passes judgement")%를 한 %SPLIT_G("stern:serious")% 표정으로 %HIS_HER(30)%의 얼굴에%LOCALS%...
+				ENDIF
+			ELSEIF !CFLAG:MASTER:うふふ
+				PRINTFORML 재판은 당분간 보류된다...
+			ELSE
+				PRINTFORML %조사처리(CALLNAME:TARGET,"가")% 신성한 법정에서 위반되고 있다...
+			ENDIF
+		ENDIF
+	CASE 16
+		CALL 潜伏描写
+		;落とし穴描写
+	CASE 17
+		;穴掘り実行中の妖精が居るか見る
+		同室 = 0
+		LOCAL = 5, 6, 7, 14, 111
+		FOR COUNT, 0, 5
+		SIF !SHIRAHU(LOCAL:COUNT)
+			CONTINUE
+		SIF CFLAG:MASTER:現在位置 != CFLAG:(LOCAL:COUNT):現在位置
+			CONTINUE
+		SIF Activity_Type:(LOCAL:COUNT) != 16 || !Activity_Duration:(LOCAL:COUNT)
+			CONTINUE
+		同室 ++
+		NEXT
+		;あなたが落ちた
+		IF FA16_HOLE:1 == 2 && FA16_HOLE:2 == TIME
+			IF 同室
+				PRINTFORML 장난기 많은 \@ 同室 > 1 ? 요정들이 모두 당신을 가리키고 # 요정이 당신을 향해 손가락질하고 \@ at you and \@ 同室 > 1 ? 웃는다 # 히스테릭하게 웃는다 \@...
+			ELSEIF GET_TARGETNUM() > 0
+				PRINTFORM 당신의 비참한 상태를 보며, %조사처리(CALLNAME:TARGET,"는")% 가까이 다가오고 
+				SELECTCASE CFLAG:TARGET:性格傾向
+					CASE 1, 5
+						PRINTFORML 당신을 보고 웃는다...
+					CASE 2
+						PRINTFORML 당신을 비웃는다...
+					CASE 3
+						PRINTFORML \@ TARGET == 57 && !TALENT:恋慕 ? %HIM_HER(TARGET)% 주위를 효토코 가면이 떠다닌다 # 당신을 기쁨으로 비웃는다 \@...
+					CASE 4
+						PRINTFORML 통제 불능으로 웃음을 터뜨렸다...
+				ENDSELECT
+			ELSE
+				PRINTFORML 저 함정은 요정들이 벌인 장난의 일부임... 그리고 주변에도 몇 군데 더 있는 것 같아. 
+			ENDIF
+			;穴掘り中
+		ELSEIF 同室
+			PRINTFORML 장난기 많은 \@ 同室 > 1 ? 요정들은 # 요정이 ~하는 것 같다... \@
+		ELSE
+			PRINTDATA
+				DATAFORM 땅이 비정상적으로 높아 보이는군... 
+				DATAFORM 파헤쳐진 흙의 미묘한 흔적들이 있다... 
+				DATAFORM 어떤 곳은 다른 곳보다 훨씬 많은 \@ DAY:2 == 4 ? 눈더미 # 낙엽 \@ 을 가지고 있어, 어울리지 않는 모습이다... 
+			ENDDATA
+			PRINTDATAL
+				DATAFORM 재미있는 일이 생길 거야!
+				DATAFORM 뭔가 일어나려 해!
+			ENDDATA
+		ENDIF
+		;にゅーぷらんの宣伝
+	CASE 18
+		PRINTFORM 목욕탕 옆에 서 있는 표지판을 발견한다...「새로운 계획  
+		IF DAY < 8
+			PRINTFORML 그랜드 오프닝!
+		ELSE
+			SELECTCASE ((GETTIME()/1000000000) % 100) % 3
+				CASE 0
+					PRINTFORML 보잘것없는 %金額表示(10000)%부터 ~까지 90분.
+				CASE 1
+					PRINTFORML 엄청난 신참들이네!」
+				CASE 2
+					PRINTFORML 정직한 회계야!
+			ENDSELECT
+		ENDIF
+		;雪だるま描写
+	CASE 19
+		LOCAL = CFLAG:MASTER:現在位置 % 100
+		CALL FA17_OBJNAME(FA17_OBJ:LOCAL, CFLAG:MASTER:現在位置)
+		IF FA17_OBJ:LOCAL < 1000
+			PRINTFORML 당신은 미완성된 %RESULTS%를 본다.
+		ELSEIF !(FA17_EXIST:LOCAL / 10) && STRCOUNT(RESULTS, "huge|lovely")
+			PRINTFORML 당신은 누군가의 %RESULTS%%COND_STR(@" %RESULTS:1%", RESULTS:1 != "")%을 본다.
+		ELSE
+			PRINTFORML 너는 %CALLNAME:(FA17_OBJ:LOCAL % 1000)%-made %RESULTS%%COND_STR(@" %RESULTS:1%", RESULTS:1 != "")%을 본다.
+		ENDIF
+	CASE 131
+		LOCALS =
+		LOCALS:1 =
+		SELECTCASE BedWetterPadID:(BedProtectSettings:1)
+			CASE 20
+				LOCALS:1 '= "A purple circular pad is on the bed."
+			CASE 1203
+				LOCALS:1 '= "A large white and blue disposable underpad is on the bed."
+			CASE 1204
+				LOCALS:1 '= "A large, cute looking bedwetter pad is on the bed."
+		ENDSELECT
+		SELECTCASE WetBed
+			CASE 0
+			CASE IS < 250
+				LOCALS += "a light wet patch、"
+			CASE IS < 500
+				LOCALS += "a moderate patch that is starting to turn yellow、"
+			CASE IS < 1000
+				LOCALS += "a large yellow stain smelling like piss、"
+			CASE IS < 1500
+				LOCALS += "a blanket of pee、"
+			CASE IS < 2000
+				LOCALS += "signs of turning yellow、"
+			CASE IS < 3000
+				LOCALS += "layers of old and new piss caked、"
+			CASE IS < 5000
+				LOCALS += "layers of old and new piss caked、"
+			CASEELSE
+				LOCALS += "turned completely yellow with your pee、"
+		ENDSELECT
+		IF GETBIT(nScat,4)
+			SELECTCASE MessyBed
+				CASE 0
+				CASE IS < 250
+					LOCALS += "slight streaks of poo、"
+				CASE IS < 500
+					LOCALS += "a brown stain、"
+				CASE IS < 1000
+					LOCALS += "dried pieces of poop around a large stain、"
+				CASE IS < 1500
+					LOCALS += "dried pieces of poop around a large stain、"
+				CASE IS < 2000
+					LOCALS += "dried pieces of poop around a large stain、"
+				CASE IS < 3000
+					LOCALS += "dried pieces of poop around a large stain、"
+				CASE IS < 5000
+					LOCALS += "dried pieces of poop around a large stain、"
+				CASEELSE
+					LOCALS += "shit layered all over the bed、"
+			ENDSELECT
+		ELSE
+			SELECTCASE MessyBed
+				CASE 0
+				CASE IS < 250
+					LOCALS += "slight streaks of jelly、"
+				CASE IS < 500
+					LOCALS += "a blue stain、"
+				CASE IS < 1000
+					LOCALS += "dried pieces of gelatin around a large stain、"
+				CASE IS < 1500
+					LOCALS += "dried pieces of gelatin around a large stain、"
+				CASE IS < 2000
+					LOCALS += "dried pieces of gelatin around a large stain、"
+				CASE IS < 3000
+					LOCALS += "dried pieces of gelatin around a large stain、"
+				CASE IS < 5000
+					LOCALS += "dried pieces of gelatin around a large stain、"
+				CASEELSE
+					LOCALS += "jelly layered all over the bed、"
+			ENDSELECT
+		ENDIF
+		SIF STRLENS(LOCALS:1)
+			PRINTFORMSL LOCALS:1
+		SIF STRLENS(LOCALS)
+			PRINTFORML 당신의 침대는 %LIST_IN_STRING(LOCALS)% ({BEDWETTER_FIND_OUT_CHANCE()}\% 발각될 확률)
+	CASE 132
+		SELECTCASE GetFilthLevel(ARG)
+			CASE 0
+				PRINTFORML %조사처리(CALLNAME:TARGET,"는")% %HES_SHES(TARGET)%이(가) 하수구에서 헤엄쳐 온 듯한 역겨운 악취를 풍긴다.
+			CASE 1
+				PRINTFORML %조사처리(CALLNAME:TARGET,"는")%(는) 체취가 심하다.
+			CASE 2
+				PRINTFORML %조사처리(CALLNAME:TARGET,"에게")% 약간의 체취가 난다.
+			CASE 3
+				PRINTFORML %조사처리(CALLNAME:TARGET,"는")% 별다른 냄새가 나지 않는다.
+			CASE 4
+				PRINTFORML %조사처리(CALLNAME:TARGET,"는")% 잔향의 향기를 풍긴다.
+			CASE 5
+				PRINTFORML %조사처리(CALLNAME:TARGET,"는")% 햇살과 장미 향이 난다, 마치 %HE_SHE(TARGET)%가 최근에 목욕한 것 같다.
+		ENDSELECT
+	CASE 133
+		PRINTFORML %FactionAbriv(FacionPropagandaSign:(CFLAG:MASTER:300))% 표지판이 세워져 있다.
+	CASE 134
+		SIF PottyLinePosition(TARGET) > -1 && TARGET != MASTER
+			PRINTFORM %조사처리(CALLNAME:TARGET,"는")%(는) 줄에서 %ORDINAL(PottyLinePosition(TARGET)+1)%번째 사람이다. 
+		SIF PottyLinePosition(MASTER) > -1
+			PRINTFORM 당신은 줄에서 %ORDINAL(PottyLinePosition(MASTER)+1)%번째 사람이다.
+		PRINTL
+ENDSELECT
+;子供の描写がないならフラグをオフ,情景描写から呼ばれてるなら除外
+SIF ARG != 14 && !GROUPMATCH(ARG, 1, 6, 15, 7, 12) && !INRANGE(ARG, 90, 99) ;qol custom code, include added ones, upcoming work
+	TFLAG:描写中の子供 = 0
+;-----------------------------------------------------------------------------------------------------------------
+
+@情景描写
+#DIM KROOM_DESC
+VARSET LOCAL
+;口上内私室描写をチェック
+KROOM_DESC = 0
+IF CFLAG:MASTER:お招き
+	KROOM_DESC = CFLAG:MASTER:お招き
+ELSEIF GET_MAPID(CFLAG:MASTER:現在位置) == MAIN_MAP && PRIVATEROOM:(CFLAG:MASTER:現在位置 % 100)
+	KROOM_DESC = PRIVATEROOM:(CFLAG:MASTER:現在位置 % 100)
+ENDIF
+IF KROOM_DESC && !cBannedDialogue:KROOM_DESC:0 ;addition custom code
+	RESULTS =
+	;口上の存在判定 and RESULTSに文字列代入
+	IF CFLAG:KROOM_DESC:口上セレクタ
+		TRYCALLFORM M_KOJO_K{NO:KROOM_DESC}_{CFLAG:KROOM_DESC:口上セレクタ}
+	ELSE
+		TRYCALLFORM M_KOJO_K{NO:KROOM_DESC}
+	ENDIF
+	;custom code, stylization edit for ROOM_DESCRIPTIONs
+	LOCAL = LINECOUNT
+	;addition custom code, duplicated characters
+	IF EXISTFUNCTION(@"K{NO:KROOM_DESC}%RESULTS%_ROOM_DESCRIPTION")
+		LOCALS = %RESULTS%
+		CALL COLOR_LINE
+		;addition custom code, duplicated characters
+		LOCAL = LINECOUNT
+		TRYCCALLFORM K{NO:KROOM_DESC}%LOCALS%_ROOM_DESCRIPTION
+		IF LOCAL != LINECOUNT
+			;	PRINTFORML あったよ
+			CALL COLOR_LINE
+		ELSE
+			CLEARLINE LINECOUNT - LOCAL + 1
+		ENDIF
+		RETURN
+		CATCH
+		;	PRINTFORML ないよ
+		;関数がないなら続行
+		ENDCATCH
+	ENDIF
+ENDIF
+;自由行動：落とし穴の描写
+SIF CFLAG:MASTER:現在位置 == FA16_HOLE:0
+	CALL MESSAGE_TALK(17)
+;付近で宴会をやっているなら賑やかな様子が見える
+IF 宴会開催中判定() && CAN_MOVE(CFLAG:MASTER:現在位置, TFLAG:宴会場) >= 2
+	CALL MESSAGE_TALK(1)
+	;えーき様の裁判風景描写文章
+ELSEIF ((CFLAG:MASTER:現在位置 == 640 && MAIN_MAP != 6) || (CFLAG:MASTER:現在位置 == 612 && MAIN_MAP == 6)) && CFLAG:30:行動 == 5
+	CALL MESSAGE_TALK(15)
+	;ELSEIF CFLAG:MASTER:うふふ && GET_TARGETNUM() > 1
+	;	CALL EASY_TARGET_CHANGER
+ELSEIF GROUPMATCH(CFLAG:MASTER:現在位置,210,220,230,250,270)
+	FOR LOCAL,1,CHARANUM
+	IF CFLAG:LOCAL:行動 == 5 && CFLAG:LOCAL:現在位置 == 広場 && CFLAG:LOCAL:職種 != JOB_宴会参加 ;bugfix custom code
+		LOCAL:1 ++
+		LOCAL:2 = LOCAL
+	ENDIF
+	NEXT
+	SIF LOCAL:1
+		CALL MESSAGE_TALK(7,LOCAL:2)
+ELSEIF CFLAG:MASTER:現在位置 == GET_MAP_REPLACEMENT(934) && FLAG:周回数
+	CALL MESSAGE_TALK(18)
+	;自由行動：雪だるまの描写
+ELSEIF FA17_OBJ:(CFLAG:MASTER:現在位置 % 100) > 0
+	CALL MESSAGE_TALK(19)
+ENDIF

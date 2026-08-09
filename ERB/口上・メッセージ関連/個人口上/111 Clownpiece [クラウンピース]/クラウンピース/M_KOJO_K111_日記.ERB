@@ -1,0 +1,399 @@
+﻿; Modular ERB: 個人口上/111 Clownpiece [クラウンピース]/クラウンピース/M_KOJO_K111_日記.ERB
+;日記口上
+;一日の終了時の流れ
+;@DIARY_TEXT_K111（日記本文）→@DIARY_AFTER_CHECK_K111（フラグの処理）
+;◆日記の仕様◆
+;※１@DIARY_BEFORE_CHECK_K111で日記のフラグが立つ。
+;→未読フラグ(2)が立っていると一日の終わりにデイリーイベントとして日記が読まれる（既読になる）。
+;→※２未読フラグ(3)が立っていると[日記を読む]で読む事ができる。読むと既読(1)になる。
+;※１各所イベント口上やコマンド口上でフラグを立たせても良いです。
+;※２基本的には未読(2)推奨です。既読(1)、未読(3)はワンステップ必要。
+;[日記を読む]には、持ち主が[恋慕]なら自由に読むことができ、
+;そうでない場合は恋慕でない人物がその場に居ない時、もしくは時間停止することで盗み読みできる。
+;拠点住民でないキャラは恋慕であれば自宅（お招き部屋）で読むことができる。
+;MAX_DIARY_PAGE:XX:0　キャラ番号XXの日記の最大ページ数　限度は101（1～100）
+;DIARY:XX:YY　　　　　キャラ番号XXの日記番号YYの情報
+;　　 3=未読　　　　　デイリーイベントで読まれない。[日記を読む]で読むと既読になる。
+;　　 2=未読　　　　　デイリーイベントで読まれる。読まれるまでは[日記を読む]では読めない。読まれると既読になる。
+;　　 1=既読　　　　　デイリーイベントで読まれない。[日記を読む]で読める。
+;　　 0=読めない　　　未解禁。
+;PAGESET:XX:YY　　　　キャラ番号XXの実際に書かれたYYページ目の日記番号。
+;=============================
+
+@DIARY_K111_EXIST
+;存在判定
+;0だと日記は書かれません。
+;=============================
+RETURN 1
+;=============================
+
+@DIARY_AFTER_CHECK_K111
+;デイリーイベントで日記が読まれた際の後処理。
+;フラグの管理等自由に扱って良い。
+;条件フラグのリセットや判定追加もここに
+;たとえば：今日構ったフラグ
+;今日構った日記が表示した後、構ったフラグをリセット。
+; CFLAG:XX:今日構ったフラグ = 0
+;あるいは何かの状態が続くことがフラグの場合
+;例：好感度がほぼ変わらない日が続くと
+;「あなた」の態度が冷たいな～みたいな日記を書く
+; SIF CFLAG:XX:好感度 <= LAST_LP+3
+;   NOTOUCH_DAY ++
+;=============================
+;=============================
+
+@DIARY_BEFORE_CHECK_K111
+;常時チェックされる日記の状態情報。
+;ここでDIARY:XX:YYの更新を行う。
+;※DIARY:XX:0番は使えません。
+;ここで汎用発生条件を記入する
+;コマンド別の発生条件はM_KOJOの各ファイル中で追加してください。
+;基本的に発生条件には"DIARY:XX:YY == 0"を入れること。
+;そうしないと同じ日記が書かれたりしてしまう。
+;DIARY:XX:YY　　　　キャラ番号XXの日記番号YYの情報
+;　　 3=未読　　　　デイリーイベントで読まれない。[日記を読む]で読むと既読になる。
+;　　 2=未読　　　　デイリーイベントで読まれる。読まれるまでは[日記を読む]では読めない。読まれると既読になる。
+;　　 1=既読　　　　デイリーイベントで読まれない。[日記を読む]で読める。
+;　　 0=読めない　　未解禁。
+;○未読(2)にする場合（基本）
+;未読(2)にするとデイリーイベントとして発生し、一日の終わりに１つだけ読まれる。
+;複数のページが未読(2)になっている場合は番号が小さいものが読まれ、それ以外はリセット(0)される。
+;その為、複数同時に発生すると、発生したのに読まれずリセットされる場合もある。
+;未読(2)にするには単純にフラグに2を入れるだけで良い。
+;例１)初対面
+;SIF DIARY:XX:YY == 0 && CFLAG:XX:面識
+;	DIARY:XX:YY = 2
+;○未読(3)にする場合（応用）
+;未読(3)にするとデイリーイベントとして読まれず、書かれた時点で[日記を読む]によって読めるようになる。
+;プレイヤーが自主的に読まない限り読まれず、一日に複数ページ加筆される場合もある。
+;未読(3)にするにはフラグに3を入れた上で、CALL CHARA_DIARY_PAGESETTING(XX, YY)をする必要がある。
+;例２）好感度100以上
+;IF DIARY:XX:YY == 0 && CFLAG:XX:好感度 >= 100
+;	DIARY:XX:YY = 3
+;	CALL CHARA_DIARY_PAGESETTING(XX, YY)
+;ENDIF
+;例３）例２の日記が読まれた上で好感度1000以上
+;これをするとYYを読んだ直後にZZが書き込まれることも起こる。
+;IF DIARY:XX:ZZ == 0 && DIARY:XX:YY == 1 && CFLAG:XX:好感度 >= 1000
+;	DIARY:XX:ZZ = 3
+;	CALL CHARA_DIARY_PAGESETTING(XX, ZZ)
+;ENDIF
+;▽おせっかいな注釈
+;ファーストキスは基本的に全員[キス未経験]を所持しているので、"!TALENT:XX:キス未経験"で判定できます。
+;デート帰りのキスで分岐したいならデート帰りのキス口上でフラグを立てます。
+;その場合、通常のファーストキス喪失と重複しないように気をつけましょう。
+;処女喪失は初期設定で処女喪失している場合もあるので、処女喪失口上の方でフラグを立てた方が良いです。
+;その他告白・陥落等のイベントは各種イベント口上でフラグを立てます。初対面はそっちでも大丈夫です。
+;日付を正確に測るには別途フラグが必要です。例えば初めて会った日とか。
+;=============================
+SIF CHARANUM <= [[クラウンピース]] + 1
+	RETURN
+;MAXPAGEはここで記入する
+MAX_DIARY_PAGE:[[クラウンピース]]:0 = 100
+;以下、勝手な設定
+;原作や書籍の話混ぜたかったけど、TWの設定と齟齬があるのでやめました。
+;というかクラウンピースは日記書かなそう。
+;書いても絶対適当。というわけで適当な日記になりました。
+;顔文字とか使おうと思ったけど、逆におっさんすぎるのでこれもやめ。
+;句読点が無いのは仕様です。
+;初期設定
+CALL M_KOJO_DIARYSETTING_K111(1)
+CALL M_KOJO_DIARYSETTING_K111(2)
+CALL M_KOJO_DIARYSETTING_K111(3)
+CALL M_KOJO_DIARYSETTING_K111(4)
+;汎用
+SIF TALENT:[[サニー]]:SexKnow == -1 && TALENT:[[クラウンピース]]:SexKnow > -1 && ABL:[[クラウンピース]]:親密 >= 4 && ABL:[[サニー]]:親密 >= 4
+	CALL M_KOJO_DIARYSETTING_K111(5)
+SIF ABL:[[クラウンピース]]:親密 >= 3 && ABL:[[スター]]:親密 >= 3
+	CALL M_KOJO_DIARYSETTING_K111(6)
+SIF ABL:[[クラウンピース]]:親密 >= 5 && ABL:[[ルナ]]:親密 >= 5
+	CALL M_KOJO_DIARYSETTING_K111(7)
+SIF ABL:[[クラウンピース]]:親密 >= 6 && ABL:[[ラルバ]]:親密 >= 6
+	CALL M_KOJO_DIARYSETTING_K111(8)
+SIF ABL:[[クラウンピース]]:親密 >= 2 && ABL:[[ラルバ]]:親密 >= 2
+	CALL M_KOJO_DIARYSETTING_K111(9)
+SIF ABL:[[クラウンピース]]:親密 >= 4 && ABL:[[大妖精]]:親密 >= 4
+	CALL M_KOJO_DIARYSETTING_K111(10)
+SIF TALENT:[[クラウンピース]]:機嫌 < 0 && ABL:[[クラウンピース]]:親密 >= 3
+	CALL M_KOJO_DIARYSETTING_K111(11)
+SIF ABL:[[クラウンピース]]:親密 >= 3 && ABL:[[ヘカーティア]]:親密 >= 3
+	CALL M_KOJO_DIARYSETTING_K111(12)
+SIF ABL:[[クラウンピース]]:親密 >= 6 && ABL:[[ヘカーティア]]:親密 >= 6 && DAY >= 90
+	CALL M_KOJO_DIARYSETTING_K111(13)
+SIF ABL:[[クラウンピース]]:親密 >= 5 && ABL:[[純狐]]:親密 >= 5
+	CALL M_KOJO_DIARYSETTING_K111(14)
+SIF DAY >= 123
+	CALL M_KOJO_DIARYSETTING_K111(15)
+;イベント系
+SIF TALENT:[[クラウンピース]]:思慕
+	CALL M_KOJO_DIARYSETTING_K111(16)
+SIF TALENT:[[クラウンピース]]:恋慕
+	CALL M_KOJO_DIARYSETTING_K111(17)
+SIF !FIRSTTIME("ファーストキス", 1, [[クラウンピース]])
+	CALL M_KOJO_DIARYSETTING_K111(18)
+SIF GETBIT(CFLAG:[[クラウンピース]]:既成事実, 1)
+	CALL M_KOJO_DIARYSETTING_K111(19)
+SIF CFLAG:[[クラウンピース]]:生解禁 > 0 && TALENT:[[クラウンピース]]:恋慕
+	CALL M_KOJO_DIARYSETTING_K111(20)
+;21:＠ハンバーガー
+IF GET_GIFTDATA(TCVAR:[[クラウンピース]]:今日の贈り物, "本体") == 154 && GET_GIFTDATA(TCVAR:[[クラウンピース]]:今日の贈り物, "得点") > 400
+	IF TALENT:[[クラウンピース]]:恋慕
+		CALL M_KOJO_DIARYSETTING_K111(23)
+	ELSE
+		CALL M_KOJO_DIARYSETTING_K111(22)
+	ENDIF
+ENDIF
+;=============================
+
+@DIARY_TEXT_K111, PAGENUM, MODE, PAGECOUNT
+;日記の内容
+;PAGENUM   = 日記番号（日記のパターン）
+;MODE      = "デイリー":一日終了時のデイリーイベントでの読み上げ
+;          = "コマンド":[日記を読む]コマンドでの読み上げ
+;PAGECOUNT = 何ページ目に書かれているか
+;=============================
+#DIM PAGENUM
+#DIMS MODE
+#DIM PAGECOUNT
+;口上色指定あるならコメントアウトを外す
+CALL M_KOJO_COLOR_K111
+;グループマッチに日記のIDを入れて、表示させたい顔絵を表示する
+;表情・服装・特殊画像をオプション指定で表示（省略可）
+;書式は\resources\顔.CSVと下の例を参照
+;以下はサンプル
+IF MODE == "デイリー"
+	;	IF GROUPMATCH(PAGENUM, 1)
+	;		CALL PRINT_FACE, XX, "発情", "裸", "_1"
+	;	ELSEIF GROUPMATCH(PAGENUM, 2)
+	;		CALL PRINT_FACE, XX, "笑顔", "服1"
+	;	ELSEIF GROUPMATCH(PAGENUM, 3)
+	;		CALL PRINT_FACE, XX, "怒り"
+	;	ELSE
+	;		CALL PRINT_FACE, XX
+	;	ENDIF
+ENDIF
+PRINTFORMDL 클라운피스의 일지 페이지.{PAGECOUNT} --------------------------------------------------------------------------------------
+SELECTCASE PAGECOUNT
+	CASE 3
+		PRINT 　／　／　　
+	CASEELSE
+		CALL M_KOJO_K111_適当日付設定(PAGECOUNT)
+		PRINT ／20XX
+ENDSELECT
+PRINTL 
+;※PAGENUM:0は使えません
+SELECTCASE PAGENUM
+	CASE 1
+		PRINTFORML 나는 %CFLAG:111:1099?"Goshujinsama"#"Master"%!!로부터 수첩을 얻었다.
+		PRINTFORML 여기에 일기를 시작할까? 그렇게 생각했으니까, 일기를 시작해야겠다!
+		PRINTFORML 
+		PRINTFORML 
+		PRINTFORML 
+	CASE 2
+		PRINTFORMDL 페이지는 무작위 낙서들로 가득 차 있었다...
+		PRINTFORML 
+		PRINTFORML 
+		PRINTFORML 
+		PRINTFORML 
+	CASE 3
+		PRINTFORMDL 이 페이지에는 아무것도 쓰여 있지 않다...
+		PRINTFORML 
+		PRINTFORML 
+		PRINTFORML 
+		PRINTFORML 
+	CASE 4
+		PRINTFORML 정말 아주 오래된 노트를 발견했다!
+		PRINTFORML 일기를 쓰려고 했던 것 같다...
+		PRINTFORML 하지만 이 환상향에 온 뒤로 있었던 일들을 기록하기 시작해야 할지 모르겠다?
+		PRINTFORML 
+		PRINTFORML 
+	CASE 5
+		PRINTFORML 서니는 장난스러운 일에는 전혀 관심이 없는 것 같다!
+		PRINTFORML 이상(幻想郷)의 요정들은 꽃 같은 두뇌를 가졌다!
+		PRINTFORML 
+		PRINTFORML 
+		PRINTFORML 
+	CASE 6
+		PRINTFORML 스타의 능력은 약하지만, 손재주가 좋고 장난치는 데 정말 능하다!
+		PRINTFORML 그녀의 타입은 지옥에는 존재하지 않는다~☆
+		PRINTFORML 
+		PRINTFORML 
+		PRINTFORML 
+	CASE 7
+		PRINTFORML %CFLAG:111:1099?"Goshujinsama"#"Master"%은(는) 루나를 정말 높이 평가한다!
+		PRINTFORML 하지만 도대체 왜 그녀는 그렇게 약한 걸까?
+		PRINTFORML 
+		PRINTFORML 
+		PRINTFORML 
+	CASE 8
+		PRINTFORML 유충은 정말 큰 나비 광팬이야!
+		PRINTFORML 그래서 그런 사람들이 환상향에도 있는 거야☆
+		PRINTFORML 
+		PRINTFORML 
+		PRINTFORML 
+	CASE 9
+		PRINTFORML ★별의 치르노는 바카다★☆
+		PRINTFORML 
+		PRINTFORML 
+		PRINTFORML 
+		PRINTFORML 
+	CASE 10
+		PRINTFORML 환상향의 모든 요정들은 완전한 약골들이었다!
+		PRINTFORML 내가 그들을 조금이라도 훈련시키려고 했을 때, 그들은 그냥 울면서 도망갔다!
+		PRINTFORML 
+		PRINTFORML 
+		PRINTFORML 
+	CASE 11
+		PRINTFORML %CFLAG:111:1099?"Goshujinsama"#"Master"%이(가) 화를 내셨다...
+		PRINTFORML 죄송합니다...
+		PRINTFORML 
+		PRINTFORML 
+		PRINTFORML 
+	CASE 12
+		PRINTFORML %CFLAG:111:1099?"Goshujinsama"#"Master"%와 내가 단고를 함께 먹었다!!
+		PRINTFORML 정말 맛있었다!!
+		PRINTFORML 
+		PRINTFORML 
+		PRINTFORML 
+	CASE 13
+		PRINTFORML 새로운 옷을 얻었다!!
+		PRINTFORML 완전 멋지다!!
+		PRINTFORML 
+		PRINTFORML 
+		PRINTFORML 
+	CASE 14
+		PRINTFORML %CFLAG:111:1099?"Yuujinsama"#"Mrs. Friend"%오늘 나와 함께 놀았다!!
+		CALL HPH_PRINT,@"그녀는 나를 엄청 많이 쓰다듬었다.","L"
+		PRINTFORML 
+		PRINTFORML 
+		PRINTFORML 
+	CASE 15
+		PRINTFORML 봄이야~!!
+		PRINTFORML 봄이 오면 그렇게 말하는 게 전통인 것 같아!
+		PRINTFORML 이상한 요정이 나에게 가르쳐줬어!
+		PRINTFORML 
+		PRINTFORML 
+	CASE 16
+		PRINTFORML 나는 %조사처리(CALLNAME:MASTER,"와")% 놀았다!
+		PRINTFORML %HE_SHE(MASTER,1)%이상한 %PRINT_MALE("guy", MASTER)% 요정들과 놀기 좋아하는 %HE_SHE(MASTER)%인간이다!
+		PRINTFORML %HE_SHE(MASTER,1)%은 흥미롭다!
+		PRINTFORML 
+		PRINTFORML 
+	CASE 17
+		PRINTFORMDL 이 페이지에는 만화 같은 익살스러운 얼굴의 캐리커처가 그려져 있다...
+		PRINTFORML 
+		PRINTFORML 
+		PRINTFORML 
+		CALL HPH_PRINT,@"%CALLNAME:MASTER%HPH","L"
+	CASE 18
+		PRINTFORML 나는 %조사처리(CALLNAME:MASTER,"에게")% 키스했다!!!!
+		PRINTFORML 나 드디어 성인의 맛을 보는구나!!!!
+		PRINTFORML 
+		PRINTFORML 
+		PRINTFORML 
+	CASE 19
+		CALL HPH_PRINT,@"나는 첫 번째 H를 %CALLNAME:MASTER%HPH와 했다.","L"
+		PRINTFORML 정말 최고였다!
+		PRINTFORML 또 하고 싶어~☆
+		PRINTFORML 
+		PRINTFORML 
+	CASE 20
+		CALL HPH_PRINT,@"%조사처리(CALLNAME:MASTER,"와")% 나는 애정 넘치는 섹스를 했다.","L"
+		PRINTFORML 내 배가 뒤틀리고 너무 따뜻했다!
+		CALL HPH_PRINT,@"임신할 수 있을지 궁금하다～HPH","L"
+		PRINTFORML 
+		PRINTFORML 
+	CASE 21
+		PRINTFORML %조사처리(CALLNAME:MASTER,"가")% 나에게 햄버거를 만들어 주었다!
+		PRINTFORML 부엌에서 햄버거를 만들 수 있어, 알잖아~
+		PRINTFORML 
+		PRINTFORML 
+		PRINTFORML 
+	CASE 22
+		PRINTFORMDL 클라운피스가 이 페이지에 스티커를 붙였다.
+		PRINTFORML 
+		PRINTFORML 
+		PRINTFORML 
+		PRINTFORML 
+	CASE 23
+		PRINTFORMDL 클라운피스가 이 페이지에 스티커를 붙였다.
+		PRINTFORML 
+		PRINTFORML 
+		PRINTFORML 
+		PRINTFORML 
+		CALL HPH_PRINT,@"나는 %조사처리(CALLNAME:MASTER,"를")% 연모한다.","L"
+ENDSELECT
+RESETCOLOR
+;=============================
+
+@M_KOJO_MESSAGE_COM_K111_406
+;=============================
+CALL M_KOJO_MESSAGE_COM_K111_406_1
+RETURN RESULT
+;=============================
+
+@M_KOJO_MESSAGE_COM_K111_406_1
+;コマンド口上
+;TFLAG:194（誰の日記を読んでいるか）
+;TFLAG:194がXXでない場合は他人の日記なので注意。
+;PAGEは書かれてあるページ数。
+;SHIRAHU(XX)はキャラXXの状態が正常かどうか。
+;=============================
+CALL M_KOJO_COLOR_K111
+IF SHIRAHU([[クラウンピース]]) && TFLAG:194 == [[クラウンピース]]
+	PRINTFORMW 「어땠어? 재미있었어??」
+ENDIF
+;=============================
+
+@M_KOJO_DIARYSETTING_K111(ARG)
+;日記発生処理の一括管理関数
+;=============================
+SELECTCASE ARG
+	;不一致なら何度でも発生（やりすぎるとバグるかも）
+	CASE 22, 23
+		SIF TCVAR:[[クラウンピース]]:今日の贈り物 == CFLAG:[[クラウンピース]]:1004
+			RETURN
+		CFLAG:[[クラウンピース]]:1004 = TCVAR:[[クラウンピース]]:今日の贈り物
+	CASEELSE
+		SIF DIARY:[[クラウンピース]]:ARG != 0
+			RETURN
+ENDSELECT
+DIARY:[[クラウンピース]]:ARG = 3
+CALL CHARA_DIARY_PAGESETTING([[クラウンピース]], ARG)
+;=============================
+
+@M_KOJO_K111_適当日付設定(ARG)
+;日記用に作った適当に日付を付ける関数
+;=============================
+SELECTCASE ARG % 12
+	CASE 1, 2, 3
+		PRINT ○／
+	CASE 4, 5, 6
+		PRINT ☆／
+	CASE 7, 8, 9
+		PRINT ★／
+	CASEELSE
+		PRINT ●／
+ENDSELECT
+SELECTCASE ARG % 10
+	CASE 1
+		PRINT ×
+	CASE 2
+		PRINT ☆
+	CASE 3
+		PRINT ●
+	CASE 4
+		PRINT ◇
+	CASE 5
+		PRINT ★
+	CASE 6
+		PRINT ◎
+	CASE 7
+		PRINT ＋
+	CASE 8
+		PRINT ◆
+	CASE 9
+		PRINT ○
+	CASE 0
+		PRINT ★
+ENDSELECT

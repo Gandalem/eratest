@@ -1,0 +1,211 @@
+﻿; Modular ERB: 物件関連/07山麓/MAP_COMM_07.ERB
+;--------------------------------------------------
+;地点名変更関数
+;--------------------------------------------------
+
+@MAP_PLACENAME_7(ARG, ARG:1) ;custom code
+#FUNCTIONS
+IF GET_MAPID(ARG) == MAIN_MAP
+	SELECTCASE ARG
+		CASE P734小屋
+			IF CFLAG:MASTER:初期位置 == ARG
+				RETURNF CALLNAME:MASTER + "'s Hut"
+			ELSE
+				RETURNF "Empty Hut"
+			ENDIF
+		CASE SUMIKOMI_ROOM
+			;※このマップでは未実装
+			IF FLAG:住み込みキャラ
+				RETURNF CALLNAME:(FLAG:住み込みキャラ) + "'s Room"
+			ELSE
+				RETURNF "Vacant Room"
+			ENDIF
+		CASE MINROOM() TO (MAXROOM - 1)
+			RETURNF ARG:1 ? STR:(ARG + 8000) # STR_TR(ARG + 8000) ;custom code
+		CASE OMANEKIBEYA()
+			RETURNF OMANEKI_PLACE()
+		CASE SUKIMA()
+			RETURNF "Gap Space"
+		CASE MAXROOM
+			RETURNF "Opposite Street"
+		CASEELSE
+			RETURNF "Unknown"
+	ENDSELECT
+ELSE
+	RETURNF "Beyond the Foothills"
+ENDIF
+;--------------------------------------------------
+;場所ARGがどのエリアにあるか
+;表示するマップの番号と連動（TFLAG:マップ切り替え）
+;ARG     場所ID
+;--------------------------------------------------
+
+@MAP_AREASELECT_7(ARG)
+#FUNCTION
+SELECTCASE ARG
+	;秋姉妹の家
+	CASE P715秋姉妹の家・畑 TO P719秋姉妹の家・座敷
+		RETURNF 2
+		;仙人の屋敷・１階～２階
+	CASE P720仙人の屋敷・台所 TO P725仙人の屋敷・大鷲の部屋, P729仙人の屋敷・玄関, P730仙人の屋敷・庭
+		RETURNF 3
+		;仙人の屋敷・２階～３階
+	CASE P726仙人の屋敷・居間, P727仙人の屋敷・華扇私室, P728仙人の屋敷・空き部屋
+		RETURNF 4
+		;妖怪の山・山麓
+	CASEELSE
+		RETURNF 1
+ENDSELECT
+;--------------------------------------------------
+;内部構造がある場所の内部の判定
+;TFLAG:マップ切り替え  内部察知が必要なマップ番号
+;                P_ID  表示ボタンの場所ID
+;                Q_ID  判定する内部の場所ID,必ずP_IDと一致した数値も含める
+;--------------------------------------------------
+
+@GETMAP_BUILDING_7(P_ID, Q_ID)
+#FUNCTION
+#DIM P_ID
+#DIM Q_ID
+IF TFLAG:マップ切り替え == 1
+	SELECTCASE P_ID
+		;秋姉妹の家
+		CASE P716秋姉妹の家・土間
+			SELECTCASE Q_ID
+				CASE P716秋姉妹の家・土間 TO P719秋姉妹の家・座敷
+					RETURNF 1
+			ENDSELECT
+			;仙人の屋敷
+		CASE P729仙人の屋敷・玄関
+			SELECTCASE Q_ID
+				CASE P720仙人の屋敷・台所 TO P729仙人の屋敷・玄関
+					RETURNF 1
+			ENDSELECT
+	ENDSELECT
+ENDIF
+RETURNF 0
+;--------------------------------------------------
+;移動制限設定
+;ARG    場所ID
+;CHARA  移動するキャラID
+;RETURNF 1=移動できる,0=移動できない
+;TFLAG:移動不能メッセージ   ↓の@MAP_CANNOT_WORD用の設定
+;--------------------------------------------------
+
+@MAP_CAN_MOVE_7(ARG, CHARA)
+#FUNCTION
+#DIM CHARA
+SELECTCASE ARG
+	;華扇ハウス
+	CASE P720仙人の屋敷・台所 TO P730仙人の屋敷・庭
+		;本人は除外
+		SIF CHARA == [[華扇]]
+			RETURNF 1
+		;中からは動ける
+		SIF INRANGE(CFLAG:CHARA:現在位置, P720仙人の屋敷・台所, P730仙人の屋敷・庭)
+			RETURNF 1
+		;恋慕か住み込み
+		IF CHARA == MASTER && (INRANGE(CFLAG:MASTER:初期位置, P720仙人の屋敷・台所, P730仙人の屋敷・庭) || TALENT:[[華扇]]:恋慕)
+			RETURNF 1
+			;デート相手が天子か自分が天子
+		ELSEIF FLAG:デート相手 == [[天子]] || CHARA == [[天子]]
+			RETURNF 1
+		ELSEIF FLAG:デート相手 == [[小町]] || CHARA == [[小町]] ;qol custom code
+			RETURNF 1
+			;教養が足りないとたどり着けない
+		ELSEIF ABL:CHARA:教養 < 3
+			TFLAG:移動不能メッセージ = 1
+			RETURNF 0
+			;戦闘力3以上必要
+		ELSEIF ABL:CHARA:戦闘能力 < 3 && !FLAG:時間停止
+			TFLAG:移動不能メッセージ = 2
+			RETURNF 0
+		ENDIF
+	CASE P733正邪の隠れ家
+		;あなたは恋慕があれば入れてもらえる
+		IF TALENT:[[正邪]]:恋慕 && CHARA == MASTER
+			RETURNF 1
+			;本人は入れる
+		ELSEIF CHARA == [[正邪]]
+			RETURNF 1
+		ELSE
+			TFLAG:移動不能メッセージ = 3
+			RETURNF 0
+		ENDIF
+ENDSELECT
+RETURNF 1
+;--------------------------------------------------
+;移動不能時に表示されるメッセージ
+;--------------------------------------------------
+
+@MAP_CANNOT_WORD_7(ARG)
+SELECTCASE TFLAG:移動不能メッセージ
+	CASE 1
+		PRINTFORMW 그것을 향해 걸어가도 거리가 줄어드는 것 같지 않다...
+		PRINTFORMW 원을 그리며 걷는 기분이 든다.
+		CLEARLINE 3
+		TIME += 30
+	CASE 2
+		PRINTFORMW 정원에 숨어 있던 호랑이가 당신을 보자 나와 한 번 으르렁거린다.
+		PRINTFORMW 다가가지 않는 것이 좋을 것 같다.
+		CLEARLINE 3
+		TIME += 15
+	CASE 3
+		PRINTFORMW 그것을 찾을 수 없다…
+		CLEARLINE 2
+ENDSELECT
+REUSELASTLINE
+;-----------------------------------------
+;拠点専用の情景描写
+;WAITはかけないように
+;-----------------------------------------
+
+@MAP_UNIQUEMESSAGE_7
+;addition custom code
+LOCAL:90 = MAIN_MAP != 7 ? 玄武の沢 # P703玄武の沢
+SELECTCASE CFLAG:MASTER:現在位置
+	CASE LOCAL:90 ;addition custom code
+		IF DAY:2 == 2 && TALENT:MASTER:形状 == 4 && GROUPMATCH(TIME:2, 5, 6, 7)
+			PRINTFORML 반딧불이들이 당신의 가랑이 불빛에 이끌려 그 주위로 몰린다.
+			PRINTFORML 그것은 환상적인 광경을 연출한다...
+		ENDIF
+ENDSELECT
+;-----------------------------------------
+;拠点の場所IDをお出かけマップ上の場所IDに置換する関数
+;ARG      対象の場所ID（拠点マップ）
+;RETURNF  差し替え場所ID（お出かけマップ）
+;-----------------------------------------
+
+@MAP_SEARCH_REPLACEMENT_7(ARG)
+#FUNCTION
+SELECTCASE ARG
+	CASE P703玄武の沢, P704河童のアジト, P735水浴び場
+		RETURNF 玄武の沢
+	CASE P708大蝦蟇の池
+		RETURNF 大蝦蟇の池
+	CASE P733正邪の隠れ家
+		RETURNF 正邪の隠れ家前
+	CASE P720仙人の屋敷・台所 TO P730仙人の屋敷・庭
+		RETURNF 仙人の屋敷
+	CASE P712間欠泉地下センター
+		RETURNF 間欠泉地下センター
+	CASE P738森の深奥 TO P741美天の棲み処
+		RETURNF 森の深奥
+	CASEELSE
+		RETURNF 麓の樹海
+ENDSELECT
+RETURNF 0
+;--------------------------------------------------
+;マップの紹介文
+;--------------------------------------------------
+
+@マップ紹介_7
+;とりあえず5行
+PRINTFORML 많은 채집 장소와 두 곳의 낚시 구역을 갖추고 있어 탐나는 위치이다.
+PRINTFORML 지하 간헐천 센터는 이 지역과 불타는 지옥의 유적을 연결한다.
+PRINTFORML %CALLNAME:97%와 %CALLNAME:43%의 집에는 허가 없이는 들어갈 수 없다.
+PRINTFORML 이름 없는 요괴들이 매일 내기 게임을 하는 비밀 천상의 절벽에 수상한 도박장이 생겼다.
+PRINTFORML 
+;logging is enabled so uncommented
+PRINTFORML 이 지역에는 제재소와 벌채 지점이 모두 있기 때문에,
+PRINTFORML 영업시간 동안 벌목 → 제재소 → 벌목의 루틴을 쉽게 따라 나무를 효율적으로 비축할 수 있다.

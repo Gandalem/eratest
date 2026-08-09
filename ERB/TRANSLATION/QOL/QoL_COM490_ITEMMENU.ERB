@@ -1,0 +1,280 @@
+﻿; Modular ERB: QOL/QoL_COM490_ITEMMENU.ERB
+;new menuing for item use menu
+
+@QoL_490_ITEMMENU(対象,ORIG_TARGET)
+#DIM REF 対象
+#DIM REF ORIG_TARGET
+#DIM DYNAMIC nPage
+#DIM DYNAMIC nPageLength
+#DIM nPageSize = 40 ;total lines allowed per page
+#DIM nPageElementCount, 10 ;elements per page
+#DIM DYNAMIC nPrintCount
+#DIMS strPrintRange
+#DIM nLineCnt_Head
+#DIM DYNAMIC 表示アイテム種別
+;CALL COLORMESSAGE(@"Drugs",C_ORANGE)
+;PRINTL  can be used only once a day.
+CALL COLORMESSAGE(@"스낵",C_GREEN)
+PRINT  그리고 
+CALL COLORMESSAGE(@"음식",C_GREEN)
+PRINTL  아이템에는 재사용 대기시간이 있다.
+DRAWLINE
+nLineCnt_Head = LINECOUNT
+DO
+SIF LINECOUNT - nLineCnt_Head > 0
+	CLEARLINE LINECOUNT - nLineCnt_Head
+LOCAL:6 = 0 ;element count for current page
+LOCAL:9 = 0 ;line count for current page
+VARSET nPageElementCount
+strPrintRange =
+nPageLength = 0
+FOR LOCAL,0, VARSIZE("ITEM") ;qol custom code
+SIF 表示アイテム種別 != 0 && ITEMTYPE(LOCAL) != 表示アイテム種別
+	CONTINUE
+IF 対象 != MASTER
+	SIF 使用可能アイテム(LOCAL) != 2 || !ITEM:LOCAL
+		CONTINUE
+ELSE
+	SIF !使用可能アイテム(LOCAL) || !ITEM:LOCAL
+		CONTINUE
+ENDIF
+strPrintRange += TOSTR(LOCAL) + ":"
+;lines required
+LOCAL:8 = STRCOUNT(BREAKENG(ITEM_EXPLANATION(LOCAL), 0, "\n  "), "\n") + 2
+IF LOCAL:9 + LOCAL:8 > nPageSize ;doesn't fit on current page, start new one
+	nPageElementCount:nPageLength = LOCAL:6
+	nPageLength++
+	LOCAL:6 = 0
+	LOCAL:9 = 0
+ENDIF
+LOCAL:9 += LOCAL:8
+LOCAL:6++
+NEXT
+nPageElementCount:nPageLength = LOCAL:6
+SIF nPage > nPageLength
+	nPage = 0
+nPrintCount = 0
+LOCAL:7 = LINECOUNT
+FOR LOCAL,0, VARSIZE("ITEM") ;qol custom code
+SIF !SPLIT_CHECK(strPrintRange, LOCAL:0) ;show only those who are in the list
+	CONTINUE
+nPrintCount ++
+IF nPrintCount > SUMARRAY(nPageElementCount, 0, nPage+1)
+	BREAK
+ELSEIF nPage > 0 && nPrintCount <= SUMARRAY(nPageElementCount, 0, nPage)
+	CONTINUE
+ENDIF
+CALL PRINT_ITEM_EXPLANATION2(LOCAL)
+NEXT
+CALL EQUATE_LINE, LOCAL:7 + nPageSize
+;controls
+IF nPageLength != 0
+	PRINTFORML
+	PRINTBUTTON @"%"Prev page",15,LEFT%", 8888
+	PRINTFORM (Page {nPage+1,2}/{nPageLength+1,2})%" "*6%
+	PRINTBUTTON @"%"Next page",15,LEFT%", 7777
+	PRINTFORML
+ENDIF
+DRAWLINE
+CALL PRINTBUTTON_EX("[ All ]", 2000, 表示アイテム種別 != 0, 表示アイテム種別 == 0)
+CALL PRINTBUTTON_EX("[Heal]", 2001, 表示アイテム種別 != 1, 表示アイテム種別 == 1)
+CALL PRINTBUTTON_EX("[Buff]", 2002, 表示アイテム種別 != 2, 表示アイテム種別 == 2)
+CALL PRINTBUTTON_EX("[Food]", 2003, 表示アイテム種別 != 3, 表示アイテム種別 == 3)
+CALL PRINTBUTTON_EX("[Snack]", 2004, 表示アイテム種別 != 4, 表示アイテム種別 == 4)
+CALL PRINTBUTTON_EX("[Fruit]", 2005, 表示アイテム種別 != 5, 表示アイテム種別 == 5)
+CALL PRINTBUTTON_EX("[Pad]", 2007, 表示アイテム種別 != 7, 表示アイテム種別 == 7)
+CALL PRINTBUTTON_EX("[Book]", 2008, 表示アイテム種別 != 8, 表示アイテム種別 == 8)
+CALL PRINTBUTTON_EX("[Misc]", 2006, 表示アイテム種別 != 6, 表示アイテム種別 == 6)
+RESETCOLOR
+PRINTL
+DRAWLINE
+SIF ITEM:昆虫採集セット
+	PRINTFORML [9001] 벌레 우리 확인
+PRINTFORML [9000] 수집가의 간격을 자동으로 사용한다 (현재: \@ FLAG:Cスキマ自動仕様 ? 켜짐 # 꺼짐 \@) 
+IF TARGET != ORIG_TARGET
+	SIF 対象 != ORIG_TARGET
+		SETCOLOR C_YELLOW
+	PRINTFORMLC [9998] %조사처리(CALLNAME:TARGET,"에게")% 사용한다
+	RESETCOLOR
+ENDIF
+PRINTLC [9999] 반환
+INPUT
+SELECTCASE RESULT
+	CASE 9999
+		RETURN 999
+	CASE 9000
+		FLAG:Cスキマ自動仕様 = !FLAG:Cスキマ自動仕様
+		PRINTFORMW 자동 사용은 \@ FLAG:Cスキマ自動仕様 ? 켜짐 # 꺼짐 \@으로 전환되었다.
+		CONTINUE
+	CASE 9001
+		;[虫捕りをする]へ転送
+		CALL SHOW_MUSHI_CAGE
+		CONTINUE
+	CASE 9998
+		IF 対象 != ORIG_TARGET
+			対象 = ORIG_TARGET
+		ELSEIF TARGET != ORIG_TARGET
+			対象 = TARGET
+		ENDIF
+		CONTINUE
+	CASE 2000 TO 2008
+		表示アイテム種別 = RESULT % 2000
+		CONTINUE
+	CASE 7777, 8888
+		SIF nPageLength == 0
+			CONTINUE
+		nPage = PAGE_HANDLE(RESULT, 8888, nPage, 0, nPageLength)
+		CONTINUE
+ENDSELECT
+RETURN RESULT
+LOOP 1
+;replacement for the original function
+
+@PRINT_ITEM_EXPLANATION2(ARG)
+;SIF GROUPMATCH(ARG, 501, 502, 503, 505, 506, 507, 508, 509, 511)
+;	SETCOLOR C_ORANGE
+SIF ITEMTYPE_SWEETS(ARG) || ITEMTYPE_FOOD(ARG) || GROUPMATCH(ITEMTYPE_MOD(ARG), 3, 4)
+	SETCOLOR C_GREEN
+PRINTFORM [{ARG,3}] %ITEMNAME_TR(ARG), 28, LEFT%
+RESETCOLOR
+PRINTFORML 　수량: {ITEM:ARG, 2}
+SETCOLOR C_L_GRAY
+PRINTFORML 　%BREAKENG(ITEM_EXPLANATION(ARG), 0, "\n  ")%
+RESETCOLOR
+
+@QoL_AllItemSort
+#DIM LSTART
+#DIMS strCategory = "全て", "調教", "日用品", "素質", "体質変化", "調合物", "弾幕", "消耗品", "お酒", "食材", "野菜", "お肉", "チョコ", "回復", "園芸用品", "素材", "製材", "衣装", "書物", "特殊", "その他", "Bionic", "Organ", "ClothesTR"
+#DIMS strCategoryTR = "All", "Sex", "Tools", "Traits", "Body", "Chems", "Danmaku", "Consumables", "Booze", "Ingredients", "Veggies", "Meat", "Chocolate", "Restoratives", "Gardening", "Materials", "Wood", "Costumes", "Book", "Special", "Misc", "Bionics", "Organs", "Clothes"
+#DIMS strCurrentCat
+#DIM PADDING = 32
+#DIM 表示数
+SIF !STRLENS(strCurrentCat)
+	strCurrentCat '= "全て"
+DRAWLINE
+PRINTL
+CALL PRINTLINE("Item List")
+LSTART = LINECOUNT
+PRINTL
+DO
+SIF LINECOUNT - LSTART > 0
+	CLEARLINE LINECOUNT - LSTART
+CALL LIST_ITEM(strCurrentCat)
+WHILE 20-(LINECOUNT-LSTART) > 0
+PRINTL
+WEND
+;Create quick page buttons
+DRAWLINE
+SETCOLOR 0x6686FF
+LOCAL:1 = 0
+FOR LOCAL, 0, VARSIZE("strCategoryTR")
+LOCALS '= strCategoryTR:LOCAL
+SIF strCurrentCat == strCategory:LOCAL
+	LOCALS = [%LOCALS%]
+PRINTBUTTON CENTER(LOCALS,20), 3000 + LOCAL
+SIF ++(LOCAL:1) % 7 == 0
+	PRINTL
+NEXT
+;NAS: line formatting
+SIF (LOCAL:1) % 7
+	PRINTL
+RESETCOLOR
+DRAWLINE
+PRINTL [777] 아이템 모드 보기
+PRINTL [888] 검색
+PRINTL [999] 돌아가기
+INPUT
+SELECTCASE RESULT
+	CASE 777
+		CALL Add_ShowItemMods
+		WAIT
+	CASE 888
+		PRINTL 입력 아이템 이름:
+		INPUTS
+		PRINTFORML 검색 중: %RESULTS%
+		表示数 = 0
+		FOR LOCAL, 0, VARSIZE("ITEM") ;qol custom code
+		IF (STRCOUNT(TOLOWER(ITEMNAME_TR(LOCAL)), TOLOWER(RESULTS))) && ITEM:LOCAL
+			;custom code, formatting printing
+			LOCALS = %ITEMNAME_TR(LOCAL)%({ITEM:LOCAL})
+			IF STRLENS(LOCALS) > PADDING
+				IF 表示数 % 3 == 0 && 表示数 % 4 != 0
+					表示数 ++
+					PRINTL
+				ENDIF
+				PRINTFORM %@"%ITEMNAME_TR(LOCAL)%({ITEM:LOCAL})", PADDING*2, LEFT%
+				;SIF 表示数 % 4 != 0
+				表示数 ++
+			ELSE
+				PRINTFORM %LOCALS, PADDING, LEFT%
+			ENDIF
+			;-----------
+			表示数 ++
+			SIF 表示数 % 4 == 0
+				PRINTL 
+		ENDIF
+		NEXT
+		SIF 表示数 % 4 != 0
+			PRINTL 
+		WAIT
+	CASE 999
+		RETURN
+	CASE 3000 TO 3000+LOCAL
+		strCurrentCat '= strCategory:(RESULT-3000)
+ENDSELECT
+LOOP 1
+
+@QOL_LIST_ITEM_HTML(TYPE = "全て")
+#DIMS TYPE
+#DIM DYNAMIC 表示数
+#DIM PADDING = 32 ;tweak if necessary in translated, make sure to merge logging branch afterwards
+;全部回す
+FOR LOCAL, 0, VARSIZE("ITEM") ;qol custom code
+CALL ITEMDATA(LOCAL, "TYPE:" + TYPE)
+IF RESULT && ITEM:LOCAL
+	;custom code, formatting printing
+	LOCALS = %ITEMNAME_TR(LOCAL)%({ITEM:LOCAL})
+	IF STRLENS(LOCALS) > PADDING
+		IF 表示数 % 3 == 0 && 表示数 % 4 != 0
+			表示数 ++
+			HTML_PRINT LOCALS:10
+			LOCALS:10 =
+		ENDIF
+		LOCALS:10 += MO_ITEM(@"%LOCALS, PADDING*2, LEFT%", ITEM_EXPLANATION(LOCAL))
+		表示数 ++
+	ELSE
+		LOCALS:10 += MO_ITEM(@"%LOCALS, PADDING, LEFT%", ITEM_EXPLANATION(LOCAL))
+	ENDIF
+	;-----------
+	表示数 ++
+	IF 表示数 % 4 == 0
+		HTML_PRINT LOCALS:10
+		LOCALS:10 =
+	ENDIF
+ENDIF
+NEXT
+IF 表示数 % 4 != 0
+	HTML_PRINT LOCALS:10
+	LOCALS:10 =
+ENDIF
+;take care of all the html garbage
+
+@MO_ITEM(strToPrint, strToolTip, strFont, nBold)
+#FUNCTIONS
+#DIMS strToPrint
+#DIMS strToolTip
+#DIMS strFont
+#DIM nBold
+;get current font color by default
+SIF !STRLENS(strFont)
+	strFont '= TOSTR(GETCOLOR(),"X6")
+LOCALS '= HTML_ESCAPE(strToPrint)
+RETURNF @"<font color='#%strFont%'><nonbutton title='%HTML_ESCAPE(strToolTip)%'>%LOCALS%</nonbutton></font>"
+
+@QOL_ITEM_SEX_ALLOWED(ARG)
+#FUNCTION
+SIF ITEMTYPE_DRUG(ARG)
+	RETURNF 1
+SIF GROUPMATCH(ARG, 996)
+	RETURNF 1
+RETURNF 0

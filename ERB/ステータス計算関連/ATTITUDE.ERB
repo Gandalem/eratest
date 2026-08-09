@@ -1,0 +1,343 @@
+﻿; Modular ERB: ATTITUDE.ERB
+;FileName_ATTITUDE.ERB --------------------------------- Rev1.00
+;キャラの態度
+;CALL		USER
+;ARG		VOID
+;RETURN		VOID
+;COMMENT
+;-----------------------------------------------------------
+
+@CHARA_ATTITUDE
+VARSET LOCAL
+FOR LOCAL,1,CHARANUM
+SELECTCASE CFLAG:LOCAL:好感度
+	CASE IS < 1000
+		LOCAL:1 = 0
+	CASE 1001 TO 3000
+		LOCAL:1 = 50
+	CASE 3001 TO 5000
+		LOCAL:1 = 75
+	CASE 5001 TO 10000
+		LOCAL:1 = 100
+	CASE 10001 TO 30000
+		LOCAL:1 = 150
+	CASE 30001 TO 50000
+		LOCAL:1 = 200
+	CASEELSE
+		LOCAL:1 = 300
+ENDSELECT
+SELECTCASE CFLAG:LOCAL:信頼度
+	CASE IS < 100
+		LOCAL:1 -= 50
+	CASE 101 TO 300
+		LOCAL:1 -= 20
+	CASE 301 TO 500
+		LOCAL:1 += 0
+	CASE 501 TO 750
+		LOCAL:1 += 30
+	CASE 751 TO 1000
+		LOCAL:1 += 50
+	CASEELSE
+		LOCAL:1 += 100
+ENDSELECT
+;陥落素質による修正
+LOCAL:1 += TALENT:LOCAL:恋慕 * 100 + TALENT:LOCAL:思慕 * 30 + TALENT:LOCAL:愛欲 * 80 + TALENT:LOCAL:セフレ * 30
+;ABLによる修正
+LOCAL:1 += MIN(ABL:LOCAL:親密, 20) * 10 + MIN(ABL:LOCAL:欲望, 20) * 5
+;PALAMによる修正（共に最大15LV）
+LOCAL:1 += GETPALAMLV(PALAM:LOCAL:欲情,15) * 5 + GETPALAMLV(PALAM:LOCAL:好意,15) * 5
+;ムードと理性のよる修正
+LOCAL:1 += BASE:LOCAL:ムード / 25 + (1000 - BASE:LOCAL:理性) / 25
+;刻印による修正
+LOCAL:1 += MARK:LOCAL:不埒刻印 * 20 + MARK:LOCAL:快楽刻印 * 20
+LOCAL:1 -= MIN(MARK:LOCAL:反発刻印 - MARK:LOCAL:時姦刻印 , 0) * 30
+;お薬
+IF TCVAR:LOCAL:発情
+	LOCAL:1 += 50
+ELSEIF TCVAR:LOCAL:惚れ薬 || TCVAR:LOCAL:媚薬
+	LOCAL:1 += 30
+ENDIF
+;addition custom code, drunk
+SIF TCVAR:LOCAL:泥酔 > 0
+	LOCAL:1 += 70
+IF IsGardenValid(LOCAL)
+	LOCAL:1 += 40
+ELSEIF IsInsenceValid(LOCAL)
+	LOCAL:1 += 30
+ENDIF
+;男嫌い
+SIF OTOKOGIRAI(LOCAL)
+	LOCAL:1 -= 70
+;同性で両刀でない場合、態度が2以上になりにくい
+;コメントに従った条件に改造、なお、ふたなりは同性扱い
+IF TALENT:LOCAL:性別嗜好 != -1 && HETEROSEX(MASTER, LOCAL)
+	IF LOCAL:1 < 150
+		LOCAL:1 += 20
+	ELSEIF LOCAL:1 > 200
+		LOCAL:1 -= 30
+	ENDIF
+	;ENDIF
+ENDIF
+SIF TALENT:LOCAL:ヤリマン
+	LOCAL:1 += 400
+SIF CFLAG:LOCAL:無理矢理膣射
+	LOCAL:1 -= 100
+SIF LOCAL:1 >= 100 && FLAG:甲斐性無
+	LOCAL:1 += 50
+;NAS: Cheats
+IF NASCheat:1
+	LOCAL:1 = 10000
+ENDIF
+CFLAG:LOCAL:合意判定 = LOCAL:1
+CFLAG:LOCAL:合意判定 += TCVAR:Common_Sense_Alteration_Status * 4 ;hypnosis patch
+SELECTCASE CFLAG:LOCAL:合意判定
+	CASE IS >= 500
+		CFLAG:LOCAL:態度 = 3
+	CASE IS >= 300
+		CFLAG:LOCAL:態度 = 2
+	CASE IS >= 150
+		CFLAG:LOCAL:態度 = 1
+	CASEELSE
+		CFLAG:LOCAL:態度 = 0
+ENDSELECT
+;NAS: Cheat lead around
+IF NasCheat:0
+	CFLAG:LOCAL:態度 = 3
+ENDIF
+;hypnosis patch
+IF CFLAG:LOCAL:態度 < 2 && TALENT:LOCAL:合意誤認
+	CFLAG:LOCAL:態度 = 2
+	SIF CFLAG:LOCAL:合意判定 < 300
+		CFLAG:LOCAL:合意判定 = 300
+ENDIF
+CALL LS_AGREEMENT(LOCAL) ;Custom code, agreement modification during Lunatic Survival.
+;-----------------------------------------------
+SIF CFLAG:LOCAL:ブチギレ && !FLAG:70
+	CFLAG:LOCAL:態度 = 0
+SIF CFLAG:LOCAL:睡眠
+	CFLAG:LOCAL:態度 = 0
+NEXT
+;FileName_ATTITUDE.ERB ------------------------------- Rev1.00
+;キス成否判定
+;CALL		USER
+;ARG		コマンドNO
+;RETURN		1:コマンド拒否, 0:コマンド成功
+;COMMENT
+;-----------------------------------------------------------
+
+@REJECT_CHECK(ARG)
+#FUNCTION
+#DIM 必要値
+必要値 = 0
+VARSET LOCAL
+;パラメータにより成功基礎値判定
+SELECTCASE ARG
+	;キス
+	CASE 312, 602
+		必要値 = 200 + FuckReserved(TARGET) * 30 + ABS(TALENT:キス未経験) * 20
+		SIF GETBIT(CFLAG:既成事実, 0)
+			必要値 -= 20
+		SIF TALENT:思慕 && !TALENT:恋慕
+			必要値 -= 30
+		;キスにより合意が付く、合意有りの場合判定無し
+		IF (CFLAG:合意判定 > 必要値) || GETBIT(CFLAG:既成事実 , 2)
+			RETURNF 0
+		ELSE
+			RETURNF 1
+		ENDIF
+ENDSELECT
+;TFLAG:194 (1=人目がある　2=野外は嫌でござりまする　3=多人数プレイは勘弁　4=合意があってもムードが足りぬ
+;TCVAR:抱き寄せ初回　1=普通に合意ゲット　2=先にキスぐらいしろよ　3=媚薬or発情には勝てなかったよお…　4=悔しい…刻印さえなければﾋﾞｸﾋﾞｸﾝ　5=強引に迫られると断れぬ
+;6=まんざらでもない　7=駄目　8=論外　9=挿入禁止 10= 守矢くじデート相手
+
+@抱き寄せ(ARG)
+#DIM 好意判定値
+#DIM 理性判定値
+#DIM 合意つかない
+#DIM DIFFERENCE
+合意つかない = 0
+好意判定値 = CFLAG:ARG:合意判定*CapacityStats:MASTER:5/100
+理性判定値 = 抱き寄せ必要値(ARG)*CapacityStats:ARG:5/100
+;発情などはあらかじめCFLAG:合意判定で勘定に入っているが、
+;そのことを強調する演出のためにあえてそこを差し引いておく
+IF TCVAR:ARG:発情
+	好意判定値  -= 50
+ELSEIF TCVAR:ARG:惚れ薬 || TCVAR:LOCAL:媚薬
+	好意判定値  -= 30
+ENDIF
+SIF TFLAG:仙香玉兎
+	好意判定値 -= 30
+;従来の100単位でハートを出す形式だと並ぶ数が少なくて寂しいので、50単位にする
+CALL SHOW_LOVEPOWER(好意判定値,50)
+CALL SHOW_REASONWALL(理性判定値,50)
+;この補正だけは合意を阻害しない
+IF CFLAG:ARG:ヤラせちゃった
+	CALL COLORMESSAGE(@"강제로 이루어졌든 아니든 %HE_SHE(TARGET)%는 이전에 허락했기에 그 결과로 %HIS_HER(TARGET)%의 저항을 약간 낮췄다.",C_YELLOW,2)
+	理性判定値 -= 20
+	CALL SHOW_REASONWALL(理性判定値,50)
+ENDIF
+IF TALENT:ARG:妄想の産物
+	TIMES 理性判定値, 0
+	CALL COLORMESSAGE(@"진짜 사람은 아니고, 그저 상상일 뿐이다. 당신과 나 사이에 일어날 모든 것은 거짓이다.",C_YELLOW,1,1)
+	CALL SHOW_REASONWALL(理性判定値,50)
+ENDIF
+IF 好意判定値 >= 理性判定値
+	IF !GETBIT(CFLAG:ARG:既成事実 , 0) && TALENT:ARG:SexKnow != -1
+		TCVAR:ARG:抱き寄せ初回 = 2
+	ELSE
+		TCVAR:ARG:抱き寄せ初回 = 1
+	ENDIF
+	;補正なしで押し倒さないと合意がつかない
+	SETBIT CFLAG:ARG:既成事実 , 1
+	CALL COLORMESSAGE(@"당신은 %CALLNAME:ARG%의 동의를 받는다.",C_YELLOW,2)
+ELSE
+	IF TCVAR:ARG:発情
+		理性判定値  -= 50
+		CALL COLORMESSAGE(@"발정으로 괴로워하는 %CALLNAME:ARG%의 몸이 당신을 갈망하기 시작한다 %HIS_HER(ARG)%의 의지에 맞서...",C_YELLOW,2)
+	ELSEIF TCVAR:ARG:惚れ薬 || TCVAR:LOCAL:媚薬
+		理性判定値  -= 30
+		CALL COLORMESSAGE(@"%CALLNAME:ARG%의 몸이 약 때문에 \@ TCVAR:ARG:惚れ薬 ? 심장이 빠르게 뛰기 시작한다 # 몸이 아프기 시작한다 \@...",C_YELLOW,2)
+	ENDIF
+	SIF TCVAR:ARG:惚れ薬 || TCVAR:LOCAL:媚薬 || TCVAR:ARG:発情
+		CALL SHOW_REASONWALL(理性判定値,50)
+	IF IsGardenValid(ARG)
+		理性判定値  -= 50
+		CALL COLORMESSAGE(@"매혹적인 향이 %CALLNAME:ARG%의 본능을 자극한다...",C_YELLOW,2)
+		CALL SHOW_REASONWALL(理性判定値,50)
+	ENDIF
+	IF TFLAG:仙香玉兎
+		理性判定値  -= 30
+		CALL COLORMESSAGE(@"%CALLNAME:ARG%은(는) 신비롭고 수상한 달콤한 향기를 알아차린다.",C_YELLOW,2)
+		CALL SHOW_REASONWALL(理性判定値,50)
+	ENDIF
+	;custom code
+	IF TCVAR:ARG:Exhibitionist_Nudist_Sense && ((CFLAG:現在位置 != 連れ込み宿 && CFLAG:現在位置 != ラブホ && CFLAG:現在位置 != OMANEKIBEYA()) && !特殊うふふ条件(ARG))
+		理性判定値  -= 30
+		CALL COLORMESSAGE(@"%CALLNAME:ARG%은 당신과 %HIM_HER(ARG)%이 공공장소에서 섹스하는 것이 발각될 생각에 욕망으로 떨었다.",C_YELLOW,2)
+		CALL SHOW_REASONWALL(理性判定値,50)
+	ENDIF
+	IF 好意判定値 >= 理性判定値
+		TCVAR:ARG:抱き寄せ初回 = 3
+	ELSEIF FLAG:守矢くじデート相手 == ARG
+		TCVAR:ARG:抱き寄せ初回 = 10
+	ELSE
+		IF CFLAG:ARG:体目当て
+			CALL COLORMESSAGE(@"욕망을 독점하는 미라다의 천년석이 빛나기 시작한다...!",C_YELLOW,2)
+			SIF FuckReserved(ARG)
+				CALL COLORMESSAGE(@"...하지만 %HIM_HER(ARG)%가 【Reserved】인 경우 효과가 절반으로 줄어든다!",C_YELLOW,1)
+			理性判定値 -= 100 / (FuckReserved(ARG) + 1)
+			CALL SHOW_REASONWALL(理性判定値,50)
+		ENDIF
+		IF MARK:ARG:時姦刻印
+			CALL COLORMESSAGE(@"시간 정지 중에 개발되었기에, %조사처리(CALLNAME:TARGET,"의")% 몸은 %HIS_HER(TARGET)%가 하든 상관없이 당신을 갈망하기 시작한다...",C_YELLOW,2)
+			理性判定値 -= MARK:ARG:時姦刻印 * 30
+			CALL SHOW_REASONWALL(理性判定値,50)
+		ENDIF
+		IF TALENT:ARG:Slave
+			TIMES 理性判定値, 0.1
+			CALL COLORMESSAGE(@"노예가 된 %CALLNAME:ARG%는 명령 불복종에 대한 처벌을 두려워한다.",C_YELLOW,1,1)
+			CALL SHOW_REASONWALL(理性判定値,50)
+		ENDIF
+		IF BASE:ARG:Hypno
+			理性判定値 = 理性判定値 - BASE:ARG:Hypno
+			CALL COLORMESSAGE(@"%CALLNAME:ARG%은 최면 상태에서 정신이 팔려 있다...",C_YELLOW,1,1)
+			CALL SHOW_REASONWALL(理性判定値,50)
+		ENDIF
+		IF 好意判定値 >= 理性判定値
+			TCVAR:ARG:抱き寄せ初回 = 4
+		ELSEIF CFLAG:ARG:負け犬
+			TCVAR:ARG:抱き寄せ初回 = 20
+		ELSEIF 好意判定値 >= 理性判定値 - 50
+			IF TALENT:ARG:度胸 < 0
+				TCVAR:ARG:抱き寄せ初回 = 5
+			ELSE
+				TCVAR:ARG:抱き寄せ初回 = 6
+			ENDIF
+		ELSEIF 好意判定値 >= 理性判定値 - 150
+			TCVAR:ARG:抱き寄せ初回 = 7
+		ELSE
+			TCVAR:ARG:抱き寄せ初回 = 8
+		ENDIF
+	ENDIF
+ENDIF
+SELECTCASE TCVAR:ARG:抱き寄せ初回
+	CASE 1 TO 5
+		;NAS: Non Con Warning
+		CALL NAS_NonConWarning(ARG,1)
+		SIF RESULT == -1
+			RETURN -1
+		;--------------------------
+		CFLAG:ARG:うふふ = 1
+		CFLAG:MASTER:うふふ = 1
+		SIF TCVAR:ARG:抱き寄せ初回 == 5
+			SOURCE:ARG:恐怖 += 1000
+		IF !GETBIT(CFLAG:ARG:既成事実, 1)
+			CFLAG:ARG:ヤラせちゃった = 1
+			CALL CheckSinsForSex(MASTER, ARG, 1)
+		ELSE
+			;NAS: Religion
+			CALL CheckSinsForSex(MASTER, ARG, 0)
+		ENDIF
+	CASE 6
+		SOURCE:ARG:情愛 += 500
+		TFLAG:押し倒せない ++
+	CASE 7
+		SOURCE:ARG:反感 += 1000
+		TFLAG:押し倒せない ++
+		TFLAG:98 = -3
+	CASE 10
+		SOURCE:ARG:反感 += 1000
+		TFLAG:98 = -10
+		;bug fix to initiate sex
+		TCVAR:ARG:無理矢理 = 1
+		CFLAG:ARG:うふふ = 1
+		CFLAG:MASTER:うふふ = 1
+	CASE 20
+		SOURCE:ARG:反感 += 1000
+		TFLAG:98 = -10
+		TCVAR:ARG:無理矢理 = 1
+		CFLAG:ARG:うふふ = 1
+		CFLAG:MASTER:うふふ = 1
+	CASE 8
+		SOURCE:ARG:反感 += 3000
+		TFLAG:押し倒せない ++
+		TFLAG:98 = -5
+		SIF TALENT:ARG:度胸 < 0
+			SOURCE:ARG:恐怖 += 1000
+ENDSELECT
+;NAS: Conscious Rape
+IF GROUPMATCH(TCVAR:ARG:抱き寄せ初回,6,7,8)
+	CALL NAS_RapeOption(ARG)
+	RETURN RESULT
+ENDIF
+IF GROUPMATCH(TCVAR:ARG:抱き寄せ初回,6,7,8)
+	CALL NAS_RapeOption(ARG)
+	RETURN RESULT
+ENDIF
+
+@抱き寄せ必要値(ARG)
+#FUNCTION
+LOCAL = 350
+LOCAL += FuckReserved(ARG) * 50 + TALENT:ARG:プライド * 30 + TALENT:ARG:態度 * 20 - TALENT:ARG:性的興味 * 20 + TALENT:ARG:貞操 * 50
+SIF !GETBIT(CFLAG:ARG:既成事実 , 0)
+	LOCAL += 20
+;両刀でなく同性
+IF TALENT:ARG:性別嗜好 != -1
+	SIF OTOKOGIRAI(ARG)
+		LOCAL += 50
+ENDIF
+;恋慕も思慕も愛欲もなし
+SIF !TALENT:ARG:思慕 && !TALENT:ARG:恋慕 && !TALENT:ARG:愛欲
+	LOCAL += 50
+;男嫌い
+SIF OTOKOGIRAI(ARG)
+	LOCAL += 50
+;無知
+SIF TALENT:ARG:SexKnow == -1
+	LOCAL -= 50
+SIF CFLAG:ARG:弱み握られ
+	LOCAL -= 50
+;欲求不満
+LOCAL -= CFLAG:ARG:溜まってる度 / 20
+LOCAL -= (EX:ARG:Ｃ寸止め + EX:ARG:Ｖ寸止め + EX:ARG:Ａ寸止め + EX:ARG:Ｂ寸止め + EX:ARG:Ｍ寸止め) * 20
+RETURNF LOCAL

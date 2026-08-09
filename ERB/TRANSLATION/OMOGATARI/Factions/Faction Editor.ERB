@@ -1,0 +1,1239 @@
+﻿; Modular ERB: OMOGATARI/Factions/Faction Editor.ERB
+
+@SELECT_FACTION_EDIT
+#DIM CREDRAW
+#DIM FIRST_LINE
+FIRST_LINE = LINECOUNT
+CREDRAW = CURRENTREDRAW()
+$REPRINT
+CLEARLINE LINECOUNT - FIRST_LINE
+REDRAW 0
+DRAWLINE
+PRINTL 수정할 진영을 선택해 주십시오. 이는 사실상 모든 보증을 무효화합니다.
+PRINTL 
+FOR LOCAL,0,MaxFactions
+IF FactionName(LOCAL) == ""
+	CONTINUE
+ENDIF
+PRINTFORML [{LOCAL,2}] - %FactionName(LOCAL)%
+NEXT
+PRINTL
+PRINTL [999] 되돌리기
+INPUT
+SELECTCASE RESULT
+	CASE 0 TO CHARANUM-1
+		IF FactionName(RESULT) == ""
+			PRINTFORMW 죄송하지만 " "이 누구인지 또는 무엇인지 전혀 모르겠어요.
+			GOTO REPRINT
+		ENDIF
+		CALL FACTION_EDIT(RESULT, 1)
+	CASE 999
+		RETURN
+ENDSELECT
+GOTO REPRINT
+
+@FACTION_EDIT(ARG, CHEAT=0)
+#DIM DYNAMIC CHEAT
+#DIM DYNAMIC nLineCnt_Head
+#DIM DYNAMIC PAGE       ;表示中のページ
+#DIMS CONST FE_CATEGORY = "Name", "Units", "Technical Ability", "Areas", "Relations", "Info"
+DRAWLINE
+nLineCnt_Head = LINECOUNT
+REDRAW 0
+$Reprint
+CLEARLINE LINECOUNT - nLineCnt_Head
+PRINTFORML %FactionName(ARG)% 편집하기
+DRAWLINE
+TRYCALLFORM FACTION_EDITOR_PAGE_{PAGE}(ARG,CHEAT)
+DRAWLINE
+RESETCOLOR
+FOR LOCAL, 0, VARSIZE("FE_CATEGORY")
+SIF PAGE == LOCAL
+	SETCOLOR 0x00FFFF
+; SIF GROUPMATCH(PAGE,2) && !CHEAT
+;     CONTINUE
+PRINTBUTTON FE_CATEGORY:LOCAL, LOCAL + 8002
+RESETCOLOR
+PRINTFORM 　　
+NEXT
+RESETCOLOR
+PRINTFORML 
+PRINTBUTTON "[9999] 커스터마이징 종료", 9999
+DO
+INPUT
+SELECTCASE RESULT
+	CASE 8002 TO VARSIZE("FE_CATEGORY")+8002
+		PAGE = RESULT-8002
+	CASE 9998 ;custom code
+		BREAK
+	CASE 9999 ;custom code
+		IF !CHEAT
+			PRINTFORML 파벌 편집기를 나가시겠습니까?
+			CALL ASK_YN()
+			SELECTCASE RESULT
+				CASE 0
+				CASE 1
+					GOTO REPRINT
+			ENDSELECT
+		ENDIF
+		RETURN 9999
+	CASEELSE
+		TRYCALLFORM FACTION_EDITOR_RESULT_{PAGE}(ARG, CHEAT, RESULT)
+		;REUSELASTLINE Invalid Input
+		;CONTINUE
+ENDSELECT
+BREAK
+LOOP 1
+GOTO REPRINT
+;=============================================================================================================
+;=============================================================================================================
+;=============================================================================================================
+;=============================================================================================================
+;=============================================================================================================
+
+@FACTION_EDITOR_PAGE_0(ARG,CHEAT)
+#DIM CHEAT
+PRINTBUTTON @"[%FactionAbbreviation:ARG,6,LEFT%] ", 801
+PRINTBUTTON @"%FactionNames:ARG%", 800
+PRINTL
+PRINTL
+PRINTBUTTON @"%"Name",15,LEFT%: %FactionNames:ARG%", 800
+PRINTL
+PRINTBUTTON @"%"Tag",15,LEFT%: %FactionAbbreviation:ARG%", 801
+PRINTL
+PRINTBUTTON @"%"Member Name",15,LEFT%: %FactionMemberName:ARG%", 803
+PRINTL
+PRINTBUTTON @"%"Faction Disabled",15,LEFT%: %YesOrNo(FactionDisabled:ARG)%", 804
+PRINTL
+
+@FACTION_EDITOR_RESULT_0(ARG, CHEAT, nInput)
+#DIM CHEAT
+#DIM nInput
+SELECTCASE nInput
+	CASE 800
+		PRINTFORML 30자 미만의 이름을 입력하시오.
+		PRINTBUTTON @"[취소] ", "[GOODBYECRUELWORLD]"
+		PRINTL
+		INPUTS
+		IF !STRLENS(RESULTS)
+			PRINTFORMW 진영 이름은 비어 있을 수 없다.
+			RESTART
+		ELSEIF RESULTS == "[GOODBYECRUELWORLD]"
+			RETURN
+		ELSEIF STRLENS(RESULTS) > 30
+			PRINTFORMW 진영 이름이 30자를 초과했습니다.
+			RESTART
+		ELSE
+			PRINTFORML 수락됨.
+			PRINTFORMW 패션 이름은 이제 %RESULTS%이다.
+			FactionNames:ARG '= RESULTS
+		ENDIF
+	CASE 801
+		PRINTFORML 6자 미만의 약어를 입력하세요.
+		PRINTBUTTON @"[취소] ", "[GOODBYECRUELWORLD]"
+		PRINTL
+		INPUTS
+		IF !STRLENS(RESULTS)
+			PRINTFORMW 약어는 비어 있을 수 없다.
+			RESTART
+		ELSEIF RESULTS == "[GOODBYECRUELWORLD]"
+			RETURN
+		ELSEIF STRLENS(RESULTS) > 6
+			PRINTFORMW 약어가 6자보다 길다.
+			RESTART
+		ELSE
+			PRINTFORML 수락됨.
+			PRINTFORMW 약어는 이제 [%RESULTS,6,LEFT%]이다.
+			FactionAbbreviation:ARG '= RESULTS
+		ENDIF
+	CASE 803
+		PRINTFORML 멤버들을 위한 일반적인 용어를 15자 미만으로 입력하라
+		PRINTBUTTON @"[취소] ", "[GOODBYECRUELWORLD]"
+		PRINTL
+		INPUTS
+		IF !STRLENS(RESULTS)
+			PRINTFORMW 약어는 비어 있을 수 없다.
+			RESTART
+		ELSEIF RESULTS == "[GOODBYECRUELWORLD]"
+			RETURN
+		ELSEIF STRLENS(RESULTS) > 15
+			PRINTFORMW 멤버 용어가 15자보다 길다.
+			RESTART
+		ELSE
+			PRINTFORML 수락했다.
+			PRINTFORMW 멤버 용어는 이제 %RESULTS%이다.
+			FactionMemberName:ARG '= RESULTS
+		ENDIF
+	CASE 804
+		FactionDisabled:ARG = !FactionDisabled:ARG
+ENDSELECT
+;=============================================================================================================
+;=============================================================================================================
+;=============================================================================================================
+;=============================================================================================================
+;=============================================================================================================
+
+@FACTION_EDITOR_PAGE_1(ARG,CHEAT)
+#DIM FE_UNITS,100
+#DIM FE_COUNT
+#DIM FE_UNIT
+#DIM E_ID
+#DIM CHEAT
+FE_COUNT = DT_SELECT("FactionUnits", @"faction = {ARG}", "",FE_UNITS)
+FOR FE_UNIT,0,FE_COUNT
+CALL PRINTLINE, @"유닛 {FE_UNIT}"
+PRINTFORML %DT_CELL_GETS(@"FactionUnits", FE_UNITS:FE_UNIT, "unit name",1)%
+PRINTFORML 계급: %FACTION_RANK_STRING_INDE(ARG,DT_CELL_GET(@"FactionUnits", FE_UNITS:FE_UNIT, "rank",1))%
+PRINTFORML 종족: %RACE_TR(DT_CELL_GETS(@"FactionUnits", FE_UNITS:FE_UNIT, "race",1))%
+PRINTFORML STA: {DT_CELL_GET(@"FactionUnits", FE_UNITS:FE_UNIT, "hp",1)-500}
+PRINTFORML 전투 레벨: {DT_CELL_GET(@"FactionUnits", FE_UNITS:FE_UNIT, "combat level",1)}
+PRINTFORML 희망 무기: %DT_CELL_GETS(@"FactionUnits", FE_UNITS:FE_UNIT, "desired weapon",1)%
+FOR LOCAL,0,25
+SIF GROUPMATCH(LOCAL,10)
+	CONTINUE
+E_ID = DT_CELL_GET(@"FactionUnits", FE_UNITS:FE_UNIT, @"equip {LOCAL}",1)
+SIF !E_ID
+	CONTINUE
+SELECTCASE LOCAL
+	CASE 24
+		PRINTFORML 무기: %UNDIES_NAME_WITH_BRAND(CSV_CHARANUM(),E_ID,1,LOCAL)%
+	CASEELSE
+		PRINTFORML %表示ラベル:LOCAL%: %CLOTHNAME(LOCAL,E_ID)%
+ENDSELECT
+NEXT
+SETCOLOR C_YELLOW
+PRINTFORML 레이드 포인트 비용: {RaidPointCost(FE_UNITS:FE_UNIT)}pts
+RESETCOLOR
+PRINTBUTTON "[단위 편집]", FE_UNITS:FE_UNIT
+PRINTL
+NEXT
+DRAWLINE
+FOR LOCAL:1,1,7
+IF LOCAL:1 == 6 && !FactionUnits:ARG:(LOCAL:1)
+	SETCOLOR C_RED
+ENDIF
+IF CHEAT
+	PRINTFORML [{LOCAL:1,3}] - %FACTION_RANK_STRING_INDE(ARG,LOCAL:1),15,LEFT%: %PALAM_NUM_NAS(FactionUnits:ARG:(LOCAL:1))%
+ELSE
+	PRINTPLAINFORM %FACTION_RANK_STRING_INDE(ARG,LOCAL:1),15,LEFT%: %PALAM_NUM_NAS(FactionUnits:ARG:(LOCAL:1))%
+	PRINTL
+ENDIF
+RESETCOLOR
+NEXT
+PRINTFORML [850] - 새로운 유닛
+
+@FACTION_EDITOR_RESULT_1(ARG, CHEAT, nInput)
+#DIM CHEAT
+#DIM nInput, 2
+SELECTCASE nInput
+	CASE IS >= 600000000000000000
+		CALL FACTION_UNIT_EDIT(nInput, CHEAT)
+	CASE 850
+		DT_ROW_ADD @"FactionUnits", "faction", ARG, "unit name", @"새로운 %FactionAbriv(ARG)% 유닛", "race", "町娘", "hp", 2000, "rank", 1, "combat level", 0,
+		CALL FACTION_UNIT_EDIT(RESULT, CHEAT)
+	CASE 1 TO 6
+		SIF !CHEAT
+			RETURN
+		PRINTFORML %FACTION_RANK_STRING_INDE(ARG,nInput)% 유닛 수를 변경한다 (현재 %PALAM_NUM_NAS(FactionUnits:ARG:nInput)%개).
+		PRINTL
+		PRINTFORML [-1] 취소
+		INPUT
+		nInput:1 = RESULT
+		SELECTCASE RESULT
+			CASE -1
+				RETURN
+			CASE IS < 0
+				PRINTFORMW 유닛 수는 0보다 커야 한다!
+			CASEELSE
+				PRINTFORMW %FACTION_RANK_STRING_INDE(ARG,nInput)%의 수가 이제 %PALAM_NUM_NAS(nInput:1)%이다.
+				FactionUnits:ARG:(nInput) = nInput:1
+		ENDSELECT
+ENDSELECT
+
+@FACTION_UNIT_EDIT(ARG, CHEAT)
+#DIM CHEAT
+#DIM nInput
+#DIM FUE_LINECOUNT
+#DIM FUE_FACTION
+#DIM FUE_RANK
+#DIM FUE_COST
+#DIM FUE_LEVEL
+#DIMS nInputs
+FUE_LINECOUNT = LINECOUNT
+$REPRINT
+FUE_FACTION = DT_CELL_GET(@"FactionUnits", ARG, "faction",1)
+FUE_RANK = DT_CELL_GET(@"FactionUnits", ARG, "rank",1)
+FUE_COST = RaidPointCost(ARG)
+FUE_LEVEL = DT_CELL_GET(@"FactionUnits", ARG, "combat level",1)
+CLEARLINE LINECOUNT-FUE_LINECOUNT
+DRAWLINE
+PRINTFORML %DT_CELL_GETS(@"FactionUnits", ARG, "unit name",1)% 편집하기
+DRAWLINE
+PRINTFORML [100] - 이름: %DT_CELL_GETS(@"FactionUnits", ARG, "unit name",1)%
+PRINTFORML [110] - 최대 스태미나: {DT_CELL_GET(@"FactionUnits", ARG, "hp",1)-500}
+PRINTFORML [111] - 계급: %Faction_rank_string_inde(FUE_FACTION,FUE_RANK)%
+PRINTFORM [112] - 전투 레벨: 
+CALL PRINT_RANK(RANK_TO_LEVEL(FUE_LEVEL),"MAX_6")
+PRINTFORML  {FUE_LEVEL}
+PRINTFORML [150] - 종족: %RACE_TR(DT_CELL_GETS(@"FactionUnits", ARG, "race",1))%
+PRINTL
+PRINTFORML [400] - 원하는 무기: %DT_CELL_GETS(@"FactionUnits", ARG, "desired weapon",1)%
+PRINTFORML [410] - 장비 설정
+PRINTL
+SETCOLOR C_YELLOW
+PRINTFORML 레이드 포인트 비용: {FUE_COST}pt
+RESETCOLOR
+PRINTL
+PRINTFORML [980] - 유닛 삭제
+PRINTFORML [999] - 유닛 편집기 나가기
+DO
+INPUT
+nInput = RESULT
+SELECTCASE nInput
+	CASE 100
+		PRINTFORML 이것은 당신의 유닛이 갖게 될 일반적인 이름이다.
+		PRINTFORML 30자 미만의 이름을 입력해라.
+		PRINTBUTTON @"[취소] ", "[GOODBYECRUELWORLD]"
+		PRINTL
+		INPUTS
+		IF !STRLENS(RESULTS)
+			PRINTFORMW 유닛 이름은 비어 있을 수 없습니다.
+			RESTART
+		ELSEIF RESULTS == "[GOODBYECRUELWORLD]"
+			CONTINUE
+		ELSEIF STRLENS(RESULTS) > 30
+			PRINTFORMW 유닛 이름이 30자를 초과한다.
+			RESTART
+		ELSE
+			PRINTFORML 수락했다.
+			PRINTFORMW 유닛 이름은 이제 %RESULTS%이다.
+			DT_CELL_SET @"FactionUnits", ARG, "unit name", RESULTS,1
+		ENDIF
+	CASE 110
+		gLineCount = LINECOUNT
+		LOCAL:5 = RaidPointCost(ARG)
+		LOCAL:6 = DT_CELL_GET(@"FactionUnits", ARG, "hp",1)
+		DO
+		CLEARLINE LINECOUNT-gLineCount
+		PRINTFORML 스태미나 값을 0보다 크게 입력하시오 (최대 HP는 %FACTION_RANK_STRING_INDE(DT_CELL_GET(@"FactionUnits", ARG, "faction",1),DT_CELL_GET(@"FactionUnits", ARG, "rank",1))%: {FACTION_MAX_HP(DT_CELL_GET(@"FactionUnits", ARG, "faction",1),DT_CELL_GET(@"FactionUnits", ARG, "rank",1))-500})
+		PRINTFORML 스태미나 포인트를 1500 초과할 때마다 20 포인트당 1회 레이드 포인트가 소모된다.
+		PRINTL
+		PRINTBUTTON "[1000]", 1000
+		PRINTBUTTON " [1500]", 1500
+		PRINTBUTTON " [2000]", 2000
+		PRINTBUTTON " [2500]", 2500
+		PRINTBUTTON " [3000]", 3000
+		PRINTBUTTON " [3500]", 3500
+		PRINTBUTTON " [4000]", 4000
+		PRINTL
+		PRINTBUTTON "[취소]", -1
+		INPUT
+		LOCAL:2 = RESULT
+		SELECTCASE RESULT
+			CASE -1
+				BREAK
+			CASE IS <= 0
+				PRINTFORMW 스태미나가 0 미만이다!
+			CASE IS > FACTION_MAX_HP(DT_CELL_GET(@"FactionUnits", ARG, "faction",1),DT_CELL_GET(@"FactionUnits", ARG, "rank",1))-500
+				PRINTFORMW 스태미나가 계급 최대치({FACTION_MAX_HP(DT_CELL_GET(@"FactionUnits", ARG, "faction",1),DT_CELL_GET(@"FactionUnits", ARG, "rank",1))-500})보다 높다!
+			CASEELSE
+				DT_CELL_SET @"FactionUnits", ARG, "hp", LOCAL:2+500 ,1
+				PRINTFORML \@ LOCAL:2+500 > LOCAL:6 ? 증가 # 감소 \@ {LOCAL:6}에서 {LOCAL:2+500}까지의 체력
+				PRINTFORML 레이드 포인트 비용: {LOCAL:5} -> {RaidPointCost(ARG)}
+				PRINTFORML 이 변경 사항들을 유지하시겠습니까?
+				CALL ASK_YN
+				SELECTCASE RESULT
+					CASE 0
+						BREAK
+					CASE 1
+						DT_CELL_SET @"FactionUnits", ARG, "hp", LOCAL:6,1
+				ENDSELECT
+		ENDSELECT
+		LOOP 1
+	CASE 111
+		gLineCount = LINECOUNT
+		DO
+		CLEARLINE LINECOUNT-gLineCount
+		PRINTFORML 랭크는 전투 기교에 보너스를 주고 STA와 전투 랭크의 상한을 증가시킨다. 
+		PRINTFORML 하지만 더 높은 랭크의 유닛은 얻기 어렵고 레이드 포인트를 더 많이 소모한다.
+		PRINTL
+		FOR LOCAL,1,7
+		PRINTBUTTON @"[%Faction_rank_string_inde(FUE_FACTION,LOCAL)% (FactionUnits:FUE_FACTION:LOCAL의 %PALAM_NUM_NAS(FactionUnits:FUE_FACTION:LOCAL)% 남음)]", LOCAL
+		NEXT
+		PRINTL
+		PRINTBUTTON "[취소]", -1
+		INPUT
+		LOCAL:2 = RESULT
+		SELECTCASE RESULT
+			CASE -1
+				BREAK
+			CASE IS <= 0
+				PRINTFORMW 등급이 0 미만이다!
+			CASE IS > 6
+				PRINTFORMW %Faction_rank_string_inde(FUE_FACTION,6)%보다 더 좋은 랭크는 없다!
+			CASEELSE
+				DT_CELL_SET @"FactionUnits", ARG, "rank", LOCAL:2 ,1
+				PRINTFORML \@ LOCAL:2 > FUE_RANK ? 승진 # 강등 \@ %Faction_rank_string_inde(FUE_FACTION,FUE_RANK)%에서 %Faction_rank_string_inde(FUE_FACTION,LOCAL:2)%로 (%PALAM_NUM_NAS(FactionUnits:FUE_FACTION:(LOCAL:2))% 남음)
+				PRINTFORML 레이드 포인트 비용: {FUE_COST} -> {RaidPointCost(ARG)}
+				PRINTFORML 최대 STA: {FACTION_MAX_HP(FUE_FACTION,FUE_RANK)} -> {FACTION_MAX_HP(FUE_FACTION,LOCAL:2)}
+				PRINTFORM 최대 전투 레벨: 
+				CALL PRINT_RANK(RANK_TO_LEVEL(FACTION_MAX_LEVEL(FUE_FACTION,FUE_RANK)),"MAX_6")
+				PRINTFORM {FACTION_MAX_LEVEL(FUE_FACTION,FUE_RANK)} -> 
+				CALL PRINT_RANK(RANK_TO_LEVEL(FACTION_MAX_LEVEL(FUE_FACTION,LOCAL:2)),"MAX_6")
+				PRINTFORML  {FACTION_MAX_LEVEL(FUE_FACTION,LOCAL:2)}
+				PRINTFORML 이 변경 사항들을 유지하시겠습니까?
+				CALL ASK_YN
+				SELECTCASE RESULT
+					CASE 0
+						DT_CELL_SET @"FactionUnits", ARG, "hp", MIN(DT_CELL_GET(@"FactionUnits", ARG, "hp",1),FACTION_MAX_HP(FUE_FACTION,LOCAL:2)),1
+						DT_CELL_SET @"FactionUnits", ARG, "combat level", MIN(DT_CELL_GET(@"FactionUnits", ARG, "combat level",1),FACTION_MAX_LEVEL(FUE_FACTION,LOCAL:2)),1
+						BREAK
+					CASE 1
+						DT_CELL_SET @"FactionUnits", ARG, "rank", FUE_RANK,1
+				ENDSELECT
+		ENDSELECT
+		LOOP 1
+	CASE 112
+		gLineCount = LINECOUNT
+		DO
+		CLEARLINE LINECOUNT-gLineCount
+		PRINTFORM 전투 레벨 0 이상을 입력하세요.
+		PRINTFORM (%FACTION_RANK_STRING_INDE(FUE_FACTION,FUE_RANK)%의 최대 레벨:) 
+		CALL PRINT_RANK(RANK_TO_LEVEL(FACTION_MAX_LEVEL(FUE_FACTION,FUE_RANK)),"MAX_6")
+		PRINTFORML  {FACTION_MAX_LEVEL(FUE_FACTION,FUE_RANK)})
+		PRINTL
+		FOR LOCAL,0,FACTION_MAX_LEVEL(FUE_FACTION,FUE_RANK)+1
+		CALL PRINT_RANK(RANK_TO_LEVEL(LOCAL),"MAX_6")
+		PRINTBUTTON @" {LOCAL}", LOCAL
+		PRINTFORML
+		NEXT
+		PRINTL
+		PRINTBUTTON "[취소]", -1
+		INPUT
+		LOCAL:2 = RESULT
+		SELECTCASE RESULT
+			CASE -1
+				BREAK
+			CASE IS < 0
+				PRINTFORMW 전투 레벨은 0 미만일 수 없다!
+			CASE IS > 10
+				PRINTFORMW 레벨 10보다 높은 레벨은 없다!
+			CASE IS > FACTION_MAX_LEVEL(FUE_FACTION,FUE_RANK)
+				PRINTFORMW 전투 레벨이 랭크 한도({FACTION_MAX_LEVEL(FUE_FACTION,FUE_RANK)})보다 높다!
+			CASEELSE
+				DT_CELL_SET @"FactionUnits", ARG, "combat level", LOCAL:2 ,1
+				PRINTFORML \@ LOCAL:2 > FUE_LEVEL ? 증가 # 감소 \@ 레벨을 {FUE_LEVEL}에서 {LOCAL:2}로 변경한다.
+				PRINTFORML 레이드 포인트 비용: {FUE_COST} -> {RaidPointCost(ARG)}
+				PRINTFORM 전투 레벨: 
+				CALL PRINT_RANK(RANK_TO_LEVEL(FUE_LEVEL),"MAX_6")
+				PRINTFORM {FUE_LEVEL} -> 
+				CALL PRINT_RANK(RANK_TO_LEVEL(LOCAL:2),"MAX_6")
+				PRINTFORML  {LOCAL:2}
+				PRINTFORML 이 변경 사항들을 유지하고 싶습니까?
+				CALL ASK_YN
+				SELECTCASE RESULT
+					CASE 0
+						BREAK
+					CASE 1
+						DT_CELL_SET @"FactionUnits", ARG, "combat level", FUE_LEVEL,1
+				ENDSELECT
+		ENDSELECT
+		LOOP 1
+	CASE 150
+		PRINTFORML 아래 목록에서 선택해 주세요.
+		PRINTBUTTON "[마을 소녀] ", "町娘"
+		PRINTBUTTON "[유부녀] ", "人妻"
+		PRINTBUTTON "[요정] ", "妖精"
+		PRINTBUTTON "[메이드 요정] ", "メイド妖精"
+		PRINTBUTTON "[좀비 요정] ", "ゾンビフェアリー"
+		PRINTBUTTON "[Kappa] ", "河童"
+		PRINTBUTTON "[화이트 울프 텐구] ", "白狼天狗"
+		PRINTBUTTON "[토끼] ", "イナバ"
+		PRINTBUTTON "[달토끼] ", "玉兎"
+		PRINTBUTTON "[오니] ", "鬼"
+		PRINTBUTTON "[타누키] ", "化け狸"
+		PRINTBUTTON "[여우] ", "化け狐"
+		PRINTBUTTON "[바케네코] ", "化け猫"
+		PRINTBUTTON @"[취소] ", "[GOODBYECRUELWORLD]"
+		INPUTS
+		nInputs '= RESULTS
+		SELECTCASE nInputs
+			CASE "[GOODBYECRUELWORLD]"
+			CASEELSE
+				IF RACE_TR(nInputs) == nInputs
+					PRINTFORMW 이 종족은 존재하지 않는다!
+					GOTO REPRINT
+				ENDIF
+				PRINTFORMW 수락되었다. 종족이 %RACE_TR(nInputs)%으로 변경되었다.
+				DT_CELL_SET @"FactionUnits", ARG, "race", nInputs,1
+		ENDSELECT
+	CASE 980
+		PRINTFORML 이 유닛을 삭제하시겠습니까?
+		PRINTFORML 복구할 수 없습니다.
+		CALL ASK_YN()
+		SELECTCASE RESULT
+			CASE 0
+				PRINTFORMW 유닛이 삭제되었다.
+				DT_ROW_REMOVE "FactionUnits", ARG
+				RETURN
+			CASE 1
+		ENDSELECT
+	CASE 400
+		CALL PREF_WEAPON_SELECT(ARG)
+	CASE 410
+		CALL UNIT_EQUIP_CONFIG(ARG)
+	CASE 999
+		RETURN
+ENDSELECT
+BREAK
+LOOP 1
+GOTO REPRINT
+;Desired Weapon
+
+@PREF_WEAPON_SELECT(ARG)
+#DIMS SELECTION_OFFERING, 200
+#DIMS TEMP_SPLIT, 200
+#DIM DYNAMIC SELECTION_INT
+#DIMS CONST PFS_INT_TABS = "TYPE", "CLASS", "TECH", "CALIBER", "BRAND", "OTHER"
+#DIMS CONST PFS_TABS = "Types", "Class", "Technical Level", "Caliber", "Brands", "Other"
+#DIM DYNAMIC PFS_PAGE
+#DIM DYNAMIC PFS_COUNT
+#DIM CONST PFS_PADDING = 30
+#DIM PFS_SIZE, 2
+#DIMS DYNAMIC PFS_HTML
+#DIM PFS_RESULT
+#DIM PFS_LINECOUNT
+#DIM PFS_CHANGING
+#DIM PFS_WEAPS
+#DIMS PFS_WEAPS_IDS
+#DIMS PFS_WEAPS_ID_SPLIT,200
+#DIMS PFS_WEAPS_NAMES,2000
+#DIM PFS_WEAPS_POINTS,2000
+FOR LOCAL,0,VAR_TEMP_MAX*2
+PFS_WEAPS_NAMES:LOCAL '= PrintWeaponName(0,LOCAL,1,2)
+PFS_WEAPS_POINTS:LOCAL = WeaponRaidPointCost(DT_CELL_GET(@"FactionUnits", ARG, "faction",1),LOCAL)
+NEXT
+gLinecount = LINECOUNT
+DO
+CLEARLINE LINECOUNT - gLineCount
+VARSET SELECTION_OFFERING
+VARSET SELECTION_INT
+VARSET PFS_COUNT
+VARSET TEMP_SPLIT
+VARSET PFS_WEAPS_ID_SPLIT
+PRINTL 원하는 무기 선택
+DRAWLINE
+PFS_WEAPS = MakeDesiredWeapon(DT_CELL_GETS(@"FactionUnits", ARG, "desired weapon",1),1,ARG, "Weapon")
+PFS_WEAPS_IDS '= RESULTS
+IF !PFS_WEAPS
+	PRINTFORML 당신의 무기 선택에서 무기를 찾을 수 없습니다!
+ELSE
+	PRINTFORML 당신의 선택은 %NUM_COUNT(PFS_WEAPS)% ({PFS_WEAPS}) 무기를 반환했다.
+	SPLIT PFS_WEAPS_IDS, "/", PFS_WEAPS_ID_SPLIT
+	VARSET PFS_COUNT
+	FOR LOCAL,0,VARSIZE("PFS_WEAPS_ID_SPLIT")
+	SIF !TOINT(PFS_WEAPS_ID_SPLIT:LOCAL) && !TOINT(PFS_WEAPS_ID_SPLIT:(LOCAL+1))
+		BREAK
+	PRINTFORM %PFS_WEAPS_NAMES:(TOINT(PFS_WEAPS_ID_SPLIT:LOCAL))+@" ({PFS_WEAPS_POINTS:(TOINT(PFS_WEAPS_ID_SPLIT:LOCAL))}pts)",PFS_PADDING,LEFT%
+	PFS_COUNT ++
+	SIF PFS_COUNT % (MAXWIDTH()/PFS_PADDING)
+		CONTINUE
+	PRINTL
+	VARSET PFS_COUNT
+	NEXT
+	SIF PFS_COUNT % (MAXWIDTH()/PFS_PADDING)
+		PRINTL
+	VARSET PFS_COUNT
+ENDIF
+DRAWLINE
+SELECTCASE PFS_PAGE
+	CASEELSE
+		FOR LOCAL,0,VAR_TEMP_MAX
+		SPLIT WEAP_TOTAL_TAGS(MASTER,LOCAL), "/", TEMP_SPLIT
+		FOR LOCAL:1,0,VARSIZE("SELECTION_OFFERING")
+		SIF !STRLENS(TEMP_SPLIT:(LOCAL:1)) || TEMP_SPLIT:(LOCAL:1) == "0"
+			BREAK
+		LOCALS:1 '= TEMP_SPLIT:(LOCAL:1)+"/"
+		;got brand
+		TRYCALLFORM PREF_WEAPON_%PFS_INT_TABS:PFS_PAGE%(TEMP_SPLIT:(LOCAL:1))
+		IF RESULT
+			$LineCheck
+			IF FINDELEMENT(SELECTION_OFFERING, TEMP_SPLIT:(LOCAL:1)) == -1
+				SELECTION_OFFERING:SELECTION_INT '= TEMP_SPLIT:(LOCAL:1)
+				SELECTION_INT ++
+			ENDIF
+		ENDIF
+		NEXT
+		NEXT
+ENDSELECT
+FOR LOCAL,0,VARSIZE("SELECTION_OFFERING")
+SIF !STRLENS(SELECTION_OFFERING:LOCAL) && !(PFS_PAGE == 4 && LOCAL == 0)
+	CONTINUE
+SIF !STRLENS(UNDIES_TAGS(SELECTION_OFFERING:LOCAL))
+	CONTINUE
+PFS_HTML += UndiePrefData(SELECTION_OFFERING:LOCAL, STRCOUNT(DT_CELL_GETS(@"FactionUnits", ARG, "desired weapon",1),SELECTION_OFFERING:LOCAL+"/"), PFS_PADDING, LOCAL)
+PFS_COUNT ++
+SIF PFS_COUNT % (MAXWIDTH()/PFS_PADDING)
+	CONTINUE
+$FORCE_PRINT
+HTML_PRINT PFS_HTML
+VARSET PFS_HTML
+VARSET PFS_COUNT
+NEXT
+SIF PFS_COUNT % (MAXWIDTH()/PFS_PADDING)
+	GOTO FORCE_PRINT
+DRAWLINE
+FOR LOCAL, 0, VARSIZE("PFS_TABS")
+SIF PFS_PAGE == LOCAL
+	SETCOLOR 0x00FFFF
+;exception for player character
+PRINTBUTTON PFS_TABS:LOCAL, LOCAL + 8000
+RESETCOLOR
+PRINTFORM 　　
+NEXT
+PRINTL
+DRAWLINE
+PRINTFORML [997] - 모두 지우기
+PRINTFORML [998] - 나가기
+;PRINTFORML [999] - Cancel
+INPUT
+PFS_RESULT = RESULT
+SELECTCASE PFS_RESULT
+	CASE 997
+		DT_CELL_SET @"FactionUnits", ARG, "desired weapon", "",1
+	CASE 998
+		RETURN
+	CASE 8000 TO 8000 + VARSIZE("PFS_TABS")
+		PFS_PAGE = PFS_RESULT-8000
+	CASE 0 TO VARSIZE("SELECTION_OFFERING")
+		PFS_CHANGING = PFS_RESULT
+		IF STRCOUNT(DT_CELL_GETS(@"FactionUnits", ARG, "desired weapon",1),@"%SELECTION_OFFERING:PFS_CHANGING%/")
+			DT_CELL_SET @"FactionUnits", ARG, "desired weapon", REPLACE(DT_CELL_GETS(@"FactionUnits", ARG, "desired weapon",1), @"%SELECTION_OFFERING:PFS_CHANGING%/",""),1
+		ELSE
+			DT_CELL_SET @"FactionUnits", ARG, "desired weapon", DT_CELL_GETS(@"FactionUnits", ARG, "desired weapon",1)+@"%SELECTION_OFFERING:PFS_CHANGING%/",1
+		ENDIF
+ENDSELECT
+LOOP 1
+
+@PREF_WEAPON_TYPE(ARGS)
+SIF STRFIND(UNDERWEAR_TYPES,ARGS) > -1
+	RETURN 1
+SIF STRFIND(ARGS,"firearm") > -1
+	RETURN 1
+SIF STRFIND(ARGS,"melee") > -1
+	RETURN 1
+SIF STRFIND(ARGS,"explosive") > -1
+	RETURN 1
+SIF STRFIND(ARGS,"youjutsu") > -1
+	RETURN 1
+RETURN 0
+
+@PREF_WEAPON_CLASS(ARGS)
+SIF GROUPMATCH(ARGS, "1h blunt", "2h blunt", "1h blade", "2h blade")
+	RETURN 1
+SIF GROUPMATCH(ARGS, "pistol", "carbine", "rifle", "assault rifle", "machine gun", "light machine gun", "medium machine gun", "heavy machine gun")
+	RETURN 1
+SIF GROUPMATCH(ARGS, "revolver", "thrown", "spear", "shotgun", "sniper rifle", "autopistol", "bow", "battle rifle")
+	RETURN 1
+SIF GROUPMATCH(ARGS, "musket", "airgun")
+	RETURN 1
+SIF STRFIND(ARGS," magic") > -1
+	RETURN 1
+RETURN 0
+
+@PREF_WEAPON_BRAND(ARGS)
+#DIMS PFB_STR,2
+SELECTCASE ARGS
+	CASEELSE
+		PFB_STR:0 '= ALL_BRANDS_NAMES(ARGS,0)
+		;got brand
+		IF ARGS != PFB_STR:0
+			RETURN 1
+		ENDIF
+ENDSELECT
+RETURN 0
+
+@PREF_WEAPON_TECH(ARGS)
+FOR LOCAL,0,MAX_TECH_LEVEL+1
+SIF TOLOWER(AllTechLevels(LOCAL)) == ARGS
+	RETURN 1
+NEXT
+RETURN 0
+
+@PREF_WEAPON_CALIBER(ARGS)
+ARGS '= TOLOWER(ARGS)
+;Pistol
+SIF GROUPMATCH(ARGS, "5.6x15mmr", "9x19mm", "9x18mm", "9x17mm", "10x25mm", "11.43x23mm", "5.7x28mm", "9x33mmr", "10.9x29mmr", "9x29mmr", "8.3x30mm", "7.62x20mm")
+	RETURN 1
+;Intermediate
+SIF GROUPMATCH(ARGS, "5.56x45mm", "7.62x39mm","5.6x15mmr", "5.45x39mm", "5.8x62mm", "6.8x51mm")
+	RETURN 2
+;Full
+SIF GROUPMATCH(ARGS, "7.62x54mmr", "7.62x51mm", "7.62x63mm", "11x60mmR")
+	RETURN 3
+;Anti-Material
+SIF GROUPMATCH(ARGS, "12.7x99mm", "20x108mm sabot")
+	RETURN 4
+;Shotgun
+SIF GROUPMATCH(ARGS, "18.5x70mm", "23x75mmr", "7.62x32mm sabot")
+	RETURN 5
+;Heavy
+SIF GROUPMATCH(ARGS, "3in ball", "84x245mmr rcl")
+	RETURN 6
+;Specialty
+SIF GROUPMATCH(ARGS, "11x17.8mmr", "mp", "11.63x40mm", "laser", "7.7x58mm", "12.7x35mm", "40x46mm", "14mm", "12.7x35mm")
+	RETURN 9
+; SIF GROUPMATCH(ARGS, "4kw laser", "2kw laser", "8.58x70mm", "14mm")
+;     RETURN 1
+; SIF GROUPMATCH(ARGS,  "72x359mm", "6.5x48mm", "17.3mm", "12.7x33mmrb")
+;     RETURN 1
+; SIF GROUPMATCH(ARGS, "7.62x25mm", "12x32mm", "6x24mm", "8x50mm", "12.7x41mmsr", "100x695mmr", "10.75x58mmr", "7.65x25mm")
+;     RETURN 1
+RETURN 0
+
+@PREF_WEAPON_OTHER(ARGS)
+CALL PREF_WEAPON_TYPE(ARGS)
+SIF RESULT
+	RETURN 0
+CALL PREF_WEAPON_BRAND(ARGS)
+SIF RESULT
+	RETURN 0
+CALL PREF_WEAPON_TECH(ARGS)
+SIF RESULT
+	RETURN 0
+CALL PREF_WEAPON_CALIBER(ARGS)
+SIF RESULT
+	RETURN 0
+CALL PREF_WEAPON_CLASS(ARGS)
+SIF RESULT
+	RETURN 0
+RETURN 1
+;=============================================================================================================
+;=============================================================================================================
+;=============================================================================================================
+;=============================================================================================================
+;=============================================================================================================
+;technical ability
+
+@FACTION_EDITOR_PAGE_2(ARG,CHEAT)
+#DIM FE_UNITS,100
+#DIM FE_COUNT
+#DIM FE_UNIT
+#DIM E_ID
+#DIM CHEAT
+PRINTFORML [100] 기술 능력: %AllTechLevels(FactionTech:ARG)%
+PRINTL
+PRINTFORML [200] 부유함: %金額表示(FactionWealth:ARG),8%
+CALL RESEARCH_MENU(ARG,CHEAT,"「Ability Listing」",RT_TAB)
+
+@FACTION_EDITOR_RESULT_2(ARG, CHEAT, nInput)
+#DIM CHEAT
+#DIM nInput
+SELECTCASE nInput
+	CASE 100
+		PRINTFORML 해당 세력이 어떤 기술 수준에 있는지 선택한다.
+		FOR LOCAL,0,nMaxTech+1
+		PRINTBUTTON "["+AllTechLevels(LOCAL)+"]", LOCAL
+		PRINTL
+		NEXT
+		PRINTL
+		PRINTFORML [-1] 취소
+		INPUT
+		SELECTCASE RESULT
+			CASE IS < 0
+				RETURN
+			CASE 0 TO nMaxTech
+				PRINTFORML 기술 수준은 이제 %AllTechLevels(RESULT)%이다.
+				FactionTech:ARG = RESULT
+				CALL CLEAR_FACTION_RESEARCH(ARG)
+				CALL COMPLETE_RESEARCH_PREVIOUS(ARG)
+		ENDSELECT
+	CASE 200
+		PRINTFORML 부의 변경 (%金額表示(FactionWealth:ARG)% 현재)
+		PRINTL
+		PRINTFORML [-1] 취소
+		INPUT
+		SELECTCASE RESULT
+			CASE -1
+				RETURN
+			CASEELSE
+				PRINTFORMW 부는 이제 %金額表示(RESULT)%이다.
+				SIF RESULT < 0
+					PRINTFORMW 이것은 파벌에게 부채를 지게 할 것이다! 
+				FactionWealth:ARG = RESULT
+		ENDSELECT
+	CASE IS >= 60000000
+		CALL RESEARCH_INPUT(nInput,ARG,CHEAT)
+	CASE 2 TO VARSIZE("FactionTableTabs")+95000
+		RT_TAB = nInput-95000
+ENDSELECT
+;=============================================================================================================
+;=============================================================================================================
+;=============================================================================================================
+;=============================================================================================================
+;=============================================================================================================
+;areas
+
+@FACTION_EDITOR_PAGE_3(ARG,CHEAT)
+#DIM FE_UNITS,100
+#DIM FE_COUNT
+#DIM FE_UNIT
+#DIM E_ID
+#DIM CHEAT
+FOR LOCAL,0,20
+SIF !GET_EXISTMAP(LOCAL)
+	CONTINUE
+PRINTBUTTON @"%GET_MAPNAME(LOCAL),30,LEFT%:", LOCAL 
+IF FactionMainArea:LOCAL == ARG
+	SETCOLOR C_YELLOW
+	LOCALS = Owned
+ELSEIF GETBIT(FactionPatrolArea:ARG,LOCAL)
+	LOCALS = Patroling
+ELSE
+	SETCOLOR C_GRAY
+	LOCALS = Not Patroling
+ENDIF
+PRINTFORM %LOCALS,15,LEFT%
+RESETCOLOR
+SELECTCASE FactionAreaControl:ARG:LOCAL/10
+	CASE IS > 90
+		SETCOLOR BARCOLORSET("青")
+	CASE IS > 75
+		SETCOLOR BARCOLORSET("緑")
+	CASE IS > 50
+		SETCOLOR BARCOLORSET("黄色")
+	CASE IS > 25
+		SETCOLOR BARCOLORSET("オレンジ")
+	CASE IS > 0
+		SETCOLOR BARCOLORSET("赤")
+	CASE IS <= 0
+		SETCOLOR C_GRAY
+ENDSELECT
+PRINTFORM %@"%DecimalPlace(FactionAreaControl:ARG:LOCAL,1),5,RIGHT%\% 통제",15,LEFT%
+RESETCOLOR
+PRINTL
+NEXT
+
+@FACTION_EDITOR_RESULT_3(ARG, CHEAT, nInput)
+#DIM CHEAT
+#DIM nInput, 2
+SELECTCASE nInput
+	CASE 0 TO 20
+		gLineCount = LINECOUNT
+		DO
+		$AREARETRY
+		CLEARLINE LINECOUNT - gLineCount
+		PRINTFORML %GET_MAPNAME(nInput)%의 편집 상태
+		SIF CHEAT
+			PRINTFORML [100] - 제어: %DecimalPlace(FactionAreaControl:ARG:nInput,1),5,RIGHT%\%
+		PRINTFORML [110] - 순찰 중인가: %YesOrNo(GETBIT(FactionPatrolArea:ARG,nInput))%
+		SIF CHEAT
+			PRINTFORML [200] - 소유 지역으로 설정한다 (현재 소유자: \@ FactionMainArea:nInput > -1 ? %FactionName(FactionMainArea:nInput)% # 소유되지 않음 \@)
+		PRINTL
+		PRINTFORML [999] - 나가기
+		INPUT
+		nInput:1 = RESULT
+		SELECTCASE nInput:1
+			CASE 100
+				SIF !CHEAT
+					GOTO AREARETRY
+				PRINTFORML 설정하는 %FactionName(ARG)%의 제어 (현재 %DecimalPlace(FactionAreaControl:ARG:nInput,1),5,RIGHT%\%):
+				FOR LOCAL, 0, 1010, 10
+				;only show 10, 30, 50, 70, 80, 100, 130, 150, 170, 200, 300
+				SELECTCASE LOCAL
+					CASE 0, 50, 100, 300, 500, 700, 800, 1000, FactionAreaControl:ARG:nInput
+					CASEELSE
+						RESETCOLOR
+						CONTINUE
+				ENDSELECT
+				SELECTCASE LOCAL
+					CASE IS < 150
+						SETCOLOR C_D_RED
+					CASE IS < 300
+						SETCOLOR C_RED
+					CASE IS < 500
+						SETCOLOR 0xE9967A
+					CASE 500
+						SETCOLOR C_YELLOW
+					CASE IS < 600
+						SETCOLOR C_P_GREEN
+					CASE IS < 800
+						SETCOLOR C_GREEN
+					CASE IS < 1000
+						SETCOLOR C_AQUA
+					CASEELSE
+						SETCOLOR C_PINK
+				ENDSELECT
+				PRINTBUTTON @"[{LOCAL}] ", LOCAL
+				SIF FactionAreaControl:ARG:nInput == LOCAL
+					PRINTFORM (현재)
+				NEXT
+				RESETCOLOR
+				INPUT
+				FactionAreaControl:ARG:nInput = RESULT
+				PRINTFORMW 수락됨. %FactionName(ARG)%의 통제에 %GET_MAPNAME(nInput)% 이제 ~에 있다 %DecimalPlace(FactionAreaControl:ARG:nInput,1),5,RIGHT%\%
+			CASE 110
+				INVERTBIT FactionPatrolArea:ARG,nInput
+			CASE 200
+				SIF !CHEAT
+					GOTO AREARETRY
+				FactionMainArea:nInput = ARG
+			CASE 999
+				BREAK
+		ENDSELECT
+		LOOP 1
+ENDSELECT
+;=============================================================================================================
+;=============================================================================================================
+;=============================================================================================================
+;=============================================================================================================
+;=============================================================================================================
+;relations
+
+@FACTION_EDITOR_PAGE_4(ARG,CHEAT)
+#DIM FE_UNITS,100
+#DIM FE_COUNT
+#DIM FE_UNIT
+#DIM E_ID
+#DIM CHEAT
+CALL LIST_FACTION_RELATIONS(ARG, 0)
+
+@FACTION_EDITOR_RESULT_4(ARG, CHEAT, nInput)
+#DIM CHEAT
+#DIM nInput, 2
+SELECTCASE nInput
+	CASE MaxFactions
+		gLineCount = LINECOUNT
+		DO
+		CLEARLINE LINECOUNT - gLineCount
+		PRINTFORML %FactionName(ARG)%의 비회원과의 관계를 변경한다.
+		PRINTFORML [100] - 명성: %DIGIT_GROUP(FactionNonMemberFame:ARG)%
+		PRINTFORML [110] - 악명: %DIGIT_GROUP(FactionNonMemberInfamy:ARG)%
+		PRINTL
+		PRINTFORML [999] - 나가기
+		INPUT
+		nInput:1 = RESULT
+		SELECTCASE nInput:1
+			CASE 100
+				PRINTFORML 설정 %FactionName(ARG)%의 명성을 비회원들에게 (현재 %DecimalPlace(FactionNonMemberFame:ARG,1),5,RIGHT%\%):
+				FOR LOCAL, 0, 101000, 1000
+				;only show 10, 30, 50, 70, 80, 100, 130, 150, 170, 200, 300
+				SELECTCASE LOCAL
+					CASE 0, 5000, 10000, 30000, 50000, 70000, 80000, 100000, FactionNonMemberFame:ARG
+					CASEELSE
+						RESETCOLOR
+						CONTINUE
+				ENDSELECT
+				SELECTCASE LOCAL
+					CASE IS < 15000
+						SETCOLOR C_D_RED
+					CASE IS < 30000
+						SETCOLOR C_RED
+					CASE IS < 50000
+						SETCOLOR 0xE9967A
+					CASE 50000
+						SETCOLOR C_YELLOW
+					CASE IS < 60000
+						SETCOLOR C_P_GREEN
+					CASE IS < 80000
+						SETCOLOR C_GREEN
+					CASE IS < 100000
+						SETCOLOR C_AQUA
+					CASEELSE
+						SETCOLOR C_PINK
+				ENDSELECT
+				PRINTBUTTON @"[{LOCAL}] ", LOCAL
+				SIF FactionNonMemberFame:ARG == LOCAL
+					PRINTFORM (현재)
+				NEXT
+				RESETCOLOR
+				INPUT
+				FactionNonMemberFame:ARG = RESULT
+				PRINTFORMW 승인됨. %FactionName(ARG)%의 비회원들에게 명성이 {RESULT}가 되었다.
+			CASE 110
+				PRINTFORML 설정 %FactionName(ARG)%의 비난을 받는 상태 (현재 %DecimalPlace(FactionNonMemberInfamy:ARG,1),5,RIGHT%\%):
+				FOR LOCAL, 0, 101000, 1000
+				;only show 10, 30, 50, 70, 80, 100, 130, 150, 170, 200, 300
+				SELECTCASE LOCAL
+					CASE 0, 5000, 10000, 30000, 50000, 70000, 80000, 100000, FactionNonMemberInfamy:ARG
+					CASEELSE
+						RESETCOLOR
+						CONTINUE
+				ENDSELECT
+				SELECTCASE LOCAL
+					CASE IS < 15000
+						SETCOLOR C_PINK
+					CASE IS < 30000
+						SETCOLOR C_AQUA
+					CASE IS < 50000
+						SETCOLOR C_GREEN
+					CASE 50000
+						SETCOLOR C_P_GREEN
+					CASE IS < 60000
+						SETCOLOR C_YELLOW
+					CASE IS < 80000
+						SETCOLOR 0xE9967A
+					CASE IS < 100000
+						SETCOLOR C_RED
+					CASEELSE
+						SETCOLOR C_D_RED
+				ENDSELECT
+				PRINTBUTTON @"[{LOCAL}] ", LOCAL
+				SIF FactionNonMemberInfamy:ARG == LOCAL
+					PRINTFORM (현재)
+				NEXT
+				RESETCOLOR
+				INPUT
+				FactionNonMemberInfamy:ARG = RESULT
+				PRINTFORMW 수락되었다. %FactionName(ARG)%의 비회원 대상 악명은 이제 {RESULT}이다.
+			CASE 999
+				RETURN
+		ENDSELECT
+		LOOP 1
+	CASE 0 TO MaxFactions-1
+		gLineCount = LINECOUNT
+		DO
+		CLEARLINE LINECOUNT - gLineCount
+		PRINTFORML %FactionName(ARG)%'의 %FactionName(nInput)%와의 관계를 변경한다.
+		PRINTFORML [100] - 명성: %DIGIT_GROUP(FactionTeamFame:ARG:nInput)%
+		PRINTFORML [110] - 악명: %DIGIT_GROUP(FactionTeamInfamy:ARG:nInput)%
+		PRINTFORML
+		IF CHEAT
+			PRINTFORML [200] - 전쟁 중인가: %YesOrNo(FactionWarring:ARG:nInput)%
+			PRINTFORML 전쟁 지역:
+			FOR LOCAL,0,20
+			SIF !GET_EXISTMAP(LOCAL)
+				CONTINUE
+			PRINTBUTTON @"%GET_MAPNAME(LOCAL),30,LEFT%: %YesOrNo(GETBIT(FactionWarringAreas:ARG:nInput, LOCAL))%", 300+LOCAL 
+			PRINTL
+			NEXT
+			PRINTL
+		ENDIF
+		PRINTFORML [999] - 나가기
+		INPUT
+		nInput:1 = RESULT
+		SELECTCASE nInput:1
+			CASE 100
+				PRINTFORML %FactionName(ARG)%의 명성을 %FactionName(nInput)%로 설정한다 (현재 %DecimalPlace(FactionTeamFame:ARG:nInput,1),5,RIGHT%\%):
+				FOR LOCAL, 0, 101000, 1000
+				;only show 10, 30, 50, 70, 80, 100, 130, 150, 170, 200, 300
+				SELECTCASE LOCAL
+					CASE 0, 5000, 10000, 30000, 50000, 70000, 80000, 100000, FactionTeamFame:ARG:nInput
+					CASEELSE
+						RESETCOLOR
+						CONTINUE
+				ENDSELECT
+				SELECTCASE LOCAL
+					CASE IS < 15000
+						SETCOLOR C_D_RED
+					CASE IS < 30000
+						SETCOLOR C_RED
+					CASE IS < 50000
+						SETCOLOR 0xE9967A
+					CASE 50000
+						SETCOLOR C_YELLOW
+					CASE IS < 60000
+						SETCOLOR C_P_GREEN
+					CASE IS < 80000
+						SETCOLOR C_GREEN
+					CASE IS < 100000
+						SETCOLOR C_AQUA
+					CASEELSE
+						SETCOLOR C_PINK
+				ENDSELECT
+				PRINTBUTTON @"[{LOCAL}] ", LOCAL
+				SIF FactionTeamFame:ARG:nInput == LOCAL
+					PRINTFORM (현재)
+				NEXT
+				RESETCOLOR
+				INPUT
+				FactionTeamFame:ARG:nInput = RESULT
+				PRINTFORMW 수락되었다. %FactionName(ARG)%의 명성이 %FactionName(nInput)%에게는 이제 {RESULT}이다.
+			CASE 110
+				PRINTFORML %FactionName(ARG)%의 명성을 %FactionName(nInput)%와 설정한다 (현재 %DecimalPlace(FactionTeamInfamy:ARG:nInput,1),5,RIGHT%\%):
+				FOR LOCAL, 0, 101000, 1000
+				;only show 10, 30, 50, 70, 80, 100, 130, 150, 170, 200, 300
+				SELECTCASE LOCAL
+					CASE 0, 5000, 10000, 30000, 50000, 70000, 80000, 100000, FactionTeamInfamy:ARG:nInput
+					CASEELSE
+						RESETCOLOR
+						CONTINUE
+				ENDSELECT
+				SELECTCASE LOCAL
+					CASE IS < 15000
+						SETCOLOR C_PINK
+					CASE IS < 30000
+						SETCOLOR C_AQUA
+					CASE IS < 50000
+						SETCOLOR C_GREEN
+					CASE 50000
+						SETCOLOR C_P_GREEN
+					CASE IS < 60000
+						SETCOLOR C_YELLOW
+					CASE IS < 80000
+						SETCOLOR 0xE9967A
+					CASE IS < 100000
+						SETCOLOR C_RED
+					CASEELSE
+						SETCOLOR C_D_RED
+				ENDSELECT
+				PRINTBUTTON @"[{LOCAL}] ", LOCAL
+				SIF FactionTeamInfamy:ARG:nInput == LOCAL
+					PRINTFORM (현재)
+				NEXT
+				RESETCOLOR
+				INPUT
+				FactionTeamInfamy:ARG:nInput = RESULT
+				PRINTFORMW 인정되었다. %FactionName(ARG)%의 명성이 %FactionName(nInput)%에 대해 이제 {RESULT}이다.
+			CASE 200
+				SIF CHEAT
+					FactionWarring:ARG:nInput = !FactionWarring:ARG:nInput
+			CASE 300 TO 320
+				SIF CHEAT
+					INVERTBIT FactionWarringAreas:ARG:nInput, nInput:1-300
+			CASE 999
+				RETURN
+		ENDSELECT
+		LOOP 1
+ENDSELECT
+;=============================================================================================================
+;=============================================================================================================
+;=============================================================================================================
+;=============================================================================================================
+;=============================================================================================================
+
+@FACTION_EDITOR_PAGE_5(ARG,CHEAT)
+#DIM CHEAT
+CALL SINGLE_LIST_FACTION_STATE(MASTER, ARG)
+;=============================================================================================================
+;=============================================================================================================
+;=============================================================================================================
+;=============================================================================================================
+;=============================================================================================================
+
+@FormingNewFaction
+#DIM FNF_LINECOUNT
+#DIM FNF_DEPOSIT
+FNF_LINECOUNT = LINECOUNT
+FNF_DEPOSIT = MIN(MONEY,50000)
+SIF FactionNames:99 == "Player's Faction"
+	FactionNames:99 '= @"%조사처리(CALLNAME:MASTER,"의")% 파벌"
+SIF !STRLENS(FactionAbbreviation:99)
+	FactionAbbreviation:99 '= @"PLAYER"
+DO
+CLEARLINE LINECOUNT - FNF_LINECOUNT
+PRINTFORML 새로운 진영을 생성한다
+PRINTL
+PRINTBUTTON @"[%FactionAbbreviation:99,6,LEFT%] ", 801
+PRINTBUTTON @"%FactionNames:99%", 800
+PRINTL
+PRINTBUTTON @"이름 : %FactionNames:99%", 800
+PRINTL
+PRINTBUTTON @"Tag 		   : %FactionAbbreviation:99%", 801
+PRINTL
+PRINTBUTTON @"초기 자금: %金額表示(FNF_DEPOSIT)%", 802
+PRINTL
+PRINTFORML [900] - 신규 진영 생성	
+PRINTFORML [999] - 취소
+INPUT
+SELECTCASE RESULT
+	CASE 800
+		PRINTFORML 30자 미만의 이름을 입력하시오.
+		PRINTBUTTON @"[취소] ", "[GOODBYECRUELWORLD]"
+		PRINTL
+		INPUTS
+		IF !STRLENS(RESULTS)
+			PRINTFORMW 진영 이름은 비어 있을 수 없다.
+			RESTART
+		ELSEIF RESULTS == "[GOODBYECRUELWORLD]"
+			CONTINUE
+		ELSEIF STRLENS(RESULTS) > 30
+			PRINTFORMW 진영 이름이 30자를 초과했습니다.
+			RESTART
+		ELSE
+			PRINTFORML 수락됨.
+			PRINTFORMW 패션 이름은 이제 %RESULTS%이다.
+			FactionNames:99 '= RESULTS
+		ENDIF
+	CASE 801
+		PRINTFORML 6자 미만의 약어를 입력하세요.
+		PRINTBUTTON @"[취소] ", "[GOODBYECRUELWORLD]"
+		PRINTL
+		INPUTS
+		IF !STRLENS(RESULTS)
+			PRINTFORMW 약어는 비어 있을 수 없다.
+			RESTART
+		ELSEIF RESULTS == "[GOODBYECRUELWORLD]"
+			CONTINUE
+		ELSEIF STRLENS(RESULTS) > 6
+			PRINTFORMW 약어가 6자보다 길다.
+			RESTART
+		ELSE
+			PRINTFORML 수락됨.
+			PRINTFORMW 약어는 이제 [%RESULTS,6,LEFT%]이다.
+			FactionAbbreviation:99 '= RESULTS
+		ENDIF
+	CASE 900
+		PRINTFORML 이 설정으로 파벌을 형성하고 싶은 것이 확실한가요?
+		PRINTFORML 언제든지 파벌 메뉴에서 변경할 수 있습니다.
+		CALL ASK_YN
+		SIF RESULT
+			CONTINUE
+		PlayersFactionLeader = MASTER
+		PlayersFactionMade = 1
+		FactionDisabled:99 = 0
+		FactionRank:MASTER:99 = 6
+		FactionUnits:99:6 ++
+		FactionExperience:MASTER:99 = EXP_DEMAND_FACTION_RANK(6)
+		FactionWealth:99 += FNF_DEPOSIT
+		FactionPermaFriendly:MASTER:99 = 1
+		CALL PAY_MONEY_YEN(FNF_DEPOSIT,2)
+		RETURN
+	CASE 999
+		RETURN
+ENDSELECT
+LOOP 1
+
+@UNIT_EQUIP_CONFIG(ARG)
+DO
+; CALL SHOW_CLOTHES(C_ID, "ModularClothes")
+PRINTFORML 유닛의 옷을 변경한다.
+PRINTFORML 의상을 선택한다.
+FOR LOCAL, 1, 29
+SIF GROUPMATCH(LOCAL,10)
+	CONTINUE
+PRINTFORM [{LOCAL,3}] - %表示ラベル:LOCAL%
+SIF DT_CELL_GET(@"FactionUnits",ARG, @"equip {LOCAL}",1)
+	PRINTFORM : %UNDIES_NAME_WITH_BRAND(CSV_CHARANUM(),DT_CELL_GET(@"FactionUnits",ARG, @"equip {LOCAL}",1),1,FINDELEMENT(EQUIPNAME, 表示部位:LOCAL))%
+PRINTL
+NEXT
+PRINTFORML 
+PRINTFORML [999] - 반환
+INPUT
+SELECTCASE RESULT
+	;CASE 17
+	;	DEBUG_Target = C_ID
+	;	TRYCALL Com_Debug_PantsGet
+	CASE 0 TO 29
+		; CALL COM_ClothesGet(C_ID,FINDELEMENT(EQUIPNAME, 表示部位:RESULT))
+		CALL UNIT_EQUIP_CONFIG_ITEM_CATEGORY(ARG,RESULT)
+	CASE 999
+		RETURN
+	CASEELSE
+		REUSELASTLINE Invalid input
+		CONTINUE
+ENDSELECT
+LOOP 1
+
+@UNIT_EQUIP_CONFIG_ITEM_CATEGORY(ARG,ARG:1)
+SELECTCASE ARG:1
+	CASE 24
+		CALL Weapon_Chose_State(MASTER,,1)
+		; DT_CELL_GET(@"FactionUnits", FE_UNITS:FE_UNIT, @"equip {LOCAL}",1)
+		SIF RESULT >= 0
+			DT_CELL_SET @"FactionUnits", ARG, @"equip {24}", RESULT, 1
+	CASEELSE
+		CALL COM_ClothesGet(MASTER,FINDELEMENT(EQUIPNAME, 表示部位:RESULT))
+		SIF RESULT >= 0
+			DT_CELL_SET @"FactionUnits", ARG, @"equip {ARG:1}", RESULT, 1
+ENDSELECT

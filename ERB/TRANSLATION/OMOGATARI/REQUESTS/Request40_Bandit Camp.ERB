@@ -1,0 +1,124 @@
+﻿; Modular ERB: OMOGATARI/REQUESTS/Request40_Bandit Camp.ERB
+;存否関数
+;F関数はTRYCALL系が使えないので通常関数で存否配列を作っちゃう
+
+@EXIST_一般依頼40
+#LOCALSIZE 1
+#LOCALSSIZE 1
+;オブジェクト本体
+;ここでARGで渡されるのはCLIENT_IDです
+
+@一般依頼40(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+SELECTCASE O_DATA
+	CASE "依頼名"
+		CALLF MAKE_STR(V_NAME, @"Bandit Camp")
+	CASE "依頼内容表示"
+		CALLF MAKE_STR(V_NAME, @"적의 진영을 파괴한다.")
+	CASE "依頼報酬表示"
+		CALLF MAKE_STR(V_NAME, @"35 %FactionAbriv(TALENT:ARG:Recruiter-1)% 진영 경험치와 ¥150,000")
+	CASE "依頼実行コマンド名"
+		CALLF MAKE_STR(V_NAME, "Attack")
+	CASE "依頼内容"
+		CALLF MAKE_INT(V_NAME, MAKE_IRAI_DATA(RAND_PLACE(ARG, "LOST_ITEM"), "bandit camp"))
+	CASE "依頼サブ"
+		CALLF MAKE_INT(V_NAME, RAND_HUNTING_FACTION(TALENT:ARG:Recruiter-1))
+	CASE "依頼期限"
+		;発生時ではなく受託時に確定します
+		CALLF MAKE_INT(V_NAME, YearLength)
+	CASE "依頼発生率"
+		;これは他の一般依頼との相対確率なんで10％ではありません
+		;percentage change of being shown. (set to 100 to always show)
+		;CALLF MAKE_INT(V_NAME, 100)
+		CALLF MAKE_INT(V_NAME, 100)
+	CASE "依頼発生条件"
+		CALLF MAKE_INT(V_NAME, 1)
+	CASE "依頼受託可能条件"
+		;あなたの戦闘能力が1以上
+		IF TALENT:ARG:Recruiter == 0
+			;not a recruiter
+			CALLF MAKE_INT(V_NAME, 0)
+			RETURNF 0
+		ENDIF
+		SIF FactionRank:MASTER:(TALENT:ARG:Recruiter-1)
+			CALLF MAKE_INT(V_NAME, 1)
+	CASE "依頼実行可能条件"
+		CALLF MAKE_INT(V_NAME, 1)
+		;成功/失敗処理はCARRYOUTで直接書く
+		;SOURCEやITEM入手、消費が煩雑になるので
+	CASE "依頼消滅条件"
+		SIF Add_Request_Should_Discard(ARG)
+			CALLF MAKE_INT(V_NAME, 1)
+	CASE "依頼人連れ出し可能"
+	CASE "Faction Only"
+		CALLF MAKE_INT(V_NAME, 1)
+ENDSELECT
+
+@IRAI_一般40(CHARA, IRAI_ID, SCENE)
+#DIM  CHARA
+#DIM  IRAI_ID
+#DIMS SCENE
+#DIM  CLIENT_ID
+#DIM  CHK_SLOT
+#DIM  OPPONENT_REMAIN
+#DIM  IRAI40_RAIDPOINTS
+#DIM  IRAI40_ALLIES_SPAWN
+CLIENT_ID = IRAI_ID_TO_CLIENT(IRAI_ID)
+CHK_SLOT  = SEARCH_IRAI_SLOT(IRAI_ID)
+SELECTCASE SCENE
+	CASE "依頼条件表示"
+		;何か専用の表示情報を設けたい時用
+		;受託済みの依頼表示で使用されます
+		;
+		;PRINT系だけでSOURCEとかは入れちゃダメ、WAITも無しで
+		;ここ以外の表示項目は
+		;PRINTFORML 　　　　　：
+		;となっているのでスペースを揃えたほうが見栄えが良いです
+	CASE "依頼実行時"
+		;このCASEに限り、RESULTが意味を持ちます
+		;依頼実行時のRESULTにはIRAI_CONST_RESULT()を使用してください
+		;可能な引数は"キャンセル", "実行して成功", "実行して失敗", "実行して未解決"です
+		;独自処理を仕込みたい時は"実行して未解決"で先延ばしするなりしてください
+		;
+		;
+		;実行できないパターン
+		;拠点では屋内だとダメ（原作だとめっちゃやってるけど）
+		;ほぼ弾幕勝負のコピペ
+		VARSET IRAI40_ALLIES_SPAWN
+		IRAI40_RAIDPOINTS = 1500
+		WHILE IRAI40_RAIDPOINTS > 0 || IRAI40_ALLIES_SPAWN < 5
+		CALL FactionEnemySpawn(TALENT:CLIENT_ID:Recruiter-1,IRAI40_RAIDPOINTS,1,0)
+		IRAI40_ALLIES_SPAWN ++
+		WEND
+		CALL FACTION_ASSAIANS(MASTER, IRAI_SUB:CHK_SLOT, 3500)
+		IF lcWarResult < 0
+			PRINTFORML 전투에 대해 유효하지 않은 결과({lcWarResult})가 반환되었다.
+			PRINTFORMW 이것을 보고하라!
+			GOTO completeRequest
+		ENDIF
+		IF lcWarResult == 0
+			;you win
+			PRINTFORMW 적의 기지를 파괴했다.
+			$completeRequest
+			CALL FactionChangeControl(TALENT:CLIENT_ID:Recruiter-1,GET_MAPID(CFLAG:MASTER:300),RAND(250,500))
+			CALL FactionChangeControl(IRAI_SUB:CHK_SLOT,GET_MAPID(CFLAG:MASTER:300),-RAND(250,350))
+			RETURN IRAI_CONST_RESULT("実行して成功")
+		ENDIF
+	CASE "依頼成功時"
+		;成功報告時の報酬など
+		SOURCE:歓楽 = 3000
+		CALL CHANGE_CFLAG(2, CLIENT_ID, 50 + RAND:5)
+		CALL CHANGE_CFLAG(4, CLIENT_ID, 15 + RAND:5)
+		CALL GET_SPELL_CARD_BONUS_YEN(150000, 2)
+		CALL CHANGE_FACTION_EXP(MASTER,TALENT:CLIENT_ID:Recruiter-1,35)
+	CASE "依頼失敗時"
+		;失敗報告時の処理
+		;過酷な依頼なので少しだけ
+		PRINTFORML %CALLNAME:CLIENT_ID%는 적을 돌아다니게 내버려 둔 것에 대해 속상해하는 것 같다.
+		CALL CHANGE_CFLAG(2, CLIENT_ID, -3)
+		CALL CHANGE_CFLAG(4, CLIENT_ID, -2)
+ENDSELECT

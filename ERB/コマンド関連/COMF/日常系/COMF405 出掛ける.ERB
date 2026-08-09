@@ -1,0 +1,156 @@
+﻿; Modular ERB: COMF/日常系/COMF405 出掛ける.ERB
+;-------------------------------------------------
+;出掛ける
+;日常系コマンド、レベル1
+;-------------------------------------------------
+
+@COM405
+VARSET LOCAL
+FOR LOCAL,1,CHARANUM
+SIF LOCAL == MASTER
+	CONTINUE
+;NAS: Don't count dead
+SIF IsDead:LOCAL:0
+	CONTINUE
+;NAS: Don't count delusions
+SIF TALENT:LOCAL:妄想の産物
+	CONTINUE
+;NAS: Must be in the same location
+SIF CFLAG:LOCAL:300 != CFLAG:MASTER:300
+	CONTINUE
+IF CFLAG:(LOCAL):同行
+	LOCAL:1 ++
+	SIF CFLAG:LOCAL:衰弱 || BASE:LOCAL:気力 == 0
+		LOCAL:2 ++
+	SIF !CHARA_HOLIDAY(LOCAL) && BASE:LOCAL:仕事量
+		LOCAL:3 ++
+	SIF CFLAG:LOCAL:態度 < 1 && CAN_IRAI_CHARA_GO_TOGATHER(LOCAL) && !Add_CAN_IRAI_CHARA_GO_OUT_ALWAYS(LOCAL) ;addition custom code, allows taking out of town for specific requests even at low affection
+		LOCAL:4 ++
+ENDIF
+NEXT
+IF NEMUKE() >= 720
+	DRAWLINE
+	PRINTFORML 너무 졸리다고 느껴 외출하지 않기로 결정한다.
+	RETURN -1
+ELSEIF LOCAL:1 > 1 && !MOREDATE
+	DRAWLINE
+	PRINTL 외출할 때는 한 명 이상 데려갈 수 없다.
+	RETURN -1
+ELSEIF LOCAL:2 || BASE:MASTER:気力 == 0
+	DRAWLINE
+	PRINTFORML 너무 피곤하다고 느끼고 외출하지 않기로 결정한다. \@ BASE:MASTER:気力 == 0 ? (ENE은 0) # (파트너도 지침) \@
+	RETURN -1
+ELSEIF LOCAL:3 && FESTIVAL() == ""
+	DRAWLINE
+	PRINTFORML 당신과 동행한 사람은 근무일이라 나갈 수 없었다.
+	RETURN -1
+ELSEIF LOCAL:4
+	DRAWLINE
+	PRINTFORML 서둘러 그 요청을 먼저 끝내라는 말을 듣는다...
+	RETURN -1
+	;(天候パッチ)悪天候時も外出可能に
+	;ELSEIF TIME:5 == 9 || TIME:5 == 5 || WIND_VELOCITY >= 2
+	;	DRAWLINE
+	;	PRINTL The weather is too poor to leave.
+	;	RETURN -1
+ELSEIF TALENT:MASTER:100 < -4
+	DRAWLINE
+	PRINTL 몸이 너무 작아서 외출하기엔 위험하다.
+	RETURN -1
+ELSEIF CapacityStats:MASTER:3 <= 0
+	;NAS movement stuff
+	IF LEGS_BOUND(MASTER)
+		DRAWLINE
+		PRINTFORMW 다리 묶인 채로 이렇게 나갈 수는 없어...
+		RETURN -1
+	ELSEIF IsPartCrippled(MASTER,81) && IsPartCrippled(MASTER,91)
+		DRAWLINE
+		PRINTFORML 당신의 다리는 밖에 나갈 생각조차 할 수 없을 정도로 손상되었다...
+		RETURN -1
+	ELSE
+		DRAWLINE
+		PRINTFORMW 당신은 단순히 움직일 수 있는 능력이 없다...
+		RETURN -1
+	ENDIF
+ELSEIF IsPartCrippled(MASTER,4) && !LOCAL:1
+	DRAWLINE
+	PRINTFORML 당신은 눈이 어둡고 방향 감각이 없다...
+	RETURN -1
+ENDIF
+IF !CHK_ENTRANCE(CFLAG:MASTER:現在位置, MAIN_MAP)
+	PRINTFORML 먼저 %NAME_FROM_PLACE(ENTRANCE)%로 간다.
+	CALL SKIP_MOVE(CFLAG:MASTER:現在位置, ENTRANCE)
+	SIF !CHK_ENTRANCE(CFLAG:MASTER:現在位置, MAIN_MAP) ;bugfix custom code
+		RETURN -1
+	;bugfix custom code, the section below is copied from COMF400
+	PRINTFORM %NAME_FROM_PLACE_THE(ENTRANCE)%를 통과할 때, 
+	LOCAL:10 = 0
+	FOR LOCAL,1,CHARANUM
+	SIF LOCAL == MASTER
+		CONTINUE
+	IF CFLAG:LOCAL:現在位置 == ENTRANCE
+		LOCAL:10 = LOCAL
+		BREAK
+	ENDIF
+	NEXT
+	IF LOCAL:10
+		CALL KOJO_ACTIVE_INFO(LOCAL:10) ;addition custom code, duplicated characters
+		PRINTFORML 당신은 %CALLNAME:(LOCAL:10)%을(를) 마주친다.
+		SIF LS_RESTRICTION("Pass character") ;Custom code, restrict passing during Lunatic Survival.
+			GOTO FORCESTOP
+		IF FLAG:立ち止まり == 2
+			;立ち止まらない
+		ELSEIF FLAG:立ち止まり == 1 && !RESULT
+			;口上がある場合のみ
+		ELSE
+			CALL ASK_M("지나가면서 인사한다.",!FLAG:70,"무시하고 계속 움직인다",1,"멈춰라",1)
+			IF RESULT == 2
+				$FORCESTOP ;Custom code.
+				CALL KOJO_MESSAGE_SEND("EVENT",4,LOCAL:10,1,0)
+				RETURN -1
+			ELSEIF RESULT == 1
+				CALL KOJO_MESSAGE_SEND("EVENT",4,LOCAL:10,3,0)
+			ELSE
+				CALL KOJO_MESSAGE_SEND("EVENT",4,LOCAL:10,2,0)
+			ENDIF
+		ENDIF
+	ELSE
+		PRINTFORML 당신은 아무도 만나지 않는다.
+	ENDIF
+ENDIF
+LOCAL:3 = 0
+DRAWLINE
+CALL OTHERREGIONS("出掛ける")
+LOCAL:2 = RESULT
+LOCAL = 0
+IF LOCAL:2 == MAIN_MAP || LOCAL:2 == 100
+	FLAG:デート相手 = MASTER
+	SIF MOREDATE
+		CALL CLEAN_GROUP_DATES
+	RETURN -1
+ENDIF
+RETURN 1
+
+@COM_ABLE405
+SIF LS_RESTRICTION("Go out") ;Custom code, restrict going out during Lunatic Survival.
+	RETURN 0
+SIF !TFLAG:100
+	RETURN 0
+;一括管理
+SIF GLOBAL_COMABLE(405)
+	RETURN RESULT
+;お持ち帰り中は不可
+;SIF TFLAG:運搬
+;	RETURN 0
+SIF CFLAG:MASTER:添い寝中
+	RETURN 0
+SIF CFLAG:うふふ == 2
+	RETURN 0
+SIF CFLAG:MASTER:イタズラ
+	RETURN 0
+;参道設定
+;SIF !CHK_ENTRANCE(CFLAG:MASTER:現在位置, MAIN_MAP)
+;	RETURN 0
+SIF !AT_HOME(MASTER)
+	RETURN 0
+RETURN 1

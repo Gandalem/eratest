@@ -1,0 +1,1260 @@
+﻿; Modular ERB: OMOGATARI/COM/COMF357 Relieve Self.ERB
+;-------------------------------------------------
+;Relieve Self
+;Allows you to pee in a place and empty your needs.
+;Peeing outside requires you to be desperate
+;Diapers are also used in the same way
+; - Mr Pops alot
+;-------------------------------------------------
+
+@ADD_CUSTOM_COM357
+#DIM LookingChara
+#DIM ACC357_Linecount
+#DIM ACC357_Result
+LookingChara = MASTER
+ACC357_Linecount = LINECOUNT
+SIF !FLAG:70
+	TIME += 2
+DO
+CLEARLINE LINECOUNT - ACC357_Linecount
+CUSTOMDRAWLINE ━
+CALL ACC357_PAGE(LookingChara)
+SETCOLOR C_GRAY
+CUSTOMDRAWLINE ━
+RESETCOLOR
+FOR LOCAL, 0, GET_TARGETNUM()+1
+IF !LOCAL
+	LOCAL:1 = MASTER
+ELSE
+	LOCAL:1 = TARGET:LOCAL
+ENDIF
+SIF LookingChara == LOCAL:1
+	SETCOLOR 0x00FFFF
+;exception for player character
+PRINTBUTTON CALLNAME:(LOCAL:1), LOCAL + 100000
+RESETCOLOR
+PRINTFORM 　　
+NEXT
+PRINTL
+CUSTOMDRAWLINE ━
+[IF_DEBUG]
+PRINTFORML [200] - 변기 괴물 테스트
+[ENDIF]
+SIF CFLAG:MASTER:300 == CFLAG:MASTER:311
+	PRINTFORML [300] - 침대 보호 설정
+PRINTFORML [301] - 임박한 사고 설정
+PRINTFORML [999] - 나 여기에서 나가게 해줘!
+INPUT
+ACC357_Result = RESULT
+SELECTCASE ACC357_Result
+	CASE IS > 100000
+		LookingChara = TARGET:(RESULT-100000)
+	CASE 100000
+		LookingChara = MASTER
+	CASE 100
+		SIF !HasFallState(LookingChara) && LookingChara != MASTER
+			RETURN
+		SIF PANTIES_LOCKED(LookingChara)
+			RETURN
+		CALL Com_DiaperGrab(LookingChara)
+		RETURN
+	CASE 102
+		CALL RandomUnderwearCheck(MASTER,1,TARGET)
+		RETURN
+	CASE 300
+		SIF CFLAG:MASTER:300 == CFLAG:MASTER:311
+			CALL BedProtectionSettings
+		RETURN
+	CASE 301
+		CALL ImminentAccidentSettings
+		RETURN
+	CASE 999
+		RETURN
+	CASEELSE
+		IF inTrain == 3
+			CALL LucidDreamRelieveSelf(LookingChara,ACC357_Result)
+		ELSEIF ACC357_Result != 999
+			CALL DumpingShit(LookingChara,ACC357_Result)
+		ENDIF
+ENDSELECT
+LOOP 1
+
+@PottyPantsFormula(ARG,HasPiss,HasScat)
+#FUNCTION
+#DIM HasPiss
+#DIM HasScat
+VARSET LOCAL
+LOCAL:5 = LIMIT((-PeeHold:ARG:2) + (-PooHold:ARG:2) + LIMIT(ABL:ARG:PeeAddict * HasPiss,0,25) + LIMIT(ABL:ARG:PooAddict * HasScat,0,25), 0, 100)
+IF PeeBarStage(ARG) >= 7
+	LOCAL:5 = 100
+	LOCAL:6 = 1
+ELSEIF PeeBarStage(ARG) >= 6
+	LOCAL:5 = LIMIT(LOCAL:5 + ((-(PeeHold:ARG:2)+1)*3),0,100)
+ENDIF
+IF PooBarStage(ARG) >= 7
+	LOCAL:5 = 100
+	LOCAL:7 = 1
+ELSEIF PooBarStage(ARG) >= 6
+	LOCAL:5 = LIMIT(LOCAL:5 + ((-(PeeHold:ARG:2)+1)*3),0,100)
+ENDIF
+RETURNF LOCAL:5
+
+@PottyPants(ARG,HasPiss,HasScat)
+#DIM HasPiss
+#DIM HasScat
+#DIM PeeSelf
+;no undies
+SIF !EQUIP:ARG:6
+	RETURN 0
+PeeSelf = PottyPantsFormula(ARG,HasPiss,HasScat)
+IF ABL:MASTER:教養 >= UniversalRank("B"); no numbers if ur dumb dumb
+	SETCOLOR C_GRAY
+	PRINTFORML %PARSE("You have",,,ARG)% 하나의 {PeeSelf}\% chance of going inside %PARSE("your",5,,ARG)% %PeeProtectType(ARG,2)%. (지구력: {PeeHold:ARG:0}/{PeeHold:ARG:0}중독도 {ABL:ARG:PeeAddict}/{ABL:ARG:PooAddict})
+	RESETCOLOR
+ENDIF
+SIF RAND(100) < PeeSelf
+	RETURN 1
+
+@DumpingShit(ARG, nInput = 0)
+#DIM HasPiss
+#DIM HasScat
+#DIM PeePadded; 0 = raw, 1 = diape, 2 = catherer.
+#DIM DiapeStand
+#DIM PottyPants
+#DIM ClothingPoints
+#DIM nInput
+#DIM PottyMonsterHappen
+VARSET LOCAL
+CALL FISHER_YATES_SHAFFLE(CHARANUM)
+PottyPants = 0
+PottyMonsterHappen = 0
+VARSET HasPiss
+VARSET HasScat
+SIF PeeBarStage(ARG) >= 1
+	HasPiss = 1
+SIF PooBarStage(ARG) >= 2
+	HasScat = 1
+IF DiapeCharges:ARG:0 >= BASE:ARG:尿意 && !IsPadded(ARG) && nCatheterized:ARG:0 && (HasScat && !CFLAG:ARG:PadCount)
+	DiapeStand = -1
+ELSEIF (DiapeCharges:ARG:0 >= BASE:ARG:尿意 || !HasPiss) && (DiapePooCharges:ARG:0 >= BASE:ARG:Poo || !HasScat)
+	DiapeStand = 1
+ELSE
+	DiapeStand = 0
+ENDIF
+IF ARG == MASTER
+	$TOILETING
+	CALL PottyPants(ARG,HasPiss,HasScat)
+	PottyPants = RESULT
+	SELECTCASE nInput
+		CASE 0
+			IF IS_TOILET(CFLAG:ARG:現在位置, ARG)
+				IF !PottyMonsterHappen && RAND(1000) <= PottyMonsterChance(ARG)
+					CALL POTTY_MONSTER_ENCOUNTER(ARG,HasPiss,HasScat, 0)
+					GOTO PottyingMonsterResult
+				ENDIF
+				CALL MasterGoToilet(HasPiss,HasScat)
+			ELSE
+				IF LOCAL:6 || LOCAL:7
+					CALL CAUSE_OMORASHI(MASTER,HasPiss,HasScat)
+					RETURN
+				ELSEIF PooBarStage(ARG) >= 4 || PeeBarStage(ARG) >= 4
+					IF !INROOM(CFLAG:PLAYER:現在位置)
+						$OpenPee
+						CALL PottyOutside(ARG,HasPiss,HasScat)
+						RETURN
+					ELSE
+						LOCALS = \@ HasPiss ? %FSYN("pee:ing")% #\@\@ HasPiss && HasScat ?%" "%and%" "%#\@\@ HasScat ? %FSYN("poo:ing")% #\@
+						PRINTFORMW %CAPITALIZE(LOCALS)% 실내 바닥에 있으면 심하게 더러워진다!
+						PRINTFORML [998] - 그래도 가야지
+						PRINTFORML [999] - 참을 수 있어......
+						INPUT
+						SELECTCASE RESULT
+							CASE 998
+								GOTO OpenPee
+							CASEELSE
+								RETURN
+						ENDSELECT
+					ENDIF
+				ELSE
+					PRINTFORMW 화장실에 갈 시간이 있는데 밖에 나가서 해방할 필요를 느끼지 못한다.
+					RETURN
+				ENDIF
+			ENDIF
+		CASE 1
+			;PRINTFORMW You leave your %CLOTHES_TR(PANTSNAME(EQUIP:ARG:下半身下着２, ARG))% to absorb everything.
+			$PeePadded
+			CALL INTENTIONAL_ACCIDENT(ARG,HasPiss,HasScat)
+			RETURN
+		CASE 2
+			PRINTFORMW 당신은 가는 동안 %PeeProtectType(MASTER)%를 벗어버린다.
+			CALLF PANTY_REWORK_CHANGE(MASTER,0)
+			nInput = 0
+			GOTO TOILETING
+		CASE 3
+			PRINTFORMW 당신은 압력을 조금 해소하기 위해 자신의 %PeeProtectType(ARG,1)%로 크게 분출한다.
+			CALL PEESOUNDS("hs")
+			CALLF MessUndies(ARG, "liquid", 0, 50)
+			BASE:ARG:尿意 -= 50
+			IF PeeBarStage(ARG) >= 7
+				PRINTFORMW 하지만 그것만으로는 충분하지 않고, 홍수가 터진다...
+				GOTO PeePadded
+			ENDIF
+			RETURN
+		CASE 4
+			IF LOCAL:6
+				PRINTFORML %PARSE("You struggle")% 병을 따기 위해 %PARSE("your")% 아픈 방광...
+				PRINTFORMW %PARSE("You zone",1)% 잠시 동안 온 힘을 다해 병을 따려고 했지만 당신의 주의 산만함이 시작하기에 충분히 길었다 %FSYN("pee:ing")%...
+				PRINTFORMW %PARSE("You")% 어색하게 %PARSE("stand")%손에 병을 들고, ~하면서 %PARSE("you")% 당신 바로 아래에 있는 모든 것을 비워내면서...
+				CALL WetFeelings(ARG)
+				PRINTFORMW \@ ARG == MASTER ? %PARSE("You stop")% # %CALLNAME:ARG%이 멈춘다 \@ \@ HasPiss ? %FSYN("pee:ing")% #  \@\@ HasPiss&&HasScat ? %" and "% #  \@\@ HasScat ? %FSYN("poo:ing")% #  \@ ~as \@ ARG == MASTER ? %PARSE("you try")% # %HE_SHE(ARG)%이 시도한다 \@ to walk away from \@ ARG == MASTER ? %PARSE("your")% # %HIS_HER(ARG)% \@ 난      
+				CALL OMORASHI_END(ARG,HasPiss,HasScat,,-1)
+				RETURN
+			ELSE
+				PRINTFORMW 당신은 자신의 %PeeProtectType(ARG)%를 내리고 병을 %FSYN("crotch")%에 올려 놓고 푸르르르륵...
+				ITEM:EmptyBottle --
+				CALL GET_ITEM("PeeBottle", 1, 1)
+				$END
+				CALL TOILETING_END(ARG,HasPiss,HasScat)
+			ENDIF
+		CASE 104
+			CALL TSP_DIAPER_CHANGE_INIT(ARG)
+		CASE 200
+			CALL POTTY_MONSTER_ENCOUNTER(MASTER,HasPiss,HasScat, 1)
+			$PottyingMonsterResult
+			nInput = 0
+			PottyMonsterHappen = 1
+			SELECTCASE RESULT
+				CASE -2, -99
+					CALL OMORASHI_END(ARG, HasPiss, HasScat)
+				CASE -3
+					HasPiss = 0
+					BASE:ARG:4 = 0
+					GOTO TOILETING
+				CASE -4
+					RETURN
+				CASEELSE
+					GOTO TOILETING
+			ENDSELECT
+	ENDSELECT
+ELSE
+	SELECTCASE nInput
+		CASE 5
+			;piss on touhou
+			CALL PottyOnTouhou(MASTER,ARG)
+		CASE 6
+			;piss on touhou's undies
+			SIF (HasFallState(ARG) || (FLAG:70 && !BASE:ARG:TSP))
+				CALL PottyInTouhouUndies(MASTER,ARG,HasPiss,HasScat,1)
+		CASE 7
+			;take panties and use them
+			SIF (HasFallState(ARG) || (FLAG:70 && !BASE:ARG:TSP))
+				CALL PottyInTouhouUndies(MASTER,ARG,HasPiss,HasScat,2)
+		CASE 40
+			SIF (HasFallState(ARG) || (FLAG:70 && !BASE:ARG:TSP))
+				CALL PottyInTouhouUndies(ARG,MASTER,HasPiss,HasScat,1)
+		CASE 41
+			SIF (HasFallState(ARG) || (FLAG:70 && !BASE:ARG:TSP))
+				CALL PottyInTouhouUndies(ARG,MASTER,HasPiss,HasScat,2)
+		CASEELSE
+			CALL TOILETING_END(ARG,HasPiss,HasScat)
+	ENDSELECT
+ENDIF
+;like OMORASHI_END, but for toiletings and not accidents
+
+@TOILETING_END(ARG,HasPiss,HasScat,openRelieve=0)
+#DIM HasPiss
+#DIM HasScat
+#DIM DYNAMIC openRelieve; 0 = toilet, 1 = open, 2 = latrine, 3 = potty
+DOWNBASE:ARG:体力 -= 10
+DOWNBASE:ARG:気力 -= 200
+;bladder diary
+VARSET LOCALS
+IF CAN_SEE(ARG)
+	SIF HasPiss
+		CALL INTERACTIVE_TUTORIAL_GET(102,401,"Toileting",2)
+	SIF HasScat
+		CALL INTERACTIVE_TUTORIAL_GET(102,402,"Toileting",2)
+ENDIF
+;piss
+IF ARG == MASTER
+	IF HasPiss
+		LOCALS += @"소변을 {BASE:ARG:4}ml,"
+	ENDIF
+	IF HasScat
+		LOCALS += @"배변했다 {BASE:ARG:17}g."
+	ENDIF
+	SELECTCASE MAX(PeeBarStage(ARG),PooBarStage(ARG))
+		CASE 0
+			LOCALS:2 = nonexistant
+		CASE 1
+			LOCALS:2 = minimal
+		CASE 2
+			LOCALS:2 = mild
+		CASE 3
+			LOCALS:2 = moderate
+		CASE 4
+			LOCALS:2 = distracting
+		CASE 5
+			LOCALS:2 = unmanageable
+		CASE 6
+			LOCALS:2 = intense
+		CASE IS >= 7
+			LOCALS:2 = severe
+	ENDSELECT
+	SELECTCASE openRelieve
+		CASE 3
+			BladderDiary += @"%時刻表示(TIME)%화장실로 갔다 %LOCALS:2% 긴급함%LIST_IN_STRING(LOCALS)%)\n"
+		CASE 2
+			BladderDiary += @"%時刻表示(TIME)%화장실에서 안도하며 %LOCALS:2% 긴급함%LIST_IN_STRING(LOCALS)%)\n"
+		CASE 1
+			BladderDiary += @"%時刻表示(TIME)%야외에서 안도하며 %LOCALS:2% 긴급함%LIST_IN_STRING(LOCALS)%)\n"
+		CASEELSE
+			BladderDiary += @"%時刻表示(TIME)%화장실에 갔다 %LOCALS:2% 급함%LIST_IN_STRING(LOCALS)%)\n"
+	ENDSELECT
+	BladderDiaryToilet ++
+ENDIF
+PottyChartToileting:ARG:(DAY % 7) ++
+IF openRelieve != 1
+	Qol_Info_Count_Array:ARG:Qol_Count_Toiletings ++
+	LOCAL = HasScat ? -2 # -1
+	SIF ITEM:PottyGuide && ARG == MASTER
+		LOCAL --
+	IF CAN_SEE(ARG)
+		CALL PunishmentPointChange(ARG,LOCAL)
+	ELSE
+		PunishChange:ARG:0 = LIMIT(PunishChange:ARG:0+(LOCAL),0,124)
+	ENDIF
+ENDIF
+IF HasPiss
+	SIF ITEM:PottyGuide && ARG == MASTER
+		BASE:ARG:尿意 *= 2
+	EXP:ARG:GeneralPeeExp += BASE:ARG:尿意/100
+	CALLF ChangeEndurance(ARG,"peehold",BASE:ARG:尿意/25)
+	BASE:ARG:尿意 = 0
+	TCVAR:ARG:PeeConcentration -= 4
+	SIF TCVAR:ARG:PeeConcentration <= 0
+		TCVAR:ARG:PeeConcentration = 0
+	SIF openRelieve == 1
+		Qol_Info_Count_Array:ARG:Qol_Count_OpenPiss ++
+ENDIF
+IF HasScat
+	SIF ITEM:PottyGuide && ARG == MASTER
+		BASE:ARG:Poo *= 2
+	EXP:ARG:GeneralPoopExp += BASE:ARG:Poo/100
+	CALLF ChangeEndurance(ARG,"poohold",BASE:ARG:Poo/25)
+	BASE:ARG:Poo = 0
+	SIF openRelieve == 1
+		Qol_Info_Count_Array:ARG:Qol_Count_OpenPoop ++
+	IF !DT_SELECT(@"Hediff", @"chara = {ARG} and type = 54")
+		DT_ROW_REMOVE "Hediff", RESULT:1
+	ENDIF
+ENDIF
+PottyChartToileting:ARG:(DAY % 7) ++
+
+@MasterGoToilet(HasPiss,HasScat,BypassCheck,DreamSequence,PottyChair)
+#DIM HasPiss
+#DIM HasScat
+#DIM BypassCheck
+#DIM DreamSequence
+#DIM PottyPants
+#DIM PottyChair
+CALL GoToilet(MASTER,HasPiss,HasScat,BypassCheck,DreamSequence,PottyChair)
+RETURN RESULT
+
+@GoToilet(ARG = -1,HasPiss,HasScat,BypassCheck,DreamSequence,PottyChair=0)
+#DIM HasPiss
+#DIM HasScat
+#DIM BypassCheck
+#DIM DreamSequence
+#DIM PottyPants
+#DIM ExcreteNumbers,2
+#DIM PottyChair
+#DIMS PottyName
+;VARSET ExcreteNumbers
+SELECTCASE PottyChair
+	CASE 1
+		PRINTFORML 변기 의자 설정이 1인 것은 개방 배뇨/배변에만 사용된다!
+		PRINTFORML 개방된 배설에는 대신 PottyOutside를 사용해라. 변기 의자는 3이고 화장실은 2다!
+		FORCEWAIT
+		CALL PottyOutside(ARG,HasPiss,HasScat,BypassCheck,DreamSequence)
+		RETURN RESULT
+	CASE 2
+		PottyName '= "변소"
+	CASE 3
+		PottyName '= "변기"
+	CASEELSE
+		PottyName '= "변기"
+ENDSELECT
+;toilet ban mode
+SIF nOmutsu >= 4
+	RETURN 0
+;universal
+SIF ARG == -1
+	ARG = MASTER
+;universal toileting off
+IF ARG != MASTER
+	IF !nNPCToileting
+		CALL DumpingShit(ARG)
+		RETURN
+	ENDIF
+ENDIF
+VARSET LOCAL
+SIF BypassCheck
+	GOTO BypassPottyPants
+IF (PeeBarStage(ARG) >= 7 && HasPiss) || (PooBarStage(ARG) >= 7 && HasScat)
+	SIF HasPiss
+		LOCAL:6 = 1
+	SIF HasScat
+		LOCAL:7 = 1
+ENDIF
+CALL PottyPants(ARG,HasPiss,HasScat)
+PottyPants = RESULT
+IF !PottyPants
+	CALL COM_TakeClothesBeforePee(ARG)
+	IF RESULT <= 0
+		SIF HasPiss
+			LOCAL:6 = 1
+		SIF HasScat
+			LOCAL:7 = 1
+	ENDIF
+ENDIF
+IF LOCAL:7 || LOCAL:6
+	CALL TOILET_OMORASHI(ARG,HasPiss,HasScat,DreamSequence)
+	RETURN -1
+ENDIF
+$BypassPottyPants
+SIF BypassCheck == -1
+	PottyPants = 1
+SELECTCASE MAX(PeeBarStage(ARG),PooBarStage(ARG))
+	CASE 6
+		PRINTDATAW
+			DATAFORM 서두르면서 %PARSE("you",,,ARG)% \@ !PottyPants && EQUIP:ARG:6 ? %PARSE("start",,,ARG)% 내려가는 %PARSE("your",5,,ARG)% 젖은 %PeeProtectType(ARG)% 해소하기 전에 # %PARSE("relieve",,,ARG)% \@ %PARSE("your",5,,ARG)% 지친 %PeeandPoo(HasPiss,HasScat, "bladder", "bowels")% 에 %PottyName%.
+			DATAFORM %PARSE("You stumble",,,ARG)% ~을 향해 %PottyName%을 움켜쥐며 %PARSE("your",5,,ARG)% %FSYN("belly")%.\n패닉이 스쳐 지나간다 %PARSE("your",5,,ARG)% 마음속에 %PARSE("your",5,,ARG)% 근육이 간신히 버티는 %PeeAndPoo(HasPiss,HasScat, "pee", "mess")%.\n~하는 동안 %PARSE("you reach",5,,ARG)% 그 %PottyName%, %PARSE("you",,,ARG)% 빠르게 %PARSE("sit",5,,ARG)% 내려가서 최대한 세게 밀고 %PARSE("you",5,,ARG)% 할 수 있는
+			DATAFORM 성공하려는 절박함에 %PARSE("you jump",,,ARG)% 에로스로 %PottyName%방문이 열리자마자 %PARSE("your",5,,ARG)% %PeeProtectType(ARG,1)% 좌석에 닿으면.
+			DATAFORM %PARSE("You",,,ARG)% 갑자기 %PARSE("feel",,,ARG)% 처럼 %PARSE("you're",5,,ARG)% ~하려는 %FSYN("pee")% %PARSE("your",5,,ARG)% %PeeProtectType(ARG)%.\n%PARSE("You have",,,ARG)% 갈 곳이 없어, 지금 당장! %PARSE("You",5,,ARG)% 재빨리 %PARSE("sit",,,ARG)% ~에 내려서 %PottyName% 그리고 둑을 열어버려...
+		ENDDATA
+	CASEELSE
+		PRINTFORMW %PARSE("You sit",,,ARG)%에서 %PottyName%와 %PARSE("do",,,ARG)%의 %PARSE("your",5,,ARG)% 사업을 한다
+ENDSELECT
+;new accident scenes
+ACCIDENT_CHARA = ARG
+ACCIDENT_HasPiss = HasPiss
+ACCIDENT_HasScat = HasScat
+ACCIDENT_Stand = PottyPants
+ACCIDENT_Nude = PottyPants ? 0 # 2
+ACCIDENT_LINECOUNT = LINECOUNT
+CALL CUTSCENESPEAK_NAS(@"「....」", "発情", ARG, 0)
+CALL ACCIDENT_SHOW_BAR_RELIEVE()
+CLEARLINE LINECOUNT - ACCIDENT_LINECOUNT
+CALL CUTSCENESPEAK_NAS(@"「%MOAN("h")%...」", "笑顔:照れ", ACCIDENT_CHARA, 0)
+IF PottyPants
+	PRINTFORM %PARSE("You sigh",,,ARG)%은(는) %PottyName%에 도착해서 안도했다. 
+	IF IsPadded(ARG)
+		PRINTFORM 익숙한 온기가 커지면서 
+		SIF HasPiss
+			PRINTFORM 앞
+		SIF HasPiss && HasScat
+			PRINTFORM %" and "%
+		SIF HasScat
+			PRINTFORM 뒤로
+		PRINTFORML .
+	ELSE
+		PRINTFORM 들으면서 
+		SIF HasPiss
+			PRINTFORM %PARSE("you empty",5,,ARG)%의 %PARSE("your",5,,ARG)% 방광에서 물이 똑똑 떨어지는 소리
+		SIF HasPiss && HasScat
+			PRINTFORM ~뿐만 아니라 
+		SIF HasScat
+			PRINTFORM 뒤쪽의 %PARSE("your",5,,ARG)% %PeeProtectType(ARG,1)%가 늘어나고 있다.
+		PRINTFORML .
+	ENDIF
+	WAIT
+	PRINTFORML
+	;PRINTFORMW Looking down, it seems like %PARSE("you",,,ARG)% forgot to take off %PARSE("your",5,,ARG)% %PeeProtectType(ARG)% before going potty...
+	PRINTFORMW 아래를 내려다보자, %PARSE("you",,,ARG)%가 %PeeAndPoo(HasPiss,HasScat,"wet","pooped")% %PARSE("yourself",,,ARG)%한 채 %PottyName%에 앉아 있다는 사실이 깨달으며 %PARSE("you",6,,ARG)%는 치정으로 가득 찬다.
+	PRINTFORMW %PottyName%를 사용하기 전에 %PeeProtectType(ARG,1)%를 벗는 것을 기억하지 못하는 건 무슨 종류의 %TOLOWER(TOSTR_LifeStage(CharaAge:ARG:0))%일까?
+	;SIF DreamSequence != 2
+	;CALL WetFeelings(ARG)
+	IF !DreamSequence
+		CALL OMORASHI_END(ARG, HasPiss, HasScat,,-1)
+	ELSE
+		CALL OMORASHI_END(ARG, HasPiss, HasScat,,-1,1)
+	ENDIF
+	RETURN -1
+ENDIF
+PRINTFORML %PARSE("You feel",,,ARG)%은 훨씬 더 깨끗하고 상쾌하다.
+PRINTFORM %PottyName%은 %PARSE("your",5,,ARG)%를 가지고 있다. 
+VARSET LOCALS
+SIF HasPiss
+	LOCALS += @"%URINE(ARG,1)%、"
+SIF HasScat
+	LOCALS += @"%SCAT(ARG,1)%、"
+PRINTFORML %LIST_IN_STRING(LOCALS)%.
+WAIT
+IF PottyChair
+ELSE
+	PLAYSOUND "peestuffs/トイレ.m4a"
+	PRINTFORMW %PARSE("You flush",,,ARG)% 변기에서 %PARSE("your",5,,ARG)% 배설물을 흘려보냈다.
+ENDIF
+STOPSOUND
+SIF !DreamSequence
+	CALL TOILETING_END(ARG,HasPiss,HasScat,PottyChair)
+RETURN 1
+;for going potty outside
+
+@PottyOutside(ARG = -1,HasPiss,HasScat,BypassCheck,DreamSequence)
+#DIM HasPiss
+#DIM HasScat
+#DIM BypassCheck
+#DIM DreamSequence
+#DIM PottyPants
+#DIM ExcreteNumbers,2
+#DIM DiapeStand
+;potty pants
+IF BypassCheck == -1
+	PottyPants = 1
+ENDIF
+IF DiapeCharges:ARG:0 >= BASE:ARG:尿意 && !IsPadded(ARG) && nCatheterized:ARG:0 && (HasScat && !CFLAG:ARG:PadCount)
+	DiapeStand = -1
+ELSEIF (DiapeCharges:ARG:0 >= BASE:ARG:尿意 || !HasPiss) && (DiapePooCharges:ARG:0 >= BASE:ARG:Poo || !HasScat)
+	DiapeStand = 1
+ELSE
+	DiapeStand = 0
+ENDIF
+;toilet ban mode
+SIF nOmutsu >= 4
+	RETURN 0
+;universal
+SIF ARG == -1
+	ARG = MASTER
+;universal toileting off
+IF ARG != MASTER
+	IF !nNPCToileting
+		CALL DumpingShit(ARG)
+		RETURN
+	ENDIF
+ENDIF
+VARSET LOCAL
+CALL PottyPants(ARG,HasPiss,HasScat)
+PottyPants = RESULT
+IF (PeeBarStage(ARG) >= 7 && HasPiss) || (PooBarStage(ARG) >= 7 && HasScat)
+	PottyPants = 1
+ENDIF
+SIF BypassCheck == 1
+	PottyPants = 0
+IF !PottyPants && !BypassCheck
+	CALL COM_TakeClothesBeforePee(ARG)
+	IF RESULT <= 0
+		PottyPants = 1
+	ENDIF
+ENDIF
+;new accident scenes
+ACCIDENT_CHARA = ARG
+ACCIDENT_HasPiss = HasPiss
+ACCIDENT_HasScat = HasScat
+ACCIDENT_Stand = PottyPants
+ACCIDENT_Nude = 1
+IF !BypassCheck
+	IF !INROOM(CFLAG:ARG:現在位置)
+		PRINTFORMW %PARSE("You feel",,,ARG)% 밖에서처럼 ~이 %PARSE("your",5,,ARG)% 비우는 가장 좋은 방법 %PARSE("yourself",,,ARG)% 제때...
+	ELSE
+		PRINTFORMW %PARSE("You feel",,,ARG)% 같은 %PARSE("you have",5,,ARG)% 해소하거나 %PARSE("yourself",,,ARG)% 안에서 즉석에서 해버리거나 사고를 치는 것 외에는 선택지가 없었다...
+	ENDIF
+ENDIF
+IF PottyPants
+	PRINTFORM %PARSE("You",5,,ARG)% 
+ELSE
+	PRINTFORM %PARSE("You shift your",5,,ARG)% 축되다 %PeeProtectType(ARG,1)% ~로서 %PARSE("you",5,,ARG)% 
+ENDIF
+PRINTFORML %PARSE("squat",5,,ARG)%과 %PARSE("fall",5,,ARG)% 행복 속으로 들어갔다.
+WAIT
+PRINTFORML
+IF HasPiss
+	CALL PEESOUNDS("v")
+ENDIF
+IF HasScat
+	IF TCVAR:ARG:BowelState > 0
+		CALL POOSOUNDS("d")
+	ELSE
+		CALL POOSOUNDS("v")
+	ENDIF
+ENDIF
+ACCIDENT_LINECOUNT = LINECOUNT
+CALL CUTSCENESPEAK_NAS(@"「....」", "怒り:照れ", ARG, 0)
+CALL ACCIDENT_SHOW_BAR_RELIEVE()
+CLEARLINE LINECOUNT - ACCIDENT_LINECOUNT
+CALL CUTSCENESPEAK_NAS(@"「%MOAN("h")%...」", "笑顔:照れ", ACCIDENT_CHARA, 0)
+IF PottyPants && EQUIP:ARG:6
+	IF DiapeStand == 1
+		PRINTFORMW %PARSE("Your",,,ARG)% %PeeProtectType(ARG)%가 %PARSE("your",5,,ARG)% %PeeAndPoo(HasPiss,HasScat)%로 차오르면서 인상적인 볼륨을 만들었다...
+	ELSEIF DiapeStand == -1
+		SIF HasPiss
+			PRINTFORMW %CAPITALIZE(FSYN("pee:n"))%이(가) %PARSE("your",5,,ARG)% 카테터로 흘러 들어가면서 끝에 있는 주머니가 차오르고 부풀어 오른다...
+		IF HasScat
+			IF GETBIT(nScat,5)
+				PRINTFORMW 참을 수 없게 %PARSE("Your",5,,ARG)% %PeeProtectType(ARG,1)%가 땅으로 떨어지기 시작하면서 %FSYN("poo:n")% ...
+			ELSE
+				PRINTFORMW %PARSE("Your",5,,ARG)%은(는) %PeeProtectType(ARG,1)%가 %PARSE("your",5,,ARG)% %SCAT(ARG)%로 채워지면서, 거의 과도하게 채워진 풍선처럼 보였다.
+			ENDIF
+		ENDIF
+	ELSE
+		SIF HasPiss
+			PRINTFORMW %CAPITALIZE(FSYN("pee:n"))%가 %PARSE("your",5,,ARG)%를 통해 새어 나와 %PeeProtectType(ARG,1)%와 하나의 %PeeColor(ARG)% 웅덩이를 형성한다.
+		IF HasScat
+			IF GETBIT(nScat,5)
+				PRINTFORMW %PARSE("Your",5,,ARG)% %PeeProtectType(ARG,1)%는 땅으로 떨어지기 시작하면서 %FSYN("poo:n")%를 참을 수 없다...
+			ELSE
+				PRINTFORMW %PARSE("Your",5,,ARG)% %PeeProtectType(ARG,1)%는 거의 과도하게 채워진 풍선처럼 보일 정도로 %PARSE("your",5,,ARG)% %SCAT(ARG)%로 계속 채워진다.
+			ENDIF
+		ENDIF
+	ENDIF
+	CALL WetFeelings(ARG)
+	CALL OMORASHI_END(ARG, HasPiss, HasScat,,-1)
+ELSE
+	PRINTFORM A 
+	IF HasPiss
+		PRINTFORM 아름다운 %FSYN("pee:n")%가 땅에 고인다.
+	ENDIF
+	SIF HasPiss && HasScat
+		PRINTFORM %" and a "%
+	IF HasScat
+		IF TCVAR:ARG:BowelState > 0
+			PRINTFORM 액체의 분사물%FSYN("poo:n")%이 %PARSE("your",5,,ARG)%의 직장에서 나와 고여 있다.
+		ELSE
+			PRINTFORM %FSYN("poo:n")%이 아이스크림처럼 나와 쌓인다.
+		ENDIF
+	ENDIF
+	PRINTFORML , %PARSE("you",6,,ARG)%에게 %PARSE("you",5,,ARG)%가 해냈음을 상기시키며.
+ENDIF
+PRINTFORML %PARSE("You sigh",,,ARG)%은 기분 좋고, 이제 %PARSE("feel",5,,ARG)%는 훨씬 더 편안하다. 
+SIF HasPiss
+	YOGORE:(CFLAG:ARG:現在位置) += BASE:ARG:尿意
+SIF HasScat
+	YOGORE:(CFLAG:ARG:現在位置) += BASE:ARG:Poo*3
+WAIT
+CALL INTERACTIVE_TUTORIAL_GET(102,401,"Public Urination",5)
+CALL INTERACTIVE_TUTORIAL_GET(102,402,"Open Defecation",5)
+SIF ARG == MASTER
+	CALL AfterAccidentCheck(ARG,HasPiss,HasScat,0,!PottyPants)
+IF !PottyPants
+	CALL TOILETING_END(ARG,HasPiss,HasScat,1)
+ENDIF
+
+@COM_TakeClothesBeforePee(ARG)
+#DIM ClothingPoints
+LOCALS:1 =
+ClothingPoints = 12 + (ABL:ARG:指/3)
+ClothingPoints -= PeeBarStage(ARG) + PooBarStage(ARG)
+IF EQUIP:ARG:スカート
+	ClothingPoints -= 2
+	LOCALS:1 += @"%CLOTHNAME(15,EQUIP:ARG:スカート)%、"
+ENDIF
+IF EQUIP:ARG:ズボン
+	ClothingPoints -= 2
+	LOCALS:1 += @"%CLOTHNAME(11,EQUIP:ARG:ズボン)%、"
+ENDIF
+IF EQUIP:ARG:ワンピース
+	ClothingPoints -= 4
+	LOCALS:1 += @"%CLOTHNAME(13,EQUIP:ARG:ワンピース)%、"
+ENDIF
+IF EQUIP:ARG:着物
+	ClothingPoints -= 4
+	LOCALS:1 += @"%CLOTHNAME(14,EQUIP:ARG:着物)%、"
+ENDIF
+IF EQUIP:ARG:レオタード
+	ClothingPoints -= 4
+	LOCALS:1 += @"%CLOTHNAME(9,EQUIP:ARG:レオタード)%、"
+ENDIF
+IF EQUIP:ARG:ボディースーツ
+	ClothingPoints -= 6
+	LOCALS:1 += @"%CLOTHNAME(10,EQUIP:ARG:ボディースーツ)%、"
+ENDIF
+IF EQUIP:ARG:下半身下着１
+	ClothingPoints -= 1
+	LOCALS:1 += @"%CLOTHNAME(5,EQUIP:ARG:下半身下着１)%、"
+ENDIF
+IF EQUIP:ARG:下半身上着
+	ClothingPoints -= 1
+	LOCALS:1 += @"%CLOTHNAME(12,EQUIP:ARG:下半身上着)%、"
+ENDIF
+IF EQUIP:ARG:下半身下着２
+	ClothingPoints -= 1
+	IF IsPadded(ARG, "diaper")
+		ClothingPoints -= 2
+	ENDIF
+	IF IsPadded(ARG, "bulky")
+		ClothingPoints -= 2
+	ELSEIF IsPadded(ARG, "thick")
+		ClothingPoints -= 1
+	ELSEIF IsPadded(ARG, "thin")
+		ClothingPoints += 1
+	ENDIF
+	LOCALS:1 += @"%CLOTHES_TR(PANTSNAME(EQUIP:ARG:下半身下着２, ARG))%、"
+ENDIF
+;naked
+SIF !STRLENS(LOCALS:1)
+	RETURN 999
+SELECTCASE ClothingPoints
+	CASE IS >= 10
+		PRINTFORML %PARSE("your",,,ARG)% %LIST_IN_STRING(LOCALS:1)%를 벗는 것은 쉬웠다.
+	CASE IS >= 7
+		PRINTFORML %PARSE("your",,,ARG)% %LIST_IN_STRING(LOCALS:1)%를 벗는 것은 어렵지 않았다.
+	CASE IS >= 3
+		PRINTFORML %PARSE("You have",,,ARG)% 옷을 벗는 데 약간의 어려움이 있었다 %PARSE("your",5,,ARG)% %LIST_IN_STRING(LOCALS:1)%.
+	CASE IS > 0
+		PRINTFORML 탈의하는 동안 %PARSE("You have",,,ARG)% 많은 문제들이 생겼고, 실수로 그것에 새어 나왔다... %PARSE("your",5,,ARG)% %LIST_IN_STRING(LOCALS:1)%
+	CASEELSE
+		PRINTFORMW %PARSE("You",,,ARG)%이 제때 %PARSE("your",5,,ARG)%와 %LIST_IN_STRING(LOCALS:1)%에서 이륙하지 못해 사고를 치게 된다.
+ENDSELECT
+RETURN ClothingPoints
+
+@LucidDreamRelieveSelf(ARG,nInput)
+#DIM nInput
+SELECTCASE nInput
+	CASE 3
+		TRYCCALLFORM LUCID_DREAM_SPURT_{DAILY_Lucid_Stats:3}
+		CATCH
+		CALL LUCID_DREAM_SPURT_GENERAL
+		ENDCATCH
+	CASE 8
+		SIF !nOmutsu
+			RETURN
+		SIF !IsPadded(MASTER)
+			CALLF PANTY_REWORK_CHANGE(MASTER,103)
+		TRYCCALLFORM LUCID_DREAM_GIVEUP_DIAPER_{DAILY_Lucid_Stats:3}
+		CATCH
+		CALL INTENTIONAL_ACCIDENT(MASTER,DAILY_Lucid_Stats:1,DAILY_Lucid_Stats:2, 0, 1)
+		DAILY_Lucid_Stats:9 = LucidDreamLoser(1)
+		CALL LucidDreamTimeUp()
+		RETURN
+		ENDCATCH
+	CASE 9
+		TRYCCALLFORM LUCID_DREAM_GIVEUP_{DAILY_Lucid_Stats:3}
+		CATCH
+		CALL INTENTIONAL_ACCIDENT(MASTER,DAILY_Lucid_Stats:1,DAILY_Lucid_Stats:2, 0, 1)
+		DAILY_Lucid_Stats:9 = LucidDreamLoser(1)
+		CALL LucidDreamTimeUp()
+		RETURN
+		ENDCATCH
+ENDSELECT
+;regex
+;\\@ HasPiss \?(.+)#\\@\\@ HasPiss && HasScat \?%" and "%#\\@\\@ HasScat \? (.+)#\\@
+;%PeeAndPoo(HasPiss,HasScat,$1,$2)%
+
+@LUCID_DREAM_SPURT_GENERAL
+IF DAILY_Lucid_Stats:1
+	CALLF MessUndies(MASTER,"liquid",0,BASE:MASTER:尿意/4)
+	BASE:MASTER:尿意 = BASE:MASTER:尿意*3/4
+ENDIF
+IF DAILY_Lucid_Stats:2
+	;CALLF MessUndies(MASTER,"solid",0,BASE:MASTER:Poo/4)
+	BASE:MASTER:Poo = BASE:MASTER:Poo*3/4
+ENDIF
+PRINTFORMDW 더 이상 생각조차 할 수 없을 정도로 %PeeAndPoo(DAILY_Lucid_Stats:1,DAILY_Lucid_Stats:2,FSYN("pee"),FSYN("poo"))%해야만 한다, 단지 어떻게든 압력을 줄여야 한다는 것만이 알 뿐이다.
+PRINTFORMDW 속옷이 %FSYN("crotch")%에 따뜻하고 꼭 감겨 있으며, 새어 나오기 전에 분출을 견딜 수 있을 것 같다.
+PRINTFORMDW 불편함을 없애기 위해 단지 %PeeAndPoo(DAILY_Lucid_Stats:1,DAILY_Lucid_Stats:2,@"a little bit of %FSYN("pee:n")%","a fart")%만 내기로 결정한다.
+PRINTFORMDW 위험하다는 것을 알지만, 스스로 완전히 %PeeAndPoo(DAILY_Lucid_Stats:1,0,"wetting","messing")%하는 것보다는 낫다.
+PRINTFORMDW 조심스럽게 똑바로 서서 다리 사이에서 손을 뗀다.
+PRINTFORMDW 최대한 집중하며 항문을 아주 살짝 이완한다...
+IF (RAND:(100) > 50+(PeeHold:MASTER:2*10) && DAILY_Lucid_Stats:1) || (RAND:100 > 20+(PooHold:MASTER:2*10) && DAILY_Lucid_Stats:2)
+	SIF DAILY_Lucid_Stats:1
+		CALL PEESOUNDS("loc")
+	SIF DAILY_Lucid_Stats:2
+		CALL POOSOUNDS("loc")
+	PRINTFORMDW 뜨거운 %PeeAndPoo(DAILY_Lucid_Stats:1,DAILY_Lucid_Stats:2,@"spurt of %FSYN("pee:n")%",@"big log of %FSYN("poo:n")%")%이 당신에게서 분출하고, 그 흐름을 막으려 하지만 소용이 없다.
+	PRINTFORMDW It just keeps flowing out of you, and you can't stop!
+	PRINTFORMDW 뜨거운 %PeeAndPoo(DAILY_Lucid_Stats:1,DAILY_Lucid_Stats:2,@"spurt of %FSYN("pee:n")%",@"big log of %FSYN("poo:n")%")%가 당신에게서 뿜어져 나오지만, 흐름을 끊으려 하지만 소용없다...
+	PRINTFORMDW Your clothes are still dry, and there's no telltale \@ DAILY_Lucid_Stats:1 ?puddle#\@\@ DAILY_Lucid_Stats:1 && DAILY_Lucid_Stats:2 ?%" nor "%#\@\@ DAILY_Lucid_Stats:2 ? mess#\@ forming below you!
+	PRINTFORMDW Instead, something warm and crinkly expands between your legs..
+	PRINTFORMDW You suddenly realize that you're wearing a diaper that's now %PeeAndPoo(DAILY_Lucid_Stats:1,DAILY_Lucid_Stats:2,"drenched","full")%.
+	DAILY_Lucid_Stats:9 = 20
+	CALL LucidDreamTimeUp
+	RETURN
+ELSE
+	PRINTFORMDW 그게 더 나았다.	
+ENDIF
+
+@PottyOnTouhou(Pisser,BeingPissed)
+#DIM Pisser
+#DIM BeingPissed
+#DIM BypassCheck
+#DIM DreamSequence
+#DIM PottyPants
+#DIM ExcreteNumbers,2
+;toilet ban mode
+SIF nOmutsu >= 4
+	RETURN 0
+;universal
+SIF Pisser == -1
+	Pisser = MASTER
+VARSET LOCAL
+CALL PottyPants(Pisser,1,0)
+PottyPants = RESULT
+IF (PeeBarStage(Pisser) >= 7)
+	PottyPants = 1
+ENDIF
+IF !PottyPants
+	CALL COM_TakeClothesBeforePee(Pisser)
+	IF RESULT <= 0
+		PottyPants = 1
+	ENDIF
+ENDIF
+IF PottyPants
+	PRINTFORMW %PARSE("You attempt",,,Pisser)% 내리려고 했지만 %PARSE("your",5,,Pisser)% %PeeProtectType(Pisser)%을, 방광 경련이 %PARSE("you",6,,Pisser)% %PARSE("your",5,,Pisser)% 무릎 위로 내려갔다.
+	CALL PottyOutside(Pisser,1,0,-1,0)
+	RETURN
+ENDIF
+;new accident scenes
+ACCIDENT_CHARA = Pisser
+ACCIDENT_HasPiss = 1
+ACCIDENT_HasScat = 0
+ACCIDENT_Stand = PottyPants
+ACCIDENT_Nude = 1
+IF HAS_PENIS(Pisser)
+	PRINTFORMW %PARSE("You pull",,,Pisser)% 아래로 %PARSE("your",5,,Pisser)% %PeeProtectType(Pisser)% 잡을 만큼 충분히 %PARSE("your",5,,Pisser)% %TINKO(Pisser)%, %PARSE("point",,,Pisser)% 그것을 잡고 %PARSE("you",,,BeingPissed)%, 그리고 피이이이이....
+ELSE
+	PRINTFORMW %PARSE("You pull",,,Pisser)% 아래로 %PARSE("your",5,,Pisser)% %PeeProtectType(Pisser)%펼치며 %PARSE("your",5,,Pisser)% %SLIT(MASTER)% ~로서 %PARSE("you point",,,Pisser)% 그것을 그것에 %PARSE("you",,,BeingPissed)%그리고 피이이이이....
+ENDIF
+ACCIDENT_LINECOUNT = LINECOUNT
+CALL CUTSCENESPEAK_NAS(@"「....」", "怒り:照れ", Pisser, 0)
+CALL ACCIDENT_SHOW_BAR_RELIEVE()
+CLEARLINE LINECOUNT - ACCIDENT_LINECOUNT
+CALL CUTSCENESPEAK_NAS(@"「%MOAN("h")%...」", "笑顔:照れ", ACCIDENT_CHARA, 0)
+SKIPDISP 1
+CALL SHOW_POWERFAVOR(TCVAR:Pisser:Attack_Power,Pisser)
+CALL POWERBUFFS(Pisser)
+DRAWLINE
+CALL SHOW_POWERFAVOR(TCVAR:BeingPissed:Attack_Power,BeingPissed)
+CALL POWERBUFFS(BeingPissed)
+SKIPDISP 0
+PRINTFORM %PARSE("You let",,,Pisser)%는 안도의 한숨을 내쉬었다. %PEECOLOR(Pisser)%의 분사가 
+IF !SHIRAHU(BeingPissed)
+	;unconscious
+	PRINTFORMW 의식을 잃은 상태의 %CALLNAME:BeingPissed%에게 부딪쳐, 웅덩이를 형성한다.
+	PRINTFORMW %PARSE("Your",,,Pisser)% %URINE(Pisser)% 완전히 적신다 \@ EQUIP:BeingPissed:0 ? %CALLNAME:BeingPissed%의 옷에 # %CALLNAME:BeingPissed%에게서 \@ 
+	CALL AL_NOTIFY_ACHIEVEMENT_COMPLETION("rKelly")
+ELSEIF RAND:10 < MIN(5,ABL:BeingPissed:PeeDrinkAddict/2) && ABL:BeingPissed:PeeDrinkAddict >= 3
+	;urine addict
+	PRINTFORMW %PARSE("your",,,BeingPissed)%은(는) %PARSE("you lower",5,,BeingPissed)%의 몸으로 들어갔고, %PARSE("your",5,,BeingPissed)% 입으로 %PARSE("your",5,,Pisser)% 축복을 받기 위해 %PARSE("open",5,,BeingPissed)% %PARSE("your",5,,BeingPissed)% 입에 도달한다.
+	CALL Com_DrinkPeeFromOwner(Pisser,BeingPissed)
+	CALL AL_NOTIFY_ACHIEVEMENT_COMPLETION("rKelly")
+ELSEIF ABL:BeingPissed:PeeDrinkAddict >= 3
+	PRINTFORM 행복하게 때린다 %PARSE("you",,,BeingPissed)%로서 %PARSE("you",5,,BeingPissed)% 
+	GOTO PissOnBody
+	;push touhou down
+ELSEIF TCVAR:Pisser:Attack_Power >= TCVAR:BeingPissed:Attack_Power
+	$ForcePiss
+	PRINTFORM 히트한다 %PARSE("you",,,BeingPissed)%, 밀쳐져 아래로 가슴에 쓰러진다 %PARSE("your",5,,BeingPissed)%가 %PARSE("you",5,,BeingPissed)% 
+	SOURCE:BeingPissed:反感 = 1200
+	$PissOnBody
+	SELECTCASE ABL:BeingPissed:PeeDrinkAddict
+		CASE 0
+			PRINTFORM %PARSE("shriek",5,,BeingPissed)%공포 속에서
+		CASE 1, 2
+			PRINTFORM %PARSE("try",5,,BeingPissed)%에서 %SPLIT_G(@"ignore its wetness as much as possible:get it out of %PARSE("your",5,,BeingPissed)% body as much as possible:trying to not get wet:")%로
+		CASE 3
+			PRINTFORM %PARSE("take",,,BeingPissed)% %PARSE("your",5,,BeingPissed)% 시간을 조심스럽게 %FSYN("stream:ing")% %FSYN("pee:n")%를 안으며, %PARSE("your",5,,BeingPissed)% 몸을 맛있게 음미했다%SPLIT_G(@" without any complaints: as if %PARSE("you're",5,,BeingPissed)% already used to it: in an experienced fashion::")%.
+		CASE IS < 5
+			PRINTFORM %PARSE("savor",5,,BeingPissed)% %PARSE("you",6,,BeingPissed)%을 때의 느낌, %FSYN("pee:n")% %SPLIT_G(@"barely holding %PARSE("yourself",5,,BeingPissed)% from asking for seconds:making it look very %SPLIT_G("hot:arousing:appealing")%:almost looking like %PARSE("you'd",5,,BeingPissed)% love to have some more")%
+		CASEELSE
+			PRINTFORM %PARSE("sniff",5,,BeingPissed)% 처음엔 아주 깊이 빨아들이며 그 풍부한 향을 즐겼다 %PARSE("you open your",5,,BeingPissed)% 입을 크게 벌리고 %PARSE(FSYN("start"),5,,BeingPissed)% 후루룩 마시며 \@ BeingPissed == MASTER ? %PARSE("your")% # %HIS_HER(Pisser)% \@ %FSYN("stream:ing")% %FSYN("pee:n")% 단 한 방울이라도 다른 곳에 떨어지지 않도록 아주 조심스럽게 %PARSE("your",5,,BeingPissed)% 입 
+			IF RAND:4
+				PRINTFORM 마치 그것이 %PARSE("you",5,,BeingPissed)%에게 어떤 종류의 축복인 것처럼
+			ELSEIF RAND:3
+				PRINTFORM 마치 세상에 있는 %SPLIT_G("greatest:most divine:best")% 것인 양
+			ELSE
+				PRINTFORM %SPLIT_G("savoring:enjoying")%이 그것을 철저히
+			ENDIF
+	ENDSELECT
+	PRINTFORML  %URINE(Pisser,1)%이 흘러 들어가 %PARSE("your",5,,BeingPissed)%의 옷과 온몸, 그리고 바닥을 더럽힌다.
+	CALL AL_NOTIFY_ACHIEVEMENT_COMPLETION("rKelly")
+ELSE
+	;run away from player
+	SOURCE:BeingPissed:反感 = 700
+	PRINTFORMW 바닥에 떨어져서 %PARSE("you don't",,,BeingPissed)%가 있고 싶은 웅덩이를 형성한다.
+	PRINTFORMW %PARSE("You",5,,BeingPissed)%는 도망치고, %PARSE("you",6,,BeingPissed)% 위에는 오줌을 흘리지 않는다.
+	PottyPants = -3
+	CFLAG:BeingPissed:300 = KICKOUT()
+ENDIF
+PRINTFORML %PARSE("You sigh",,,Pisser)%는 기분이 좋아지고, 이제 %PARSE("feel",5,,Pisser)%는 훨씬 더 편안해진다.
+CALL INTERACTIVE_TUTORIAL_GET(102,401,"Public Urination",5)
+WAIT
+IF PottyPants != -3
+	SoiledSelf:BeingPissed:0 = 1
+	FOR LOCAL, 0, 8
+	STAIN:BeingPissed:LOCAL |= 256
+	NEXT
+	EXP:BeingPissed:GeneralPeeExp += BASE:Pisser:尿意/100
+ENDIF
+CALL AfterAccidentCheck(Pisser,1,0,0,1)
+CALL TOILETING_END(Pisser,1,0,1)
+
+@PottyInTouhouUndies(Pisser,BeingPissed,HasPiss,HasScat,Sequence=-1)
+#DIM Pisser
+#DIM BeingPissed
+#DIM HasPiss
+#DIM HasScat
+#DIM Sequence
+#DIM PisseeHasAccident
+;universal
+SIF Pisser == -1
+	Pisser = MASTER
+VARSET LOCAL
+VARSET PisseeHasAccident
+;new accident scenes
+ACCIDENT_CHARA = Pisser
+ACCIDENT_HasPiss = HasPiss
+ACCIDENT_HasScat = HasScat
+ACCIDENT_Stand = 0
+ACCIDENT_Nude = 0
+SELECTCASE Sequence
+	CASE 1
+		;stretching undies so you can go inside them.
+		IF FLAG:70
+			PRINTFORMDW %PARSE("You stick",,,FLAG:70 ? Pisser # BeingPissed)% 양 엄지손가락을 ~ 허리띠 안으로 %PARSE("your",FLAG:70 ? 0 # 5,,BeingPissed)% %PeeProtectType(BeingPissed)% ~하기 위해 %PARSE("you begin",5,,Pisser)% 앞으로 늘리기 위해 %PeeProtectType(BeingPissed,1)% 앞으로 밀면서 공간을 내고
+			PRINTFORMDW 한 엄지손가락으로 %PARSE("your",,,BeingPissed)% %PeeProtectType(BeingPissed,2)%, %PARSE("you inch",,,Pisser)% 앞으로 나아가고 잡다 %PARSE("your",5,,BeingPissed)% 몸통을 잡고 %PARSE("your",5,,Pisser)% 다른 팔로 앞으로 기울이며.
+		ELSE
+			PRINTFORMDW %PARSE("You stick",,,FLAG:70 ? Pisser # BeingPissed)% 양 엄지손가락을 ~에 넣고 %PARSE("your",FLAG:70 ? 0 # 5,,BeingPissed)% %PeeProtectType(BeingPissed)% ~하기 위해 %PARSE("you begin",5,,BeingPissed)% 앞으로 늘리기 위해 %PeeProtectType(BeingPissed,1)% 앞으로 밀면서 공간을 내고
+			PRINTFORMDW %PARSE("You inch",,,Pisser)% 앞으로, ~을 붙잡고 %PARSE("your",,,BeingPissed)% 어깨를 잡고 앞으로 기울이며.
+		ENDIF
+		PRINTL
+		IF HasScat
+			PRINTFORMDW %PARSE("You pull",,,Pisser)% 아래로 %PARSE("your",5,,Pisser)% %PeeProtectType(Pisser)% ~로서 %PARSE("you begin",5,,Pisser)% 단단히 잡기 위해 %PARSE("you",,,BeingPissed)% 내려갔다.
+		ELSE
+			IF HAS_PENIS(Pisser)
+				PRINTFORMDW %PARSE("You begin",5,,Pisser)%이 %PARSE("your",5,,Pisser)%에서 %TINKO_TR(Pisser)%을 꺼내 %PARSE("your",5,,Pisser)%에 %PeeProtectType(Pisser)%하고 %PARSE("stick",,,Pisser)% 그것을 %PARSE("your",5,,BeingPissed)% %PeeProtectType(BeingPissed,1)%에 넣는다.
+			ELSE
+				PRINTFORMDW %PARSE("You begin",5,,Pisser)% 밀기 위해 %PARSE("your",5,,Pisser)% %PeeProtectType(Pisser)% 옆으로 밀어내고 %PARSE("you",6,,beingPissed)% 꽉 잡는다.
+			ENDIF
+		ENDIF
+		PRINTL
+		PRINTFORMDW A는 %PeeAndPoo(HasPiss,HasScat,@"stream of %URINE(Pisser,1)%",@"log of %SCAT(Pisser,1)%")%에서 %PARSE("your",5,,BeingPissed)%로 %FSYN("crotch")%를 밀어내기 시작한다.
+		IF HasScat
+			IF Pisser == MASTER
+				PRINTFORMDW 안도감의 한숨을 내쉬며 당신을 감싸는 즐거움의 감각이 있다.
+			ELSE
+				PRINTFORMDW %SCAT(Pisser)%은 %PARSE("your",5,,BeingPissed)% %FSYN("crotch")%에게 지저분한 마사지처럼 매우 따뜻하고 부드러웠다.
+				SIF HasPiss
+					PRINTFORMDW 극도로 따뜻한 %URINE(Pisser)%가 흘러내리자, %PARSE("you",5,,BeingPissed)%는 행복한 한숨을 내쉴 수밖에 없었다.
+			ENDIF
+			PRINTFORMDW %PARSE("You continue",,,Pisser)% 밀어 넣기 위해 %PeeAndPoo(HasPiss,HasScat,@"flood after flood",@"log after log")% 안으로 %PARSE("your",,,BeingPissed)% %PeeProtectType(BeingPissed,2)%각각 ~을 더욱 멀리 늘리고 %PeeProtectType(BeingPissed,2)% 더욱 더 멀리
+			SIF HasPiss
+				GOTO HasPissPeeingOnTouhou
+			IF IsPadded(BeingPissed)
+				PRINTFORMDW %SCAT(Pisser)%이 앞쪽에 쌓이기 시작하며, %PARSE("your",5,,BeingPissed)% 누수 방지 장치들이 그것을 붙잡고 있다.
+			ELSE
+				PRINTFORMDW 담기 위해 만들어진 것이 아니라, %SCAT(Pisser)%, %PARSE("your",,,BeingPissed)% %PeeProtectType(BeingPissed,2)%는 늘어나고 %PARSE("your",,,Pisser)%의 더러움으로 얼룩져 있다.
+			ENDIF
+			PRINTL
+		ELSEIF HasPiss
+			IF Pisser == MASTER
+				PRINTFORMDW %URINE(Pisser)%은(는) %PARSE("you're",,,Pisser)%가 오줌을 받는 쪽이 아니어서 그렇게 따뜻하다고 느끼지는 않지만 여전히 매우 기분 좋다.
+			ELSE
+				PRINTFORMDW %URINE(Pisser)%은 축축함의 감각이 당신의 %FSYN("crotch")%를 타고 흐르기 시작하면서 매우 따뜻하다.
+			ENDIF
+			IF FLAG:70
+				PRINTFORMDW %PARSE("your",,,BeingPissed)%과 %PeeProtectType(BeingPissed,2)%에서 안도감을 찾은 후, %PARSE("you sigh",5,,BeingPissed)%가 되면서 분출이 홍수로 변한다.
+			ELSE
+				PRINTFORMDW %PARSE("your",,,BeingPissed)%과 %PeeProtectType(BeingPissed,2)%에서 안도감을 찾은 후, %PARSE("you sigh",5,,BeingPissed)%가 되면서 분출이 홍수로 변한다.
+			ENDIF
+			$HasPissPeeingOnTouhou
+			IF IsPadded(BeingPissed)
+				PRINTFORMDW %PeeAndPoo(HasPiss,HasScat,URINE(Pisser),SCAT(Pisser))%은(는) %PARSE("your",5,,BeingPissed)%의 다리 사이 공간에 모이기 시작하고, %PARSE("your",5,,BeingPissed)% 누출 방지 장치들에 의해 붙잡혀 있다.
+			ELSE
+				PRINTFORMDW 담기 위해 만들어진 것이 아닌 %PeeAndPoo(HasPiss,HasScat,URINE(Pisser),SCAT(Pisser))%은, 그것이 %PARSE("your",5,,BeingPissed)%의 몸과 옷을 더럽히면서 %PARSE("your",,,BeingPissed)%에서 흘러나온다 %PeeProtectType(BeingPissed,2)%.
+			ENDIF
+			PRINTL
+		ENDIF
+		SIF PeeBarStage(BeingPissed) >= 3
+			SETBIT PisseeHasAccident, 1
+		SIF PooBarStage(BeingPissed) >= 4
+			SETBIT PisseeHasAccident, 2
+		IF GETBIT(PisseeHasAccident, 1) || GETBIT(PisseeHasAccident, 2)
+			IF FLAG:70
+				PRINTFORMDW 시간이 멈춰 있어도, %PARSE("your",,,BeingPissed)%의 몸은 스스로를 도울 수 없고 %PARSE("begin",,,BeingPissed)%가 %PeeAndPoo(GETBIT(PisseeHasAccident, 1), GETBIT(PisseeHasAccident, 2),FSYN("pee"),FSYN("poo"))%하는 것도 마찬가지다.
+			ELSE
+				PRINTFORMDW 그것을 도울 수 없어, %PARSE("you begin",,,BeingPissed)%도 %PeeAndPoo(GETBIT(PisseeHasAccident, 1), GETBIT(PisseeHasAccident, 2),FSYN("pee"),FSYN("poo"))%에게 사용하도록 허락한 %PARSE("you",,,Pisser)%이 %PARSE("your",5,,BeingPissed)%를 이용하게 하자 %PeeProtectType(BeingPissed,2)%.
+				PRINTFORMDW %PARSE("You",5,,BeingPissed)%은(는) 그것이 %PARSE("your",5,,BeingPissed)% %PeeAndPoo(GETBIT(PisseeHasAccident, 1), GETBIT(PisseeHasAccident, 2),"pee","poop")%인지, 아니면 %PARSE("yours",5,,Pisser)%인지는 어쩔 수 없지만, 그것이 %PARSE("your",5,,BeingPissed)% 피부와 %PARSE("your",5,,BeingPissed)% \@ IsPadded(BeingPissed) ? 패딩 # 속옷 \@에 닿자 안도감에 %PARSE("you",6,,BeingPissed)%은(는) 얼굴을 붉힌다.
+			ENDIF
+		ENDIF
+		PRINTL
+		PRINTFORMDW %PARSE("You continue",,,Pisser)%에서 %PeeAndPoo(HasPiss,HasScat,FSYN("pee"),FSYN("poo"))%까지 %PARSE("your",5,,Pisser)%이 완전히 비워질 때까지 %PeeAndPoo(HasPiss,HasScat,"bladder","bowels")%한다.
+		PRINTL
+		PRINTFORMDW %PARSE("You sigh",,,Pisser)%은 기분 좋고, 이제 %PARSE("feel",5,,Pisser)%는 훨씬 더 편안해진다. 
+		IF (GETBIT(PisseeHasAccident, 1) || GETBIT(PisseeHasAccident, 2))
+			IF FLAG:70
+			ELSE
+				VARSET LOCALS
+				LOCALS '= @"%PARSE("You question",,,Pisser)%왜 "
+				IF HasPiss && GETBIT(PisseeHasAccident, 1)
+					LOCALS:1 += @"소변을 봤다."
+				ELSEIF GETBIT(PisseeHasAccident, 1)
+					LOCALS:2 += @"오줌"
+				ENDIF
+				IF HasScat && GETBIT(PisseeHasAccident, 1)
+					LOCALS:1 += @"변을 봤다."
+				ELSEIF GETBIT(PisseeHasAccident, 2)
+					LOCALS:2 += @"변"
+				ENDIF
+				SIF STRLENS(LOCALS:1)
+					LOCALS += @"%PARSE("you",5,,Pisser)% %LIST_IN_STRING(LOCALS:1)% 너무 많이 한다. "
+				SIF STRLENS(LOCALS:1) && STRLENS(LOCALS:2)
+					LOCALS += "and "
+				SIF STRLENS(LOCALS:2)
+					LOCALS += @"어떻게 거기에 %LIST_IN_STRING(LOCALS:2)%가 있는지, "
+				LOCALS += @"하지만 %PARSE("you answer",,,BeingPissed)% 그게 %PARSE("you",5,,BeingPissed)% %PeeAndPoo(GETBIT(PisseeHasAccident, 1), GETBIT(PisseeHasAccident, 2),"peed","pooped")%도 그렇다."
+				PRINTFORMDW %LOCALS%
+			ENDIF
+			; SIF !FLAG:70
+			CALL OMORASHI_END(BeingPissed, GETBIT(PisseeHasAccident, 1), GETBIT(PisseeHasAccident, 2))
+		ENDIF
+		IF FLAG:70
+			PRINTFORMDW %PARSE("You get",,,Pisser)% 꺼지고 %PARSE("you",,,BeingPissed)% ~처럼 %PARSE("you put your",5,,Pisser)% %PeeProtectType(Pisser,2)% 제자리에 다시 놓았다.
+		ELSE
+			PRINTFORMDW %PARSE("you get",,,Pisser)%이/가 %PARSE("you",,,BeingPissed)%에 맞춰, %PARSE("you put your",5,,Pisser)%이/가 %PARSE("your",5,,BeingPissed)% 위에 철저히 %PeeAndPoo(HasPiss || GETBIT(PisseeHasAccident, 1),HasScat || GETBIT(PisseeHasAccident, 2),"soaked","full")% %PeeProtectType(BeingPissed,1)%하여 %PARSE("you",6,,BeingPissed)%을/를 홍조지게 만들었다.
+			PRINTFORMDW %PARSE("You give",,,Pisser)%은(는) %PARSE("you put your",5,,Pisser)%이/가 %PeeProtectType(Pisser,2)% 제자리로 돌아옴에 %PARSE("you",6,,BeingPissed)% 덕분에 감사했다.
+		ENDIF
+		SIF HasPiss
+			CALLF MessUndies(BeingPissed, "liquid", 0, BASE:Pisser:4)
+		SIF HasScat
+			CALLF MessUndies(BeingPissed, "solid", 0, BASE:Pisser:17)
+		CALL OMORASHI_END(Pisser, HasPiss, HasScat, 1, 1, 1)
+	CASE 2
+		;switching into touhou's undies
+		LOCAL:3 = DiapeCharges:Pisser:1
+		LOCAL:4 = DiapePooCharges:Pisser:1
+		LOCAL:5 = EQUIP:Pisser:6
+		CALL MESSAGE_UNDRESSING_BOTTOM_NAS(BeingPissed,Pisser,2)
+		CALL MESSAGE_UNDERWEAR_UNDRESS_NAS(BeingPissed)
+		PRINTFORML 그런 다음, %PARSE("you replace your",,,Pisser)% %PeeProtectType(Pisser)%와 함께 %PARSE("your",5,,BeingPissed)% %PeeProtectType(BeingPissed)%를 한다.
+		EQUIP:Pisser:6 = Equip:BeingPissed:6
+		DiapeCharges:Pisser:1 = DiapeCharges:BeingPissed:1
+		DiapePooCharges:Pisser:1 = DiapePooCharges:BeingPissed:1
+		SIF HasPiss
+			CALLF MessUndies(BeingPissed, "liquid", 0, BASE:Pisser:4)
+		SIF HasScat
+			CALLF MessUndies(BeingPissed, "solid", 0, BASE:Pisser:17)
+		CALL INTENTIONAL_ACCIDENT(Pisser ,HasPiss, HasScat, 0, 1)
+		CALL TOILETING_END(Pisser,HasPiss, HasScat,1)
+		EQUIP:Pisser:6 = LOCAL:5
+		DiapeCharges:Pisser:1 = LOCAL:3
+		DiapePooCharges:Pisser:1 = LOCAL:4
+		PRINTFORMW 용무를 본 후 %PARSE("your",5,,BeingPissed)% %PeeProtectType(BeingPissed,2)%에서, 다시 %PARSE("your",,,Pisser)% %PeeProtectType(Pisser,2)%로 돌아가 이제 더러워진 %PeeProtectType(BeingPissed,2)%를 %PARSE("you",,,BeingPissed)% 위에 놓는다.
+ENDSELECT
+
+@ADD_CUSTOM_COM_ABLE357
+;no more of this fucking shit on the headers please
+SIF !TFLAG:100
+	RETURN 0
+; do not show if the flags aren't enabled
+SIF !UndiesCanSoil("liquid") && !UndiesCanSoil("solid")
+	RETURN 0
+;sex specific commands for peeing and pooing.
+SIF CFLAG:MASTER:うふふ
+	RETURN 0
+RETURN 1
+
+@ADD_CUSTOM_COM_PRINT357
+#DIM CONST COM_ID = 357
+IF (PeeBarStage(MASTER) >= 2 || PooBarStage(MASTER) >= 2) && (PeeHold:MASTER:2 > -5 || PooHold:MASTER:2 > -5)
+	IF IS_TOILET(CFLAG:MASTER:現在位置,MASTER)
+		SETCOLOR C_GREEN
+	ENDIF
+	PRINTFORMC 스스로를 해소한다[{Add_Custom_COM_To_Number(COM_ID),3}]
+ELSE
+	IF IsPadded(MASTER,"diaper") || IsPadded(MASTER,"pull-up")
+		LOCALS '= "Diaper"
+	ELSEIF PadCount:MASTER:0
+		LOCALS '= "Pad"
+	ELSE
+		LOCALS '= "Underwear"
+	ENDIF
+	PRINTFORMC %CAPITALIZE(LOCALS)%[{Add_Custom_COM_To_Number(COM_ID),3}]을 확인한다.
+ENDIF
+RESETCOLOR
+RETURN 1
+
+@ACC357_PAGE(ARG)
+#DIM HasPiss
+#DIM HasScat
+#DIM CanPotty
+#DIM DiapeStand
+VARSET HasPiss
+VARSET HasScat
+VARSET CanPotty
+SIF PeeBarStage(ARG) >= 1
+	HasPiss = 1
+SIF PooBarStage(ARG) >= 2
+	HasScat = 1
+IF DiapeCharges:ARG:0 >= BASE:ARG:尿意 && !IsPadded(ARG) && nCatheterized:ARG:0 && (HasScat && !CFLAG:ARG:PadCount)
+	DiapeStand = -1
+ELSEIF (DiapeCharges:ARG:0 >= BASE:ARG:尿意 || !HasPiss) && (DiapePooCharges:ARG:0 >= BASE:ARG:Poo || !HasScat)
+	DiapeStand = 1
+ELSE
+	DiapeStand = 0
+ENDIF
+CALL Com_DiaperCheck(ARG)
+CanPotty = 1
+SELECTCASE ARG
+	CASE MASTER
+		SETCOLOR C_GRAY
+		CUSTOMDRAWLINE ━
+		RESETCOLOR
+		IF PeeHold:ARG:2 <= -5 && PeeHold:ARG:2 <= -5
+			IF PeeHold:ARG:0 <= -5 && PeeHold:ARG:0 <= -5
+				PRINTFORML 너는 그 모든 사고들이 네게 영향을 미쳤을 거라고 생각한다. 더 이상 아래쪽으로는 별로 기분이 나쁘지 않다.
+			ELSE
+				PRINTFORML 방광 손상이 당신에게 영향을 미쳤을 거라고 생각한다. 더 이상 아래쪽에서 많은 것을 느낄 수 없다.
+			ENDIF
+			IF CFLAG:72:面識
+				FONTITALIC
+				PRINTFORML 어쩌면 %CALLNAME:72%가 다시 배변 훈련을 시작하는 데 도움을 줄 수 있을지도 모른다?
+				FONTREGULAR
+			ENDIF
+			CanPotty = 0
+		ELSEIF !CapacityStats:ARG:4
+			FONTITALIC
+			PRINTFORML %PeeProtectType(ARG,2)%를 벗지 않고 화장실에 갈 수는 없다.
+			FONTREGULAR
+			CanPotty = -1
+		ELSEIF GET_INT(ARG, "Religion", TALENT:ARG:Religion, "Incontinence") >= 3
+			FONTITALIC
+			PRINTFORML 당신의 종교는 화장실을 사용하도록 허락하지 않는다.
+			FONTREGULAR
+			CanPotty = -1
+		ELSEIF DiapeMagicAttunement:ARG:0 == "lockDiaper"
+			FONTITALIC
+			PRINTFORML 당신의 %PeeProtectType(ARG,2)%는 저주받았고 화장실을 사용할 수 없게 만든다.
+			FONTREGULAR
+		ELSEIF PANTIES_LOCKED(ARG)
+			FONTITALIC
+			PRINTFORML 당신의 %CLOTHNAME(5,EQUIP:ARG:5)%가 화장실 사용을 막는다.
+			FONTREGULAR
+			CanPotty = -1
+		ENDIF
+		LOCALS '= PeeAndPoo(HasPiss,HasScat, "pee", "poop")
+		SIF !STRLENS(LOCALS)
+			CanPotty = 0
+		;uses the clothing difficulty system to simulate taking off the tapes
+		LOCAL:1 = 1
+		; IF CFLAG:ARG:PantiesType == 3
+		;     PRINTFORMW You cannot relieve yourself without taking off your %PeeProtectType(ARG,1)% and ruining it!
+		;     LOCAL:1 = 0
+		; ELSE
+		;     LOCAL:1 = 1
+		; ENDIF
+		IF inTrain == 3 && ARG == MASTER
+			;VARSET DAILY_Lucid_CanGiveUp, 3
+			TRYCALLFORMF LUCID_DREAM_INFO_{DAILY_Lucid_Stats:3}
+			IF TOLOWER(DAILY_Lucid_Type) == "pee" && DAILY_Lucid_CanGiveUp
+				SIF nOmutsu
+					PRINTFORML [  3] 만약 조금만 내보낸다면...
+				SIF nOmutsu && GETBIT(DAILY_Lucid_CanGiveUp,1)
+					PRINTFORML [  8] [ 8] - 포기한다 (기저귀)...
+				SIF GETBIT(DAILY_Lucid_CanGiveUp,0)
+					PRINTFORML [  9] 포기해라...
+				GOTO INPUTBypass
+			ENDIF
+		ENDIF
+		IF CanPotty && ARG == MASTER
+			IF CanPotty == -1
+				PRINTFORML 당신은 그것을 착용했을 때만 %LOCALS% 할 수 있다.
+				;PRINTFORML Due to your religion, you can only %LOCALS% with it on.
+			ELSE
+				PRINTFORML 당신은 %PeeProtectType(MASTER, 2)%과 %LOCALS%를 평소처럼 벗을 수 있거나, 혹은 그것을 착용한 채로 %LOCALS%할 수 있다.
+			ENDIF
+			CALLF PottyPantsFormula
+			IF LOCAL:1 && CanPotty > -1
+				PRINTFORM [  0] - %CAPITALIZE(LOCALS)% 
+				IF IS_TOILET(CFLAG:MASTER:現在位置, MASTER)
+					PRINTFORML 화장실 안에 있다.
+				ELSEIF BATHROOM()
+					PRINTFORML 목욕탕에서
+				ELSE
+					PRINTFORML 바닥에
+				ENDIF
+			ENDIF
+			IF EQUIP:MASTER:6
+				PRINTFORM [  1] %CAPITALIZE(LOCALS)%은 당신의 %PeeProtectType(MASTER,1)% 안에 있다. 
+				IF DiapeStand != 1
+					SETCOLOR C_RED
+					PRINTFORM 당신의 %PeeProtectType(MASTER,2)%은 당신을 가둘 수 없다. 
+					IF HasPiss
+						SETCOLOR PeeColor_C(MASTER)
+						PRINTFORM 소변
+					ENDIF
+					IF HasPiss && HasScat
+						SETCOLOR C_RED
+						PRINTFORM %" and "%
+					ENDIF
+					IF HasScat
+						SETCOLOR CF_JELLYORPOO()
+						PRINTFORM 똥
+					ENDIF
+					RESETCOLOR
+				ELSE
+				ENDIF
+				PRINTFORML
+				IF CanPotty > -1
+					PRINTFORML [  2] %PeeProtectType(MASTER,2)%와 %LOCALS%를 정상적으로 제거한다. 
+					;SETCOLOR C_RED
+					;PRINTFORML - This will ruin your %PeeProtectType(MASTER,2)%!
+					;RESETCOLOR
+				ENDIF
+			ELSE
+				PRINTFORML [  1] %CAPITALIZE(LOCALS)%가 있는 곳에서
+			ENDIF
+			SIF PeeBarStage(MASTER) >= 5
+				PRINTFORML [  3] - 당신의 %PeeProtectType(MASTER,2)% 안에서 분출을 해라
+			SIF ITEM:EmptyBottle && !HasScat && CanPotty > -1
+				PRINTFORML [  4] 병을 사용한다
+		ELSEIF PeeBarStage(MASTER) < 1 && PooBarStage(MASTER) < 2 && (nPee || nScat)
+			PRINTFORML 지금은 변기에 갈 필요 없다.
+		ENDIF
+	CASEELSE
+		IF (PeeBarStage(MASTER) >= 1 || PooBarStage(MASTER) >= 2) && (nPee || nScat)
+			SETCOLOR C_GRAY
+			CUSTOMDRAWLINE ━
+			RESETCOLOR
+			SIF ARG != MASTER
+				PRINTFORML [  5] [ 5] - %CALLNAME:ARG%에게 오줌을 싸다
+			IF EQUIP:ARG:6
+				SIF ARG != MASTER && (HasFallState(ARG) || (FLAG:70 && !BASE:ARG:TSP))
+					PRINTFORML [  6] [ 6] - %CALLNAME:ARG%의 %PeeProtectType(ARG,2)% 사용한다
+				SIF ARG != MASTER && (HasFallState(ARG) || (FLAG:70 && !BASE:ARG:TSP))
+					PRINTFORML [  7] [ 7] - %CALLNAME:ARG%의 %PeeProtectType(ARG,2)%을 가져와 사용한다
+			ENDIF
+		ENDIF
+		IF (PeeBarStage(ARG) >= 1 || PooBarStage(ARG) >= 2) && (nPee || nScat) && !PANTIES_LOCKED(MASTER) && !PANTIES_LOCKED(ARG)
+			SETCOLOR C_GRAY
+			CUSTOMDRAWLINE ━
+			RESETCOLOR
+			SIF (HasFallState(ARG) || (FLAG:70 && !BASE:ARG:TSP))
+				PRINTFORML [ 40] - %CALLNAME:ARG%가 당신의 %PeeProtectType(MASTER,2)%를 사용하게 한다.
+			SIF (HasFallState(ARG))
+				PRINTFORML [ 41] - %CALLNAME:ARG%이 당신의 %PeeProtectType(MASTER,2)%를 가져서 사용하게 한다.
+		ENDIF
+ENDSELECT
+SETCOLOR C_GRAY
+CUSTOMDRAWLINE ━
+RESETCOLOR
+IF DiapeMagicAttunement:ARG:0 == "lockDiaper"
+	FONTITALIC
+	PRINTFORML %PARSE("Your",,,ARG)%과 %PeeProtectType(ARG,2)%는 저주받았으며 %PARSE("you",6,,ARG)%가 %PARSE("your",5,,ARG)%를 %PeeProtectType(MASTER,2)%로 바꾸는 것을 막는다.
+	FONTREGULAR
+ELSEIF PANTIES_LOCKED(ARG)
+	FONTITALIC
+	PRINTFORML %PARSE("Your",,,ARG)% %CLOTHNAME(5,EQUIP:ARG:5)%는 %PARSE("you",6,,ARG)%가 %PARSE("your",5,,ARG)%를 변경하는 것을 막는다. %PeeProtectType(MASTER,2)%.
+	FONTREGULAR
+ELSEIF CapacityStats:ARG:4 <= 0
+	FONTITALIC
+	PRINTFORML %PARSE("You",,,ARG)%는 %PARSE("your",5,,ARG)%의 팔을 조종할 수 없고 %PARSE("your",5,,ARG)%의 %PeeProtectType(MASTER,2)%를 변경할 수 없다.
+	FONTREGULAR
+ELSEIF (HasFallState(ARG) || ARG == MASTER) && !CANT_UNDIES(ARG)
+	PRINTFORML [100] - 변경 \@ EQUIP:ARG:6 ? %PARSE("your",5,,ARG)% %PeeProtectType(MASTER,2)% # 속옷으로 바꾼다 \@
+	SIF AL_IS_CLAIMED("lucidEV3BeatHypermesser")
+		PRINTFORML [104] -【TSP 변경】 (350 TSP)
+ENDIF
+SIF ARG != MASTER && nPantyPunish && !CANT_UNDIES(ARG)
+	PRINTFORML [102] - %CALLNAME:ARG%에 대해 이전 확인을 한다.
+$INPUTBypass

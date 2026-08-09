@@ -1,0 +1,164 @@
+﻿; Modular ERB: Addition/Requests-Pranks/Add_Punishment.ERB
+
+@Add_Punishment_Framework(CHARA, AMOUNT) ;select generic punishment from the list
+#DIM CHARA
+#DIM AMOUNT
+IF CFLAG:CHARA:好感度 >= 1500
+	IF TALENT:CHARA:恋慕 && !MARK:CHARA:反発刻印 && RAND:4
+		CALL Add_Forced_Date(CHARA, AMOUNT)
+	ELSE
+		SELECTCASE RAND:2
+			CASE 0
+				CALL Add_Forced_Cleaning(CHARA, AMOUNT, "Afterprank")
+			CASE 1
+				CALL Add_Forced_Chore(CHARA, AMOUNT) ;shopping, fishing, logging, cooking, teaching, drinking, combat training
+				;CASE 2 ;CHARA has you prank someone with whom she has negative RELATION, and then blame everything on you; depending on their relationship their reaction differs, but nothing too overly cruel; probably use revised RAND_HANTING_TR for finding targets for this mechanic
+				;	CALL Add_RevengePrank(CHARA, AMOUNT)
+		ENDSELECT
+	ENDIF
+	PRINTFORMW 그 후, %CALLNAME:CHARA%는 어쩐지 더 행복해 보인다...
+	TALENT:CHARA:機嫌 = 1
+	CFLAG:CHARA:ブチギレ = 0
+	RETURN 1
+ELSE
+	;just challenge the player to a duel or something
+	IF nRyona && Level_To_Rank(GetCombatAbility(CHARA)) >= 3
+		CALL Add_Challenge_Player_Punish(CHARA)
+		RETURN 1
+	ELSE
+	ENDIF
+ENDIF
+
+@Add_Forced_Cleaning(CHARA, AMOUNT, ARGS)
+#DIM CHARA
+#DIM AMOUNT
+#DIM REMAINING_AMOUNT
+#DIM CHARA_ROOM_MAP
+#DIM CLEANING_POWER
+PRINTFORML 처벌로, %CALLNAME:CHARA%은(는) \@ ARGS == "Afterprank" ? 당신의 장난 후 뒷정리를 하게 만든다... 그리고 그녀의 집 구역 전체를 청소하게 한다 # 그녀의 집에 주변을 청소하도록 강요한다 \@.
+IF CFLAG:CHARA:神社在住 ;lives on home map, perform actual cleaning
+	REMAINING_AMOUNT = AMOUNT
+	;check valid rooms
+	CHARA_ROOM_MAP = MAP_AREASELECT(MAIN_MAP, CFLAG:CHARA:神社在住)
+	CLEANING_POWER = (2 + ABL:MASTER:清掃技能 + 3 * TALENT:MASTER:清掃中毒)
+	SELECTCASE ITEM:カスタム竹箒
+		CASE 1
+			CLEANING_POWER += 2
+		CASE 2
+			CLEANING_POWER += 3
+		CASE 3
+			CLEANING_POWER += 4
+	ENDSELECT
+	CLEANING_POWER = CLEANING_POWER * (5 - TALENT:MASTER:汚臭耐性) / 5
+	;random to not always clean the same places
+	CALL FISHER_YATES_SHAFFLE(99)
+	FOR LOCAL, 0, 99
+	IF MAP_AREASELECT(MAIN_MAP, (MAIN_MAP * 100) + LOCAL) == CHARA_ROOM_MAP
+		;clean
+		PRINTFORML 청소 %NAME_FROM_PLACE((MAIN_MAP * 100) + LOCAL)%...
+		YOGORE:((MAIN_MAP * 100) + LOCAL) = YOGORE:((MAIN_MAP * 100) + LOCAL) / CLEANING_POWER
+		REMAINING_AMOUNT--
+		EXP:MASTER:清掃経験 ++
+		IF REMAINING_AMOUNT <= 0
+			PRINTFORMW 만족했다, %CALLNAME:CHARA%는 드디어 너를 놓아준다.
+			BREAK
+		ENDIF
+	ENDIF
+	NEXT
+	SIF REMAINING_AMOUNT > 0
+		PRINTFORMW %CALLNAME:CHARA%는 완전히 만족하지 못했지만, 다른 곳에 청소할 곳이 없어서 보내준다.
+	AMOUNT -= REMAINING_AMOUNT
+ELSE
+	PRINTFORMW 너는 %GET_MAPNAME(CFLAG:CHARA:自宅位置 / 100)% 주변을 청소하는 데 꽤 많은 시간을 보냈다.
+	EXP:MASTER:清掃経験 += AMOUNT
+ENDIF
+;reduce stamina, increase time
+DOWNBASE:MASTER:体力 = 40 * AMOUNT
+DOWNBASE:MASTER:気力 = 80 * AMOUNT
+TIME += (AMOUNT * 20)
+;fairly simple for now
+
+@Add_Forced_Chore(CHARA, AMOUNT, ARGS)
+#DIM CHARA
+#DIM AMOUNT
+SELECTCASE RAND:6
+	CASE 0
+		PRINTFORML 벌로 %CALLNAME:CHARA%가 당신에게 온갖 것들을 %HIM_HER(CHARA)%를 위해 사게 했다.
+		PRINTFORML 물품, 음식, 의류... %HE_SHE(CHARA,1)%는 당신이 모든 것을 지불할 것이라는 것을 알면서 %HIS_HER(CHARA)%의 마음껏 쇼핑을 계속했다.
+		PRINTFORML 그런 무모한 쇼핑 대잔치로 인해 당신의 지갑이 상당히 타격을 입은 기분이다...
+		DOWNBASE:MASTER:体力 = 40 * AMOUNT
+		DOWNBASE:MASTER:気力 = 80 * AMOUNT
+		TIME += (AMOUNT * 20)
+		CALL PAY_MONEY_YEN(MIN(RAND(1000, 3000)*AMOUNT, MONEY:0/2), 2)
+	CASE 1
+		PRINTFORML 벌로, %CALLNAME:CHARA%는 당신에게 산더미 같은 물고기를 잡게 했다.
+		PRINTFORML 많은 노동이었다...
+		DOWNBASE:MASTER:体力 = 60 * AMOUNT
+		DOWNBASE:MASTER:気力 = 100 * AMOUNT
+		TIME += (AMOUNT * 30)
+		EXP:MASTER:釣り経験 += AMOUNT
+	CASE 2
+		PRINTFORML 벌로 %CALLNAME:CHARA%가 당신에게 겨울 동안 나무를 베게 했다.
+		PRINTFORML 정말 많은 노동이었다...
+		DOWNBASE:MASTER:体力 = 80 * AMOUNT
+		DOWNBASE:MASTER:気力 = 120 * AMOUNT
+		TIME += (AMOUNT * 40)
+		EXP:MASTER:伐採経験 += AMOUNT
+	CASE 3
+		PRINTFORML 벌로, %CALLNAME:CHARA%가 당신에게 %HIM_HER(CHARA)%와 함께 거대한 양의 음식을 요리하게 했다.
+		PRINTFORML ...그리고 그 후에 뒷정리를 해야 했다.
+		PRINTFORML 정말 많은 노동이었다...
+		TCVAR:CHARA:空腹時刻 = 1440 * DAY + TIME + 120 ;hunger time
+		DOWNBASE:MASTER:体力 = 60 * AMOUNT
+		DOWNBASE:MASTER:気力 = 100 * AMOUNT
+		TIME += (AMOUNT * 30)
+		EXP:MASTER:清掃経験 += AMOUNT
+		EXP:MASTER:料理経験 += AMOUNT
+		EXP:CHARA:料理経験 += 5 * (ABL:MASTER:料理技能 - ABL:CHARA:料理技能)
+	CASE 4
+		PRINTFORML 벌로, %CALLNAME:CHARA%에게 당신은 %HIM_HER(CHARA)%와 함께 공부하게 한다.
+		DOWNBASE:MASTER:体力 = 40 * AMOUNT
+		DOWNBASE:MASTER:気力 = 80 * AMOUNT
+		TIME += (AMOUNT * 30)
+		EXP:MASTER:学習経験 += AMOUNT
+		EXP:TARGET:学習経験 += MAX(ABL:TARGET:教養 * 5, 1)
+	CASE 5
+		PRINTFORML 벌로서 %CALLNAME:CHARA%은 당신을 %HIS_HER(CHARA)%의 스파링 파트너로 복무하게 했다.
+		PRINTFORML 오직 회피만 강요받으며, 당신은 맞지 않기 위해 모든 힘을 다했지만 %CALLNAME:CHARA%는 마치 %HE_SHE(CHARA)%가 매우 즐거워하는 것 같았다...
+		LOCAL = TARGET ;store it temporarily
+		TARGET = CHARA
+		CALL IRAI_一般5(CHARA, , "依頼実行時") ;from combat training request
+		TARGET = LOCAL
+		;extra time + exhaustion
+		DOWNBASE:MASTER:体力 = 40 * AMOUNT
+		DOWNBASE:MASTER:気力 = 80 * AMOUNT
+		TIME += (AMOUNT * 5)
+		;CASE 6 ;alcohol drinking is supposed to be here, but it's going to be quite complicated - exclude non-drinkers, choose random alcohol from your item list (exclude sweet sake) AMOUNT times, if there are none then go to the bar instead; set drunk level to near max BASE:CHARA:酒気 = MAXBASE:CHARA:酒気-500; see the end of 酒関連.ERB for picking alcohol
+ENDSELECT
+
+@Add_Forced_Date(CHARA, AMOUNT)
+#DIM CHARA
+#DIM AMOUNT
+PRINTFORML 단단히 당신의 손을 잡은 채, %CALLNAME:CHARA%는 당신에게 %HIM_HER(CHARA)%와 데이트를 하자고 요구한다.
+PRINTFORML 별로 큰 벌처럼 들리진 않지만... 정말 괜찮아?
+PRINTFORML %HE_SHE(CHARA)%는 주변의 모든 이들에게 자신의 트로피인 %HIS_HER(CHARA)%를 자랑하며 당신을 전력으로 지옥(Gensokyo) 한 바퀴 돌게 한다.
+PRINTFORML %BREAKENG(@"당신이 %HIM_HER(CHARA)%에게 선물을 사주고, %HIM_HER(CHARA)%을 식당에 데려가서 끊임없이 %HIM_HER(CHARA)%을 접대하면, %HE_SHE(CHARA)%는 당신이 %HIM_HER(CHARA)%과 애정 표현하는 것을 허락하지도 않는다.")%
+PRINTFORML 하루 종일 %CALLNAME:CHARA%와 그런 방식으로 시간을 보낸 후, 당신은 그 모든 과정이 끝난 뒤 상당히 지쳐 있음을 느낀다...
+DOWNBASE:MASTER:体力 = 120 * AMOUNT
+DOWNBASE:MASTER:気力 = 180 * AMOUNT
+TIME += 600
+IF TALENT:MASTER:恋人
+	FOR LOCAL, 0, CHARANUM
+	IF TALENT:LOCAL:恋人 && !CHARA
+		PRINTFORML 당신의 소중한 사람들은 그것에 별로 기뻐하지 않을지도 몰라...
+		BREAK
+	ENDIF
+	NEXT
+	FOR LOCAL, 0, CHARANUM
+	IF TALENT:LOCAL:恋人 && !CHARA
+		CALL CHANGE_CFLAG(2, LOCAL, -10 * AMOUNT) ;set favor penalty
+		CALL CHANGE_CFLAG(4, LOCAL, -3 * AMOUNT) ;set trust penalty
+	ENDIF
+	NEXT
+ENDIF
+CALL CHANGE_CFLAG(2, CHARA, 10 * AMOUNT) ;set favor bonus to the punisher

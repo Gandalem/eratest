@@ -1,0 +1,419 @@
+﻿; Modular ERB: COMF/日常系/COMF422 天の声を聞く.ERB
+;-------------------------------------------------
+;天の声を聞く
+;日常系コマンド、レベル1
+;-------------------------------------------------
+
+@COM422
+$INPUT_LOOP ;qol custom code, loop,  reenable stalker, and add 10-13
+PRINTL [0] - 누군가를 찾는다
+PRINTL [1] - 더러운 방을 찾는다
+PRINTL [2] - 밖에 있는 사람을 찾는다
+PRINTL [3] - 캐릭터 순위를 보여준다
+PRINTFORML [4] -【팔로우】대상 변경 (현재: \@ STALKED ? %CALLNAME:STALKED% # None \@)
+PRINTL
+PRINTFORML [10] - 모든 능력
+PRINTFORML [11] - 채집 장소
+PRINTFORML [12] - 낚시 장소
+PRINTFORML [13] - 위치 테이블
+PRINTL
+PRINTL [100] - 반환
+INPUT
+IF RESULT == 0
+	CALL HITOSAGASI()
+	GOTO MOVE_TO
+ELSEIF RESULT == 1
+	CALL OHEYA_CHECK
+	GOTO MOVE_TO
+ELSEIF RESULT == 2
+	CALL BROAD_HITOSAGASI
+	TIME += 3
+	RETURN 1
+ELSEIF RESULT == 3
+	CALL RANKING
+	TIME += 3
+	RETURN 1
+ELSEIF RESULT == 4 ;custom code
+	CALL STALKER_CHANGE
+ELSEIF RESULT == 10
+	CALL SHOW_CHARA_LIST_TR("存在するキャラリスト", "体力気力", "「情報表示」「条件変更」")
+ELSEIF RESULT == 11
+	CALL SHOW_GATHERING_LIST
+ELSEIF RESULT == 12
+	CALL SHOW_FISHING_LIST
+ELSEIF RESULT == 13
+	CALL SHOW_APPEAR_LIST
+ELSEIF RESULT == 100
+	RETURN -1
+ENDIF
+GOTO INPUT_LOOP
+$MOVE_TO ;custom code
+INPUTS
+RESULT = TOINT(RESULTS)
+IF !ISNUMERIC(RESULTS) ;bugfix
+	REPLACE RESULTS, CALLNAME:MASTER, "%CALLNAME:MASTER%"
+	FOR LOCAL, MINROOM(), MAXROOM ;bugfix
+	;Custom code
+	SIF GET_PLACENAME(LOCAL) == RESULTS
+		RESULT = LOCAL
+	NEXT
+ELSEIF RESULT == 0
+	RESTART
+ENDIF
+;IF (RESULT >= 26 && RESULT <= 35) && ABL:MASTER:教養 < 1 && !INRANGE(CFLAG:MASTER:初期位置,26,35)
+;	PRINTFORMW You're too inexperienced to find it...
+IF !MAP_CAN_MOVE(RESULT) ;bugfix, replace above
+	CALL CANNOT_MOVE_MESSAGE(RESULT)
+	GOTO MOVE_TO
+ELSE
+	IF IN_HOME(RESULT) == 1
+		SIF AT_HOME(MASTER) == 0
+			GOTO MURIDESU
+		CALL SKIP_MOVE(CFLAG:MASTER:現在位置, RESULT)
+	ENDIF
+ENDIF
+TIME += 10
+RETURN 1
+$MURIDESU
+PRINTW 여기서 더는 갈 수 없어...
+;TIME += 10 bugfix(?), don't waste time for failed input
+CALL HITOSAGASI
+GOTO MOVE_TO
+
+@BROAD_HITOSAGASI
+$KAKUNIN
+FOR LOCAL,0,20
+SIF LOCAL == MAIN_MAP
+	CONTINUE
+SIF !GET_EXISTMAP(LOCAL)
+	CONTINUE
+LOCAL:1 = 5000 + LOCAL
+;Custom code
+PRINTFORMLC %@"[{LOCAL,2}] - %STR_TR(LOCAL:1)%", 41, LEFT%
+CALL 広域チェック(LOCAL,1)
+CALL QOL_WHEREABOUTS_OUTSIDE(LOCAL, 0, 50, 13) ;qol custom code
+SIF !FLAG:画像表示
+	PRINTL
+PRINTL
+NEXT
+DRAWLINE
+PRINT [100] - 나가기
+$INPUT_LOOP
+INPUT
+IF RESULT == 100 || RESULT == MAIN_MAP
+	RETURN -1
+ELSEIF RESULT < 0
+	CLEARLINE 1
+	GOTO INPUT_LOOP
+ELSEIF !GET_EXISTMAP(RESULT)
+	PRINTW 아직 생성되지 않음
+	CLEARLINE 2
+	GOTO INPUT_LOOP
+ENDIF
+CALL QOL_WHEREABOUTS_OUTSIDE(RESULT, 0, 50, 13) ;qol custom code
+PRINTL
+CALL ASK_YN("다른 지역을 확인한다","떠나기")
+SIF !RESULT
+	GOTO KAKUNIN
+
+@広域チェック(ARG,ARG:1)
+#DIM DYNAMIC nRoster, 200
+VARSET LOCAL
+VARSET nRoster, -1
+LOCAL:9 = 0
+FOR LOCAL,0,CHARANUM
+SIF AT_HOME(LOCAL) == 1
+	CONTINUE
+SIF CFLAG:LOCAL:現在位置 == MAXROOM && CFLAG:LOCAL:睡眠
+	CONTINUE
+FOR LOCAL:1,10,100,10
+IF CFLAG:LOCAL:現在位置 == ARG * 100 + LOCAL:1
+	;その地域にいるキャラを表示
+	IF ARG:1 == 2
+		;custom code
+		IF FLAG:画像表示
+			nRoster:(LOCAL:9++) = LOCAL
+		ELSE
+			IF QoL_IsRequestProgressable(LOCAL) ;custom code, highlight in progress requests
+				SETCOLOR C_GREEN
+			ELSEIF CFLAG:LOCAL:行動 ;orange work
+				SETCOLOR 255, 100, 0
+			ELSEIF TCVAR:LOCAL:発情 ;pink in heat
+				SETCOLOR 255, 64, 255
+			ENDIF
+			PRINTFORM %CALLNAME:LOCAL,15,LEFT%
+			SIF ++(LOCAL:9) % 6 == 0
+				PRINTL
+			RESETCOLOR
+		ENDIF
+	ENDIF
+	LOCAL:2 ++
+ENDIF
+NEXT
+NEXT
+SIF FLAG:画像表示
+	CALL PRINT_ROSTER(nRoster, "broad", 50, 13, 110)
+;その地域にいる人数
+IF ARG:1 == 1
+	IF LOCAL:2
+		PRINTFORML %@"{LOCAL:2}",2%\@ LOCAL:2 == 1 ? 사람 # 사람들 \@
+	ELSE
+		PRINTL 여기 아무도 없다
+	ENDIF
+ENDIF
+
+@RANKING
+PRINTL [0] - 자녀 수
+PRINTL [1] - 질에서 받은 정액
+PRINTL [2] - 항문에서 받은 정액
+PRINTL [3] - 삼킨 정액
+PRINTL [4] - 몸에 받은 정액
+PRINTL [5] - 총 오르가즘 횟수
+PRINTL [6] - 수유 횟수
+PRINTL [7] - 자위 횟수
+PRINTL [8] - 데이트 경험
+PRINTL [9] - 총 키스 횟수
+PRINTL [100] - 취소
+INPUT
+IF RESULT>=0 && RESULT<10
+	CALL ランキング表示(RESULT)
+	RETURN -1
+ELSEIF RESULT == 100
+	RETURN -1
+ENDIF
+
+@ランキング表示(ARG)
+#DIM RANK
+#DIM ra
+#DIM ranum
+#DIM flagnum
+#DIM kind
+#DIM DYNAMIC ADDITIONAL_IN_LIST ;custom code
+#DIM DYNAMIC CHARA_IMAGES_FOR_RANK, 5 ;qol custom code
+#DIM DYNAMIC CHARA_IMAGE_INDEX ;qol custom code
+VARSET LOCAL
+;キャラ数だけLOCALの配列を準備
+;すべて1に設定しておく
+FOR RANK,1,CHARANUM
+;qol custom code
+IF CFLAG:RANK:出禁
+	LOCAL:RANK = 100
+ELSE
+	LOCAL:RANK = 1
+ENDIF
+NEXT
+;flagnum:フラグナンバーを管理
+;kind:フラグ種類を管理（EXPかCFLAGか）
+IF ARG==0
+	PRINTL 자녀 순위 수:
+	kind = 0
+	flagnum=912
+ELSEIF ARG == 1
+	PRINTL 정액이 질에서 수신된 순위:
+	kind = 1
+	flagnum=515
+ELSEIF ARG == 2
+	PRINTL 항문에 받은 정액 순위:
+	kind = 1
+	flagnum=516
+ELSEIF ARG == 3
+	PRINTL 정액 삼킨 순위:
+	kind = 1
+	flagnum=517
+ELSEIF ARG == 4
+	PRINTL 신체 순위에서 받은 정액:
+	kind = 1
+	flagnum=518
+ELSEIF ARG == 5
+	PRINTL 총 오르가즘 순위:
+	kind = 2
+	flagnum=10
+ELSEIF ARG == 6
+	PRINTL 수유 기간 순위:
+	kind = 2
+	flagnum=12
+ELSEIF ARG == 7
+	PRINTL 타임스 자위 순위:
+	kind = 2
+	flagnum=22
+ELSEIF ARG == 8
+	PRINTL 데이트 경험 랭킹:
+	kind = 2
+	flagnum=77
+ELSEIF ARG == 9
+	PRINTL 총 키스 순위:
+	kind = 2
+	flagnum=27
+ENDIF
+;kind毎に分岐（内容はほぼ一緒）
+IF kind == 0
+	;他キャラと項目数の比較
+	;もし負けていた場合はLOCALフラグをプラス1
+	;最終的にLOCALフラグの数値が、全体の中での順位となる
+	;例:LOCALフラグが1の場合、誰にも負けてない＝ランキング1位！
+	;例:LOCALフラグが3の場合、二人に負けている＝ランキング3位
+	FOR RANK,1,CHARANUM
+	FOR ra,1,CHARANUM
+	IF CFLAG:RANK:flagnum < CFLAG:ra:flagnum
+		LOCAL:RANK ++
+	ENDIF
+	NEXT
+	NEXT
+	PRINTL -----------------------------------
+	PRINTFORML %CALLNAME:0%의 {CFLAG:0:flagnum} 자녀들
+	PRINTL ------------
+	;LOCALフラグの数値毎に表示
+	;順位と名前を表示
+	;同値のキャラはタイとする
+	FOR ranum,1,21
+	FOR RANK,1,CHARANUM
+	IF LOCAL:RANK==ranum
+		;項目が0の場合ランク付け終了
+		IF CFLAG:(RANK):flagnum == 0
+			BREAK
+		ENDIF
+		IF ranum <= 3
+			;qol custom code
+			VARSET CHARA_IMAGES_FOR_RANK
+			CHARA_IMAGE_INDEX = 0
+			FOR ra,1,CHARANUM
+			IF LOCAL:ra == ranum && CHARA_IMAGE_INDEX < 5
+				CHARA_IMAGES_FOR_RANK:(CHARA_IMAGE_INDEX++) = ra
+			ENDIF
+			NEXT
+			CALL PRINT_ROSTER(CHARA_IMAGES_FOR_RANK, "", 100,,, 0, "笑顔")
+			;CALL PRINT_FACE, RANK, "笑顔", "服", "", ""
+			PRINTL
+		ENDIF
+		PRINTFORML %ORDINAL(ranum)% {CFLAG:(RANK):flagnum}위 %PLURALIZER("child", CFLAG:(RANK):flagnum)%
+		ADDITIONAL_IN_LIST = 0 ;custom code, formatting
+		FOR ra,1,CHARANUM
+		IF LOCAL:ra == ranum
+			;custom code, formatting
+			SIF ADDITIONAL_IN_LIST
+				PRINTFORM , 
+			PRINTFORM %CALLNAME:(ra)%
+			ADDITIONAL_IN_LIST = 1 ;custom code, formatting
+		ENDIF
+		NEXT
+		SIF ranum == 3
+			WAIT
+		CALL PRINT_BREAK() ;qol custom code
+		BREAK
+	ENDIF
+	NEXT
+	NEXT
+	PRINTW -----------------------------------
+ELSEIF kind == 1
+	FOR RANK,1,CHARANUM
+	FOR ra,1,CHARANUM
+	IF CFLAG:RANK:flagnum < CFLAG:ra:flagnum
+		LOCAL:RANK ++
+	ENDIF
+	NEXT
+	NEXT
+	PRINTL -----------------------------------
+	FOR ranum,1,21
+	FOR RANK,1,CHARANUM
+	IF LOCAL:RANK==ranum
+		IF CFLAG:(RANK):flagnum == 0
+			BREAK
+		ENDIF
+		PRINTFORML %ORDINAL(ranum)%항 {CFLAG:(RANK):flagnum}에 위치한다.
+		IF ranum <= 3
+			;qol custom code
+			VARSET CHARA_IMAGES_FOR_RANK
+			CHARA_IMAGE_INDEX = 0
+			FOR ra,1,CHARANUM
+			IF LOCAL:ra == ranum && CHARA_IMAGE_INDEX < 5
+				CHARA_IMAGES_FOR_RANK:(CHARA_IMAGE_INDEX++) = ra
+			ENDIF
+			NEXT
+			CALL PRINT_ROSTER(CHARA_IMAGES_FOR_RANK, "", 100,,, 0, "笑顔")
+			;CALL PRINT_FACE, RANK, "笑顔", "服", "", ""
+			PRINTL
+		ENDIF
+		ADDITIONAL_IN_LIST = 0 ;custom code, formatting
+		FOR ra,1,CHARANUM
+		IF LOCAL:ra == ranum
+			;custom code, formatting
+			SIF ADDITIONAL_IN_LIST
+				PRINTFORM , 
+			PRINTFORM %CALLNAME:(ra)%
+			ADDITIONAL_IN_LIST = 1 ;custom code, formatting
+		ENDIF
+		NEXT
+		SIF ranum == 3
+			WAIT
+		CALL PRINT_BREAK() ;qol custom code
+		BREAK
+	ENDIF
+	NEXT
+	NEXT
+	PRINTW -----------------------------------
+ELSEIF kind == 2
+	FOR RANK,1,CHARANUM
+	FOR ra,1,CHARANUM
+	IF EXP:RANK:flagnum < EXP:ra:flagnum
+		LOCAL:RANK ++
+	ENDIF
+	NEXT
+	NEXT
+	PRINTL -----------------------------------
+	FOR ranum,1,21
+	FOR RANK,1,CHARANUM
+	IF LOCAL:RANK==ranum
+		IF EXP:(RANK):flagnum == 0
+			BREAK
+		ENDIF
+		PRINTFORML %ORDINAL(ranum)%번째 {EXP:(RANK):flagnum}회
+		IF ranum <= 3
+			;qol custom code
+			VARSET CHARA_IMAGES_FOR_RANK
+			CHARA_IMAGE_INDEX = 0
+			FOR ra,1,CHARANUM
+			IF LOCAL:ra == ranum && CHARA_IMAGE_INDEX < 5
+				CHARA_IMAGES_FOR_RANK:(CHARA_IMAGE_INDEX++) = ra
+			ENDIF
+			NEXT
+			CALL PRINT_ROSTER(CHARA_IMAGES_FOR_RANK, "", 100,,, 0, "笑顔")
+			;CALL PRINT_FACE, RANK, "笑顔", "服", "", ""
+			PRINTL
+		ENDIF
+		ADDITIONAL_IN_LIST = 0 ;custom code, formatting
+		FOR ra,1,CHARANUM
+		IF LOCAL:ra == ranum
+			;custom code, formatting
+			SIF ADDITIONAL_IN_LIST
+				PRINTFORM , 
+			PRINTFORM %CALLNAME:(ra)%
+			ADDITIONAL_IN_LIST = 1 ;custom code, formatting
+		ENDIF
+		NEXT
+		SIF ranum == 3
+			WAIT
+		CALL PRINT_BREAK() ;qol custom code
+		BREAK
+	ENDIF
+	NEXT
+	NEXT
+	PRINTW -----------------------------------
+ENDIF
+;天の声を聞く
+
+@COM_ABLE422
+;停止中は不可
+SIF FLAG:70 == 1
+	RETURN 0
+;実行判定
+SIF !TFLAG:100
+	RETURN 0
+;一括管理
+SIF GLOBAL_COMABLE(421)
+	RETURN RESULT
+;賽銭箱
+SIF !天の声可(CFLAG:MASTER:現在位置)
+	RETURN 0
+SIF CFLAG:うふふ == 2
+	RETURN 0
+RETURN 1

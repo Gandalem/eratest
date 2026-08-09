@@ -1,0 +1,339 @@
+﻿; Modular ERB: OMOGATARI/COMBAT/NPC_ATTACK_DECIDE.ERB
+;decides what to do
+
+@NPC_ATTACK_DECIDE(nDealer,nTarget,ATTACKER,VICTIM,nSide,FA_WEAPON)
+#DIM REF nDealer
+#DIM REF nTarget
+#DIM REF ATTACKER
+#DIM REF VICTIM
+#DIM REF nSide
+#DIM REF FA_WEAPON
+#DIM DYNAMIC touhousInDanger
+#DIM DYNAMIC leastHPTouhou, 2
+#DIM DYNAMIC leastDespTouhou, 2
+#DIM DYNAMIC spellPick
+#DIM DYNAMIC effectPen
+#DIM DYNAMIC isMuted
+#DIM DYNAMIC lcIDS, 2
+#DIM DYNAMIC allyCount
+VARSET spellPick
+lcIDS:0 = GetCombatant(nDealer)
+lcIDS:1 = GetCombatant(nTarget)
+effectPen = GET_INT(nDealer, "Weapon", EQUIP:nDealer:Weapon, "Penetration")
+effectPen += (3*DT_CELL_GET(@"lcCombatants", lcIDS:0 , "pierceBuff", 1))
+leastHPTouhou:0 = -1
+leastHPTouhou:1 = 100
+isMuted = YOUJUTSU_PACIFIED(nDealer)
+allyCount = DT_SELECT("lcCombatants", @"side = {nSide}")
+DEBUGPRINTFORML 공격을 결정한다 %CALLNAME:nDealer%에게 - 측 {nSide}
+;idiots did invalid magic, falling back to default attack
+SIF lcDidInvalidMagic
+	GOTO NormalAttack
+;mute all enemies!
+;dekaja if buff level gets to 4 or higher
+IF DT_SELECT("combatMagic", @"chara = {nDealer} and spellPage = 14 and spell = 16") && !isMuted
+	spellPick = RESULT:1
+	FOR LOCAL,0,VARSIZE("ATTACKER")
+	SIF !VICTIM:LOCAL
+		BREAK
+	IF DT_CELL_GET("lcCombatants", VICTIM:LOCAL, "attackBuff", 1) >= 4
+		;cast dekaja if buffs are 4 or higher.
+		$CastDekaja
+		IF DT_SELECT("combatMagic", @"chara = {nDealer} and spellPage = 14 and spell = 16")
+			spellPick = RESULT:1
+			DEBUGPRINTFORML %CALLNAME:(DT_CELL_GET("lcCombatants", VICTIM:LOCAL, "chara", 1))%은(는) ATK {DT_CELL_GET("lcCombatants", VICTIM:LOCAL, "attackBuff", 1)} - DEF {DT_CELL_GET("lcCombatants", VICTIM:LOCAL, "defenseBuff", 1)} - ACC {DT_CELL_GET("lcCombatants", VICTIM:LOCAL, "accuracyBuff", 1)} - EVA {DT_CELL_GET("lcCombatants", VICTIM:LOCAL, "evasionBuff", 1)} - PIE {DT_CELL_GET("lcCombatants", VICTIM:LOCAL, "pierceBuff", 1)}로 데카자 시전한다.
+			TRYCALLFORM NAS_ESP_{DT_CELL_GET("combatMagic", spellPick, "spellPage", 1)}_{DT_CELL_GET("combatMagic", spellPick, "spell", 1)}
+			SIF BASE:nDealer:7 >= NAS_ESP_COST
+				RETURN 1, spellPick, nTarget
+		ENDIF
+		GOTO GoDebuff
+	ENDIF
+	SIF DT_CELL_GET("lcCombatants", VICTIM:LOCAL, "defenseBuff", 1) >= 4
+		GOTO CastDekaja
+	SIF DT_CELL_GET("lcCombatants", VICTIM:LOCAL, "accuracyBuff", 1) >= 4
+		GOTO CastDekaja
+	SIF DT_CELL_GET("lcCombatants", VICTIM:LOCAL, "evasionBuff", 1) > 0 && GetDodgeChance(DT_CELL_GET("lcCombatants", VICTIM:LOCAL, "chara", 1)) > 80
+		GOTO CastDekaja
+	SIF DT_CELL_GET("lcCombatants", VICTIM:LOCAL, "pierceBuff", 1) >= 3
+		GOTO CastDekaja
+	$GoDebuff
+	;alternatively, debuff
+	;over 35% evasion
+	IF GetDodgeChance(DT_CELL_GET("lcCombatants", VICTIM:LOCAL, "chara", 1)) > 35
+		$DebuffEvasion
+		nTarget = DT_CELL_GET("lcCombatants", VICTIM:LOCAL, "chara", 1)
+		LOCAL:1 = DT_SELECT("combatMagic", @"chara = {nDealer} and spellPage = 20", "", tempHediffList)
+		FOR LOCAL:2,0,LOCAL:1
+		VARSET NAS_ESP_Type
+		TRYCALLFORM NAS_ESP_7_{DT_CELL_GET("combatMagic", tempHediffList:(LOCAL:2), "spell", 1)}
+		SIF STRFIND(NAS_ESP_Type, "Passive/") > -1
+			CONTINUE
+		IF STRFIND(NAS_ESP_Type, "Evasion Debuff/") == -1
+			TRYCALLFORM NAS_ESP_{DT_CELL_GET("combatMagic", tempHediffList:LOCAL, "spellPage", 1)}_{DT_CELL_GET("combatMagic", tempHediffList:LOCAL, "spell", 1)}
+			SIF BASE:nDealer:7 >= NAS_ESP_COST
+				RETURN 1, tempHediffList:LOCAL, nTarget
+		ENDIF
+		NEXT
+	ENDIF
+	;damage over twice of max sta
+	IF (charaWeaponInts:(DT_CELL_GET("lcCombatants", VICTIM:LOCAL, "chara", 1)):Damage*charaWeaponInts:(DT_CELL_GET("lcCombatants", VICTIM:LOCAL, "chara", 1)):Burst*charaWeaponInts:(DT_CELL_GET("lcCombatants", VICTIM:LOCAL, "chara", 1)):Pellets*BUFF_MULTIPLIER(DT_CELL_GET("lcCombatants", VICTIM:LOCAL, "damageBuff", 1))/100) < ((MAXBASE:nDealer:0-500)*2) && DT_CELL_GET(@"lcCombatants", VICTIM:LOCAL , "attackBuff", 1) > -6
+		$DebuffAttack
+		nTarget = DT_CELL_GET("lcCombatants", VICTIM:LOCAL, "chara", 1)
+		LOCAL:1 = DT_SELECT("combatMagic", @"chara = {nDealer} and spellPage = 20", "", tempHediffList)
+		FOR LOCAL:2,0,LOCAL:1
+		VARSET NAS_ESP_Type
+		TRYCALLFORM NAS_ESP_7_{DT_CELL_GET("combatMagic", tempHediffList:(LOCAL:2), "spell", 1)}
+		SIF STRFIND(NAS_ESP_Type, "Passive/") > -1
+			CONTINUE
+		IF STRFIND(NAS_ESP_Type, "Attack Debuff/") == -1
+			TRYCALLFORM NAS_ESP_{DT_CELL_GET("combatMagic", tempHediffList:LOCAL, "spellPage", 1)}_{DT_CELL_GET("combatMagic", tempHediffList:LOCAL, "spell", 1)}
+			SIF BASE:nDealer:7 >= NAS_ESP_COST
+				RETURN 1, tempHediffList:LOCAL, nTarget
+		ENDIF
+		NEXT
+	ENDIF
+	NEXT
+ENDIF
+VARSET spellPick
+;with a cloning spell in their arsenal, such as hecc or flan's unique spell.
+;when combatant count is < 3 they will use it.
+;ourein or copro to make opponent shit themselves
+;will only use these in team battles (3+) because being forced to hypermess by your enemy isn't fun after 80 turns.
+leastDespTouhou:1 = 0
+touhousInDanger = 0
+IF DT_SELECT("combatMagic", @"chara = {nDealer} and spellPage = 18") && allyCount >= 3 && !isMuted
+	DT_SELECT "lcCombatants", @"side = {!nSide}", "", tempHediffList
+	FOR LOCAL,0,RESULT
+	;can't excrete, bypass
+	SIF !CAN_ACCIDENT(DT_CELL_GET("lcCombatants", tempHediffList:LOCAL, "chara", 1),1,0) && !CAN_ACCIDENT(DT_CELL_GET("lcCombatants", tempHediffList:LOCAL, "chara", 1),2,0)
+		CONTINUE
+	LOCAL:1 = MAX(PeeBarStage((DT_CELL_GET("lcCombatants", tempHediffList:LOCAL, "chara", 1))),PooBarStage((DT_CELL_GET("lcCombatants", tempHediffList:LOCAL, "chara", 1))))
+	IF LOCAL:1 < 7 && !DT_CELL_GET("lcCombatants", tempHediffList:LOCAL, "didAttack", 1)
+		touhousInDanger ++
+		IF LOCAL:1 > leastDespTouhou:1
+			;store least hp touhou
+			leastDespTouhou:0 = LOCAL
+			leastDespTouhou:1 = LOCAL:1
+		ENDIF
+	ENDIF
+	NEXT
+	IF !touhousInDanger
+		;all touhous will have an acccident
+	ELSEIF touhousInDanger == 1
+		;one touhou
+		nTarget = leastDespTouhou:0
+		LOCAL:1 = DT_SELECT("combatMagic", @"chara = {nDealer} and spellPage = 18", "", tempHediffList)
+		FOR LOCAL,0,LOCAL:1
+		VARSET NAS_ESP_Type
+		TRYCALLFORM NAS_ESP_7_{DT_CELL_GET("combatMagic", tempHediffList:LOCAL, "spell", 1)}
+		SIF STRFIND(NAS_ESP_Type, "Pee/") != -1 && !nPee
+			CONTINUE
+		SIF STRFIND(NAS_ESP_Type, "Poo/") != -1 && !nScat
+			CONTINUE
+		SIF BASE:nDealer:7 < NAS_ESP_COST
+			CONTINUE
+		IF STRFIND(NAS_ESP_Type, "Multi Target/") == -1
+			spellPick = tempHediffList:LOCAL
+			BREAK
+		ENDIF
+		NEXT
+		SIF !spellPick
+			GOTO MultiPoop
+		RETURN 1, spellPick, nTarget
+	ELSE
+		;mutliple
+		$MultiPoop
+		LOCAL:1 = DT_SELECT("combatMagic", @"chara = {nDealer} and spellPage = 18", "", tempHediffList)
+		FOR LOCAL,0,LOCAL:1
+		VARSET NAS_ESP_Type
+		TRYCALLFORM NAS_ESP_18_{DT_CELL_GET("combatMagic", tempHediffList:LOCAL, "spell", 1)}
+		SIF STRFIND(NAS_ESP_Type, "Pee/") != -1 && !nPee
+			CONTINUE
+		SIF STRFIND(NAS_ESP_Type, "Poo/") != -1 && !nScat
+			CONTINUE
+		SIF BASE:nDealer:7 < NAS_ESP_COST
+			CONTINUE
+		IF STRFIND(NAS_ESP_Type, "Multi Target/") != -1
+			spellPick = tempHediffList:LOCAL
+			BREAK
+		ENDIF
+		NEXT
+		;use single target
+		IF !spellPick
+			FOR LOCAL,0,LOCAL:1
+			VARSET NAS_ESP_Type
+			TRYCALLFORM NAS_ESP_18_{DT_CELL_GET("combatMagic", tempHediffList:LOCAL, "spell", 1)}
+			SIF STRFIND(NAS_ESP_Type, "Pee/") != -1 && !nPee
+				CONTINUE
+			SIF STRFIND(NAS_ESP_Type, "Poo/") != -1 && !nScat
+				CONTINUE
+			SIF BASE:nDealer:7 < NAS_ESP_COST
+				CONTINUE
+			spellPick = tempHediffList:LOCAL
+			BREAK
+			NEXT
+		ENDIF
+		RETURN 1, spellPick, nTarget
+	ENDIF
+ENDIF
+;
+;tetrakarm
+IF DT_SELECT("combatMagic", @"chara = {nDealer} and spellPage = 14 and spell = 18") && DT_SELECT("lcCombatants", @"side = {nSide}") >= 3 && !isMuted
+	IF !DT_CELL_GET("lcCombatants", lcIDS:0, "protectBuff", 1)
+		DT_SELECT "combatMagic", @"chara = {nDealer} and spellPage = 14 and spell = 18"
+		IF RESULT
+			TRYCALLFORM NAS_ESP_{DT_CELL_GET("combatMagic", RESULT:1, "spellPage", 1)}_{DT_CELL_GET("combatMagic", RESULT:1, "spell", 1)}
+			SIF BASE:nDealer:7 >= NAS_ESP_COST
+				RETURN 1, RESULT:1, nDealer
+		ENDIF
+	ENDIF
+ENDIF
+;heal with item.
+;===heal===
+VARSET touhousInDanger
+IF DT_SELECT("combatMagic", @"chara = {nDealer} and spellPage = 7") && !isMuted
+	DT_SELECT "lcCombatants", @"side = {nSide}", "", tempHediffList
+	FOR LOCAL,0,RESULT
+	LOCAL:1 = GETPERCENT(BASE:(DT_CELL_GET("lcCombatants", tempHediffList:LOCAL, "chara", 1)):0-500,MAXBASE:(DT_CELL_GET("lcCombatants", tempHediffList:LOCAL, "chara", 1)):0-500)
+	IF LOCAL:1 <= 33
+		touhousInDanger ++
+		IF LOCAL:1 < leastHPTouhou:1
+			;store least hp touhou
+			leastHPTouhou:0 = DT_CELL_GET("lcCombatants", tempHediffList:LOCAL, "chara", 1)
+			leastHPTouhou:1 = LOCAL:1
+		ENDIF
+	ENDIF
+	NEXT
+	IF !touhousInDanger
+		;no touhou is in danger
+	ELSEIF touhousInDanger == 1
+		;one touhou
+		nTarget = leastHPTouhou:0
+		LOCAL:1 = DT_SELECT("combatMagic", @"chara = {nDealer} and spellPage = 7", "", tempHediffList)
+		FOR LOCAL,0,LOCAL:1
+		VARSET NAS_ESP_Type
+		TRYCALLFORM NAS_ESP_7_{DT_CELL_GET("combatMagic", tempHediffList:LOCAL, "spell", 1)}
+		IF STRFIND(NAS_ESP_Type, "Revive/") == -1 && STRFIND(NAS_ESP_Type, "Multi Target/") == -1
+			spellPick = tempHediffList:LOCAL
+			TRYCALLFORM NAS_ESP_{DT_CELL_GET("combatMagic", spellPick, "spellPage", 1)}_{DT_CELL_GET("combatMagic", spellPick, "spell", 1)}
+			SIF BASE:nDealer:7 < NAS_ESP_COST
+				CONTINUE
+			BREAK
+		ENDIF
+		NEXT
+		SIF !spellPick
+			GOTO MultiHeal
+		RETURN 1, spellPick, nTarget
+	ELSE
+		;mutliple
+		$MultiHeal
+		LOCAL:1 = DT_SELECT("combatMagic", @"chara = {nDealer} and spellPage = 7", "", tempHediffList)
+		FOR LOCAL,0,LOCAL:1
+		VARSET NAS_ESP_Type
+		TRYCALLFORM NAS_ESP_7_{DT_CELL_GET("combatMagic", tempHediffList:LOCAL, "spell", 1)}
+		IF STRFIND(NAS_ESP_Type, "Revive/") == -1
+			IF STRFIND(NAS_ESP_Type, "Multi Target/") != -1
+				spellPick = tempHediffList:LOCAL
+				TRYCALLFORM NAS_ESP_{DT_CELL_GET("combatMagic", spellPick, "spellPage", 1)}_{DT_CELL_GET("combatMagic", spellPick, "spell", 1)}
+				SIF BASE:nDealer:7 < NAS_ESP_COST
+					CONTINUE
+				BREAK
+			ENDIF
+		ENDIF
+		NEXT
+		;use single target
+		IF !spellPick
+			FOR LOCAL,0,LOCAL:1
+			VARSET NAS_ESP_Type
+			TRYCALLFORM NAS_ESP_7_{DT_CELL_GET("combatMagic", tempHediffList:LOCAL, "spell", 1)}
+			IF STRFIND(NAS_ESP_Type, "Revive/") == -1
+				spellPick = tempHediffList:LOCAL
+				TRYCALLFORM NAS_ESP_{DT_CELL_GET("combatMagic", spellPick, "spellPage", 1)}_{DT_CELL_GET("combatMagic", spellPick, "spell", 1)}
+				SIF BASE:nDealer:7 < NAS_ESP_COST
+					CONTINUE
+				BREAK
+			ENDIF
+			NEXT
+		ENDIF
+		RETURN 1, spellPick, nTarget
+	ENDIF
+ENDIF
+;===buffs===
+IF DT_SELECT("combatMagic", @"chara = {nDealer} and spellPage = 14") && !isMuted
+	;if it can't fully penetrate torso, buff according to amount of allies are on the side
+	;max 3 stages
+	;LIMIT(allyCount-3,0, 3)
+	IF effectPen < EffectivePenetration(nTarget, 40, nDealer) && DT_CELL_GET(@"lcCombatants", lcIDS:0 , "pierceBuff", 1) < 3
+		;buff pierce if it can't full pen
+		DEBUGPRINTFORML %CALLNAME:nDealer%은(는) 관통을 강화하고 싶어한다.
+		LOCAL:1 = DT_SELECT("combatMagic", @"chara = {nDealer} and spellPage = 14", "", tempHediffList)
+		FOR LOCAL,0,LOCAL:1
+		VARSET NAS_ESP_Type
+		TRYCALLFORM NAS_ESP_14_{DT_CELL_GET("combatMagic", tempHediffList:LOCAL, "spell", 1)}
+		SIF STRFIND(NAS_ESP_Type, "Passive/") > -1
+			CONTINUE
+		IF STRFIND(NAS_ESP_Type, "Pierce Buff/") > -1
+			spellPick = tempHediffList:LOCAL
+			TRYCALLFORM NAS_ESP_{DT_CELL_GET("combatMagic", spellPick, "spellPage", 1)}_{DT_CELL_GET("combatMagic", spellPick, "spell", 1)}
+			SIF BASE:nDealer:7 < NAS_ESP_COST
+				CONTINUE
+			BREAK
+		ENDIF
+		NEXT
+		SIF spellPick
+			RETURN 1, spellPick, nDealer
+	ENDIF
+	;buff attack if base if it can't deal more than 1/2 max base if all shots land
+	;max 3 stages
+	IF (charaWeaponInts:(nDealer):Damage*charaWeaponInts:(nDealer):Burst*charaWeaponInts:(nDealer):Pellets*BUFF_MULTIPLIER(DT_CELL_GET("lcCombatants", lcIDS:0, "damageBuff", 1))/100) < ((MAXBASE:nTarget:0-500)/2) && DT_CELL_GET(@"lcCombatants", lcIDS:0 , "attackBuff", 1) < 3
+		LOCAL:1 = DT_SELECT("combatMagic", @"chara = {nDealer} and spellPage = 14", "", tempHediffList)
+		FOR LOCAL,0,LOCAL:1
+		VARSET NAS_ESP_Type
+		TRYCALLFORM NAS_ESP_14_{DT_CELL_GET("combatMagic", tempHediffList:LOCAL, "spell", 1)}
+		SIF STRFIND(NAS_ESP_Type, "Passive/") > -1
+			CONTINUE
+		IF STRFIND(NAS_ESP_Type, "Attack Buff/") > -1
+			spellPick = tempHediffList:LOCAL
+			TRYCALLFORM NAS_ESP_{DT_CELL_GET("combatMagic", spellPick, "spellPage", 1)}_{DT_CELL_GET("combatMagic", spellPick, "spell", 1)}
+			SIF BASE:nDealer:7 < NAS_ESP_COST
+				CONTINUE
+			BREAK
+		ENDIF
+		NEXT
+		SIF spellPick
+			RETURN 1, spellPick, nDealer
+	ENDIF
+	;buff evasion
+ENDIF
+;attacking spells
+IF !isMuted && lcIsLethal
+	tempHediffCount = DT_SELECT("combatMagic", @"chara = {nDealer}", ,tempHediffList)
+	FOR LOCAL,0,tempHediffCount
+	VARSET NAS_ESP_Type
+	VARSET NAS_ESP_Weapon,-5
+	TRYCALLFORM NAS_ESP_{DT_CELL_GET("combatMagic", tempHediffList:LOCAL, "spellPage", 1)}_{DT_CELL_GET("combatMagic", tempHediffList:LOCAL, "spell", 1)}
+	SIF NAS_ESP_Weapon == -5
+		CONTINUE
+	SIF STRFIND(NAS_ESP_Type, "Passive/") > -1
+		CONTINUE
+	TRYCALLFORM NAS_ESP_{DT_CELL_GET("combatMagic", tempHediffList:LOCAL, "spellPage", 1)}_{DT_CELL_GET("combatMagic", tempHediffList:LOCAL, "spell", 1)}
+	SIF BASE:nDealer:7 < NAS_ESP_COST
+		CONTINUE
+	;a learned spell is weak to target.
+	IF DamageResist:nTarget:(GET_INT(nDealer,"Weapon",NAS_ESP_Weapon,"Damage Type")):1 < 0
+		spellPick = tempHediffList:LOCAL
+		BREAK
+	ENDIF
+	;if current attack is resisted
+	IF DamageResist:nTarget:(ATTACKER_DAMAGE_TYPE(nDealer,FA_WEAPON)):1 > 0
+		spellPick = tempHediffList:LOCAL
+		BREAK
+	ENDIF
+	;or simply just because it does way more damage
+	NEXT
+	SIF spellPick
+		RETURN 1, spellPick, nTarget
+ENDIF
+$NormalAttack
+;otherwise attack normally
+RETURN 0, 0, nTarget

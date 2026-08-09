@@ -1,0 +1,161 @@
+﻿; Modular ERB: Addition/Requests-Pranks/Add_固有依頼80_akyuu_request.ERB
+;if there's ever an Akyuu request created in the original, adjust the id and merge this into that, if necessary
+
+@固有依頼80(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+#DIM  REQUEST_TARGET
+IF CFLAG:[[阿求]]:依頼状況 > 1 && CFLAG:[[阿求]]:依頼状況 < 100
+	REQUEST_TARGET = IRAI_SLOT_TO_PERSON(SEARCH_IRAI_SLOT(CFLAG:[[阿求]]:依頼内容))
+ELSE
+	REQUEST_TARGET = 0
+ENDIF
+SELECTCASE ARG % 1000
+	;ID101：Interview
+	CASE 101
+		SELECTCASE O_DATA
+			CASE "依頼名"
+				CALLF MAKE_STR(V_NAME, "AKYUU_INTERVIEW")
+			CASE "依頼内容表示"
+				IF CFLAG:[[阿求]]:依頼状況 > 1
+					CALLF MAKE_STR(V_NAME, @"도움을 줄게, %CALLNAME:[[阿求]]%는 %CALLNAME:REQUEST_TARGET%와 인터뷰를 성사시키기 위해.")
+				ELSE
+					CALLF MAKE_STR(V_NAME, @"도움을 요청해 주세요 %CALLNAME:[[阿求]]%가 '감악요 연대기' 인터뷰를 확보하도록.")
+				ENDIF
+			CASE "依頼報酬表示"
+				CALLF MAKE_STR(V_NAME, @"%金額表示(5000)%")
+			CASE "依頼実行コマンド名"
+				IF IS_HERE([[阿求]])
+					CALLF MAKE_STR(V_NAME, @"Begin Interview With %CALLNAME:REQUEST_TARGET%")
+				ELSEIF !IS_HERE([[阿求]]) && !CFLAG:REQUEST_TARGET:神社在住
+					CALLF MAKE_STR(V_NAME, @"Set Up Interview With %CALLNAME:REQUEST_TARGET%")
+				ENDIF
+			CASE "依頼内容"
+				CALLF MAKE_INT(V_NAME, MAKE_IRAI_DATA(固有依頼80_Select_Target(), "meeting")); decided not to implement unused 面会 (meeting) case but create a new one to prevent issues in the future and retain complete control over how it functions
+			CASE "依頼サブ"
+				CALLF MAKE_INT(V_NAME, 0)
+			CASE "依頼期限"
+				CALLF MAKE_INT(V_NAME, 15)
+			CASE "依頼発生率"
+				CALLF MAKE_INT(V_NAME, 20)
+			CASE "依頼発生条件"
+				;only happens if living on same map as akyuu and have 5+ intimacy
+				SIF CFLAG:[[阿求]]:神社在住 && ABL:[[阿求]]:親密 >= 5 && 固有依頼80_Has_Valid_Targets()
+					CALLF MAKE_INT(V_NAME, 1)
+			CASE "依頼受託可能条件"
+				CALLF MAKE_INT(V_NAME, 1)
+			CASE "依頼実行可能条件"
+				IF !IS_HERE([[阿求]]) && GET_MAPID(CFLAG:TARGET:現在位置) == MAIN_MAP
+				ELSEIF FLAG:70
+				ELSE
+					CALLF MAKE_INT(V_NAME, 1)
+				ENDIF
+			CASE "依頼消滅条件"
+				SIF Add_Request_Should_Discard(ARG) || !CFLAG:[[阿求]]:神社在住 || !固有依頼80_Has_Valid_Targets() ;canceled when moving out or disabling all possible targets
+					CALLF MAKE_INT(V_NAME, 1)
+			CASE "依頼人連れ出し可能"
+				CALLF MAKE_INT(V_NAME, 1)
+			CASE "MEETINGPOINT_ALLOWED"
+				SIF !TCVAR:ARG:REQUEST_SUMMONS
+					CALLF MAKE_INT(V_NAME, 1)
+		ENDSELECT
+ENDSELECT
+
+@固有依頼80_Is_Valid
+#FUNCTION
+RETURNF 0
+;固有依頼の実処理用
+;この関数は実行/成功/失敗時の
+;報酬とペナルティと地の文のみを扱います
+;各キャラのメッセージは別所にて
+
+@IRAI_固有80(CHARA, IRAI_ID, SCENE)
+#DIM  CHARA
+#DIM  IRAI_ID
+#DIMS SCENE
+#DIM  CLIENT_ID
+#DIM  REQUEST_TARGET
+CLIENT_ID = IRAI_ID_TO_CLIENT(IRAI_ID)
+SELECTCASE STR_DATA_IRAI(IRAI_ID, "依頼名", CLIENT_ID)
+	CASE "AKYUU_INTERVIEW"
+		REQUEST_TARGET = IRAI_SLOT_TO_PERSON(SEARCH_IRAI_SLOT(IRAI_ID))
+		SELECTCASE SCENE
+			CASE "依頼条件表示"
+			CASE "依頼実行時"
+				IF IS_HERE([[阿求]]) ;perform interview
+					IF TALENT:[[阿求]]:恋人
+						PRINTFORML 당신은 %CALLNAME:[[阿求]]% 옆에 앉아 있으며, %HE_SHE([[阿求]])%가 인터뷰를 진행한다.
+						PRINTFORML %HE_SHE([[阿求]], 1)%는 열정적으로 당신을 절차에 포함시키고, 두 사람은 완벽한 조화 속에서 함께 일한다.
+					ELSEIF TALENT:[[阿求]]:恋慕
+						PRINTFORML 당신은 %CALLNAME:[[阿求]]%가 인터뷰를 진행하는 동안 옆에 %HE_SHE([[阿求]])%이 앉아 있다.
+						PRINTFORML %HE_SHE([[阿求]], 1)%는 %HIS_HER([[阿求]])%에게 질문하면서 가끔 당신의 손을 쥐었다 풀었다.
+					ELSEIF TALENT:[[阿求]]:思慕
+						PRINTFORML 당신은 구석에 앉아 있으며 %CALLNAME:[[阿求]]%가 인터뷰를 진행한다.
+						PRINTFORML %HE_SHE([[阿求]], 1)%는 가끔 당신을 흘깃 본다.
+					ELSE
+						PRINTFORML 당신은 구석에 앉아 있으며 %CALLNAME:[[阿求]]%이 인터뷰를 진행한다.
+						SIF TALENT:REQUEST_TARGET:妖精
+							PRINTFORML 당신은 %CALLNAME:[[阿求]]%이 %HIS_HER([[阿求]])%에게 약간 역겨운 표정을 짓고 있는 것 같다고 느낀다. %HE_SHE([[阿求]])%가 %CALLNAME:REQUEST_TARGET%에게 말을 거는 동안
+					ENDIF
+					TIME += 55
+					RETURN IRAI_CONST_RESULT("実行して成功")
+				ELSE
+					IF TCVAR:REQUEST_TARGET:REQUEST_SUMMONS
+						PRINTFORML 당신은 이미 오늘 %HIM_HER(REQUEST_TARGET)%에게 물었고, %HE_SHE(REQUEST_TARGET)%는 내일 방문하겠다고 약속했다.
+						RETURN IRAI_CONST_RESULT("実行して未解決")
+					ENDIF
+					PRINTFORMW %BREAKENG(@"당신은 %CALLNAME:REQUEST_TARGET%과 회의를 잡자고 요청했고, %HE_SHE(REQUEST_TARGET)%는 내일 %GET_MAPNAME(MAIN_MAP)%에 방문할 것이라고 말한다.")%
+					CFLAG:REQUEST_TARGET:翌日来訪 = 1
+					TCVAR:REQUEST_TARGET:REQUEST_SUMMONS = 1
+					TIME += 10
+					RETURN IRAI_CONST_RESULT("実行して未解決")
+				ENDIF
+			CASE "依頼実行時_MEETINGPOINT"
+				PRINTFORML %CALLNAME:REQUEST_TARGET%와 내일 만날 것을 요청하는 편지를 쓰고 우체통에 넣는다.
+				CALL PAY_MONEY_YEN(100, 1)
+				CFLAG:REQUEST_TARGET:翌日来訪 = 1
+				TCVAR:REQUEST_TARGET:REQUEST_SUMMONS = 1
+				TIME += 5
+				RETURN IRAI_CONST_RESULT("実行して未解決")
+			CASE "依頼成功時"
+				SOURCE:歓楽 += 1000
+				CALL CHANGE_CFLAG(2, [[阿求]], 100)
+				CALL CHANGE_CFLAG(4, [[阿求]], 50)
+				CALL GET_MONEY_YEN(5000, 2)
+				PRINTFORMDL 너는 인터뷰에 협조해 준 것에 대해 %CALLNAME:[[阿求]]%에게 감사를 표한다.
+				IF GET_MAPID(CFLAG:MASTER:現在位置) != MAIN_MAP
+					CALL CHARA_TEXT([[阿求]], "「이제 여기 왔으니 구경이라도 좀 할까요?」")
+				ENDIF
+				RESETCOLOR
+			CASE "依頼失敗時"
+				CALL CHANGE_CFLAG(2, [[阿求]], -5)
+				CALL CHANGE_CFLAG(4, [[阿求]], -3)
+		ENDSELECT
+ENDSELECT
+
+@固有依頼80_Has_Valid_Targets()
+#FUNCTION
+FOR LOCAL, 1, CHARANUM
+SIF CFLAG:LOCAL:出禁
+	CONTINUE
+SIF LOCAL != [[阿求]]
+	RETURNF 1
+NEXT
+RETURNF 0
+;should never be able to be called if there are no valid targets
+
+@固有依頼80_Select_Target()
+#FUNCTION
+DO
+LOCAL = RAND:CHARANUM
+SIF LOCAL == 0
+	CONTINUE
+SIF LOCAL == [[阿求]]
+	CONTINUE
+SIF CFLAG:LOCAL:出禁
+	CONTINUE
+RETURNF LOCAL
+LOOP 1

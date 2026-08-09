@@ -1,0 +1,4262 @@
+﻿; Modular ERB: 個人口上/060 Parsee [パルスィ]/Parsee/M_KOJO_K60_functions.ERB
+;==================================================
+;Determines how Parsee treats the player
+;==================================================
+
+@K60_ATTITUDE(ARG)
+#FUNCTION
+;If Lover and not Lust or Sex Friend, acts genuinely nice (or if ARG and Love or Pleasure Mark 3)
+IF (TALENT:TARGET:恋人 && !(TALENT:TARGET:愛欲 || TALENT:TARGET:セフレ)) || (ARG && (TALENT:TARGET:恋慕 && MARK:TARGET:快楽刻印 < 3))
+	RETURNF 0
+	;If Sex Friend or Lust, acts less nice than Love but nicer than Other (and also hornier)
+ELSEIF TALENT:TARGET:愛欲 || TALENT:TARGET:セフレ
+	RETURNF 1
+	;If Yearning but not Love or not Love/Lust/Sex Friend, and not Pleasure Mark 3, or if you've seen her meltdown scene/cheated on one of her friends but she's not at Love, act grumpy and tsundere
+	;We don't check for Sex Friend/Lust because we already checked for it above
+ELSEIF (TALENT:TARGET:思慕 && !TALENT:TARGET:恋慕 && MARK:TARGET:快楽刻印 < 3 && !CFLAG:[[パルスィ]]:K60EN_PARSEE_KNOWS_ABOUT_YOUR_BTD_RELATIONSHIP) || ((CFLAG:[[パルスィ]]:K60EN_PARSEE_MELTDOWN == 1 || (!FIRSTTIME("NTRedParseesFriend", 1))) && !TALENT:TARGET:恋慕)
+	;todo: if yearning, sometimes slip into Loving attitude?
+	RETURNF 2
+	;Otherwise, acts falsely nice
+ELSE
+	RETURNF 3
+ENDIF
+;==================================================================
+;Have Parsee get angry if she sees you on a date with someone else
+;ARG is the other character's ID
+;==================================================================
+
+@K60_DATE_ANGER(ARG)
+;TODO increase this the more different girls you date in front of her
+DEBUGPRINTFORML DATE_ANGER에서 ARG는 {ARG}이다.
+;Parsee doesn't get angry if you're in an open relationship with her or sex friends
+;If she's at Love but not Lovers, she gets mad but not hate marks
+IF TALENT:[[パルスィ]]:恋人
+	IF VAR_OR_DEFAULT("MORELOVER")
+		RETURN 1
+	ELSE
+		; If you ARE cheating on her, she gets PISSED
+		CALL K60_GET_ANGRY(3)
+		CALL K60_DATE_ANGER_PENALTY_FAVOR(20)
+	ENDIF
+ELSE
+	SELECTCASE K60_ATTITUDE()
+		CASE 1
+			RETURN 1
+		CASEELSE
+			;If Parsee likes you, she gets pissed but you only lose a little favor
+			IF TALENT:TARGET:恋慕 || MARK:TARGET:快楽刻印 >= 3 && !GROUPMATCH(ARG, 83, 84)
+				CALL K60_GET_ANGRY()
+				CALL K60_DATE_ANGER_PENALTY_FAVOR(1)
+				RETURN 1
+			ELSE
+				SELECTCASE ARG
+					CASE 157 ;Zanmu
+						CALL K60_DATE_ANGER_PENALTY(5)
+					CASE 38, 97 ;Koishi, Seija
+						CALL K60_DATE_ANGER_PENALTY(4)
+					CASE 17, 64, 178 ;Alice, Yuugi, Noroiko
+						CALL K60_DATE_ANGER_PENALTY(3)
+					CASE 49 ;Satori
+						CALL K60_DATE_ANGER_PENALTY(2)
+					CASE 83, 84 ;Kisume and Yamame
+						;No penalty because she's happy for her friends (Yuugi is an exception because you're stealing her crush)
+						RETURN 1
+					CASEELSE
+						CALL K60_DATE_ANGER_PENALTY(1)
+				ENDSELECT
+				RETURN 1
+			ENDIF
+	ENDSELECT
+ENDIF
+RETURN 1
+;==================================================================
+;Apply the actual penalty for Parsee's jealousy
+;ARG is the severity
+;==================================================================
+
+@K60_DATE_ANGER_PENALTY(ARG)
+#DIM OriginalHateMarkValue
+DEBUGPRINTFORML DATE_ANGER_PENALTY ARG는 {ARG}이다.
+PRINTFORML
+SELECTCASE ARG
+	CASE 1
+		PRINTFORMDW 파씨는 %HIS_HER(TARGET)% 이를 갈고 %HE_SHE(TARGET)%는 부러움에 %PARSE("you")%를 바라본다...
+	CASE 2
+		PRINTFORMDW 파시(Parsee)는 %HIS_HER(TARGET)%의 이를 갈며 분노로 떨고, %HE_SHE(TARGET)%은(는) %PARSE("you")%을 부러운 듯 응시한다...
+	CASEELSE
+		PRINTFORMDL Parsee는 이빨을 갈고 분노로 떨면서 %HE_SHE(TARGET)%가 %PARSE("you")%를 질투스럽게 바라보는 것을 본다.
+		PRINTFORMDW %HE_SHE(TARGET,1)%의 주먹을 너무 세게 꽉 쥐어서 %HIS_HER(TARGET)% 손톱에서 피가 나고 있다...
+ENDSELECT
+SELECTCASE CFLAG:K60ENC_SETTING_JEALOUSY_PENALTY
+	;Hate Marks, anger, and favor loss
+	CASE 0
+		DEBUGPRINTFORML 증오 표시, 분노, 그리고 호의 손실
+		CALL K60_GET_ANGRY(ARG)
+		CALL K60_DATE_ANGER_PENALTY_FAVOR(ARG)
+		;Anger and favor loss
+	CASE 1
+		DEBUGPRINTFORML 분노 및 호의 손실
+		CALL K60_GET_ANGRY()
+		CALL K60_DATE_ANGER_PENALTY_FAVOR(ARG)
+		;No penalty if the flag is 2
+	CASE 2
+		DEBUGPRINTFORML 패널티 없음
+		;Hate Marks, anger, favor loss, and yandere points (Not yet implemented)
+	CASE 3
+		CALL K60_GET_ANGRY()
+		CALL K60_DATE_ANGER_PENALTY_FAVOR(ARG)
+		IF TALENT:[[パルスィ]]:恋人
+			LOCAL = 9999
+		ELSEIF TALENT:[[パルスィ]]:恋慕
+			LOCAL = 3
+		ELSEIF TALENT:[[パルスィ]]:思慕
+			LOCAL = 2
+		ENDIF
+		CFLAG:[[パルスィ]]:K60EN_PARSEE_YANDERE_POINTS += (10 * ARG * LOCAL)
+	CASEELSE
+		PRINTFORMDW ARG는 {ARG}여서는 안 된다! 이것을 보고하라!
+ENDSELECT
+RETURN 1
+
+@K60_DATE_ANGER_PENALTY_FAVOR(ARG)
+CALL CHANGE_CFLAG(2, TARGET, -20 * ARG)
+CALL CHANGE_CFLAG(4, TARGET, -10 * ARG)
+PRINTFORML
+RETURN 1
+;==================================================================
+;Generate a person crossing Parsee's bridge (for dialogues while helping her with work)
+;==================================================================
+
+@K60_GET_BRIDGE_PASSERBY()
+SELECTCASE RAND:8
+	CASE 0
+		RESULTS:0 = little boy
+		RESULTS:1 = he
+		RESULTS:2 = him
+		RESULTS:3 = his
+		RESULTS:4 = kid
+		RESULTS:5 = boy
+	CASE 1
+		RESULTS:0 = little girl
+		RESULTS:1 = she
+		RESULTS:2 = her
+		RESULTS:3 = her
+		RESULTS:4 = kid
+		RESULTS:5 = girl
+	CASE 2
+		RESULTS:0 = teenage boy
+		RESULTS:1 = he
+		RESULTS:2 = him
+		RESULTS:3 = his
+		RESULTS:4 = guy
+		RESULTS:5 = teenager
+	CASE 3
+		RESULTS:0 = teenage girl
+		RESULTS:1 = she
+		RESULTS:2 = her
+		RESULTS:3 = her
+		RESULTS:4 = girl
+		RESULTS:5 = girl
+	CASE 4
+		RESULTS:0 = man
+		RESULTS:1 = he
+		RESULTS:2 = him
+		RESULTS:3 = his
+		RESULTS:4 = guy
+		RESULTS:5 = man
+	CASE 5
+		RESULTS:0 = woman
+		RESULTS:1 = she
+		RESULTS:2 = her
+		RESULTS:3 = her
+		RESULTS:4 = lady
+		RESULTS:5 = woman
+	CASE 6
+		RESULTS:0 = old man
+		RESULTS:1 = he
+		RESULTS:2 = him
+		RESULTS:3 = his
+		RESULTS:4 = old guy
+		RESULTS:5 = man
+	CASE 7
+		RESULTS:0 = old woman
+		RESULTS:1 = she
+		RESULTS:2 = her
+		RESULTS:3 = her
+		RESULTS:4 = old lady
+		RESULTS:5 = woman
+ENDSELECT
+RETURN 1
+;==================================================
+;Generate a string about someone causing trouble on the bridge
+;If 1, time is stopped; if it's anything else, time is flowing normally
+;==================================================
+
+@K60_GET_BRIDGE_PASSERBY_TROUBLE(ARG)
+#DIM DYNAMIC KOGASA_GOT_FEAR
+;TODO more cases
+LOCAL:1 = 0
+$PICK_A_TROUBLEMAKER
+[IF_DEBUG]
+PRINTFORMDL LOCAL:1은 {LOCAL:1}이다.
+[ENDIF]
+;TODO there has to be a better way to avoid infinite loops than this
+SIF LOCAL:1 >= 10
+	RETURN 0
+LOCAL = RAND:11
+[IF_DEBUG]
+PRINTFORMDL {LOCAL}이/가 주사위를 굴렸다.
+[ENDIF]
+SELECTCASE LOCAL
+	;Sunny
+	CASE 0
+		IF CFLAG:5:現在位置 == 946
+			LOCALS:5 = %NAME:5%
+			LOCALS:6 = Sunny
+		ELSE
+			LOCAL:1++
+			GOTO PICK_A_TROUBLEMAKER
+		ENDIF
+		;Luna
+	CASE 1
+		IF CFLAG:6:現在位置 == 946
+			LOCALS:5 = %NAME:6%
+			LOCALS:6 = Luna
+		ELSE
+			LOCAL:1++
+			GOTO PICK_A_TROUBLEMAKER
+		ENDIF
+		;Star
+	CASE 2
+		IF CFLAG:7:現在位置 == 946
+			LOCALS:5 = %NAME:7%
+			LOCALS:6 = Star
+		ELSE
+			LOCAL:1++
+			GOTO PICK_A_TROUBLEMAKER
+		ENDIF
+		;Sunny and Luna
+	CASE 3
+		IF CFLAG:5:現在位置 == 946 && CFLAG:6:現在位置 == 946
+			LOCALS:5 = %NAME:5% and %NAME:6%
+			LOCALS:6 = %CALLNAME:5% and %CALLNAME:6%
+		ELSE
+			LOCAL:1++
+			GOTO PICK_A_TROUBLEMAKER
+		ENDIF
+		;Sunny and Star
+	CASE 4
+		IF CFLAG:5:現在位置 == 946 && CFLAG:7:現在位置 == 946
+			LOCALS:5 = %NAME:5% and %NAME:7%
+			LOCALS:6 = %CALLNAME:5% and %CALLNAME:7%
+		ELSE
+			LOCAL:1++
+			GOTO PICK_A_TROUBLEMAKER
+		ENDIF
+		;Luna and Star
+	CASE 5
+		IF CFLAG:6:現在位置 == 946 && CFLAG:7:現在位置 == 946
+			LOCALS:5 = %NAME:6% and %NAME:7%
+			LOCALS:6 = %CALLNAME:6% and %CALLNAME:7%
+		ELSE
+			LOCAL:1++
+			GOTO PICK_A_TROUBLEMAKER
+		ENDIF
+		;Sunny, Luna, and Star
+	CASE 6
+		IF CFLAG:5:現在位置 == 946 && CFLAG:6:現在位置 == 946 && CFLAG:7:現在位置 == 946
+			LOCALS:5 = %NAME:5%, %NAME:6%, and %NAME:7%
+			LOCALS:6 = %CALLNAME:5%, %CALLNAME:6%, and %CALLNAME:7%
+		ELSE
+			LOCAL:1++
+			GOTO PICK_A_TROUBLEMAKER
+		ENDIF
+		;Rumia
+	CASE 7
+		IF !CFLAG:[[パルスィ]]:K60EN_RUMIA_TROUBLEMAKER_SCENE_SEEN
+			LOCAL:1 = [[ルーミア]]
+			LOCALS:5 = %CALLNAME:[[ルーミア]]%
+			SIF CFLAG:12:現在位置 != 946
+				CFLAG:12:現在位置 = 946
+		ELSE
+			LOCAL:1++
+			GOTO PICK_A_TROUBLEMAKER
+		ENDIF
+		;Kogasa
+	CASE 8
+		IF FIRSTTIME("KogasaBridgeScene")
+			LOCALS:1 = 40
+			LOCALS:5 = %CALLNAME:[[小傘]]%
+			SIF CFLAG:40:現在位置 != 946
+				CFLAG:40:現在位置 = 946
+		ELSE
+			LOCAL:1++
+			GOTO PICK_A_TROUBLEMAKER
+		ENDIF
+		;Genjii
+	CASE 9
+		IF FIRSTTIME("GenjiiBridgeScene")
+			;if playing a version with Genjii
+			IF CHARANUM > 162 && CALLNAME:162 == "Shanghai"
+				LOCALS:1 = 162
+				LOCALS:5 = %CALLNAME:162%
+				SIF CFLAG:162:現在位置 != 946
+					CFLAG:162:現在位置 = 946
+			ELSE
+				LOCALS:5 = Genjii
+			ENDIF
+		ELSE
+			LOCAL:1++
+			GOTO PICK_A_TROUBLEMAKER
+		ENDIF
+		;Chen
+	CASE 10
+		IF FIRSTTIME("ChenBridgeScene")
+			LOCALS:1 = 24
+			LOCALS:5 = %CALLNAME:[[橙]]%
+			SIF CFLAG:[[橙]]:現在位置 != 946
+				CFLAG:[[橙]]:現在位置 = 946
+		ELSE
+			LOCAL:1++
+			GOTO PICK_A_TROUBLEMAKER
+		ENDIF
+ENDSELECT
+CALL K60_GET_BRIDGE_PASSERBY()
+LOCALS:9 = %RESULTS:0%
+SELECTCASE LOCAL
+	;Fairies
+	;TODO finish this
+	CASE 0 TO 6
+		; SIF !FLAG:70
+		;     PRINTFORMDW %PARSE("You hear")% \@ GROUPMATCH(LOCAL, 3, 4, 5, 6) ? muffled giggles # a muffled giggle\@ as %PARSE("you look")% around.
+		; PRINTFORMDW %PARSE("You notice")% %LOCALS:5%%COND_STR(@" frozen in the act of", FLAG:70)% sneaking up on %ARTICLE(LOCALS:1)%, hands outstretched.
+		; PRINTFORMDW Damn \@ GROUPMATCH(LOCAL, 3, 4, 5, 6) ? brats # brat\@...
+		; PRINTFORMDW Looks like \@ GROUPMATCH(LOCAL, 3, 4, 5, 6) ? they plan # %HE_SHE(LOCAL:1)% plans\@ on pranking %LOCALS:3% by pushing %LOCAL:3% in the river.
+		; IF FLAG:70
+		;     PRINTFORMDW %PARSE("You aren't")% going to do anything while time is stopped, since you want to keep your powers a secret...
+		;     PRINTFORMDW %PARSE("You resolve")% to make sure you stop \@ GROUPMATCH(LOCAL, 3, 4, 5, 6) ? them # %HIM_HER(LOCAL)%\@ once you resume time.
+		; ELSE
+		;     PRINTFORMDW %PARSE("You sneak")% up behind \@ GROUPMATCH(LOCAL, 3, 4, 5, 6) ? them # %HIM_HER(LOCAL)%\@ and grab \@ GROUPMATCH(LOCAL, 3, 4, 5, 6) ? their shoulders# %HIM_HER(LOCAL)% shoulder\@.
+		;     PRINTFORMDW \@ GROUPMATCH(LOCAL, 3, 4, 5, 6) ? They jump # %HIM_HER(LOCAL) jumps%\@ in surprise, turning around and gasping as \@ GROUPMATCH(LOCAL, 3, 4, 5, 6) ? they see# %HIM_HER(LOCAL)% sees\@ %PARSE("you standing")% there, glaring at .
+		;     PRINTFORMW 「Eep! %PRINT_MALE("Mister", MASTER)% %CALLNAME:MASTER%!」
+		; ENDIF
+	CASE 7
+		PRINTFORMDW %PARSE("You notice")% %LOCALS:5%의 어둠의 구 \@ FLAG:70 ? 공중에 얼어 떠다니며 물 위를 부유하는 %ARTICLE(LOCALS:9)% # 물 위를 가로질러 향하는 %ARTICLE(LOCALS:9)% \@ 다리를 가로지르며.
+		PRINTFORMDW %PARSE("You've")%은 %HIM_HER(LOCAL:1)%가 누군가를 성공적으로 먹었다는 것을 들어본 적이 없지만 모든 것에는 처음이 있는 법이다.
+		PRINTFORML
+		IF FLAG:70
+			PRINTFORMDW %PARSE("You aren't")%시간이 멈춘 동안 아무것도 하지 않을 것이다. 어차피 네 힘을 비밀로 유지하고 싶지 않겠어.
+			PRINTFORMDW %PARSE("You resolve")%시간을 다시 시작했을 때 %HIM_HER(LOCAL:1)%을 멈추게 하기 위해서다.
+		ELSE
+			PRINTFORMDW %PARSE("You run")%까지 올라가서, %LOCALS:9%, %RESULTS:3%의 팔을 잡고 %RESULTS:2%를 비켜 당긴다.
+			PRINTFORMDW 잠시 후, %LOCALS:5%의 구체가 다리를 지나 빠르게 날아간다.
+			PRINTFORMD 그것은 공중에서 멈춘 뒤, 승리의 외침과 함께
+			CALL CHARA_TEXT([[ルーミア]], "「잡았다!」", "")
+			PRINTFORMDW , %LOCALS:5%은 강 속으로 곧바로 내리꽂혔다.
+			PRINTFORMDW 보아하니 %PARSE("you")%는 아무것도 할 필요가 없었던 듯했다...
+			PRINTFORML
+			CALL CHARA_TEXT([[ルーミア]], "「누구 좀 도와줘! 나 수영 못 해!」", "w")
+			PRINTFORML
+			PRINTFORMDW %PARSE("You")% 들을 수 있다 %LOCALS:5% 강에서 허우적거리는 소리
+			PRINTFORMDW 생각할 틈도 없이 %PARSE("you climb")%은 난간 위로 올라 어둠 속으로 %PARSE("leap")%한다.
+			PRINTFORML
+			PRINTFORMDW 제기랄, %HE_SHE(LOCAL:1)%는 어디 있는 거야? 너무 어두워서 아무것도 보이지 않아.
+			PRINTFORML
+			CALL CHARA_TEXT([[ルーミア]], @"「「%PRINT_MALE("Mister", TARGET)% Parse? \@ TALENT:12:恋人 ? %CALLNAME:MASTER% # %PRINT_MALE("Mister", MASTER)% %CALLNAME:MASTER% \@? 네가 누구든, 도와줘!」", "w")
+			PRINTFORML
+			PRINTFORMDW %BREAKENG(@"%PARSE("You swim")% toward the sound of %LOCALS:5%'s voice and the sound of %HIS_HER(LOCAL:1)% splashes until %PARSE("you bump")% into %HIM_HER(LOCAL:1)%.")%
+			PRINTFORMDW %HE_SHE(LOCAL:1, 1)% 붙잡고 있다 %PARSE("you")%여전히 허우적거리며. %HE_SHE(LOCAL:1, 1)%위협하고 있어 끌어내리려고 %PARSE("you both")% 아래로
+			PRINTFORMDW %PARSE("You tell")% %HIM_HER(LOCAL:1)% 침착함을 유지하고 %PARSE("try to get your")% 방향을 잡다
+			PRINTFORML
+			CALL CHARA_TEXT([[ルーミア]], "「오... 알겠어...」", "w")
+			PRINTFORML
+			PRINTFORMDW 한번 보지... 너는 물살에 수직으로 헤엄치면 결국 해변에 도착할 것이다.
+			PRINTFORMDW 하지만 어느 해변이 가장 가까울까?
+			PRINTFORMDW %PARSE("You try")% ~가 어떻게 여기에 왔는지 기억하기 위해 %PARSE("you")% 여기에 오게 되었는지 기억하기 위해.
+			PRINTFORMDW %PARSE("you")%이 그저 수영을 시작하고 최선의 결과를 바라야 할까?
+			PRINTFORMDW 다리 한쪽 끝에서 다른 쪽 끝까지 걸으면 반 시간이 걸린다... %PARSE("you")%이 그렇게 오래 수영할 수 있을까?
+			PRINTFORMDW 칠흑 같은 어둠 속에서도 길을 잃지 않으면서? 요괴를 안은 채로 말이다?
+			PRINTFORMDW %PARSE("You aren't")% 물론이고 그것을 감수하지 않는 게 낫지
+			PRINTFORMDW 파르시 어디 갔지 어쨌든 「1」이 「2」를 도와야 하지 않나 %HE_SHE(TARGET)% 돕고 있어야 하지 않나 %PARSE("you", 1)%?
+			PRINTFORML
+			PRINTFORMDW %PARSE("You're")%이 %HIM_HER(TARGET)%를 부르려고 할 때 그것이 %PARSE("you", 1)%에 도달한다.
+			PRINTFORMDW %LOCALS:5%는 이 어둠을 만들어냈다. 그리고 %HE_SHE(LOCAL:1)%도 날 수 있다.
+			PRINTFORMDW 안심하며 %PARSE("You sigh")%은 어둠을 없애고 다리로 돌아가라고 %HIM_HER(LOCAL:1)%에게 말한다.
+			PRINTFORML
+			CALL CHARA_TEXT([[ルーミア]], @"「오, 그래! 너무 겁을 먹어서 그걸 생각지도 못했어! 미안해, \@ TALENT:12:恋人 ? %CALLNAME:MASTER% # %PRINT_MALE("Mister", MASTER)% %CALLNAME:MASTER% \@...」", "w")
+			PRINTFORML
+			PRINTFORMDW 어둠이 순식간에 사라지고 %LOCALS:5% 잡고 %PARSE("you")% 그리고 날기 시작한다 %PARSE("the two of you")% 다리 쪽으로 돌아가기 시작한다.
+			PRINTFORML
+			PRINTFORMDW %LOCALS:5%이 다리 위로 착지하며 %PARSE("you")%를 아무렇게나 떨군다.
+			PRINTFORMDW %HE_SHE(LOCAL:1, 1)%은 개처럼 %HIM_HER(LOCAL:1)% 자신을 흔들며 %PARSE("you")%에게 더 많은 물을 뿌린다.
+			PRINTFORMDW 그러자 %HE_SHE(LOCAL:1)% 기억한다 %PARSE("you're")% 거기서, 수줍게 웃으며 도와준다 %PARSE("you")% ~에게 %PARSE("your")% 발로
+			PRINTFORMDW %HE_SHE(LOCAL:1, 1)%은 %PARSE("you")%에게 깊이 고개를 숙인다.
+			PRINTFORML
+			CALL CHARA_TEXT([[ルーミア]], @"「고마워, \@ TALENT:12:恋人 ? %CALLNAME:MASTER% # %PRINT_MALE("Mister", MASTER)% %CALLNAME:MASTER% \@. 네 덕분에 거기서 한참 동안 꼼짝 안 했을 거야.」", "w")
+			CALL CHARA_TEXT([[ルーミア]], @"「좋아, 이제 그 %RESULTS:4%는 어디로 갔지...?」", "w")
+			PRINTFORML
+			PRINTFORMDW %LOCALS:5%은 주변을 두리번거리며 %LOCALS:9%를 찾지만, 당신이 %HIS_HER(LOCAL:1)%의 어깨에 손을 올린다.
+			PRINTFORML
+			IF TALENT:12:恋人
+				PRINTFORMDW %BREAKENG(@"%PARSE("너 말해")% %HIM_HER(LOCAL:1)% that %HE_SHE(LOCAL:1)% shouldn't be trying to eat humans at %HIS_HER(LOCAL:1)% %PRINT_MALE("소년", MASTER)%friend's workplace.")%
+			ELSE
+				PRINTFORMDW %BREAKENG(@"%PARSE("You tell")% %HIM_HER(LOCAL:1)% that %HE_SHE(LOCAL:1)% shouldn't be trying to eat humans at %PARSE("your")% workplace.")%
+			ENDIF
+			PRINTFORMDW 결국, %HE_SHE(LOCAL:1)%은 %PARSE("you")%에게 빚을 지고 있다.
+			PRINTFORMDW 게다가 %HE_SHE(LOCAL:1)%이 %PARSE("you")%을 무시하고 어쨌든 사람들을 공격한다면...
+			PRINTFORMDW 어쨌든 %HE_SHE(LOCAL:1)%은 %PARSE("you")%에게 빚을 졌다.
+			PRINTFORML
+			IF TALENT:12:恋人
+				CALL CHARA_TEXT([[ルーミア]], @"「정말이야~? 알았어, 다른 데 가서 사냥할게. 내 친구인 %PRINT_MALE("boy", MASTER)%를 곤란하게 만들고 싶지 않으니까.」", "w")
+				CALL CHARA_TEXT([[ルーミア]], @"「잘 가요, %CALLNAME:MASTER%!」", "w")
+				PRINTFORML
+				PRINTFORMDW %LOCALS:5%는 %PARSE("you")%에게 가볍게 키스한 뒤 곧 사라진다.
+				CALL MUTUAL_KISS(LOCAL:1)
+			ELSE
+				CALL CHARA_TEXT([[ルーミア]], "「그런 거구나ー? 알겠어... 그럼 다른 데 가서 사냥이나 해야겠다.」", "w")
+				PRINTFORML
+				PRINTFORMDW %LOCALS:5%는 실망한 표정으로 멀어진다.
+			ENDIF
+			CFLAG:12:現在位置 = KICKOUT()
+			CFLAG:[[パルスィ]]:K60EN_RUMIA_TROUBLEMAKER_SCENE_SEEN = 1
+			PRINTFORML
+			PRINTFORMW 「다시 %LOCALS:5%인가?」
+			PRINTFORML
+			PRINTFORMDW 파르시가 %PARSE("you")%을 보며 즐거워하고 있다.
+			PRINTFORML
+			PRINTFORMW 「나는 전에 %HIM_HER(LOCAL:1)%을 봤지만, 이것이 처음이다 %HE_SHE(LOCAL:1)%가 다리 위에서 사냥하려고 시도하는 것을.」
+			PRINTFORMW 「평소 %HE_SHE(LOCAL:1)%는 만약 그것을 그렇게 부를 수 있다면, 마법의 숲에서 사냥하는 데 집중한다.」
+			PRINTFORMW 「나는 무엇이 %HIM_HER(LOCAL:1)%로 하여금 이곳에 오기로 결정하게 했는지 궁금하다?」
+			PRINTFORMW 「아마도 %HE_SHE(LOCAL:1)%는 나무가 없어 부딪힐 곳이 없는 어딘가에서 더 좋은 운을 가질 것이라고 생각했을지도 모른다.」
+			PRINTFORML
+			PRINTFORMDW %HE_SHE(TARGET, 1)%이/가 웃는다.
+			PRINTFORML
+			PRINTFORMW 「아닌 것 같군.」
+			PRINTFORMW 「%HIS_HER(LOCAL:1)%의 인상적인 힘에도 불구하고, %LOCALS:5%는... 네가 보았듯이 그다지 지능적이지 않아.」
+			IF GROUPMATCH(K60_ATTITUDE(), 2, 3)
+				PRINTFORML
+				PRINTFORMDW %HIS_HER(TARGET, 1)%의 미소가 사라지고, %HE_SHE(TARGET)%은(는) "멍청이에게 낭비되는군"이라며 혼잣말을 중얼거린다.
+			ENDIF
+			PRINTFORML
+			SELECTCASE K60_ATTITUDE()
+				;Loving
+				CASE 0, 1, 3
+					PRINTFORMDW 파르시는 %PARSE("you")%에게 고개를 숙인다.
+					PRINTFORML
+					PRINTFORMW 「그녀가 잠시 패닉에 빠지게 한 다음, 그녀를 끌어내서 다시는 그러지 말라고 말해줄 생각이었는데...」
+					CALL M_KOJO_COLOR_K60_JEALOUS
+					PRINTFORMW 「하지만 당신이 내가 막기 전에 끼어들었군요. 솔직히 저는 당신의 재치에 부러움을 느낍니다...」
+					CALL M_KOJO_COLOR_K60
+					PRINTFORMW 「도와줘서 고마워.」
+				CASE 2
+					PRINTFORMDW 파씨는 %PARSE("you")%에게 저항하며 고개를 숙였다.
+					PRINTFORML
+					PRINTFORMW 「그 어린 애가 잠시 당황하게 두려고 했는데, 끌어내서 소리치려던 참이었는데...」
+					PRINTFORMW 「하지만 내가 너무 느렸지. 네가 나보다 먼저 끼어들었어.」
+					PRINTFORMW 「고맙다고 해야겠군.」
+					CALL M_KOJO_COLOR_K60_JEALOUS
+					PRINTFORMW (참 생각도 빠르네... 정말 질투 난다.)
+					CALL M_KOJO_COLOR_K60
+			ENDSELECT
+			PRINTFORML
+			PRINTFORMDW %PARSE("You return")% %HIS_HER(TARGET)%가 고개를 숙이고 다리로 돌아갔다.
+		ENDIF
+	CASE 8
+		PRINTFORMDW 당신은 %CALLNAME:[[小傘]]%가 %ARTICLE(LOCALS:9)%에게 몰래 다가가는 것을 본다.
+		IF TALENT:[[小傘]]:恋人
+			PRINTFORMDW 당신은 갈등하고 있다. 당신은 %PRINT_MALE("boy", 40)%친구를 밀어내고 싶지 않지만, 동시에 %CALLNAME:[[パルスィ]]%당신에게 화가 나게 만들 수도 없다.
+			PRINTFORMDW 무엇을 할 것인가?
+			CALL ASK_YN(@"%HIM_HER(60)%을/를 멈춰라", "그냥 지켜봐")
+			IF RESULT == 0
+				GOTO STOP_HER
+			ELSE
+				PRINTFORMDW 그냥 지켜보기로 한다. 만약 %CALLNAME:[[パルスィ]]%이 너에게 화를 내더라도 상관없다.
+				PRINTFORMDW %CALLNAME:[[小傘]]%는 %HE_SHE(40)%가 손을 뻗어 %LOCALS:9%의 어깨를 두드릴 수 있을 만큼 가까워질 때까지 다리 위를 살금살금 건너간다.
+				PRINTFORMDW 그리고 %HE_SHE(40)%는 심호흡을 하고 "부우웅!"이라고 소리친다.
+				PRINTFORMD 그 %LOCALS:9% 
+				IF RAND:10
+					PRINTFORMDW 돌아보더니 %CALLNAME:[[小傘]]%을 한동안 멍하니 응시하다가 다시 돌아서서 계속 걸어갔다.
+					PRINTFORMDW %CALLNAME:[[小傘]]%의 어깨가 축 처지고, %HE_SHE(40)%는 강 건너편을 바라본다.
+					PRINTFORMDW %HIS_HER(40,1)%의 우산이 %HIS_HER(40)%의 손에서 빠져나와 마치 %HIM_HER(40)%를 위로하려는 듯 %HIS_HER(40)%의 얼굴을 핥았다.
+					PRINTFORMDW %HE_SHE(40,1)%는 그... 머리를 쓰다듬는다? %HE_SHE(40)%가 계속 응시하는 동안 멍하게.
+					KOGASA_GOT_FEAR = 0
+				ELSE
+					PRINTFORMDW 점프하며 빙글빙글 돈다.
+					PRINTFORMDW ~할 때 %RESULTS:1% 본다 %CALLNAME:[[小傘]]%, %RESULTS:1% 멍하니 바라본다 %CALLNAME:[[小傘]]% 잠시 멍하니 바라보다가 뒤돌아 계속 걸어간다.
+					PRINTFORMDW %CALLNAME:[[小傘]]%은 희미하게 미소 지으며 %HIS_HER(40)%의 배를 쓰다듬는다.
+					KOGASA_GOT_FEAR = 1
+				ENDIF
+				PRINTFORMDW 당신은 %CALLNAME:[[小傘]]%에게 다가가 %HIM_HER(40)%을 가볍게 안아준다.
+				CALL CHARA_TEXT([[小傘]], @"「오! 안녕, %CALLNAME:MASTER%! 못 봤네.」", "w")
+				PRINTFORMDW %HE_SHE(40,1)%이 웃는다.
+				CALL CHARA_TEXT([[小傘]], "「너 진짜 나 깜짝 놀라게 했다고!」", "w")
+				PRINTFORMDW 그러자 %HIS_HER(40)%의 미소가 사라졌다.
+				CALL CHARA_TEXT([[小傘]], "「하지만 내가 사람들을 놀라게 해야 하는 건데...」", "w")
+				SIF KOGASA_GOT_FEAR
+					CALL CHARA_TEXT([[小傘]], @"「%RESULTS:4%」에게 약간의 공포를 느꼈지만, 가벼운 간식으로 삼기에도 부족했다.", "w")
+				PRINTFORMDW 당신은 눈을 감고, 집중하며, 당신을 가장 두렵게 하는 것들을 생각한다.
+				PRINTFORMDW 당신의 최악의 악몽들, 당신의 가장 큰 공포들, 당신의 공포증들...
+				PRINTFORMDW 잠시 후, 그 두려움은 사라지고, 당신은 %CALLNAME:[[小傘]]%가 미소 짓는 것을 보며 눈을 뜬다.
+				CALL CHARA_TEXT([[小傘]], @"「정말 맛있었어요! 정말 고마워요, %CALLNAME:MASTER%!」", "w")
+				PRINTFORMDW %HE_SHE(40,1)%은(는) 당신을 끌어안고 꽉 안는다.
+				CALL CHARA_TEXT([[小傘]], @"「넌 최고의 %PRINT_MALE("boy", MASTER)%친구였어...」", "w")
+				PRINTFORMDW 당신은 포옹을 되돌려주고 %HIS_HER(40)%의 뺨에 얼굴을 비빈다.
+				PRINTFORMDW %CALLNAME:[[小傘]]%이 떨어지자, 당신은 마지못해 %HIM_HER(40)%에게 %HE_SHE(40)%가 더 이상 다리 위에서 사냥할 수 없다고 말한다.
+				CALL CHARA_TEXT([[小傘]], @"「%CALLNAME:[[パルスィ]]% 씨가 화낼 거야, 응? 좋아...」", "w")
+				CALL CHARA_TEXT([[小傘]], "「하지만 나 대신 다른 곳에서 사냥하는 걸 도와줘야 해, 알았지? 네가 시도하면 사람들을 겁에 질리게 만들 수 있을 거라고 확신해!」", "w")
+				PRINTFORMDW %HE_SHE(40,1)%은/는 미소 짓는다.
+				CALL CHARA_TEXT([[小傘]], "「너는 카라카사오바케의 바지를 벗길 수 있다는 걸 확실히 알고 있어...」", "w")
+				CALL CHANGE_CFLAG(GETNUM(CFLAG, "好感度"), [[小傘]], 100)
+				RETURN 1
+			ENDIF
+		ENDIF
+		$STOP_HER
+		SIF TALENT:40:恋人
+			PRINTFORMDW 당신은 그것이 위험할 가치가 없다고 결정한다. 당신은 %CALLNAME:[[小傘]]%에게 %CALLNAME:[[パルスィ]]%를 도운 후에 공포를 먹일 수 있다.
+		PRINTFORMDW 너는 소리친다 %LOCALS:9% 뒤에서 요괴가 몰래 다가오고 있다고 %RESULTS:2%.
+		PRINTFORMDW %CAPITALIZE(RESULTS:1)% 회전하며 %CALLNAME:[[小傘]]% 내밀고 %HIS_HER(40)% 우산과 소리친다 "부우우!"
+		PRINTFORMDW 저 멀리서도 %LOCALS:9% 거대한 눈알과 거대하고 축 늘어진 혀만을 볼 수 있다 %CALLNAME:[[小傘]]%의 우산
+		PRINTFORMDW %CAPITALIZE(RESULTS:1)%은 두려움에 소리치며 %RESULTS:3%의 다리가 감당할 수 있는 가장 빠른 속도로 %RESULTS:2%에게서 도망친다.
+		PRINTFORMDW 이런 %CALLNAME:[[パルスィ]]%화낼 거야...
+		PRINTFORMDW 너의 생각은 %CALLNAME:[[小傘]]%이 너를 뼈가 부서질 듯한 포옹으로 감싸자 중단된다.
+		CALL CHARA_TEXT([[小傘]], "「정말 대단했어! 그렇게 무서운 사람을 만난 게 언제였는지 기억도 안 나!」", "w")
+		CALL CHARA_TEXT([[小傘]], "「너 이거 진짜 잘한다! 내일 사냥하는 거 도와줄 수 있어?」", "w")
+		PRINTFORMDW 당신은 %CALLNAME:[[小傘]]%의 품에서 벗어나 %HIM_HER(40)%에게 %HE_SHE(40)%는 더 이상 다리 위에서 사냥할 수 없다고 말한다.
+		CALL CHARA_TEXT([[小傘]], @"%CALLNAME:[[パルスィ]]%-씨가 화낼 거야, 응? 좋아...", "w")
+		CALL CHARA_TEXT([[小傘]], "「그럼 어디로 가야 할까? 인간 마을은 안 돼. 요괴들은 거기에 못 들어가니까... 혹시 학우레이 신사 쪽 길이라도?」", "w")
+		PRINTFORMDW 코가사(Kogasa)는 인간을 매복시키고 함정을 설치할 좋은 장소들에 대해 계속 떠든다 %HE_SHE(40)%.
+		PRINTFORMDW 도대체 무슨 일을 저지른 거냐...?
+		CALL CHANGE_CFLAG(GETNUM(CFLAG, "好感度"), [[小傘]], 100)
+	CASE 9
+		PRINTFORMDW 파르시 쪽 다리 건너편으로 돌아가자 %HIM_HER([[パルスィ]])%이(가) 누군가에게 이야기하는 소리가 들린다.
+		PRINTFORMW 「미안해요, 겐지이 씨, 하지만 저는 그저 다리 관리인일 뿐이에요. %K60_NAME_WITH_HONORIFICS("Yuugi")%의 행동을 통제할 수 없어요-」
+		CALL M_KOJO_COLOR_K60_GENJII
+		PRINTFORMW 「그럼 네 보스에게 나를 데려가라! 그 망할 오니가 내 %CALLNAME:1%의 술을 %HIS_HER(64)%의 정당한 몫을 지불하지 않고 다 마시게 두지 않을 테니까!」
+		PRINTFORMDW 이제 누가 %HE_SHE([[パルスィ]])%와 이야기하는지 볼 수 있을 만큼 가까워졌다. 긴 흰 수염을 가진 거북이다.
+		CALL M_KOJO_COLOR_K60
+		PRINTFORMW 「나 이미 말했잖아. 일하는 동안 내 다리를 비울 수 없다고.」
+		CALL M_KOJO_COLOR_K60_GENJII
+		PRINTFORMW 「음, 누군가는 나를 이쪽으로 안내해줘야지... 코메이지, 당신이 말한 %HIS_HER(49)%의 이름은 뭐였지? 나는 늙었고 눈도 예전 같지 않단다.」
+		CALL M_KOJO_COLOR_K60
+		PRINTFORMW 「알아, 하지만 정말 할 수가 없어. 옛 수도에 있는 누군가가 너를 안내해 줄 거라고 확신해. 자, 부디...」
+		CALL M_KOJO_COLOR_K60_GENJII
+		PRINTFORMDW 겐지이가 헛기침을 한다.
+		PRINTFORMW 「아이고, 지금 다리 위에 나 말고는 아무도 없는데 말이야. 나 같은 노인을 안내하는 데 딱 5분 정도 시간을 내줄 수 있겠지. 요즘 젊은이들은...」
+		CALL M_KOJO_COLOR_K60
+		PRINTFORMDW 파르시는(는) %HIS_HER([[パルスィ]])%의 이빨을 갈았다.
+		PRINTFORMW 「나는 천 년보다 더 오래되었다! 내가 당신보다 나이가 많다는 것을 보장한다!」
+		CALL M_KOJO_COLOR_K60_GENJII
+		PRINTFORMW 「나한테 그런 말투 쓸 필요 없어, %PRINT_MALE("young man:missy", [[パルスィ]])%. 나보다 많다고? 흥, 수염조차 없잖아!」
+		PRINTFORMDW 그들이 싸우기 전에 개입하는 게 좋을 거야.
+		PRINTFORMDW 당신이 목을 가다듬자 두 사람은 당신을 돌아보았다.
+		CALL M_KOJO_COLOR_K60
+		PRINTFORMW 「오 다행이네, 너였구나.」
+		PRINTFORMDW 파르시는 너에게 부자연스럽게 미소 짓는다.
+		CALL PRINT_STRL, @"「%K60_MASTER()%, 당신은 이스파르의 궁전으로 겐지이 씨를 호위해 주시겠죠, ITALIC 그렇죠?」"
+		PRINTFORMDW 무언가 그것이 부탁이 아니라는 것을 알려준다. 당신은 고개를 끄덕인다.
+		CALL M_KOJO_COLOR_K60_GENJII
+		PRINTFORMW 「흥... 여기라도 예의를 지키는 사람이 있군. 길을 안내해라, 젊은 %PRINT_MALE("man_:lady", MASTER)%.」
+		PRINTFORMDL 
+		PRINTFORMDW 겐지이는 당신과 함께 구의 옛 지옥 거리를 걸으며 당신을 곁눈질한다.
+		IF TALENT:1:恋人
+			PRINTFORMW 「잠깐만... 너 그 %PRINT_MALE("boy", MASTER)% %CALLNAME:1%사귀고 있는 거 맞지?」
+			PRINTFORMW 「하, 어디선가 본 것 같은데.」
+			PRINTFORMW 「그 년이랑 여기서 뭐 하는 거야 대체 신사에 「1」 좀 도와야 하지 않아? %HIM_HER(1)% 신사에서 「1」을 도와야 하지 않나?」」
+			PRINTFORMW 「누군가는 해야 해 난 너무 늙었고 그 기생충 같은 애들 중 아무도 도와주려 하지 않아 %HIM_HER(1)% 도와주려고 수고할 생각을 못 해.」
+			PRINTFORMW 「나한테 말해봐, 요즘 젊은 사람들은 예의가 없어.」
+			PRINTFORMW 「옛날에는 나쁜 요괴들이 신사를 부술 때마다 마을 사람들이 모두 내려와 재건을 도왔었다.」
+			PRINTFORMW 「요즘은 그들 중 누구도 마을을 떠나 "요괴 신사".」
+			PRINTFORMW 「흥. 나는 그들의 할아버지들을 알았는데, 말해두지만 그분들은 평범한 요괴를 일대일로 쓰러뜨릴 수 있었다고!」
+			PRINTFORMW 「게다가 이건 스펠 카드 규칙이 생기기 전이었다고!」
+			PRINTFORMW 「있잖아, 생각해보니 나도 나만의 스펠카드를 만들어 오고 있었어.」
+			PRINTFORMW 「나는 그걸 사용할 생각은 없지만 요괴가 다시 신사를 공격한다면 누군가는 나의 %CALLNAME:1% 그것을 지켜야 할 사람이 필요해...」
+		ELSEIF CFLAG:1:面識
+			PRINTFORMW 「잠깐만... 너는 얼마 전 나타난 그 이계인이지, 맞지?」
+			PRINTFORMW 「하하, 어딘가서 본 것 같은데 기억하고 있었지.」
+			PRINTFORMW 「예, 나 같은 늙은 머리는 얼굴을 절대 잊지 못하지요.」
+			PRINTFORMW 「나는 한때 기억해내는데 %NAME:16% 그리고 %HIS_HER(16)% 하인들이 어떤 파티를 위해 신사로 내려갔던 때가 기억난다.」
+			PRINTFORMW 「그리고 내가 그 빨간 머리의 게이트키퍼를 본 순간 %PRINT_MALE("his_:hers", 16)%나는 생각했다 "%CALLNAME:149%. %HES_SHES(58,1)% ~와 관련이 있는 %CALLNAME:149% 어떻게든."」
+			PRINTFORMW 「나는 단 한 번만 만났었지 %HIM_HER(149)% 단 한 번 만났지 무겐칸에 갔던 그 사건 때였지만 난 절대 잊지 못했어 %HIM_HER(149)%수십 년이 지났음에도 불구하고」
+			PRINTFORMW 「%CALLNAME:1%아, 뭐 나는 %HIM_HER(1)%를 너무나 사랑하지만, %HIS_HER(1)%의 기억력은 저 숲 마녀만큼이나 나쁘구나.」
+			PRINTFORMW 「%HES_SHES(1)%과 가장 친했던 그 사람이 아니다. 다른 사람, %CALLNAME:44%다.」
+			PRINTFORMW 「그들도 관련이 있을지 궁금하다?」
+			PRINTFORMW 「분명 같은 숲에서 두 명의 금발 마녀가 마법 상점을 운영하는 건 우연일 리 없어.」
+			PRINTFORMW 「하지만 우리는 화제를 벗어나고 있어.」
+			PRINTFORMW 「이제 나는 그 문지기에게 「1」에 대해 물어볼 기회가 없었어 %CALLNAME:149%왜냐하면 나는 그 마법사와 밤새 수다를 떨었기 때문이다.」
+			PRINTFORMW 「%NAME:54%스칼렛 데빌 맨션 도서관에서 작동한다. %PRINT_MALE("A fine fellow:Lovely girl", 54)%당은 원하겠지 %HIM_HER(54)%.」
+			PRINTFORMW 「그게 내가 파티에서 아는 사람을 마주친 유일한 경우도 아니었다.」
+			PRINTFORMW 「동물계에서 온 그 친구들이 인연쿄를 침공했을 때 기억나? 모든 것이 정리된 후에 %CALLNAME:1% 파티를 열었다 %HE_SHE(1)% 보통 하듯이.」
+			PRINTFORMW 「그리고 손님 중 한 명은 그였다 %PRINT_MALE("fellow:lady", 130)% 키케츠 가문을 이끄는...」
+		ELSE
+			PRINTFORMW 「흠... 우리는 만난 적이 없는 것 같군. 네 이름은 뭐지, 젊은 %PRINT_MALE("man_:lady", MASTER)%?」
+			PRINTFORMW 「%CALLNAME:MASTER%라고 하셨나? 만나서 반갑다. 나는 겐지이다. 학원의 신사에서 살고 있지.」
+			PRINTFORMW 「나는 이제 은퇴했지만 예전에는 %CALLNAME:1% 그냥 어린 %PRINT_MALE("boy", 1)%우리는 함께 나가서 사건들을 해결하곤 했지.」
+			PRINTFORMW 「%HE_SHE(1,1)%나 등에 타고 있었거든 %HE_SHE(1)% 아직 날기 배우지 못해서.」
+			PRINTFORMW 「아, 그때는 말이야... 네가 거기 있었어야 했다고.」
+			PRINTFORMW 「그때는 심지어 %CALLNAME:4% 가끔 사건을 해결하는 데 도움이 되곤 했다. 지금은 %HE_SHE(4)% 거의 신사에서 떠나지 않는다.」
+			PRINTFORMW 「나는 ~을 다시 도와주도록 하려고 노력했지만 %HIM_HER(4)% 다시 돕기 시작하도록 만들려고 했지만 %HE_SHE(4)% 그냥 말한다 %HES_SHES(4)% 도 은퇴했다고 하네.」
+			PRINTFORMDW 겐지이가 코웃음친다.
+			PRINTFORMW 「흥! 만약 %HE_SHE(4)% 정말로 은퇴했다면 %HE_SHE(4)% 나를 계속 장난치고 있지 않을 거야 %CALLNAME:1% 계속 그 지랄을 하잖아!」
+			PRINTFORMW 「아니, 그저 변명일 뿐이야. 그리고 내가 아무리 노력해도 「1」에게는 닿을 수가 없어. %HIM_HER(4)%.」」
+			PRINTFORMW 「%HE_SHE(4,1)% 듣지도 않을 거야 %CALLNAME:11%! ~가 아니라 %CALLNAME:11% 설득해 볼 기회를 얻다 %HIM_HER(4)%...」
+			PRINTFORMW 「아니, 순간 %HE_SHE(4)% 방에 들어서면 전부 "훈련" 이것과 "마법 카드들" 그리고 "잊지 마, 넌 여전히 내 제자라는 걸!".」
+			PRINTFORMW %BREAKENG(@"「마치 %HES_SHES(4)%이 우리를 조롱하는 것 같아! %HE_SHE(4,1)%는 아마 Danmaku에서 %CALLNAME:1%에게 %HIS_HER(1)% 돈을 벌어줄 수도 있겠지만, %HE_SHE(4)%는 그저 %HIS_HER(4)%의 게으른 유령 엉덩이에 앉아 다른 모든 사람들이 힘든 일을 하도록 내버려 두잖아!」")%
+			PRINTFORMW 「왜, 내가 수십 년이라도 더 젊었더라면, 난...」
+		ENDIF
+		PRINTFORMDW 겐지이는 성에 도착할 때까지 계속해서 수다를 떨었다.
+		PRINTFORMDL
+		PRINTFORMW 「좋아... 이 "%CALLNAME:49%"는 어디에 있는 거야?」
+		IF INRANGE(CFLAG:49:現在位置, 904, 926)
+			PRINTFORMDW 두 분은 궁전을 수색하다가 %CALLNAME:49%를 마주친다.
+			PRINTFORMDW 겐지이는 당신의 심기를 거스르며 계속 말을 건넨다.
+			PRINTFORMW 「...%HIM_HER(1)%에게 단단히 붙어 있으라고 말했다.」
+			PRINTFORMW 「그리고 나는 내 사지로 몸을 숨기고, 이블 아이 시그마를 향해 돌진하여 그 눈을 박살냈다!」
+			PRINTFORMDW 겐지이가 웃는다.
+			PRINTFORMW 「%CALLNAME:47%는 %HIM_HER(47)%에게 무슨 일이 일어났는지 몰랐다!」
+			PRINTFORMW 「그때 %CALLNAME:1%가 저쪽으로 폭탄을 던졌지- 아, 당신은 %CALLNAME:49%이군요.」
+			CALL M_KOJO_COLOR_K49
+			PRINTFORMW 「실로 그렇다. 만나서 반갑소, 겐지이 씨.」
+			PRINTFORMDW %CALLNAME:49%은 고개를 숙이고, 겐지이를 바라보며 미간을 찌푸린다.
+			PRINTFORMW 「"네놈의 저 망할 오니가 내 %CALLNAME:1% 술 전부 마시는 걸 그만두길 원한다고?"」
+			PRINTFORMW 「호시구마 씨는 내 애완동물이 아니다. %HE_SHE(TARGET,1)%은 그저 옛 수도에 살 뿐이다.」
+			PRINTFORMW 「하지만 내가 %HIM_HER(TARGET)%에게 가서 %HIM_HER(TARGET)%가 %HIS_HER(TARGET)%의 술값을 치도록 요구하겠다.」
+			CALL M_KOJO_COLOR_K60_GENJII
+			PRINTFORMW 「그리고 내가 마신 술의 %HIS_HER(64)% 몫도 같이 마셨으면 좋겠어!」
+			PRINTFORMW 「내 %CALLNAME:1%가 얼마나 적은 기부를 받는지 알아?!」
+			PRINTFORMW 「왜냐면, %HE_SHE(1)%는 오니에게 술을 충분히 사줄 리가 없는데, 심지어 먹일 것도 겨우 감당하고 있거든!」
+			PRINTFORMW 「게다가 %HE_SHE(1)%는 먹여야 할 입이 아주 많잖아! %CALLNAME:120%-짱, 스쿠나, %CALLNAME:4%, %CALLNAME:3%, %CALLNAME:57%...」
+			PRINTFORMW 「겨우 생활비를 벌려고 인간 마을에서 아르바이트를 해야 했어!」
+			PRINTFORMW 「나는 하루에 열두 시간 동안 스즈나안으로 대여된 책을 배달하는데, 그걸 받고 얼마를 받는지 알아?」
+			PRINTFORMW 「충분하지 않아, 확실해! 왜냐면, 우리가 상추를 살 돈이 충분했던 게 언제였는지 기억도 안 나...」
+			PRINTFORMDW %CALLNAME:49%에게 동정스러운 고개를 끄덕이고 다리를 향해 돌아간다.
+		ELSE
+			PRINTFORMDW 두 분이 궁전을 수색하지만 %CALLNAME:49%는 어디에도 없다.
+			PRINTFORMW 「흠... 아마 %HES_SHES(49)%가 어딘가 나갔나 보군.」
+			PRINTFORMW 「상관없다. %HE_SHE(49,1)%도 돌아올 테니. 나는 %HE_SHE(49)%가 올 때까지 낮잠이나 자야겠다...」
+			PRINTFORMDW 겐지이는 하품을 하며 근처 소파에 몸을 기댔다.
+			PRINTFORMDW 당신은 안도의 한숨을 내쉬며 다리로 향한다.
+		ENDIF
+		PRINTFORMDL 
+		CALL M_KOJO_COLOR_K60
+		PRINTFORMDW 파르시는 \@ GROUPMATCH(K60_ATTITUDE(), 2, 3) ? 딱딱하게 미소 지으며 # . \@ 당신이 %HIS_HER([[パルスィ]])% 다리에 돌아왔을 때.
+		PRINTFORMW 「겐지이와 상대해줘서 정말 고마워. 하루 종일 그 녀석이랑 논쟁해야 할 줄 알았거든...」
+		PRINTFORMW %BREAKENG(@"「I suppose I should ask %K60_NAME_WITH_HONORIFICS("Yuugi")% to start paying for %HIS_HER(64)% share of the shrine maiden's alcohol next time I see %HIM_HER(64)%.」")%
+		PRINTFORMW 「그걸 또 겪을 필요는 없어.」
+	CASE 10
+		CALL CHARA_TEXT(24,@"「하지만 파르시-샤마, 그녀는 내 친구야!」","w")
+		PRINTFORMW 「내 대답은 '아니오'고, 바뀔 일도 없어.」
+		PRINTFORMW 「그리고 귀여운 척 그만해. 안 통하니까.」
+		PRINTFORMDW 「내 대답은 '싫어'고, 바뀔 일도 없어」
+		PRINTFORMDW 첸은 파르시를 올려다보며 네가 여태껏 본 것 중 가장 사랑스러운 표정을 짓고 있다.
+		PRINTFORMDW 너를 보자 활기를 띠며 네게 달려온다.
+		CALL M_KOJO_COLOR_K24
+		IF TALENT:[[橙]]:恋人
+			PRINTFORM 「%CALLNAME:MASTER%! 
+		ELSEIF IS_FALLEN([[橙]])
+			PRINTFORM 「\@ IS_MALE(MASTER) ? 오빠 # 누나 \@-상!」 
+		ELSE
+			PRINTFORM 「\@ IS_MALE(MASTER) ? 미스터 # 미스 \@!」 
+		ENDIF
+		PRINTFORMW 파세샤마가 나랑 오린짱이랑 놀게 안 해줘! 그 애한테 못된 짓 하고 있다고 말해줘!
+		CALL M_KOJO_COLOR_K60
+		PRINTFORMDW 그녀는 사랑스럽게 입술을 삐죽 내밀고 발을 구른다.
+		PRINTFORMDW 파르시는 팔짱을 끼고 당신을 바라본다.
+		PRINTFORMW 「나는 그냥 "못된 애"가 되려고 그러는 게 아니야, 알잖아.」
+		PRINTFORMW 「란 씨가 천이 지나가지 못하게 명확히 말했어, 오린이 나쁜 습관들을 가르치고 있거든.」
+		CALL CHARA_TEXT(24,@"「안 돼! 오린짱은 시체가 온갖 일에 쓸모가 있다고 말했어!」","w")
+		CALL CHARA_TEXT(24,@"「나는 랜샤마에게 계속 말하려고 하지만, 그녀는 듣지 않는다!」","w")
+		PRINTFORMW 「내가 무슨 말인지 알겠어? 그녀가 첸에게 원자로에서 자신과 어울리도록 유도하려 한다면 놀라지 않을 거야.」
+		CALL CHARA_TEXT(24,@"「우리는 그렇지 않다! 우리는 오직 불타는 지옥에서만 플레이한다! 그리고 시체 가지고 노는 것 이상을 한다!」","w")
+		PRINTFORMDW 첸이 그 자리에서 이상한 작은 춤을 추기 시작한다.
+		CALL CHARA_TEXT(24,@"「봐! 그녀가 나에게 이 정말 멋진 춤을 가르쳐줬어!」","w")
+		PRINTL
+		PRINTFORMDL 당신은 무엇을 하나?
+		CALL ASK_M("파르시에게 첸이 오린과 놀게 하라고 전해라.", 1, "첸에게 오린과 함께 놀 수 없다고 전해라.", 1, "타협점을 찾아보려고 노력한다.", 1, "변명이나 대고 떠라.", 1)
+		SELECTCASE RESULT
+			CASE 0
+				PRINTFORMW 「미쳤어?!」
+				PRINTFORMDW 파세는 믿을 수 없다는 듯 너를 응시한다.
+				PRINTFORMW 「너 나한테 환상의 현자(Sage of Gensokyo)의 시키가미를 건너라고 하는 거야! 내가 그럴 리 없어!」
+				CALL CHARA_TEXT(24,@"「Ha!」","w")
+				PRINTFORMDW 첸은 승리감에 파시를 응시했다.
+				CALL CHARA_TEXT(24,@"「2 대 1이다! 그럼 내가 이기는 거잖아!」","w")
+				PRINTFORMW 「백 대 일이라도 상관없어! 난 야쿠모 유카리를 건드리지 않아!」
+				CALL CHANGE_CFLAG(GETNUM(CFLAG, "好感度"), [[パルスィ]], -100)
+				CALL CHANGE_CFLAG(GETNUM(CFLAG, "好感度"), [[橙]], 100)
+				RESETCOLOR
+				PRINTFORMW 「야옹!」
+				PRINTFORMDW 바비즈가 무슨 소란인지 보려고 어슬렁거리며 다가온다.
+				CALL M_KOJO_COLOR_K60
+				PRINTFORMW 「와비즈, 이 못된 년 같으니! 어찌 경비원들 사이를 빠져나왔지—」
+				CALL CHARA_TEXT(24,@"「키티!!」","w")
+				PRINTFORMDW 첸은 당신과 파르시를 완전히 잊고 아래로 내려가 바비즈의 머리를 쓰다듬는다.
+				GOTO CHEN_VAHBIZ_BONDING
+			CASE 1
+				CALL M_KOJO_COLOR_K24
+				PRINTFORM 「뭐야- 너도 그래?」 
+				IF TALENT:[[橙]]:恋人
+					PRINTFORM %CALLNAME:MASTER%
+				ELSEIF IS_FALLEN([[橙]])
+					PRINTFORM \@ IS_MALE(MASTER) ? 오빠 # 누나 \@-상
+				ELSE
+					PRINTFORM 「\@ IS_MALE(MASTER) ? 미스터 # 미스 \@」
+				ENDIF
+				PRINTFORMDW ?!」
+				PRINTFORMDW 첸은 믿을 수 없다는 듯 당신을 응시하며 입술을 떨고 있다.
+				PRINTFORMDW 그러더니 그녀는 눈물을 흘리며 울기 시작한다.
+				PRINTFORMW 「왜 모두 나한테 이렇게 못된 거야?! 나는 그냥 친구랑 놀고 싶었단 말이야!」
+				PRINTFORMW 「우와아아아!!」
+				PRINTFORMDW 첸이 계속 울자 파르시는 어쩔 줄 몰라 당신을 바라본다.
+				PRINTFORMDW 당신은 그녀를 진정시키려 하지만, 그녀는 그저 당신을 노려본다.
+				PRINTFORMW 「너랑 말하고 싶지 않아! 너도 못된 거잖아!」
+				CALL CHANGE_CFLAG(GETNUM(CFLAG, "好感度"), [[橙]], -100)
+				RESETCOLOR
+				PRINTFORMW 「야옹!」
+				PRINTFORMDW 바비즈가 무슨 소란인지 보러 어슬렁거리며 다가온다.
+				CALL M_KOJO_COLOR_K60
+				PRINTFORMW 「와비즈, 이 못된 여자 같으니! 어떻게 경비원들 사이에서 빠져나온 거야—」
+				CALL CHARA_TEXT(24,@"「키티!!」","w")
+				PRINTFORMDW 마치 누군가 스위치를 바꾼 것 같았다. 천은 즉시 울음을 멈추고 바라비즈의 머리를 쓰다듬기 위해 몸을 숙였다.
+				$CHEN_VAHBIZ_BONDING
+				PRINTFORMDW 바비즈는 행복하게 야옹거리며 첸의 다리에 몸을 비볐다.
+				PRINTFORMDW 첸도 야옹거리자, 바비즈는 놀란 듯한 소리를 내며 두 마리는 곧 활기찬 대화를 나누었다.
+				PRINTFORMDW 이따금씩 첸은 웃음을 터뜨리곤 했다.
+				PRINTFORMDW 파르시는 눈썹을 치켜뜨고 자신의 고양이에게 다가갔다.
+				PRINTFORMW 「바비즈... 너 새로운 친구한테 나에 대한 뒷담화 하는 거 아니지?」
+				PRINTFORMDW 바비즈는 순진하게 파르시를 올려다보았다.
+				CALL CHARA_TEXT(24,@"「아마 조금~」","w")
+				PRINTFORMDW 천이 다시 웃는다.
+				SELECTCASE K60_ATTITUDE()
+					CASE 0, 1
+						CALL CHARA_TEXT(24,@"「그녀는 너희 둘이 언제 결혼할지 알고 싶어한다-」","w")
+					CASE 2
+						CALL CHARA_TEXT(24,@"「그녀는 당신이 왜 %PRINT_MALE("guy", MASTER)% 너에게 그렇게 못되게 구는지 알고 싶어한다.」","w")
+					CASE 3
+						CALL CHARA_TEXT(24,@"「그녀는 당신이 ~인지 알고 싶어」","w")
+				ENDSELECT
+				PRINTFORMDW 파시가 다급하게 천의 입을 손으로 막는다.
+				PRINTFORMW 「바비즈! 엄마의 연애사에 대해 친구들에게 말하지 마!」
+				PRINTFORMDW 그녀는 당신에게 몸을 돌린다.
+				PRINTFORM 「그리고 네가 알아두도록,」 
+				SELECTCASE K60_ATTITUDE()
+					CASE 0
+						PRINTFORMW 그것을 생각하기에는 너무 이르다...!
+						PRINTFORMW 「내 말은, 원치 않는다면 물론...」
+						PRINTFORMDW 그녀는 얼굴을 붉힌다.
+					CASE 1
+						PRINTFORMW 우리 관계가 순전히 육체적인 상태로 남는 것에 나는 괜찮다.
+						PRINTFORMW 「네가 다음 단계로 나아가고 싶다면 반대하지 않겠지만...」
+						PRINTFORMDW 그녀는 얼굴을 붉혔다.
+					CASE 2
+						PRINTFORMW 나는 너를 좋아하지 않아! 너를 싫어해! 너 때문에 못 견디겠어!
+						PRINTFORMDW 그런데 그녀는 왜 얼굴을 붉히고 있는 거지?
+						PRINTFORMW 「내 고양이가 나에 대해 수다 떨어서 창피하거든!!」
+					CASE 3
+						IF TALENT:[[パルスィ]]:恋慕 || MARK:[[パルスィ]]:快楽刻印 == 3
+							PRINTFORMW 나, 나는 너를 좋아하지 않아! 조금도 안 해!」
+						ELSE
+							PRINTFORMW 나는 너를 좋아하지 않는다. 미안하지만 넌 내 취향이 아니다.」
+						ENDIF
+						PRINTFORMDW 그럼 왜 얼굴이 빨개지는 거지?
+						PRINTFORMW 「내 고양이가 나에 대해 가십을 하니까 창피해서!!」
+				ENDSELECT
+				PRINTFORMDW 바비즈가 슬픈 야옹 소리를 낸다.
+				PRINTFORMW 「아니야, 아니야 아가야, 엄마는 너한테 화 안 났어! 절대 화낼 리 없어!」
+				PRINTFORMDW 파르시가 바비즈의 머리를 쓰다듬는다.
+				PRINTFORMW 「그냥 조금 실망했을 뿐이야. 다시는 그러지 마, 알았지?」
+				PRINTFORMDW 바비즈가 다시 야옹거린다.
+				CALL CHARA_TEXT(24,@"「그녀는 약속한다고 말한다.」","w")
+				PRINTFORMDW 천이 미소 짓는다.
+				CALL CHARA_TEXT(24,@"그냥 ~에 대해 수다를 떨어야 할 것 같네 ","w")
+				IF TALENT:[[橙]]:恋人
+					PRINTFORM %CALLNAME:MASTER%
+				ELSEIF IS_FALLEN([[橙]])
+					PRINTFORM \@ IS_MALE(MASTER) ? 오빠 # 누나 \@-상
+				ELSE
+					PRINTFORM 「\@ IS_MALE(MASTER) ? 미스터 # 미스 \@」
+				ENDIF
+				CALL CHARA_TEXT(24,@"대신이다! 니하하하!」","w")
+				CALL M_KOJO_COLOR_K60
+				PRINTFORMDW 파시가 신음한다.
+				PRINTFORMW 「꼭 그래야 한다면... 다른 곳에서 해줄 수 있겠어? 내가 돌봐야 할 다리가 있거든.」
+				CALL CHARA_TEXT(24,@"「좋아. 이리 와, 바비즈! 놀러 가자!」","w")
+				PRINTFORMDW Chen이 다리를 가로질러 질주하고, Vahbiz가 그녀를 뒤쫓는다.
+				PRINTFORMDW 시야에서 사라지자 Parsee는 안도의 한숨을 내쉰다.
+				PRINTFORMW 「그들이 무슨 문제에 휘말리지 않기를 바라... 적어도 Ran-san이 나에게 화낼 일은 걱정할 필요가 없으니까.」
+				SELECTCASE K60_ATTITUDE()
+					CASE 0, 1
+						PRINTFORMDW 그녀는 웃는다.
+						PRINTFORMW 「내 고양이가 내 연애사에 그렇게 관심이 있을 줄은 몰랐어... 어쩌면 얘가 %PRINT_MALE("papa", MASTER)%를 원하는 걸까?」
+					CASE 2
+						PRINTFORMDW 그녀는 당신에게 몸을 돌린다.
+						PRINTFORMW 「그리고 너! 나에 대해 바비즈가 했던 모든 말을 잊어버려! 알았지?!」
+					CASE 3
+						PRINTFORMW 「내 고양이가 내 연애사에 그렇게 관심이 있을 줄은 몰랐어... 어쩌면 그녀가 %PRINT_MALE("papa", MASTER)%을 원하는 걸까?」
+				ENDSELECT
+			CASE 2
+				PRINTFORMDW 그들에게 타협할 수 있다고 말한다.
+				PRINTFORMDW 오린은 첸과 놀 수 있지만, 표면적으로만 그리고 랜이나 유카리의 감독 하에서만 가능하다.
+				CALL CHARA_TEXT(24,@"「흠... 괜찮아. 시체랑 놀지 않는 게 그렇게 큰 문제는 아닌가 봐.」","w")
+				CALL CHARA_TEXT(24,@"「유카리님께 여쭤보러 가야겠어.」","w")
+				PRINTFORMDW 천은 황급히 사라진다. 그녀가 시야에서 사라지자 파르시는 안도의 한숨을 내쉰다.
+				PRINTFORMW 「내 대신 처리해줘서 고마워.」
+				IF EXP:出産経験 > 0
+					PRINTFORMW 「아이들을 어떻게 상대해야 할지 알 거라고 생각할 수도 있겠지만, 알고 있는 게 아닌 모양이야...」
+				ELSE
+					SELECTCASE K60_ATTITUDE()
+						CASE 0
+							PRINTFORMW 「분명 아이들을 상대하는 연습이 더 필요한 것 같다. 왜냐하면 우리가...」
+							PRINTFORMDW 그녀는 말을 끊고 얼굴을 붉혔다.
+							PRINTFORMW 「됐어.」
+						CASE 1
+							PRINTFORMW 「나중에 특별한 보상을 해 줄게.」
+						CASE 2
+							PRINTFORMW 「너는 아이들을 상대하는 데 놀라울 정도로 능숙하구나. 아무래도 너에게는 더한 면이 있는 것 같아.」
+						CASE 3
+							CALL M_KOJO_COLOR_K60_JEALOUS
+							PRINTFORMW 「그런 건 생각도 못 했어... 너무 질투 나네.」
+							CALL M_KOJO_COLOR_K60
+					ENDSELECT
+				ENDIF
+			CASE 3
+				PRINTFORMDW 이 일을 처리하기엔(혹은 전혀) 돈을 충분히 받지 못하고 있다.
+				PRINTFORMDW 당신은 변명을 대고 급히 물러나며, 첸과 파르시가 계속 논쟁하는 것을 지켜본다.
+				CALL CHANGE_CFLAG(GETNUM(CFLAG, "好感度"), [[パルスィ]], -100)
+				CALL CHANGE_CFLAG(GETNUM(CFLAG, "好感度"), [[橙]], -100)
+		ENDSELECT
+		RESETCOLOR
+ENDSELECT
+RETURN 1
+;==================================================
+;Helper function for pluralizing fairy-related text if there's more than one of them involved in the prank
+;ARGS = the string containing the verb needing pluralizing
+;ARG = the troublemaker(s)
+;==================================================
+
+@K60_FAIRY_PLURALIZER(ARGS:0, ARG:0)
+#FUNCTIONS
+IF GROUPMATCH(ARG:0, 3, 4, 5, 6)
+	RETURNF PLVERB(ARGS:0)
+ELSE
+	RETURNF "%HIM_HER(ARG:0 + 5)% %ARGS:0%"
+ENDIF
+;==================================================
+;Helper function for getting the correct honorifics for whatever character
+;ARG = the character
+;==================================================
+
+@K60_NAME_WITH_HONORIFICS(ARGS)
+#FUNCTIONS
+;Handle some variants
+DEBUGPRINTFORML %ARGS%
+SELECTCASE ARGS
+	CASE "Eiki"
+		LOCAL = 30
+	CASE "Yakumo"
+		;technically she could mean Ran but I think she's more likely to refer to her as "Yakumo's shikigami" or something
+		LOCAL = 26
+	CASEELSE
+		LOCAL = NameToID(ARGS)
+ENDSELECT
+;Hack: avoid the game crashing if we pass a name it doesn't recognize
+SIF LOCAL == -1
+	RETURNF @"이름 \"%ARGS%\"을 인식하지 못했다! 신고하라!"
+SELECTCASE LOCAL
+	;Player is in a separate function
+	;Kisume/Yamame
+	CASE 83, 84
+		RETURNF @"%CALLNAME:LOCAL%-%PRINT_MALE("kun:chan",LOCAL)%"
+		;Koishi/Satori/Byakuren/Seija/Alice
+	CASE 38, 49, 55, 97, 17
+		;No honorific because Parsee dislikes them
+		RETURNF @"%CALLNAME:LOCAL%"
+		;Everyone else: Yuugi gets -san too because Parsee feels awkward around her crush
+	CASEELSE
+		RETURNF @"%CALLNAME:LOCAL%상"
+ENDSELECT
+;==================================================
+;Helper function for getting the name (with honorifics) for the player
+;ARG = If present, return the player's name with no honorific (Parsee's mad at you, etc.)
+;==================================================
+
+@K60_MASTER(ARG, ARG:1)
+#FUNCTIONS
+;She's mad at you
+SIF ARG
+	RETURNF @"%CALLNAME:MASTER%"
+IF TALENT:[[パルスィ]]:恋人
+	;todo: if nickname, return that
+	;no honorific: you're lovers or it's her diary (which is written in Persian and doesn't use Japanese honorifics)
+	RETURNF @"%CALLNAME:MASTER%"
+ELSE
+	;Lust/tsundere
+	SELECTCASE K60_ATTITUDE()
+		CASE 1, 2
+			;no honorific: either she's mad at you and deliberately drops it,
+			; or you're in lust and close enough that she doesn't use it
+			RETURNF @"%CALLNAME:MASTER%"
+			;Fake nice/in love but not a lover
+		CASE 0, 3
+			RETURNF @"%CALLNAME:MASTER%님"
+	ENDSELECT
+ENDIF
+;just in case
+RETURNF @"%CALLNAME:MASTER%님"
+;==================================================
+;Displays dialogue for if you're dating a specific 2hu in front of Parsee
+;ARG is the hu
+;==================================================
+
+@K60_CUSTOM_DATE_REACTION_LOVING_LUSTFUL(ARG)
+;Cheating
+IF TALENT:[[パルスィ]]:恋人 && !TALENT:[[パルスィ]]:愛欲 && !VAR_OR_DEFAULT("MORELOVER")
+	CALL M_KOJO_COLOR_K60_VERY_JEALOUS
+	SELECTCASE ARG
+		CASE 10 ;Suika
+			PRINTFORML 「이런 일은 예상했어야 했나...」
+			PRINTFORML 「내가 줄 수 있는 건 그녀가 못하는 게 없어. 그리고 그녀는 그런 모든 것을 더 잘 해.」
+			PRINTFORMDW 파르시가 슬프게 고개를 떨군다.
+			; CASE 17 ;Alice
+			; CASE 29 ;Aya
+			; CASE 32 ;Kanako
+			; CASE 36 ;Orin
+		CASE 37 ;Okuu
+			PRINTFORML 「오쿠우!?」
+			PRINTFORMW 「왜... 왜 그래?」
+			PRINTFORMDL 오쿠우는 아무것도 모른 채 파르시에 손을 흔들었다.
+			CALL CHARA_TEXT([[お空]], @"「안녕, 파르시 씨! %조사처리(CALLNAME:MASTER,"랑")% 내가 같이 놀고 있어! 우리랑 같이 놀래?」", "w")
+			PRINTFORMDL 파르시가 눈물을 터뜨리고 도망친다.
+			IF CFLAG:TARGET:現在位置 == 940
+				CFLAG:TARGET:現在位置 = KICKOUT()
+			ELSE
+				CFLAG:TARGET:現在位置 = 940
+			ENDIF
+			PRINTFORMDW 오쿠는 당신을 향해 고개를 기울인다.
+			CALL CHARA_TEXT([[お空]], @"「응? 왜 파르시 씨가 갑자기 그렇게 슬퍼하는 거지?」")
+			CALL CHARA_TEXT([[お空]], @"「우리랑 놀면 기분 좋아질 거라고 확신해. 이리 가자, 그녀를 찾아보자!」", "w")
+		CASE 38 ;Koishi
+			PRINTFORMDL 파르시가 충격에 빠진 듯하다.
+			PRINTFORMDL 당신은 파르시의 얼굴 앞에서 손을 흔들지만 그녀는 반응하지 않는다.
+			PRINTFORMDW 당신이 그냥 떠나서 스스로 정신을 차리길 바라던 순간, 그녀가 말을 건다.
+			PRINTFORMW 「...당신이 나를 이렇게까지 증오하는 줄 몰랐어, %K60_NAME_WITH_HONORIFICS("Koishi")%.」
+			CALL PRINT_STRW, @"「나는 당신에게 차가웠어, 그래. 하지만... 나는 ITALIC세기 동안보다 %K60_MASTER()%와 함께 더 행복했단 말이야!」"
+			PRINTFORMW 「왜 나한테 이래?! 왜?!」
+		CASE 49 ;Satori
+			CALL PRINT_STRW, @"「너는 ITALIC개년이다.」"
+			PRINTFORMDW 파르시가 사토리에게 돌진하려는 것 같다.
+			PRINTFORMW 「넌 마음을 읽을 수 있어. %HIS_HER(MASTER)%의 마음을 읽었음에 틀림없어. 당신은 %HE_SHE(MASTER)%와 내가 연인이라는 걸 알고 있었겠지!」
+			PRINTFORMW 「왜?! 왜 나한테 이랬어?!」
+			PRINTFORMW 「당신이 날 신경 써준 줄 알았는데!」
+			CALL PRINT_STRW, @"「당신은 수년 전 내 목숨을 구해줬어!」"
+			PRINTFORMDW 사토리는 고개를 숙이고 침묵을 지킨다.
+			; CASE 55 ;Byakuren
+		CASE 64 ;Yuugi
+			PRINTFORMW 「%K60_NAME_WITH_HONORIFICS("Yuugi")%?」
+			PRINTFORMDW 파르시는 당신을 바라보다 유우기에게, 다시 당신에게, 그리고 다시 유우기에게 시선을 돌린다.
+			PRINTFORMW 「제발. 이게 내가 생각하는 게 아니길 말해줘.」
+			PRINTFORMW 「내 %PRINT_MALE("boy", MASTER)%친구가 내 가장 친한 친구랑 바람피고 있는 거 아니라고 해줘!」
+			PRINTFORMW 「거짓말이든 상관없어! 그냥 나한테 말해줘!」
+		CASE 83 ;Kisume
+			LOCALS = 초
+			LOCALS:1 = 네 우물에서 술 깨는 내게 물을 줬지!
+			$YAMAME_KISUME_NTRED_PARSEE
+			PRINTFORMW 「%CALLNAME:ARG%?! 왜...」
+			PRINTFORMDW 파르씨의 눈에 눈물이 반짝이고 있었다.
+			PRINTFORMW 「당신은 내가 이곳에 왔을 때 사귄 %LOCALS% 친구였어.」
+			PRINTFORMW 「우리는 함께 낚시를 했지. 함께 술도 마셨고. %LOCALS:1%」
+			CALL PRINT_STRW, @"「그 모든 것이 당신에게 아무것도 의미하지 않았던 건가?」"
+			PRINTFORMW 「...네가 내 친구라고 생각했던 게 믿기지 않아. 아니, %조사처리(CALLNAME:MASTER,"가")% 내 친구였다는 것도 말이야.」
+			PRINTFORMW 「다시는 너나 %조사처리(CALLNAME:MASTER,"를")% 보고 싶지 않아.」
+		CASE 84 ;Yamame
+			LOCALS = 첫 번째
+			LOCALS:1 = 너 나한테 다리 수리하는 거 도와줬어!
+			GOTO YAMAME_KISUME_NTRED_PARSEE
+		CASE 92 ;Futo
+			PRINTFORMDW 파르시가 목 깊숙한 곳에서 으르렁거리며 복싱 자세를 취한다.
+			PRINTFORMW 「오라, 시카이센! 나에게 달려들어 보아라!」
+			PRINTFORMW 「%K60_MASTER()%의 심장을 두고 죽음까지 걸린 결투에 너를 도전하겠다!」
+			PRINTFORMDL 후토가 당신의 소매를 잡아당긴다.
+			CALL CHARA_TEXT([[布都]], @"「이곳을 떠나자, %CALLNAME:MASTER%.」", "w")
+		CASE 97 ;Seija
+			PRINTFORMDW 파르시가 두 사람을 잠시 응시한다.
+			PRINTFORMDW 그러고는 히스테릭하게 웃기 시작했다.
+			PRINTFORMDW 당신이 그녀의 팔을 만지려 진정시키려 하지만, 그녀는 그것을 쳐낸다.
+			PRINTFORMDW 마침내 그녀의 웃음소리가 잦아들었다. 그 침묵은 어딘가 더 심해졌다.
+			PRINTFORML
+			PRINTFORMW 「사실 너한테 화난 건 아니야, 키진. 그냥 네 본능대로 하는 것뿐이잖아.」
+			PRINTFORMW 「너는 아만오자쿠니까. 깨어있는 모든 순간을 최대한의 혼란을 일으키고 네가 만지는 모든 것을 망치면서 보내지...」
+			PRINTFORMW 「하지만 어쩔 수 없는 거겠지. 배고픈 곰이 너를 난장판으로 만들었다고 화내는 것과 같으니까.」
+			CALL PRINT_STRL, @"「화가 난 건 당신이야, %CALLNAME:MASTER%아.」"
+			PRINTFORMW 「나를 배신하기 위해 선택할 수 있는 사람들 중에서... 왜 그녀지?」
+			PRINTFORMW 「내가 가진 것보다 더 독한 성격을 가졌을지도 모르는 이세계의 유일한 인물에게 왜 끌리는 거지?」
+			PRINTFORMW 「음, 한 가지 위안이 될 만한 게 있겠지. 넌 불행해질 테니까.」
+			PRINTFORMW 「네가 행복하면 그녀는 슬퍼하고, 네가 슬프면 그녀는 행복할 거야.」
+			PRINTFORMW 「그리고 그게 그녀가 어느 날 갑자기 스스로를 망치는 걸 멈추지 못해서 너를 밀어내기로 결정하지 않는다는 가정 하에 말이야.」
+			PRINTFORMDW 파르시는 차갑게 미소 지었다.
+			PRINTFORMW 「난 네 같은 사람들이 어떻게 되는지 알고 있어-」
+			PRINTFORML
+			CALL CHARA_TEXT([[正邪]], "「씨발, 미즈하시, 너 좀 조용히 안 해?」", "w")
+			PRINTFORMDW 세이가 눈을 굴린다.
+			CALL CHARA_TEXT([[正邪]], "「네 어이, 네 그 바보 같은 애니메이션 악당 넋두리 들어줄 시간에 더 할 일 많아.」", "w")
+			CALL CHARA_TEXT([[正邪]], @"「이리 와요, %CALLNAME:MASTER%, 여기서 나가요.」", "w")
+			PRINTFORMDW 당신과 세이가 파르시의 분노에 찬 비명이 귀에 울리며 떠난다.
+			PRINTFORML
+			CFLAG:MASTER:現在位置 = KICKOUT()
+			CFLAG:97:現在位置 = KICKOUT()
+			PRINTFORMDW 당신이 떠나자, 시야에 세이가 스쳐 지나간다.
+			PRINTFORMDW 그녀는 충분히 침착해 보이지만, 눈빛에는 약간의 걱정이 담겨 있다.
+			PRINTFORMDW 파르시가 신경을 건드린 모양이다...
+		CASE 125 ;Joon
+			PRINTFORMW 「나한테 돈 많은 여자랑 바람을 피운 거야?」
+			PRINTFORMW 「할 말이 없네. 사실 네가 안쓰럽기까지 해.」
+		CASE 178 ;Noroiko
+			CALL PRINT_STRL, @"「정말로, %K60_MASTER()%이(가)? ITALIC정말?」"
+			PRINTFORMDW 파르시의 입술이 떨린다.
+			PRINTFORMW 「너는 나를 바꿨어. 너는 나를 쓰라리고 자기혐오에 빠진 엉망인 존재에서 행복하고 기능하는 사람으로 바꿔줬어.」
+			;From Lumiére de courage by MN-logic24
+			PRINTFORMW 「당신은 나에게 고통만이 아닌 것들을 가르쳐 주었지.」
+			PRINTFORMW 「그런데 이제 당신은 사람들에게 저주만 퍼붓는 %PRINT_MALE("man", 171)% 때문에 나를 버리는 거야?!」
+			PRINTFORMW 「지금까지 당신이 원했던 게 그거였어? 증오에 잠식된 부서진 %PRINT_MALE("man", TARGET)%?」
+			PRINTFORMW 「당신은 역겹다. 내가 그렇게 어리석어서 당신을 믿었다는 게 믿기지 않아.」
+		CASEELSE
+			PRINTFORMW 「%K60_MASTER()%...」
+			PRINTFORMDW 파르시는 눈물을 참기 힘들어하고 있다.
+			PRINTFORMW 「왜... 왜 그래? 나를 사랑하지, 안 그래?」
+			PRINTFORMW 「...내가 충분히 좋지 않은 걸까?」
+	ENDSELECT
+	PRINTFORML
+	TCVAR:[[パルスィ]]:K60ENC_TCVAR_DATE_REACTION = 3
+	IF FIRSTTIME("ParseeNTRed")
+		CALL K60_PARSEE_GOT_HER_HEART_BROKEN()
+	ENDIF
+	PALAM:[[パルスィ]]:抑鬱 += 1000
+	PRINTFORML
+	CALL K60_DATE_ANGER(ARG)
+	;Multiple lovers enabled, Parsee and your date are both your lovers
+ELSEIF TALENT:TARGET:恋人 && VAR_OR_DEFAULT("MORELOVER") && TALENT:ARG:恋人
+	SELECTCASE ARG
+		CASE 10 ;Suika
+			CALL CHARA_TEXT([[萃香]], @"「요, 파르시\@ IS_MALE([[パルスィ]]) ? -군 # -쨩 \@!」", "w")
+			PRINTFORMDW 스이카가 파르시에게 손을 흔든다. 파르시는 어색하게 미소 지으며 다시 손을 흔든다.
+			CALL CHARA_TEXT([[萃香]], @"「우리 언제 한번 다 같이 술이나 마시러 가는 건 어때? 너랑 나, 그리고 %조사처리(CALLNAME:MASTER,"가")%. 아니면 유우기 씨도 불러도 되잖아?」", "w")
+			CALL M_KOJO_COLOR_K60_JEALOUS
+			PRINTFORMW 「음... 재밌을 것 같네. 내가 그녀에게 물어보고 시간이 되는지 봐야겠어.」
+			PRINTFORMW 「그건 그렇고... 술값은 누가 낼 거야?」
+			PRINTFORMDW 두 연인 모두 당신을 기대하며 바라본다.
+			; CASE 17 ;Alice
+			; CASE 32 ;Kanako
+		CASE 36 ;Orin
+			CALL CHARA_TEXT([[お燐]], "「오냐, 파르시 씨!」")
+			PRINTFORMDW 오린은 미소를 지으며 파르시에게 손을 흔든다.
+			PRINTFORMDW 파르시는 미소를 지으며 다시 손을 흔든다. 그녀는 당신이 자신과 데이트를 하지 않는 것에 대해 약간 질투하는 것 같다...
+		CASE 37 ;Okuu
+			CALL CHARA_TEXT([[お空]], "「안녕, 파르시 씨!」")
+			PRINTFORMDW 오쿠는 미소를 지으며 파르시에 손을 흔든다.
+			PRINTFORMDW 파르시에는 미소 지으며 그에게 손을 흔들어 준다. 그녀는 네가 대신 자신과 데이트하는 것이 아니라는 사실에 약간 질투한다...
+		CASE 38 ;Koishi
+			PRINTFORMDL 코이시는 미소를 지으며 파르시에게 손을 흔든다.
+			CALL CHARA_TEXT([[こいし]], @"「안녕, 파시 씨! %CALLNAME:MASTER%님하고 나 데이트 중이야!」", "w")
+			CALL CHARA_TEXT([[こいし]], "「우리랑 같이 갈래? 많을수록 더 좋잖아!」", "w")
+			CALL M_KOJO_COLOR_K60_JEALOUS
+			PRINTFORMW 「아하...」
+			PRINTFORMDW 파세는 갈등하는 듯하다.
+			PRINTFORMW 「미안해. 할 일이 있어서...」
+			CALL CHARA_TEXT([[こいし]], "「아...」", "w")
+			PRINTFORMDW 코이시는 실망한 표정을 짓는다.
+			CALL CHARA_TEXT([[こいし]], "「좋아 그럼! 나중에 봐, 파르시 씨!」", "w")
+			PRINTFORMDW 파르시는 어색하게 그녀를 바라봤다... 하지만 그녀의 미소는 평소보다 조금 덜 부자연스러웠다.
+			CALL M_KOJO_COLOR_K60_JEALOUS
+			PRINTFORMW (그녀에게 점차 마음이 가기 시작하는군. 이런 날이 올 줄은 상상도 못 했어...)
+		CASE 41 ;Nue
+			IF FIRSTTIME("NueDateLoveLust")
+				CALL CHARA_TEXT([[ぬえ]], @"「아차…… 파르시가 \@ IS_MALE([[パルスィ]]) ? -군 # -쨩 \@이 화내기 전에 숨겨야겠어.」", "w")
+				PRINTFORMDW 누아가 %HIS_HER(41)%의 숨결 아래 무언가를 중얼거리자 갑자기 이상한 기분이 들었다.
+				CALL CHARA_TEXT([[ぬえ]], @"「우으... 안녕, 파르시. \@ IS_MALE([[パルスィ]]) ? -군 # -쨩 \@! It's been a while, eh?」", "w")
+				PRINTFORMDW 파르시는 팔짱을 끼고 누를 응시한다. 흥미롭다는 듯 미소가 그녀의 입가에 떠올랐다.
+				PRINTFORMW 「누구랑 손 잡고 있는 거야? %K60_MASTER()%이랑 사귀는 줄 알았는데.」
+				PRINTFORMW 「%HIM_HER(MASTER)%를 바람피우는 건 아니겠지? 만약 그렇다면...」
+				PRINTFORMDW %CALLNAME:[[パルスィ]]%는 %HIS_HER([[パルスィ]])%의 손가락 관절을 비틀며 희미하게 웃는다.
+				PRINTFORMDW 누는 수줍게 미소 지으며 식은땀을 흘리기 시작한다.
+				CALL CHARA_TEXT([[ぬえ]], @"「나... 나 %HIM_HER(MASTER)%랑 데이트하는 거 아니야! %HE_SHE(MASTER,1)%은(는) 음... 시력이 좋지 않아서 내가 도와주고 있었어-」", "w")
+				PRINTFORMDW 파르시가 눈을 굴린다.
+				PRINTFORMW 「난 바보가 아니야, 누에 씨. 그리고 당신이 %K60_MASTER()%과 데이트한다고 질투하는 분노를 폭발시키지 않을 거야.」
+				PRINTFORMW 「나는 %HIM_HER(MASTER)%를 믿고, %HE_SHE(MASTER)%가 우리 둘을 사랑한다는 걸 알아. %HIM_HER(MASTER)%를 식별할 수 없게 만들려고 애쓸 필요는 없어.」
+				PRINTFORMDW 누에가 웃는다.
+				CALL CHARA_TEXT([[ぬえ]], "「쿠쿠쿠... 대단한 누에님께 들킨 것 같아...」", "w")
+				PRINTFORMDW %HE_SHE(41,1)%은 다른 것을 중얼거리고, 당신은 이상함을 느끼지 않는다.
+				PRINTFORMW 「솔직해져 봐, 누에 씨.」
+				PRINTFORMDW 파르시가 미소 짓는다.
+				PRINTFORMW 「정말로 내가 화낼 줄 알았어, 아니면 그냥 나를 놀리려고 한 거야?」
+				PRINTFORMDW 누에가 빙긋 웃는다.
+				CALL CHARA_TEXT([[ぬえ]], "「니히히... 그거 비밀이야~」", "w")
+			ELSE
+				CALL CHARA_TEXT([[ぬえ]], @"「또 만나네, 파르시\@ IS_MALE([[パルスィ]]) ? -군 # -쨩 \@!」")
+				CALL CHARA_TEXT([[ぬえ]], @"「있잖아, 내가 지하세계에 살 때의 이야기들을 %K60_MASTER()%에게 해준 적은 없는 것 같아.」")
+				CALL CHARA_TEXT([[ぬえ]], @"「우리 술 마시면서 옛날 생각이나 해보는 게 어때...」", "w")
+				PRINTFORMW 「재미있을 것 같아.」
+				PRINTFORMDW 파르시가 미소를 짓는다.
+				PRINTFORMW 「너에 대해 내가 해주고 싶은 이야기가 있어 %HIM_HER(MASTER)%...」
+				PRINTFORMDW 누아가 얼굴을 붉힌다.
+				CALL CHARA_TEXT([[ぬえ]], @"「감히 하지 마라! 나 같은 위대한 요괴는 명예를 지켜야 한다!」", "w")
+			ENDIF
+		CASE 49 ;Satori
+			CALL CHARA_TEXT([[さとり]], @"「오... %CALLNAME:MASTER%-님과 데이트하는 것을 정말 기대하고 있었어요?」", "w")
+			CALL CHARA_TEXT([[さとり]], @"「미안해, 파르시\@ IS_MALE([[パルスィ]]) ? -군 # -쨩 \@. 어떻게든 만회할게.」", "w")
+			CALL CHARA_TEXT([[さとり]], @"「그리고 당신은 걱정할 것이 아무것도 없다. %CALLNAME:MASTER%님은 당신을 매우 사랑하며 결코 당신에게 해를 끼치지 않을 것이다.」", "w")
+			PRINTFORMDW 사토리는 파르시를 보며 미소 짓는다.
+			CALL M_KOJO_COLOR_K60_JEALOUS
+			PRINTFORMW 「네 마음 읽는 거 그만하라고 했잖아.」
+			PRINTFORMDW 파르시는 인상을 쓰고 팔짱을 낀 채 두 사람에게 등을 돌리지만... 그녀가 얼굴을 붉히고 있는 것이 보인다.
+			PRINTFORMDW 사토리는 한숨을 쉬었다.
+			CALL CHARA_TEXT([[さとり]], "「하고 싶지만, 그럴 수 없어.」", "w")
+			PRINTFORMDW 그녀는 당신의 소매를 잡아당기고 당신의 귀에 속삭인다.
+			CALL CHARA_TEXT([[さとり]], @"「그녀도 당신을 사랑해요, %CALLNAME:MASTER%-씨. 그녀에게 비친 당신의 모습을 보여줄 수 있다면 좋을 텐데...」", "w")
+			PRINTFORMDW 사토리는 미소 짓는다.
+			CALL CHARA_TEXT([[さとり]], "「너 정말 멋진 여자고, 너희 둘이 이렇게 행복해서 나도 기뻐.」", "w")
+			PRINTFORMDW 그녀는 당신의 손을 꽉 잡는다.
+			;Satori calls you "Master" (主様) if she's your lover
+			CALL CHARA_TEXT([[さとり]], @"「그리고 당신과 함께 있을 수 있어서 나는 더욱 기쁘다... \@ IS_MALE(MASTER) ? 마스터 # 미스 \@」", "w")
+			RESETCOLOR
+			CALL PRINT_STRW, @"「ITALIC사랑해, 사토리」라고 당신은 생각하고 그녀의 미소는 더욱 넓어진다."
+		CASE 64 ;Yuugi
+			PRINTFORMDW 파르시의 홍조는 너무 강해서 거의 빛나고 있었다.
+			CALL CHARA_TEXT([[勇儀]], "「으음... 파르시? 괜찮아?」", "w")
+			PRINTFORMW 「음? 아, 응, 난 괜찮아. 걱정하게 해서 미안해, %K60_NAME_WITH_HONORIFICS("Yuugi")%.」
+			PRINTFORMDW 파세는 살짝 안절부절못한다.
+			IF CFLAG:[[パルスィ]]:K60ENC_SETTING_YUUPARU_CRUSH == 1
+				PRINTFORMW 「둘 다 당신의 손을 잡아도 괜찮을까요?」
+				PRINTFORMDW 두 사람은 그녀를 보고 미소 지었다. 유우기는 그녀의 한 손을 잡고, 당신은 다른 쪽을 잡았다.
+				PRINTFORMDW 파르시는 너무 환하게 웃어 마치 머리를 감싸 안을 듯했다.
+				PRINTFORMW 「하아... 영원히 이렇게 있고 싶지만... 여러분의 데이트를 망치고 싶지 않아요.」
+				PRINTFORMW 「즐겁게 보내세요, 두 분! 그리고... 저도 각자 당신들과 데이트하고 싶어요.」
+				PRINTFORMW 「저-만 바쁘지 않다면, 물론이죠.」
+			ELSE
+				PRINTFORMW 「만약... 제가 %K60_MASTER()%'의 손을 잡아도 괜찮을까요?」
+				PRINTFORMDW 두 사람은 그녀를 보고 미소 짓는다. 유우기는 당신의 한 손을 잡고, %CALLNAME:[[パルスィ]]%는 다른 쪽 손을 잡는다.
+				PRINTFORMDW 파르시는 너무 환하게 웃어서 마치 머리를 감싸 안을 것 같다.
+				PRINTFORMW 「하아... 영원히 이렇게 있고 싶지만... 당신들의 데이트를 망치고 싶지 않아요.」
+				PRINTFORMW 「두 분 즐거운 시간 보내세요! 그리고... 저도 %K60_MASTER()%과 데이트하고 싶어요.」
+				PRINTFORMW 「저-저희가 너무 바쁘지 않다면, 물론이죠.」
+			ENDIF
+		CASE 83 ;Kisume
+			PRINTFORMDW 파르시가 미소를 지으며 두 사람에게 인사한다.
+			PRINTFORMW 「%K60_NAME_WITH_HONORIFICS("Yamame")%! 너희 둘 재미있니?」
+			$PARSEE_YAMAME_KISUME_LOVING_BOTH_LOVERS
+			PRINTFORMW 「함께 할 수 없다니 아쉽지만... 이 세계가 하렘을 받아들이더라도, 단체 데이트는 허용하지 않는 모양이다.」
+			PRINTFORMDW 파르시가 한숨을 내쉰다.
+			PRINTFORMW 「뭐 어때. 나중에 우리 모두 같이 술이나 마시는 건 어떨까?」
+		CASE 84 ;Yamame
+			PRINTFORMDW 파세는 웃으며 두 사람에게 고개를 숙인다.
+			PRINTFORMW 「%K60_NAME_WITH_HONORIFICS("Kisume")%! 너희 둘 재미있니?」
+			GOTO PARSEE_YAMAME_KISUME_LOVING_BOTH_LOVERS
+		CASE 92 ;Futo
+			PRINTFORMDW 파르시가 미소 지으며 두 사람에게 고개를 숙인다.
+			PRINTFORMW 「오호, 후토도노! 당신과 %K60_MASTER()%은(는) 데이트를 즐기고 있소? 그렇게 하고 있기를 바라네!」
+			PRINTFORMDW 후토가 코웃음을 친다.
+			CALL CHARA_TEXT([[布都]], "「그만 좀 해, 파르시.」")
+			CALL CHARA_TEXT([[布都]], "「네가 나를 조롱하는 건지 아첨하려는 건지 모르겠지만, 어느 쪽이든 네 말은 틀렸어.」", "w")
+		CASE 97 ;Seija
+			CALL M_KOJO_COLOR_K60_JEALOUS
+			PRINTFORMDW 파세는 두 사람을 보자 얼굴에 미소를 띠었다.
+			PRINTFORMW 「말썽 피우지 마, 키진. 그리고 %K60_MASTER()%은(는) 그녀를 잘 지켜봐야 해, 알았지?」
+			CALL CHARA_TEXT([[正邪]], "「나 얼마나 바보 같다고 생각하는데, 미즈하시?」", "w")
+			PRINTFORMDW 세이가 코웃음 친다.
+			CALL CHARA_TEXT([[正邪]], @"「당신 같은 고집불통과 %HIM_HER(MASTER)%를 나눠 가져야 한다니 믿을 수가 없네...」", "w")
+			CALL M_KOJO_COLOR_K60_JEALOUS
+			PRINTFORMDW 파르시가 찡그리며 팔짱을 낀다.
+			PRINTFORMW 「당신과 내 마음은 서로 통한다는 걸 확신시켜 드릴게요.」
+			PRINTFORMDW 당신의 연인들이 싸우기 전에 떠나는 게 좋을지도 모른다.
+			CALL M_KOJO_COLOR_K60
+		CASE 125 ;Joon
+			PRINTFORMDW 파시가 살짝 미간을 찌푸렸다.
+			PRINTFORMW 「오늘 그녀에게 얼마나 썼지? 너무 비싼 건 사주지 마.」
+			CALL CHARA_TEXT([[女苑]], "「네 알 바 아니야!」", "w")
+			PRINTFORMDW 준은 파르시를 노려본다.
+			CALL CHARA_TEXT([[女苑]], @"「%CALLNAME:MASTER%-씨는 \@ IS_MALE(125) ? 신사 # 숙녀를 \@ 다루는지 알고 있지!」", "w")
+			CALL CHARA_TEXT([[女苑]], "「게다가 너한테 할 말이 있을 공간이 있을지는 의문이다! %HIM_HER(MASTER)%이랑 데이트한 거 마지막으로 돈 내본 게 언제였지?」", "w")
+			PRINTFORMDW 파시가 되응한다.
+			PRINTFORMW 「나 돈 없어!」
+			CALL CHARA_TEXT([[女苑]], "「아, 정말?」", "w")
+			PRINTFORMDW 준은 미소 짓는다.
+			CALL CHARA_TEXT([[女苑]], "「그럼 아르바이트라도 해봐.」", "w")
+			CALL SET_KOJO_COLOR([[女苑]])
+			CALL PRINT_DIALOGUE, @"유우카 씨가 해충 방제를 하도록 도와주거나, 아야 씨가 %HIS_HER(29)% 신문을 배달하도록 돕거나, 인간 마을의 상점 중 한 곳에서 계산원으로 일한다.", "w"
+			CALL CHARA_TEXT([[女苑]], "「무임승차하는 걸 아무도 좋아하지 않아.」", "w")
+			CALL M_KOJO_COLOR_K60
+			CALL PRINT_STRL, @"「왜, 당신은...」"
+			PRINTFORMDW 파시의 눈이 초록색으로 빛나고, %HE_SHE(TARGET)%은 공중에 떠다니기 시작한다.
+			PRINTFORMDW 연인들이 서로에게 단막을 퍼붓기 전에 떠나는 것이 좋을지도 모른다.
+			; CASE 143 ;Yuuma
+			; CASE 178 ;Noroiko
+		CASEELSE
+			PRINTFORMDW 파르시는 당신을 그리고 %CALLNAME:ARG%에게 어색하게 미소 짓는다.
+			PRINTFORMW 「아... 안녕, %K60_MASTER()%. 안녕, %K60_NAME_WITH_HONORIFICS(@"%CALLNAME:ARG%")%.」
+			PRINTFORMW 「이 데이트에 세 번째 사람이 있을 공간은 없니?」
+			PRINTFORMW 「없다고? 그렇구나...」
+			PRINTFORMDW 파르시는 실망한 표정을 짓는다.
+			PRINTFORMW 「음... 나는...」
+			PRINTFORMW 「두 분이 즐거운 시간 보내길 바랄게!」
+			$PARSEE_LOVING_MULTIPLE_LOVERS_DATE_ENCOUNTER_END
+			PRINTFORMDW 아마 내일 당신은 %HIM_HER(TARGET)%에게 데이트를 신청해 보는 게 좋을 거야.
+			PRINTFORMDW 결국 사랑하는 사람들에게 그들을 사랑하고 소중히 여긴다는 것을 알리는 것이 중요하니까.
+	ENDSELECT
+	SIF ARG != 41
+		TCVAR:[[パルスィ]]:K60ENC_TCVAR_DATE_REACTION = 2
+	;Multiple lovers enabled, Parsee is your lover, your date is not
+ELSEIF TALENT:TARGET:恋人 && VAR_OR_DEFAULT("MORELOVER") && !TALENT:ARG:恋人
+	SELECTCASE ARG
+		; CASE 10 ;Suika
+		; CASE 17 ;Alice
+		; CASE 32 ;Kanako
+		; CASE 36 ;Orin
+		; CASE 37 ;Okuu
+		; CASE 38 ;Koishi
+		; CASE 39 ;Nazrin
+		; CASE 41 ;Nue
+		; CASE 49 ;Satori
+		CASE 64 ;Yuugi
+			IF CFLAG:[[パルスィ]]:K60ENC_SETTING_YUUPARU_CRUSH == 1
+				PRINTFORMDW 파르시의 홍조는 너무 강해서 거의 빛나고 있었다.
+				CALL CHARA_TEXT([[勇儀]], "「으음... 파르시? 괜찮아?」", "w")
+				CALL M_KOJO_COLOR_K60_JEALOUS
+				PRINTFORMW 「음? 아, 응, 난 괜찮아. 걱정하게 해서 미안해, %K60_NAME_WITH_HONORIFICS("Yuugi")%.」
+				PRINTFORMDW 파세는 살짝 안절부절못한다.
+			ENDIF
+			PRINTFORMW 「흐음... 즐겁게 놀아줘...」
+			PRINTFORMDW 파르시는 얼굴에 미소를 짓는다.
+			PRINTFORMDW 아마 내일 그녀와 데이트를 하는 게 좋을지도 모른다.
+			SIF CFLAG:[[パルスィ]]:K60ENC_SETTING_YUUPARU_CRUSH == 1
+				PRINTFORMDW 아니면 차라리 세 명이 같이 데이트하는 걸 추천해.
+			; CASE 83 ;Kisume
+			; CASE 84 ;Yamame
+			; CASE 85 ;Ichirin
+			; CASE 86 ;Murasa
+			; CASE 87 ;Shou
+			; CASE 88 ;Kyouko
+			; CASE 92 ;Futo
+		CASE 97 ;Seija
+			IF FIRSTTIME("LovingLewdSeijaJoiningHarem")
+				CALL CHARA_TEXT([[正邪]],  @"「뭐야, %CALLNAME:MASTER%?! 네가 그녀와 사귀고 있다는 걸 전혀 말해주지 않았잖아!」", "strw")
+				CALL M_KOJO_COLOR_K60_JEALOUS
+				CALL PRINT_STRW, @"「그리고 %HE_SHE(MASTER)%은/는 나에게 ITALIC가 당신을 %HIS_HER(MASTER)% 하렘에 추가할 계획이었다고 말해주지 않았다.」"
+				PRINTFORMDW 파씨와 세이가 당신에게 돌아보며 노려본다.
+				PRINTFORMDW 파씨가 세이에게 미소 짓는다.
+				CALL M_KOJO_COLOR_K60
+				PRINTFORMW 「우리의 차이는 잠시 접고 %HIM_HER(MASTER)%를 벌여줄까?」
+				PRINTFORMDW 세이가 코웃음을 치더니 웃기 시작했다.
+				CALL CHARA_TEXT([[正邪]], "「이리 와, 미즈하시. 너 그렇게 바보가 아니라는 거 알아.」", "w")
+				CALL CHARA_TEXT([[正邪]], "「난 아만조쿠야. 네가 하고 싶은 거 내가 왜 동의할 거라고 생각하는 거야?」", "w")
+				CALL CHARA_TEXT([[正邪]], @"「아니, 나 더 좋은 생각이 있어. 너랑 나랑 %HIM_HER(MASTER)%이랑 쓰리썸하는 건 어때?」", "w")
+				CALL CHARA_TEXT([[正邪]], @"「%HIM_HER(MASTER)%이 더 많은 번을 사정하게 하면, 내 하렘에 들어가는 걸 방해하지 말아줘...」", "w")
+				CALL CHARA_TEXT([[正邪]], @"「%HIM_HER(MASTER)%가」 더 많이 오르도록 만든다면, 내가 정리하고 너를 혼자 내버려 둘게.", "w")
+				CALL CHARA_TEXT([[正邪]], "「거래할까?」", "w")
+				PRINTFORML
+				PRINTFORMDW 파르세가 세이야에게 얼굴을 찡그린다.
+				PRINTFORMW 「그리고 내가 거절하면?」
+				PRINTFORMDW 세이야가 미소를 짓는다.
+				CALL CHARA_TEXT([[正邪]], @"「그럼 우리는 그저 %HIM_HER(MASTER)%을 공유하는 법을 배워야겠지.」")
+				CALL CHARA_TEXT([[正邪]], @"「어떤 다리 트롤이 그것에 대해 엉덩이에 막대기를 박고 있다고 해서 %조사처리(CALLNAME:MASTER,"에게")% 포기하지 않을 거야.」", "w")
+				PRINTFORMDW 파르시는 시지를 노려보며 구멍을 뚫으려는 것 같다.
+				PRINTFORMW 「좋다, 키진. 네 도전을 받아들이겠어. 그리고 그 말들을 네가 되씹도록 만들 작정이야.」
+				PRINTFORMDW 시지는 눈을 굴린다.
+				CALL CHARA_TEXT([[正邪]], @"「볼 때 믿을 수 있어. 이리 와, %K97_DUDE()%, 야나데레\@ IS_MALE([[パルスィ]]) ? -군 # -짱 \@ 혈관이 터지기 전에 가자.」", "w")
+				$PARSEE_SEIJA_PISSED
+				PRINTFORML
+				PRINTFORMDW 파시가 목이 막힌 듯한 소리를 낸다. 그녀는 시자에게 달려들고 싶어 보였고, 네가 없었다면 아마 그랬을 것이다.
+				PRINTFORMDW 뭔가 시자는 오늘 밤 평생 최고의 허리 통증을 겪게 될 것 같다고 말해준다...
+				CALL K60_GET_ANGRY()
+				;todo set a flag here for the sex competition event
+			ELSE
+				PRINTFORMDW 파시가 세이야를 노려본다.
+				PRINTFORMW 「네 입에서 한 마디라도 더 나오면, 아만조쿠, 네 더러운 입을 봉할 테니까.」
+				PRINTFORMDW 세이야는 두 손으로 파시에게 욕을 한다.
+				IF ABL:MASTER:教養 >= 3
+					PRINTFORMDW 그러고는 그녀가 파르시에 두 손 엄지손가락을 치켜세운다... 페르시아식 표현으로.
+					PRINTFORMDW 그리고 세이가 프랑스식 외설적인 제스처, 일본식인, 나폴리에서 온 것을 이어서 한다...
+				ELSE
+					PRINTFORMDW 그녀는 당신이 익숙하지 않지만 문맥상 외설적이라는 것을 알 수 있는 몇 가지 제스처로 그것을 이어간다.
+				ENDIF
+				GOTO PARSEE_SEIJA_PISSED
+			ENDIF
+			; CASE 120 ;Aunn
+			; CASE 125 ;Joon
+			;     PRINTFORMDL Parsee glares at Joon.
+			;     PRINTFORML 「Why are you going on a date with her, of all people?」
+			;     ;todo
+			; CASE 143 ;Yuuma
+			; CASE 178 ;Noroiko
+		CASEELSE
+			PRINTFORMDW 파시(Parsee)는 당신을 그리고 %CALLNAME:ARG%를 향해 어색하게 미소 짓는다.
+			PRINTFORML 「아... 안녕, %K60_MASTER()%. 안녕, %K60_NAME_WITH_HONORIFICS(@"%CALLNAME:ARG%")%.」
+			PRINTFORMW 「네 하렘에 또 다른 연인을 추가하는 거니?」
+			CALL PRINT_STRW, @"「당신이 여전히 나를 사랑해 준다면, 당신을 나누는 것에 개의치 않겠어...」"
+			PRINTFORMW 「그리고 %HE_SHE(ARG)%은 분명 당신을 행복하게 해주고, 저는 당신이 저에게 주는 만큼 %HIM_HER(ARG)%도 행복하게 해줄 거라고 확신해...」
+			PRINTFORMDW %HE_SHE(TARGET,1)%는 한숨을 쉰다.
+			PRINTFORMW 「나를… 잊지 말아 줘, 알았지?」
+			PRINTFORMDW 당신은 %HIM_HER(TARGET)%에게 그러지 않겠다고 약속하고, 파르시의 미소가 조금 덜 경직된다.
+			PRINTFORMW 「고마워요, %K60_MASTER()%. 그 약속을 지키게 할게요.」
+			PRINTFORMW 「그리고… 두 분이 즐거운 시간 보내길 바라요!」
+			SIF ARG == 41
+				TCVAR:[[パルスィ]]:K60ENC_TCVAR_DATE_REACTION = 2
+			GOTO PARSEE_LOVING_MULTIPLE_LOVERS_DATE_ENCOUNTER_END
+	ENDSELECT
+	SIF ARG != 97
+		TCVAR:[[パルスィ]]:K60ENC_TCVAR_DATE_REACTION = 2
+	;Parsee is not your lover
+ELSEIF !TALENT:[[パルスィ]]:恋人
+	;Cheating on someone other than Parsee
+	IF !VAR_OR_DEFAULT("MORELOVER") && TALENT:MASTER:恋人 && !TALENT:ARG:恋人
+		CALL K60_CHEATING_ON_SOMEONE_OTHER_THAN_PARSEE(ARG)
+		RETURN 1
+	ELSE
+		SELECTCASE ARG
+			; CASE 10 ;Suika
+			; CASE 17 ;Alice
+			; CASE 32 ;Kanako
+			; CASE 36 ;Orin
+			; CASE 37 ;Okuu
+			; CASE 38 ;Koishi
+			; CASE 39 ;Nazrin
+			; CASE 41 ;Nue
+			; CASE 49 ;Satori
+			CASE 54 ;Patchouli
+				PRINTFORML 「어라? 지식의 아가씨? 당신이 도서관 밖에 있는 걸 보니 놀랍네요.」
+				PRINTFORMW 「당신과 %K60_MASTER()%은(는) 책을 사러 온 건가요?」
+				PRINTFORMDW 당신은 자신과 패치울리가 데이트 중이라고 설명했고, 파르시의 눈썹이 올라갔다.
+				PRINTFORML 「흠흠... 정말 매력적이시군요, %K60_MASTER()%.」
+				PRINTFORMW 「저도... 두 분 즐거운 시간 보내셨으면 해요!」
+			CASE 64 ;Yuugi
+				PRINTFORMDW 파르시의 얼굴이 어두워졌다.
+				PRINTFORML (\@ CFLAG:[[パルスィ]]:K60ENC_SETTING_YUUPARU_CRUSH == 1 ? 나의 두 취향 모두 # 나의 취향과 가장 친한 친구가 사귀고 있다고? )\@
+				PRINTFORMW (나는 그들이 행복해야 한다고 알지만, 하지만...)
+				PRINTFORMDW 파르시는 당신들 둘에게 뻣뻣하게 고개를 끄덕이고 몸을 돌렸다.
+				PRINTFORMDW 그녀는 눈물을 참으려고 입술을 깨물었다.
+				; CASE 83 ;Kisume
+				; CASE 84 ;Yamame
+				; CASE 85 ;Ichirin
+				; CASE 86 ;Murasa
+				; CASE 87 ;Shou
+				; CASE 88 ;Kyouko
+				; CASE 92 ;Futo
+				; CASE 97 ;Seija
+				; CASE 120 ;Aunn
+				; CASE 125 ;Joon
+				; CASE 143 ;Yuuma
+			CASE 178 ;Noroiko
+				PRINTFORMDW 파르시의 얼굴이 노리코와 함께 있는 당신을 보고 굳는다.
+				CALL M_KOJO_COLOR_K60_JEALOUS
+				PRINTFORMW (%HE_SHE(MASTER)%는 왜 %HIM_HER(171)%와 만나는 거야? 그 %HE_SHE(171)%가 아는 건 욕하는 것뿐이잖아!)
+				CALL PRINT_STRL, @"(%HE_SHE(MASTER)%는 많은 저주를 아는 %PRINT_MALE("men", 171)%을 좋아합니까?)"
+				PRINTFORMW (아니, 만약 %HE_SHE(MASTER)%가 그런 종류의 것을 좋아한다면, %HE_SHE(MASTER)%는 저 유우겐마간과 데이트하고 있을 거야 %PRINT_MALE("guy", 151)%.)
+				PRINTFORMW (혹시 그녀가 쏘는 그 특별한 탄환들일까? 독특한 단마쿠를 쏘는 법을 배워볼까?)
+				PRINTFORMW (못 모양인 걸지도?)
+				PRINTFORMDW %HE_SHE(TARGET,1)%은 생각에 잠긴 듯하다.
+			CASEELSE
+				PRINTFORMW 「%K60_MASTER()%, 당신과 %K60_NAME_WITH_HONORIFICS(@"%CALLNAME:ARG%")%은 데이트 중인가요?」
+				PRINTFORMW 「그렇군요...」
+				PRINTFORMW 「음... 저는...」
+				PRINTFORMW 「두 분 즐겁게 보내시길 바라요!」
+		ENDSELECT
+		TCVAR:[[パルスィ]]:K60ENC_TCVAR_DATE_REACTION = 2
+	ENDIF
+ENDIF
+PRINTFORML
+CALL M_KOJO_COLOR_K60
+RETURN 1
+;TODO: figure out somewhere to use these because I don't think it's even possible to make Parsee your lover when she's only at Yearning
+;Yandere route, maybe?
+
+@K60_CUSTOM_DATE_REACTION_TSUNDERE_PASSIVE_AGGRESSIVE(ARG)
+#DIM LoverIterator
+#DIM LoverCount
+;Cheating
+IF TALENT:TARGET:恋人 && !VAR_OR_DEFAULT("MORELOVER")
+	CALL M_KOJO_COLOR_K60_VERY_JEALOUS
+	SELECTCASE ARG
+		; CASE 10 ;Suika
+		; CASE 17 ;Alice
+		; CASE 32 ;Kanako
+		CASE 36 ;Orin
+			PRINTFORMW 「다음번에 시신들을 태울 때 불타는 지옥에 걸려 넘어지길 바란다.」
+			CALL PRINT_STRW, @"「 @ ITALIC@\@ IS_MALE(36) ? 소년 # 누나 \@.」"
+			; CASE 37 ;Okuu
+		CASE 38 ;Koishi
+			CALL KEYTYPING(@"「너 %PRINT_MALE("son of a bitch:little bitch", 38)%.」", "W", 300)
+			PRINTFORMDW 파씨는 주먹을 너무 세게 쥐어서 피가 나고 있다. 그녀는 코이시에게 휘두르기 직전처럼 보인다.
+			PRINTFORMDW 코이시는 낑낑거리며 당신 뒤에 숨는다.
+			PRINTFORMW 「알았어. 네가 생각했던 것만큼 바보가 아니라는 걸 알았으니까. 네가 정말 "가련한 눈먼 사토리"가 아니라는 걸 알고 있었거든.」
+			PRINTFORMDW 파씨는 코이시 옆의 허공을 살기 어린 눈으로 노려본다.
+			PRINTFORMW 「네 힘이 어떻게 작동하는지 알아, 사토리. 네가 원하지 않는 한 아무도 너를 볼 수 없다는 걸 알고 있어. 그래서 더 이상 너를 볼 수 없는 거야.」
+			PRINTFORMW 「내가 아는 바로는, 너 이미 오래전에 사라졌을지도 모르겠어. 뭐, 그렇다면...」
+			PRINTFORMW 「%CALLNAME:MASTER%, 나에게 %PRINT_MALE("son of a bitch:little bitch", 38)%에게 전할 메시지가 있어.」
+			CALL PRINT_STRW, @"「\"너는 나에게 너를 「1」과 데이트하는 걸 보여줄 필요가 없었어 %CALLNAME:MASTER%하지만 그랬지. 넌 내가 그렇게 하길 바랐던 거야."
+			PRINTFORMW 「%HE_SHE(MASTER)%이 나에게 얼마나 소중한지 알고 있었잖아.」
+			PRINTFORMW 「나에게 가장 소중한 것을 빼앗아, 네가 할 수 있는 한 나를 아프게 하고 싶었던 거지.」
+			PRINTFORMDW 파씨는 이를 악물었다.
+			CALL PRINT_STRW, @"「사람들이 너에 대해 하는 말이 정말 사실이네. 넌 「ITALIC」 사이코패스야. \"」"
+			; CASE 39 ;Nazrin
+			; CASE 41 ;Nue
+			; CASE 49 ;Satori
+			; CASE 64 ;Yuugi
+			; CASE 83 ;Kisume
+			; CASE 84 ;Yamame
+			; CASE 85 ;Ichirin
+			; CASE 86 ;Murasa
+			; CASE 87 ;Shou
+		CASE 88 ;Kyouko
+			PRINTFORMW 「...그녀가 절정에 달했을 때 당신의 귀를 먹을 정도로 크게 비명을 지르길 바란다.」
+			; CASE 92 ;Futo
+			; CASE 97 ;Seija
+			; CASE 120 ;Aunn
+			; CASE 125 ;Joon
+		CASE 143 ;Yuuma
+			PRINTFORMW 「%HIM_HER(143)%에게 \@ HAS_PENIS(MASTER) ? 구강성교 # 클리토리스 마사지를 받으면서 매우 불행하고 극도로 고통스러운 사고를 당하길 바란다.」 \@
+	ENDSELECT
+	PRINTFORML
+	TCVAR:[[パルスィ]]:K60ENC_TCVAR_DATE_REACTION = 3
+	IF FIRSTTIME("ParseeNTRed")
+		CALL K60_PARSEE_GOT_HER_HEART_BROKEN()
+	ENDIF
+	PALAM:[[パルスィ]]:抑鬱 += 1000
+	PRINTFORML
+	CALL K60_DATE_ANGER(ARG)
+	;Multiple lovers enabled, Parsee and your date are both your lovers
+ELSEIF TALENT:TARGET:恋人 && VAR_OR_DEFAULT("MORELOVER") && TALENT:ARG:恋人
+	SELECTCASE ARG
+		; CASE 10 ;Suika
+		; CASE 17 ;Alice
+		; CASE 32 ;Kanako
+		; CASE 36 ;Orin
+		; CASE 37 ;Okuu
+		; CASE 38 ;Koishi
+		; CASE 39 ;Nazrin
+		; CASE 41 ;Nue
+		; CASE 49 ;Satori
+		; CASE 64 ;Yuugi
+		; CASE 83 ;Kisume
+		; CASE 84 ;Yamame
+		; CASE 85 ;Ichirin
+		; CASE 86 ;Murasa
+		; CASE 87 ;Shou
+		; CASE 88 ;Kyouko
+		; CASE 92 ;Futo
+		; CASE 97 ;Seija
+		; CASE 120 ;Aunn
+		; CASE 125 ;Joon
+		; CASE 143 ;Yuuma
+		; CASE 178 ;Noroiko
+	ENDSELECT
+	TCVAR:[[パルスィ]]:K60ENC_TCVAR_DATE_REACTION = 1
+	;Multiple lovers enabled, Parsee is your lover, your date is not
+ELSEIF TALENT:TARGET:恋人 && VAR_OR_DEFAULT("MORELOVER") && !TALENT:ARG:恋人
+	CALL M_KOJO_COLOR_K60_JEALOUS
+	SELECTCASE ARG
+		; CASE 10 ;Suika
+		; CASE 17 ;Alice
+		; CASE 32 ;Kanako
+		; CASE 36 ;Orin
+		; CASE 37 ;Okuu
+		; CASE 38 ;Koishi
+		; CASE 39 ;Nazrin
+		; CASE 41 ;Nue
+		; CASE 49 ;Satori
+		; CASE 64 ;Yuugi
+		; CASE 83 ;Kisume
+		; CASE 84 ;Yamame
+		; CASE 85 ;Ichirin
+		; CASE 86 ;Murasa
+		; CASE 87 ;Shou
+		; CASE 88 ;Kyouko
+		; CASE 92 ;Futo
+		; CASE 97 ;Seija
+		; CASE 120 ;Aunn
+		; CASE 125 ;Joon
+		; CASE 143 ;Yuuma
+		; CASE 178 ;Noroiko
+	ENDSELECT
+	TCVAR:[[パルスィ]]:K60ENC_TCVAR_DATE_REACTION = 1
+	;Parsee is not your lover
+ELSEIF !TALENT:[[パルスィ]]:恋人
+	;Cheating on someone other than Parsee
+	IF !VAR_OR_DEFAULT("MORELOVER") && TALENT:MASTER:恋人 && !TALENT:ARG:恋人
+		CALL K60_CHEATING_ON_SOMEONE_OTHER_THAN_PARSEE(ARG)
+		RETURN 1
+		;Hate Mark 3
+	ELSEIF MARK:TARGET:反発刻印 >= 3
+		PRINTFORMDW 파르시는 당신을 노려보며 분노로 떨고 있다. 그녀의 표정은 질투로 가득 차 있었다.
+		CALL M_KOJO_COLOR_K60_VERY_JEALOUS
+		PRINTFORMW (저 %PRINT_MALE("son of a bitch:bitch", MASTER)%가 %K60_NAME_WITH_HONORIFICS(@"%CALLNAME:ARG%")%이랑 데이트 중이라고?!)
+		PRINTFORMW (%HIM_HER(MASTER)% 같은 쓰레지가 어떻게 %K60_NAME_WITH_HONORIFICS(@"%CALLNAME:ARG%")%을 자기랑 만나게 한 거지?!)
+		PRINTFORMW (둘이 너무 애정 넘치고, 게다가 사람들 앞에서까지... 못 참겠어!)
+		SIF RELATION:[[パルスィ]]:ARG < 100 && RELATION:[[パルスィ]]:ARG > 0 && !RAND:20
+			PRINTFORMW (나는 이 평범한 애들을 처참하게 만들어야 해...)
+		CALL M_KOJO_COLOR_K60
+		CALL K60_DATE_ANGER(ARG)
+		TCVAR:[[パルスィ]]:K60ENC_TCVAR_DATE_REACTION = 1
+		RETURN 1
+	ELSE
+		CALL M_KOJO_COLOR_K60_JEALOUS
+		SELECTCASE ARG
+			CASE 1 ;Reimu
+				PRINTFORML 「아, %K60_MASTER()%과 신사(神使)인가.」
+				PRINTFORMW 「그녀에게 여러 방면으로 매력을 어필해서 네 모든 장난을 눈감게 만들 거라? 상황이 저렇구나.」
+				CALL PRINT_STRW, @"「하지만 네가 예상했던 것보다 더 많은 것을 얻게 될지도 몰라. 레이무 씨는 술에 취하면 ITALIC심하게 행동하고 폭력적이기도 하거든.」"
+				PRINTFORMDW 파르시가 사악하게 미소 짓는다.
+				PRINTFORML 「그녀의 전남편에게 그냥 물어봐―」
+				FONTITALIC
+				CALL CHARA_TEXT([[霊夢]], "「나에 대해 거짓말하기 전에 내가 너를 섬멸할 거니까 그만둬.」", "w")
+				FONTREGULAR
+				PRINTFORMDW 레이무는 주먹을 꽉 쥐고 파르시를 노려본다.
+				PRINTFORMDW 파르시는 말을 멈추지만, 미소는 그녀의 얼굴에서 사라지지 않는다.
+				PRINTFORMDW 레이무는 작게 중얼거리고 당신의 손을 잡은 뒤 성큼 걸어 나간다.
+				CFLAG:MASTER:現在位置 = KICKOUT()
+				CFLAG:1:現在位置 = KICKOUT()
+				CALL CHARA_TEXT([[霊夢]], @"「%CALLNAME:MASTER%-님은 그녀의 말을 듣지 마세요. 다리 공주는 질투 때문에 사람들에 대해 말도 안 되는 거짓말을 지어내요.」")
+				CALL CHARA_TEXT([[霊夢]], "「내 말은, 정말로. 나 같은 사람이 폭력적인 남편이라니? 난 결혼해 본 적도 없거든! 그리고 내가 사랑하는 사람에게 절대 손을 대지 않아!」", "w")
+				PRINTFORML 
+				PRINTFORMW 
+				PRINTFORMDW 그녀는 한숨을 쉰다.
+				CALL CHARA_TEXT([[霊夢]], "「우리 사이에 소문을 퍼뜨리려고 시도하기 시작할걸.」")
+				CALL CHARA_TEXT([[霊夢]], @"「뭐랄까, 내가 너무 못생겨서 %PRINT_MALE("boy",MASTER)%친구를 사귈 수가 없으니까 나랑 보상 데이트하는 거잖아.」", "w")
+				CALL CHARA_TEXT([[霊夢]], "「적어도 아무도 그걸 믿지 않을 거야. 모두가 그녀가 어떤 사람인지 알고 있거든.」", "w")
+				; CASE 10 ;Suika
+				; CASE 17 ;Alice
+				; CASE 32 ;Kanako
+				; CASE 36 ;Orin
+				; CASE 37 ;Okuu
+				; CASE 38 ;Koishi
+				; CASE 39 ;Nazrin
+				; CASE 41 ;Nue
+				; CASE 49 ;Satori
+			CASE 53 ;Tewi
+				IF FIRSTTIME("ParseeTewiMistakenIdentity")
+					CALL PRINT_STRW, @"「너!」"
+					PRINTFORMDW 파르시의 눈이 분노로 커진다.
+					PRINTFORMW 「감히 내 앞에 모습을 드러내다니!」
+					PRINTFORMW 「처음엔 돌들로 날 굶겨 죽이려고 하고, 이제는 이-」
+					PRINTFORMDW 당신은 손을 들어 파르시의 말을 자르고, 이것이 미라다 석상 판매원이 아닌 테위라고 설명한다.
+					PRINTFORMW 「...Oh.」
+					PRINTFORMDW 파르시가 당황해서 얼굴을 붉힌다. 그녀는 당신 뒤에 움츠러든 티위에게 깊이 고개를 숙인다.
+					PRINTFORMW 「정말 죄송해요, %K60_NAME_WITH_HONORIFICS("Tewi")%. 성급하게 결론 내렸어요.」
+				ELSE
+					PRINTFORMDW 파르시는 두 분께 깊이 고개를 숙이지만 침묵을 지킨다.
+					PRINTFORMDW 그녀는 아직도 티위(Tewi)를 미라다석 판매원으로 착각하고 소리쳤던 일이 부끄러운 듯하다...
+				ENDIF
+			CASE 54 ;Patchouli
+				PRINTFORMDL 파르시가 당신을 응시한다. 그리고 그녀는 패치울리를 응시한다.
+				PRINTFORMDL 그러고 나서 다시 당신을 응시한다. 그리고 다시 패치울리를 응시한다.
+				PRINTFORMDW 마치 테니스 경기를 보는 것 같다.
+				PRINTFORMDW 당신이 떠나려 할 때 파르시가 목소리를 찾는다.
+				PRINTFORMW 「내가 환상을 보고 있는 건지, 아니면 패치울리 노리즈가 도서관을 떠난 건지 모르겠어?」
+				PRINTFORMDW 그녀는 이마를 문지른다.
+				PRINTFORMW 「이걸 감당할 만큼 취하지도 않았는데.」
+				PRINTFORMDL 파르시는 혼잣말을 중얼거리며 자리를 떠난다.
+				PRINTFORMDW 방금 그건 뭐였지?
+				CFLAG:TARGET:現在位置 = 946
+				CALL RECOVER(TARGET, 1000, "酒気", " ")
+			CASE 64 ;Yuugi
+				IF FIRSTTIME("ParseeLosesIt")
+					CALL PRINT_STRW, @"「너-!」"
+					PRINTFORMDW 파르시가 목을 졸라 소리를 내며 당신의 옷깃을 잡는다.
+					IF CFLAG:[[パルスィ]]:K60ENC_SETTING_YUUPARU_CRUSH == 1
+						CALL PRINT_STRL, @"「이봐, 이 천 가지 아버지의 자식아, 유우기는 내 것이야@! 다시 그녀 근처에서 너를 보게 된다면, 난-」"
+					ELSE
+						PRINTFORMW 「네가 어떻게 내 제일 친한 친구를 너랑 데이트하게 만들었는지 모르겠지만, 그녀에게서 당장 떨어져야 해!」
+						PRINTFORMW 「너는 아무런 대가 없이 바람을 피할 수 있다고 생각하겠지. 하지만 만약 네가 그녀의 마음을 아프게 할 생각을 한다면, 내가-」
+					ENDIF
+					CALL CHARA_TEXT([[勇儀]], "「파르시! 너 대체 무슨 일이야?!」", "w")
+					PRINTFORMDW 유우기는 쉽게 파르시를 당신에게서 떼어내고 그녀의 팔을 등 뒤로 고정시킨다.
+					CALL CHARA_TEXT([[勇儀]], @"「%HIM_HER(MASTER)%에게 사과하는 게 좋을 거야, 지금.」", "w")
+					PRINTFORMW 「나는 그저 너를 지키려고 했을 뿐이다!」
+					PRINTFORMDW %CALLNAME:[[パルスィ]]% 너를 살기로 노려본다 %HIS_HER([[パルスィ]])% 눈들
+					PRINTFORMW 「%HES_SHES(MASTER,1)% 이기적인 음란마저 아니군!」
+					PRINTFORMW 「너에게 %HIM_HER(MASTER)%은 아무것도 의미 없어! 너는 그저 %HIS_HER(MASTER)% 하렘에 추가될 또 다른 이름일 뿐이야!」
+					PRINTFORMW 「%HIM_HER(MASTER)% 같은 사람이랑 관계를 맺는 건 아무런 관계도 아니야.」
+					PRINTFORMW 「너는 얻게 될 것이다 %HIM_HER(MASTER)% 는 형편없는 섹스와 몇 점의 %HIS_HER(MASTER)% 여기저기 조금씩의 사랑을.」
+					PRINTFORMW 「이런 하렘에서는 늘 그런 식으로 돌아간다. 가장 적극적인 애들이랑 하렘 소유주가 제일 좋아하는 애들이 모든 사랑과 애정을 받게 된다.」
+					PRINTFORMW 「%HE_SHE(MASTER)%이 오르기를 원할 때가 아니면 다른 사람들은 모두 무시당한다.」
+					PRINTFORMW 「물론 %HES_SHES(MASTER)% 너에게 다른 연인을 찾아 시간을 보내게 해줄 리가 없어 ~할 때 %HES_SHES(MASTER)% 다른 하렘 멤버 중 한 명과 섹스하고 있을 때 %HIS_HER(MASTER)% 다른 하렘 멤버들.」
+					PRINTFORMW 「아니, 이런 것들이 작동하는 방식이 아니야. %HES_SHES(MASTER)% 관한, 당신은 %HIS_HER(MASTER)% 소유물이다.」
+					PRINTFORMW 「너는 살아있는 오나홀처럼 취급하는 사람보다 더 나은 대우를 받을 자격이 있어! 왜 그에게 이용당하고 있는 거야?!」
+					PRINTFORMW 「그게 바로 그런 거니까! %HES_SHES(MASTER,1)% 그냥 y를 속이는 것뿐이야」
+					CALL CHARA_TEXT([[勇儀]], "「파르.」", "w")
+					PRINTFORMDW 유우기가 그녀를 공허하게 응시한다.
+					CALL CHARA_TEXT([[勇儀]], "「도대체 무슨 소리 하는 거야?」", "w")
+					PRINTFORMW 「무슨 소리야?! 그가 다른 여자들과 수십 번 데이트하는 걸 못 봤어?!」
+					CALL CHARA_TEXT([[勇儀]], "「으음... 아니?」", "w")
+					PRINTFORMDW 유우기는 어리둥절해 보인다.
+					IF !TALENT:MASTER:恋人
+						CALL CHARA_TEXT([[勇儀]], "「가지고 있다 하더라도, 그래서 어쩌라고? 아직 누구랑 정착한 것도 없잖아.」", "w")
+						CALL CHARA_TEXT([[勇儀]], "「그가 나를 선택하지 않을 방법 같은 게 없잖아!」", "w")
+						PRINTFORMDW 그녀는 미소를 지으며 근육을 자랑한다.
+					ELSEIF TALENT:[[勇儀]]:恋人
+						IF VAR_OR_DEFAULT("MORELOVER")
+							FOR LoverIterator,1,CHARANUM
+							;Loop through every character and count how many are lovers.
+							IF TALENT:LoverIterator:恋人 && LoverIterator != 64 && !IS_MALE(LoverIterator)
+								LoverCount++
+							ENDIF
+							NEXT
+							IF LoverCount > 0
+								CALL CHARA_TEXT([[勇儀]], @"「응, 나만 %HES_SHES(MASTER)%랑 사귀는 건 아니지만, 결코 소외감을 느끼진 않아.」", "w")
+								CALL CHARA_TEXT([[勇儀]], @"「우리 모두 %HES_SHES(MASTER)%가 우리 모두 동의하지 않는 한 다른 사람과 데이트하는 것을 허락하지 않기로 합의했어.」", "w")
+								CALL CHARA_TEXT([[勇儀]], @"「그리고 %조사처리(CALLNAME:MASTER,"는")% 똑똑하다 %PRINT_MALE("guy", MASTER)%. %HES_SHES(MASTER,1)% 더 많은 사람과 데이트하지 않을 거야 %HE_SHE(MASTER)% 감당할 수 있는」", "w")
+								CALL CHARA_TEXT([[勇儀]], @"「나를 믿어줘, 만약 내가 %조사처리(CALLNAME:MASTER,"와")% 공유하는 것에 대해 어떤 문제가 있었다면, 나는 그와 데이트하지 않았을 거야.」", "w")
+								CALL CHARA_TEXT([[勇儀]], @"「나는 나를 제대로 대해줄 수 없는 사람에게 연모나 성적인 욕구 때문에 붙어 있을 만큼 필사적이지 않아.」", "w")
+							ENDIF
+						ELSE
+							CALL CHARA_TEXT([[勇儀]], "「우린 커플이잖아. 내가 직접 말했지. 그 자식이 나를 어떤 바보 같은 하렘의 일부로 만들려고 하지 않을 거라고!」", "w")
+						ENDIF
+					ENDIF
+					CALL CHARA_TEXT([[勇儀]], @"「누가 네게 그런 허튼소리를 했지? 그건 %CALLNAME:MASTER%같아 들리지 않아.」", "w")
+					PRINTFORMDW 유우기는 파셀을 놓아주고 손가락 관절을 꺾었다.
+					CALL CHARA_TEXT([[勇儀]], @"「내 생각엔 내 \@ TALENT:64:恋人 ? %PRINT_MALE("boy", MASTER)%친구 # 친구들한테 거짓말을 퍼뜨리지 말라고 가르쳐야 할 것 같아...」 \@", "w")
+					PRINTFORMW 「아, 뭐...」
+					PRINTFORMDW 파셀이 식은땀을 흘리기 시작한다.
+					PRINTFORMW 「누가 나에게 그런 모든 것을 말해줬는지 기억나지 않아. 그저... 술집에 있던 누군가가 그랬어.」
+					CALL CHARA_TEXT([[勇儀]], @"「아, 그건 치정이군. 하지만 다른 누군가가 당신에게 %조사처리(CALLNAME:MASTER,"가")% 어떤 이기적인 플레이보이 같다고 말하면, 그들이 틀렸다고 말해줘.」", "w")
+					CALL CHARA_TEXT([[勇儀]], @"「그리고 그들에게 내 뒤에서 소문을 퍼뜨리지 말라고 해. 안 그러면 내가 네 엉덩이를 차버릴 테니까.」", "w")
+					PRINTFORMW 「네, 네...」
+					PRINTFORMDW 파셀이 조금 창백해졌다.
+					PRINTFORMW 「분명 그렇게 할게.」
+					CALL CHARA_TEXT([[勇儀]], @"「자, 이제 %조사처리(CALLNAME:MASTER,"에게")% 사과해.」", "w")
+					PRINTFORMDW 파셀은 당신에게 딱딱하게 고개를 숙인다.
+					PRINTFORMW 「저... 저의 사죄를 구합니다, %CALLNAME:MASTER%.」
+					PRINTFORMDW 그녀는 말을 억지로 짜내는 듯한 소리를 낸다.
+					PRINTFORMW 「당신에 대한 그 소문을 믿지 말았어야 했습니다.」
+					CALL CHARA_TEXT([[勇儀]], @"「좋아, 그럼 다들 괜찮은 거네.」", "w")
+					PRINTFORMDW 유우기가 당신들 두 사람의 어깨를 툭 친다.
+					CALL CHARA_TEXT([[勇儀]], @"「다음에 봐, 파르!」", "w")
+					PRINTFORMW 「음...」
+					PRINTFORMDW 파르시가 당신과 유우기가 걸어가는 뒷모습을 계속 노려본다.
+				ELSE
+					CALL CHARA_TEXT([[勇儀]], "「안녕, 파르!」", "w")
+					PRINTFORMDW 유우기는 파르시에게 미소를 지으며 손을 흔든다.
+					PRINTFORMDW 파르시는 미소도 짓지, 손을 흔들지도 않는다. 그녀는 소리를 지르거나, 울거나, 당신에게 달려들 것처럼 보인다. 아니면 이 모든 것일 수도 있다.
+					PRINTFORMDW 하지만 결국 그녀는 그 어떤 것도 하지 않는다. 그저 눈을 감고 깊고 불안정한 숨을 한 번 쉬며 가볍게 고개를 끄덕인다.
+					PRINTFORMDW 그러고는 당신을 노려보면서 낮게 욕설을 중얼거린다.
+					PRINTFORMDW 당신은 %SPLIT_G("call someone's parents sluts:wish a violent death on someone:compare someone to vermin:hope terrible things happen to a person's genitals:insult someone's (lack of) intelligence:insult the character, appearance, and sexual habits of any other girls a person might hypothetically be involved with:call someone ugly:complain about how jealous you are of someone while still insulting them")%할 수 있는 방법이 그렇게 많은 줄은 전혀 몰랐다...
+					CALL COLORMESSAGE("(당신은 교양 학습경험을 5 얻는다!)", C_YELLOW, 2)
+					EXP:MASTER:学習経験 += 5
+				ENDIF
+			CASE 83, 84;Yamame/Kisume
+				$PARSEE_MEET_YAMAME_KISUME_DATE
+				PRINTFORMW 「어라? %K60_MASTER()%와 %K60_NAME_WITH_HONORIFICS(@"%CALLNAME:ARG%")%, 데이트 중이야?」
+				SELECTCASE K60_ATTITUDE()
+					CASE 2
+						CALL PRINT_STRW, @"「%K60_NAME_WITH_HONORIFICS(@"%CALLNAME:ARG%")%, 당신은 %HIM_HER(MASTER)%과 데이트를 하고 싶은지 확실한가요?」"
+						CALL PRINT_STRW, @"「알겠다... %HE_SHE(MASTER)%은(는) 하고 싶을 때 스스로 행동할 수 있는 것 같군.」"
+						PRINTFORMW 「좋아, 그럼.」
+				ENDSELECT
+				PRINTFORMW 「I...」
+				PRINTFORMW 「두 사람 즐겁게 보내길 바랄게...」
+				PRINTFORMW 「나중에 전부 다 말해줘야 해.」
+				PRINTFORMDW 그녀는 슬프게 미소 지었다.
+				; CASE 85 ;Ichirin
+				; CASE 86 ;Murasa
+				; CASE 87 ;Shou
+				; CASE 88 ;Kyouko
+			CASE 92 ;Futo
+				;According to Google Translate, this is Persian for:
+				;"Oh? MASTER and Futo, on a date?"
+				;"I'm surprised one of you managed to ask the other out."
+				;"How can you even understand him/her?"
+				PRINTFORML 「어? %CALLNAME:MASTER%아니면 %CALLNAME:ARG%, 결정할 거니?」
+				PRINTFORML 「난 너희 중 누군가가 과거의 어떤 일에 대해 질문하는 것을 놀랐다.」
+				PRINTFORMW 「도대체 그가 무슨 말을 하는지 이해할 수 있겠어?」
+				PRINTFORMDW Futo를 보며 어리둥절해한다.
+				CALL CHARA_TEXT([[布都]], @"「%HIM_HER(TARGET)%에게 신경 쓰지 마라, %CALLNAME:MASTER%. 하시히메는 자신의 대화 방식이 마음에 들지 않는다.」", "w")
+				; CASE 97 ;Seija
+				; CASE 120 ;Aunn
+				; CASE 125 ;Joon
+				; CASE 143 ;Yuuma
+			CASE 161 ;Hourai Doll
+				PRINTFORMDW 파씨는 눈에 경멸을 담고 당신을 바라본다.
+				PRINTFORML 「"너는 그 도착적인 인형극 제작자에게 아동 성인용 인형을 의뢰했을 뿐만 아니라, 그것과 '데이트'를 하려고 하는구나."」
+				PRINTFORMW 「나를 역겹게 할 새로운 흥미로운 방법을 찾아내는 네 방식에 거의 감탄할 지경이군.」
+				TRYCALL M_KOJO_COLOR_K161
+				PRINTFORMW 「전형적인 다리 트롤이군.」
+				PRINTFORMDW 호라이가 눈을 굴린다.
+				PRINTFORMW 「연애를 못 하니 다른 사람들을 막으려고 애써야 해.」
+				CALL PRINT_STRL, @"「혹시 그게 네가 연애를 못 하는 이유일지도 모른다고 생각해봤어?」"
+				PRINTFORMW 「만약 네가 항상 그렇게 빌어먹을 년이 아니라면, 네가 침 흘리던 그 얼간이 오니가 가끔 동정심에서 자위를 해줄지도 몰라!」
+				PRINTFORMDW 파르시의 눈이 움찔거린다.
+				CALL M_KOJO_COLOR_K60_JEALOUS
+				PRINTFORMW 「이런 년... 그 입으로 %조사처리(CALLNAME:MASTER,"에게")% 키스하지 않기를 바란다.」
+				PRINTFORMDW 그녀는 주먹을 꽉 쥐고 공중에 떠 있다.
+				PRINTFORMW 「확실히 하기 위해서 말인데, 네 머리를 날려버릴까...」
+				TRYCALL M_KOJO_COLOR_K161
+				PRINTFORMW 「우으, 너무 무서워요.」
+				PRINTFORMDW 호라이가 코웃음을 친다.
+				PRINTFORMW 「뭐 할 건데, 칼귀? 나한테 숙취를 일으킬 거야?」
+				PRINTFORMDW 당신은 호라이의 손을 잡고 자리를 피하기로 한다.
+				; CASE 178 ;Noroiko
+			CASEELSE
+				PRINTFORMW 「어라? %K60_MASTER()%와 %K60_NAME_WITH_HONORIFICS(@"%CALLNAME:ARG%")%, 데이트 중이야?」
+				SELECTCASE K60_ATTITUDE()
+					;Grumpy tsundere
+					CASE 2
+						PRINTFORMW 「난 정말... 아, 당신과 데이트하면서 나 말고 %K60_NAME_WITH_HONORIFICS(@"%CALLNAME:ARG%")%가 고생하는 게 너무 기뻐요.」
+						PRINTFORMDW Parsee의 차가운 말과 냉소적인 미소에도 불구하고, 그녀의 표정은 질투로 가득했다...
+						;Fake nice
+					CASE 3
+						PRINTFORMW 「음... 나...」
+						PRINTFORMW 「너희 둘 다 즐거운 시간 보내길 바랄게!」
+				ENDSELECT
+		ENDSELECT
+		IF GROUPMATCH(ARG, 83, 84)
+			TCVAR:[[パルスィ]]:K60ENC_TCVAR_DATE_REACTION = 2
+		ELSE
+			TCVAR:[[パルスィ]]:K60ENC_TCVAR_DATE_REACTION = 1
+		ENDIF
+	ENDIF
+ENDIF
+CALL M_KOJO_COLOR_K60
+CALL K60_DATE_ANGER(ARG)
+RETURN 1
+
+@K60_CHEATING_ON_SOMEONE_OTHER_THAN_PARSEE(ARG)
+;Cheating on Yamame, Kisume, or Yuugi
+IF (ARG != 83 && TALENT:83:恋人 && !VAR_OR_DEFAULT("MORELOVER")) || (ARG != 84 && TALENT:84:恋人 && !VAR_OR_DEFAULT("MORELOVER")) || (ARG != 64 && TALENT:64:恋人 && !VAR_OR_DEFAULT("MORELOVER"))
+	IF TALENT:83:恋人
+		LOCAL = 83
+	ELSEIF TALENT:84:恋人
+		LOCAL = 84
+	ELSE
+		LOCAL = 64
+	ENDIF
+	FONTITALIC
+	SETCOLOR C_RED
+	CALL KEYTYPING(@"「너는 %PRINT_MALE("son of a bitch:bitch", MASTER)%.」", "W", 300)
+	FONTREGULAR
+	RESETCOLOR
+	CALL M_KOJO_COLOR_K60
+	PRINTFORMDW 파르시는 분노로 떨며 당신을 살기 어린 눈으로 노려본다.
+	;Cheating on one of Parsee's friends with one of her other friends
+	IF (ARG == 84 && (TALENT:83:恋人 || TALENT:64:恋人)) || (ARG == 83 && (TALENT:84:恋人 || TALENT:64:恋人)) || (ARG == 64 && (TALENT:83:恋人 || TALENT:84:恋人))
+		PRINTFORMW 「그리고 너! %CALLNAME:ARG%, 믿을 수가 없어! 어떻게 그럴 수 있어?!」
+		PRINTFORMW 「그런 뱀 같은 놈이 그런 짓을 하는 건 이해할 수 있지만... 네가 %K60_NAME_WITH_HONORIFICS(@"%CALLNAME:LOCAL%")%과 친구잖아!」
+		PRINTFORMW 「어떻게 %HIM_HER(LOCAL)%를 저렇게 바람으로 만들 수가 있어?!」
+		PRINTFORMW 「널 친구라고 생각했던 내가 믿기지 않아. 역겨워.」
+		PRINTFORML
+		PRINTFORMW 「오, 그리고 당신을 잊은 적이 없다고 생각하지 마세요, %CALLNAME:MASTER%님.」
+	ENDIF
+	PRINTFORMW 「%K60_NAME_WITH_HONORIFICS(@"%CALLNAME:LOCAL%")%은(는) 이 세계에서 나를 용납해 줄 몇 안 되는 사람 중 한 명이다.」
+	PRINTFORMW 「그리고 그것은 나에게 큰 의미가 있다.」
+	PRINTFORMW 「%HE_SHE(LOCAL)%가 네와 사귄다고 말했을 때...」
+	PRINTFORMW 「물론 질투했지. 당연한 일이니까.」
+	PRINTFORMDW 파르시는 너에게서 시선을 돌린다.
+	PRINTFORMW 「하지만 그 밑에는 행복함이 있었다. %HIM_HER(LOCAL)%를 위한 행복이었다.」
+	PRINTFORMW 「%HE_SHE(LOCAL)%가 사랑하는 사람을 찾았고, 그 사람이 %HIM_HER(LOCAL)%를 되돌아 사랑해 준다는 사실에 기뻤다.」
+	PRINTFORMW 「그리고 나만 행복했던 건 아니었다. %HE_SHE(LOCAL)%가 네 이야기를 했을 때의 표정은...」
+	PRINTFORMW 「나는 %HIM_HER(LOCAL)%가 그렇게 행복한 모습을 본 적이 없었다. 그리고 우리는 수십 년 동안 서로를 알고 지내왔으니까.」
+	CALL PRINT_STRL, @"「나는 심지어 ITALIC너도 기뻐해 주었어. 너는 모든 환상향에서 최고의 사람 중 한 명과 데이트할 수 있는 행운을 누렸으니까.」"
+	PRINTFORMDW 그녀는 고개를 확 돌리더니 다시 당신을 노려본다.
+	PRINTFORML
+	PRINTFORMW 「하지만 안 돼. 너는 그저 %HIM_HER(LOCAL)%만으로는 만족할 수 없었어. 모든 것을 망쳐야 했으니까.」
+	PRINTFORMW 「이게 %HIM_HER(LOCAL)%에게 무슨 일이 생길지 이해하기엔 너무 바보 같아?」
+	PRINTFORMW 「아니면 그냥 네가 신경 쓸 가치 없는 비열한 뱀의 자식이라 그런 거야?」
+	PRINTFORML
+	PRINTFORMDW %BREAKENG(@"Worthless spawn of a snake?! Didn't Parsee tell %PARSE("you")% about all the couples crossing %HIS_HER(TARGET)% bridge that %HE_SHE(TARGET)%'d broken up?!")%
+	PRINTFORMDW 너는 %PARSE("You're")%에게 이것을 지적하고 싶은 충동을 느끼지만, 입을 다문다.
+	PRINTFORMDW 파르시는 이미 충분히 화가 난 상태다. 그녀를 도발하는 것은 매우 현명하지 못한 행동이다.
+	PRINTFORML
+	PRINTFORML
+	CALL K60_DATE_ANGER_PENALTY_FAVOR(30)
+	CALL K60_GET_ANGRY(3)
+	TCVAR:[[パルスィ]]:K60ENC_TCVAR_DATE_REACTION = 5
+	CALLF FIRSTTIME("NTRedParseesFriend")
+	PRINTFORML
+ELSE
+	;Commenting out the blackmail because I'd need to check and see which hus don't care about being cucked, plus it's buggy anyway
+	SELECTCASE K60_ATTITUDE()
+		CASE 0
+			PRINTFORMDL %BREAKENG(@"파르시는 연모 태도일 때 다른 사람을 속인 것에 대해 너에게 화를 내고 있어. 그녀는 네 연인이 되어야 해! 이걸 보고해!")%
+		CASE 1
+			PRINTFORMW 「%K60_MASTER()%?」
+			PRINTFORMDW 파르세는 어색하게 당신을 미소 짓는다.
+			PRINTFORMW 「당신이 다른 사람과 데이트 중인 줄 알았어요. 연인을 속이고 있는 건 아니죠?」
+			PRINTFORMW 「우리가 오픈 관계라는 건 알지만, 그녀가 그런 관계라는 이야기는 전혀 못 들었거든요.」
+			PRINTFORMDW 그녀는 한숨을 내쉰다.
+			PRINTFORMW 「정말요, %K60_MASTER()%이요?」
+			PRINTFORMW 「제가 이런 상황에 휘말리면 안 된다는 걸 알지만... 저는 하시히메예요. 먹어야 해요.」
+			CALL PRINT_DIALOGUE, @"그렇다 하더라도... 네 연인과 더 이상 함께 있고 싶지 않다면, 나는 네가 \@ IS_MALE(MASTER) ? 남자답게 행동해라 # 척 좀 해라 \@ 그리고 그녀에게 그렇게 말해줘", "w"
+			PRINTFORMW 「아니면 나의 서비스를 이용해라.」
+			TCVAR:[[パルスィ]]:K60ENC_TCVAR_DATE_REACTION = 2
+		CASE 2, 3
+			;TODO: is there a function to get the player's current lover?
+			PRINTFORMW 「음, 음, 음... 네 연인이 알게 되면 뭐라고 생각할까?」
+			PRINTFORMDW 파르시는 사악하게 미소 짓는다.
+			PRINTFORMW 「글쎄, 아마 그녀의 마음을 아프게 할걸...」
+			PRINTFORMDW 그녀는 입술을 핥고 미소를 더 짓는다.
+			; PRINTFORMDW Parsee has found out that you are cheating on your lover...
+			; PRINTFORMDW Parsee can use this to blackmail you.
+			; CFLAG:TARGET:弱み握り += 5
+			TCVAR:[[パルスィ]]:K60ENC_TCVAR_DATE_REACTION = 4
+	ENDSELECT
+ENDIF
+RETURN 1
+;==================================================
+;Handles Parsee taking an oral contraceptive before sex, or making you take one
+;This will trigger if:
+;- You've pushed her down and/or been pushed down by her least five times (so she figures it's going to keep happening)
+;- You push her down, take her to a secluded spot, or she pushes you down
+;- She isn't in heat (if she is, she's too horny to remember to take it)
+;- You have a penis and she has a vagina, or vice versa (in that case, she'll make you take one, or take one too if you're both futas, etc.)
+;- Whoever can get pregnant hasn't consented to doing it raw on dangerous days (Parsee REALLLLY does not want to pass her jealousy onto her children)
+; On top of that, there's a 10% chance it won't happen (otherwise it would be impossible to get permission to do it raw)
+;==================================================
+
+@K60_TAKE_A_CONTRACEPTIVE()
+DEBUGPRINTFORML In K60_TAKE_A_CONTRACEPTIVE
+[IF_DEBUG]
+CFLAG:K60EN_PARSEE_TIMES_UFUFU_STARTED = 5
+[ENDIF]
+LOCAL:1 = RAND:10 && !IN_HEAT() && HAS_PENIS(MASTER) && HAS_VAGINA(TARGET) && (CFLAG:TARGET:生解禁 == 0 || (ESTRUS_CYCLE([[パルスィ]]) == 150 && CFLAG:TARGET:生解禁 == 1)) && CFLAG:K60EN_PARSEE_TIMES_UFUFU_STARTED >= 5 && !TCVAR:TARGET:ピル
+; LOCAL:2 = RAND:10 && (HAS_PENIS(TARGET) && HAS_VAGINA(MASTER) && CFLAG:MASTER:生解禁 < 2) && CFLAG:K60EN_PARSEE_TIMES_EJACULATED_IN_YOUR_VAGINA >= 5 && !TCVAR:MASTER:ピル
+LOCAL:2 = 0
+LOCAL:3 = LOCAL:1 && LOCAL:2
+IF LOCAL:1 || LOCAL:2
+	IF LOCAL:1
+		PRINTFORMW
+		PRINTFORMW 「자, 이제 본론으로 들어가기 전에...」
+		PRINTFORMDW 파르시가 알약을 꺼내 삼킨다.
+		PRINTFORMW 「%COND_STR(@"나는 요괴를 임신시키기가 어렵다는 걸 알아, 그리고 ", ESTRUS_CYCLE(TARGET) == 15)%하지만 위험을 감수하고 싶지 않아.」
+	ELSEIF LOCAL:2
+	ELSEIF LOCAL:3
+	ENDIF
+	IF FIRSTTIME("ParseeChanDoesNotWantChildren", 1)
+		SELECTCASE K60_ATTITUDE()
+			;Loving
+			CASE 0
+				$PARSEE_CONTRACEPTIVE_01
+				PRINTFORMDW 그녀는 한숨을 쉰다.
+				CALL PRINT_STRW, @"「나는 당신을 만나기 전에는 「비참했다」. 내가 행복했던 유일한 순간은 질투할 겨를조차 마실 정도로 취했을 때뿐이었다.」"
+				PRINTFORMW 「당신과 아이를 가질 수 있으면 좋겠는데, %COND_STR(@"I wish I could have children with you, but ", TALENT:TARGET:恋人)%는 내 아이가 저렇게 고통받길 원치 않아.」
+				IF TALENT:TARGET:恋人
+					PRINTFORMW 「혹시 내가 아직 수호신이었다면, 혹은 반하시히메가 어머니의 질투를 물려받지 않는다는 걸 알았더라면...」
+					PRINTFORMW 「아니면 그것을 영원히 치료할 방법을 찾을 수 있다면.」
+				ENDIF
+			CASE 1, 3
+				IF TALENT:TARGET:恋人
+					GOTO PARSEE_CONTRACEPTIVE_01
+				ELSE
+					PRINTFORMW 「이건 순전히 육체적인 관계야. 임신해서 이걸 망치고 싶지 않아.」
+					PRINTFORMW 「게다가...」
+					GOTO PARSEE_CONTRACEPTIVE_01
+				ENDIF
+			CASE 2
+				PRINTFORMW 「나는 하시히메다. 너는 타락자군. 우리 아이가 겪을 비참한 삶을 상상이나 할 수 있겠어?」
+				PRINTFORMW 「아니, 내 아이 말이다. 네가 그들을 키우는 데 도움을 줄 만큼 오래 함께 있을 거라고는 생각 못 하겠어.」
+				PRINTFORMW 「첫날부터 아이들은 질투로 인해 서서히 광기에 빠지고 기능을 할 수 있을 만큼 간절하게 그것을 막으려고 노력할 거야.」
+				PRINTFORMW 「사춘기가 되면 너처럼 대식가적인 변태가 되어버릴 테니까.」
+				CALL PRINT_DIALOGUE, "They're going to either get pregnant or get someone else pregnant while they're still in their teens.", "w"
+				PRINTFORMW 「그리고 나는 상황이 거기서 더 나빠질 것이라고 확신해...」
+				PRINTFORMW 「아니, 우리 둘 다 부모가 되기엔 적합하지 않아.」
+				PRINTFORMW 「혹시 네가 안정적인 직업을 갖고, 하시히메의 질투를 치료할 방법이 있고, 네 변태적인 성향을 고칠 방법이 있다면...」
+				PRINTFORMDW 그녀가 계속 불평하는 동안 너는 파르씨를 무시한다.
+		ENDSELECT
+		PRINTFORMDW 파르세는 당신과 아이를 갖게 해 주기 전에 많은 설득이 필요할 것 같다.
+		CALLF FIRSTTIME("ParseeChanDoesNotWantChildren")
+	ENDIF
+	TCVAR:TARGET:ピル = 1
+ENDIF
+CFLAG:K60EN_PARSEE_TIMES_UFUFU_STARTED ++
+SIF THINKS_IS_VIRGIN([[パルスィ]])
+	TCVAR:[[パルスィ]]:次回カウンター = 85
+;==================================================
+;Returns 1 if the player has given Parsee an orgasm in stopped time and/or ejaculated in or on her
+;==================================================
+
+@K60_TIMESTOP_MISCHIEF_DONE
+#FUNCTION
+RETURNF CFLAG:K60EN_PARSEE_TIMESTOP_ORGASMS > 0 || CFLAG:K60EN_PARSEE_TIMESTOP_ORAL_CREAMPIE_REACTIONS > 0 || CFLAG:K60EN_PARSEE_TIMESTOP_FACIAL_REACTIONS > 0 || CFLAG:K60EN_PARSEE_TIMESTOP_HAND_EJACULATION_REACTIONS > 0 ||CFLAG:K60EN_PARSEE_TIMESTOP_ANAL_CREAMPIE_REACTIONS > 0 || CFLAG:K60EN_PARSEE_TIMESTOP_VIRGINITY_LOSS_REACTIONS > 0 ||CFLAG:K60EN_PARSEE_TIMESTOP_VAGINAL_CREAMPIE_REACTIONS > 0
+;==================================================
+;Modified from @IRAI_一般92_Select_Target()
+;Picks a character for Parsee to go on a jealous rant about
+;More likely to pick a character the more Favor you have with them
+;==================================================
+
+@K60_RANT_GET_SUBJECT
+#FUNCTION
+#DIM SUBJECT_WEIGHTS, キャラクタ数上限 ;potential targets and their weights
+#DIM  RANK       ;評価ランク、数が小さいほど優秀
+#DIM  RANK_NUM   ;評価尺度に含まれる評価の種数
+;Remove the last five hus Parsee ranted about
+FOR LOCAL, 0, 5
+SIF ParseeRants:LOCAL >= 0
+	SUBJECT_WEIGHTS:(ParseeRants:LOCAL) = 0
+NEXT
+;remove inaccessible characters from the list
+FOR LOCAL, 1, CHARANUM
+SUBJECT_WEIGHTS:LOCAL = 1
+;Don't mess with the weights for a character that doesn't exist in the current fork
+IF LOCAL < CHARANUM
+	;Parsee is more likely to rant about a hu you like (thanks to Pedy for suggesting this)
+	IF CFLAG:LOCAL:好感度 > 0
+		DEBUGPRINTFORML %CALLNAME:LOCAL%은(는) {CFLAG:LOCAL:好感度} 호의를 가지고 있다.
+		DEBUGPRINTFORML %CALLNAME:LOCAL%'의 몸무게는 {SUBJECT_WEIGHTS:LOCAL}이었다.
+		SELECTCASE CFLAG:LOCAL:好感度
+			CASE IS >= 50000
+				SUBJECT_WEIGHTS:LOCAL += 9
+			CASE IS >= 30000
+				SUBJECT_WEIGHTS:LOCAL += 8
+			CASE IS >= 10000
+				SUBJECT_WEIGHTS:LOCAL += 7
+			CASE IS >=  5000
+				SUBJECT_WEIGHTS:LOCAL += 6
+			CASE IS >=  3000
+				SUBJECT_WEIGHTS:LOCAL += 5
+			CASE IS >=  1500
+				SUBJECT_WEIGHTS:LOCAL += 4
+			CASE IS >=  1000
+				SUBJECT_WEIGHTS:LOCAL += 3
+			CASE IS >=   500
+				SUBJECT_WEIGHTS:LOCAL += 2
+			CASE IS >=   100
+				SUBJECT_WEIGHTS:LOCAL += 1
+			CASEELSE
+				SUBJECT_WEIGHTS:LOCAL += 0
+		ENDSELECT
+		DEBUGPRINTFORML %CALLNAME:LOCAL%의 무게는 이제 {SUBJECT_WEIGHTS:LOCAL}이다.
+	ENDIF
+	SIF CFLAG:LOCAL:出禁
+		SUBJECT_WEIGHTS:LOCAL = 0
+	SIF SUBJECT_WEIGHTS:LOCAL < 0 ;should never happen, but would fuck with ARRAY_HIT if it occurs
+		THROW Subject weight for {LOCAL} is a negative value ({SUBJECT_WEIGHTS:LOCAL})
+ENDIF
+NEXT
+LOCAL = ARRAY_HIT(SUBJECT_WEIGHTS, CHARANUM - 1)
+IF LOCAL < 0
+	PRINTFORMDL 경고: 유효한 대상이 없습니다.
+	PRINTFORMDL 기본값으로 %CALLNAME:60%을 사용합니다.
+	;not ideal, but shouldn't cause issues
+	RETURNF 60
+ENDIF
+RETURNF LOCAL
+;==================================================
+;Allows the player to style Parsee's pubic hair
+;(I have a thing for unkempt women okay)
+;==================================================
+
+@K60_STYLE_PUBIC_HAIR(ARG = -1)
+DEBUGPRINTFORML ARG는 {ARG}이다.
+SIF ARG != -1
+	PRINTFORMDL 당신은 %HIS_HER(TARGET)%의 음모스타일을 변경하고 싶습니까?
+PRINTFORMDL \@ ARG != -1 ? 그것은 # 파시의 음모( \@)는 현재 %K60_PUBIC_HAIR_DESC()%이다.
+PRINTFORML
+PRINTFORMDL [  0] 나는 %HIS_HER(TARGET)%의 음모에 대해서는 전혀 듣고 싶지 않다.
+PRINTFORMDL [  1] 자연스럽게 자라도록 두어라.
+PRINTFORMDL [  2] 조금만 다듬어라.
+PRINTFORMDL [  3] 위에 조금 남겨두기만 해라.
+PRINTFORMDL [  4] 전부 면도해 버려라.
+PRINTFORMDL [  5] 하트 모양으로 스타일을 잡아라.
+SIF ARG == -1
+	PRINTFORMDL [999] 신경 쓰지 마
+$INPUT_LOOP_K60_PUBIC_HAIR
+INPUT
+SELECTCASE RESULT
+	CASE 0
+		PRINTFORMDW 대화는 더 이상 파시의 음모나 그것이 없는 것에 대해 언급하지 않을 것이다.
+		CFLAG:[[パルスィ]]:K60ENC_SETTING_PUBIC_HAIR = -1
+	CASE 1
+		IF K60_PUBIC_HAIR_DESC() == "bushy and untrimmed" && FIRSTTIME("ParseeUntrimmedPubicHair", 1)
+			SELECTCASE K60_ATTITUDE()
+				CASE 0
+					PRINTFORMW 「흐음... 이런 게 마음에 드나?」
+					PRINTFORMDW 파르씨의 홍조가 어쩐지 깊어진다.
+					PRINTFORMW 「그렇게 될 줄은 몰랐지만... 좋아. 아무것도 면도하지 않겠어.」
+				CASE 1, 3
+					PRINTFORMW 「정말?」
+					PRINTFORMDW 파르시는 눈썹을 치켜올렸다.
+					PRINTFORMW 「기대하지 못했네... 하지만 좋아. 아무것도 면도하지 않겠어.」
+				CASE 2
+					PRINTFORMW 「좋아. 자연스러운 체모를 감상할 수 있다니 기쁘군.」
+			ENDSELECT
+			CALLF FIRSTTIME("ParseeUntrimmedPubicHair")
+		ELSE
+			SELECTCASE K60_ATTITUDE()
+				CASE 0
+					PRINTFORMW 「다시 기르길 원해?」
+					PRINTFORMDW 파씨가 미소 짓는다.
+					PRINTFORMW 「그 말을 들으니 기쁘군. 그쪽을 면도하는 건 고통이야.」
+				CASE 1, 3
+					PRINTFORMW 「다시 기르길 바라는 거야?」
+					PRINTFORMDW 파르시는 눈썹을 치켜올렸다.
+					PRINTFORMW 「예상하지 못했는데... 뭐, 좋아. 거기 면도하는 게 어차피 고통이긴 해.」
+				CASE 2
+					PRINTFORML 「길게 기르라고 했다면, 왜 전에 밀어버리라고 했지?」
+					PRINTFORMDW 파씨가 한숨을 내쉰다.
+			ENDSELECT
+		ENDIF
+		CFLAG:[[パルスィ]]:K60ENC_SETTING_PUBIC_HAIR_TOMORROW = 1
+	CASE 2
+		IF K60_PUBIC_HAIR_DESC() != "neatly trimmed"
+			SELECTCASE K60_ATTITUDE()
+				CASE 0
+					PRINTFORMW 「좋아.」
+					PRINTFORMDW 파씨가 미소 짓는다.
+					PRINTFORMW 「오늘 밤에 다듬을게.」
+				CASE 1
+					CALL PRINT_STRW, @"「아, 내 보지를 더 잘 보고 싶구나.」"
+					PRINTFORMDW 파씨가 미소 짓는다.
+					PRINTFORMW 「오늘 밤에 다듬을게.」
+				CASE 2
+					PRINTFORMDL 파르시가 한숨을 쉬었다.
+					PRINTFORMW 「만약 내가 해야 한다면...」
+				CASE 3
+					PRINTFORML 「좋아.」
+					PRINTFORMDL 파시의 미소가 흔들렸지만, 잠시뿐이었다.
+					PRINTFORMW 「오늘 밤에 다듬을게.」
+			ENDSELECT
+		ENDIF
+		CFLAG:[[パルスィ]]:K60ENC_SETTING_PUBIC_HAIR_TOMORROW = 2
+	CASE 3
+		IF K60_PUBIC_HAIR_DESC() != "shaved, except for a landing strip"
+			SELECTCASE K60_ATTITUDE()
+				CASE 0, 3
+					PRINTFORMW 「내가 너무 털이 많나?」
+					PRINTFORMDW 파시가 미간을 찌푸린다.
+					PRINTFORMW 「오늘 밤에 처리할게.」
+				CASE 1
+					PRINTFORMW 「조금 더 남기려는 거야?」
+					PRINTFORMW 「\@!FIRSTTIME("ParseeReceivesCunnilingus", 1) || !FIRSTTIME("ParseeReceivesBlowjob", 1)? 구강 성교를 해줄 때 간지러움을 느끼는 편이야? 아니면 # 완전히 면도된 은밀한 곳이 마음에 들지 않는 거야?」\@
+				CASE 2
+					PRINTFORML 「적어도 나한테 머리카락은 좀 남겨주는군.」
+					PRINTFORMW 「가능하다면 창녀처럼 보이고 싶지 않거든.」
+			ENDSELECT
+		ENDIF
+		CFLAG:[[パルスィ]]:K60ENC_SETTING_PUBIC_HAIR_TOMORROW = 3
+	CASE 4
+		IF K60_PUBIC_HAIR_DESC() != "completely smooth"
+			SELECTCASE K60_ATTITUDE()
+				CASE 0
+					PRINTFORMW 「많이 면도를 해야 할 것 같아... 하지만 네가 원한다면 해줄게.」
+					PRINTFORMDW 파르시는 고개를 끄덕인다. 그녀는 약간 불행해 보인다...
+				CASE 1
+					PRINTFORMW 「음란한 만화에서는 보통 %PRINT_MALE("Men", TARGET)%의 사타구니를 면도하지 않나?」
+					PRINTFORMW 「음란한 만화를 본 게 아니라, 그냥 들은 것뿐이야!」
+				CASE 2
+					PRINTFORMW 「나를 창녀처럼 보이게 하려는 건가, 아니면 아이처럼 보이게 하려는 건가?」
+					PRINTFORMW 「그건 수사적인 질문이었어. 정말 알고 싶지 않아.」
+				CASE 3
+					PRINTFORMW 「엄청 많이 면도해야 할 것 같아... 하지만 네가 원한다면 해줄게.」
+					PRINTFORMDW 파씨는 고개를 끄덕인다. 그녀는 짜증이 난 듯 보인다...
+			ENDSELECT
+		ENDIF
+		CFLAG:[[パルスィ]]:K60ENC_SETTING_PUBIC_HAIR_TOMORROW = 4
+	CASE 5
+		IF K60_PUBIC_HAIR_DESC() != "styled in the shape of a heart"
+			SELECTCASE K60_ATTITUDE()
+				CASE 0, 1
+					PRINTFORMDW 파시가 당신을 바라본다.
+					PRINTFORMW 「당신에 대한 나의 연모를 보여줄 또 다른 방법일 거야...」
+				CASE 2
+					PRINTFORMW 「이거 무슨 페티시 같은 거야? 뭔가 그렇게 말하고 있어.」
+				CASE 3
+					PRINTFORMW 「너는... 나를 연모하고 있다고 말하는 거니?」
+					PRINTFORMDW 파씨의 홍조가 깊어진다.
+					PRINTFORMW 「나... 나는 영광이야...」
+			ENDSELECT
+		ENDIF
+		CFLAG:[[パルスィ]]:K60ENC_SETTING_PUBIC_HAIR_TOMORROW = 5
+	CASE 999
+		IF ARG == -1
+			RETURN 1
+		ELSE
+			GOTO INVALID_INPUT
+		ENDIF
+	CASEELSE
+		$INVALID_INPUT
+		PRINTFORMDW 잘못된 입력이다!
+		GOTO INPUT_LOOP_K60_PUBIC_HAIR
+ENDSELECT
+PRINTFORML
+;==================================================
+;Returns a description for Parsee's pubic hair
+;==================================================
+
+@K60_PUBIC_HAIR_DESC
+#FUNCTIONS
+SELECTCASE CFLAG:[[パルスィ]]:K60ENC_SETTING_PUBIC_HAIR
+	CASE -1
+		RETURNF "of unknown form (not mentioned in the dialogue at all)"
+	CASE 0, 1
+		RETURNF "bushy and untrimmed"
+	CASE 2
+		RETURNF "neatly trimmed"
+	CASE 3
+		RETURNF "shaved, except for a landing strip"
+	CASE 4
+		RETURNF "completely smooth"
+	CASE 5
+		RETURNF "styled in the shape of a heart"
+	CASEELSE
+		RETURNF @"정의되지 않음! 이것을 신고하라! (K60ENC_SETTING_PUBIC_HAIR는 {CFLAG:[[パルスィ]]:K60ENC_SETTING_PUBIC_HAIR}였다)"
+ENDSELECT
+;==================================================
+;Determines if Parsee's pussy/crotch is hairy or not
+;==================================================
+
+@K60_PUBIC_HAIR_IS_HAIRY
+#FUNCTION
+SELECTCASE CFLAG:[[パルスィ]]:K60ENC_SETTING_PUBIC_HAIR
+	CASE 1, 2, 5
+		RETURNF 1
+	CASEELSE
+		RETURNF 0
+ENDSELECT
+;==================================================
+;Determines if the player is cheating on their lover with Parsee
+;==================================================
+
+@K60_YOU_ARE_CHEATING_ON_YOUR_LOVER_WITH_PARSEE
+#FUNCTION
+DEBUGPRINTFORML In K60_YOU_ARE_CHEATING_ON_YOUR_LOVER_WITH_PARSEE
+SIF !TALENT:MASTER:恋人 || TALENT:TARGET:恋人 && !VAR_OR_DEFAULT("MORELOVER") || VAR_OR_DEFAULT("MORELOVER") || !SHIRAHU([[パルスィ]])
+	RETURNF 0
+FOR LOCAL,1,CHARANUM
+SIF TALENT:LOCAL:恋人 && GET_UWAKI_HISTORY(LOCAL, [[パルスィ]]) != 2
+	RETURNF 1
+NEXT
+RETURNF 0
+
+@K60_YOU_ARE_CHEATING_ON_ONE_OF_PARSEES_FRIENDS
+#FUNCTION
+RETURNF K60_YOU_ARE_CHEATING_ON_YOUR_LOVER_WITH_PARSEE() && (TALENT:83:恋人 || TALENT:84:恋人 || TALENT:64:恋人)
+;==================================================
+;Displays Parsee's response to you trying to cheat on your lover with her (this is its own function because GOTO only works within a function)
+;==================================================
+
+@K60_NETORI_REACTION
+;Parsee, for all her (many) faults, will not help you cuck her friends
+DEBUGPRINTFORML In K60_NETORI_REACTION
+IF FIRSTTIME("ParseeNetoriReaction")
+	IF (TALENT:83:恋人 || TALENT:84:恋人 || TALENT:64:恋人)
+		IF TALENT:83:恋人
+			LOCAL = 83
+			LOCALS = %K60_NAME_WITH_HONORIFICS("Kisume")%
+		ELSEIF TALENT:84:恋人
+			LOCAL = 84
+			LOCALS = %K60_NAME_WITH_HONORIFICS("Yamame")%
+		ELSE
+			LOCAL = 64
+			LOCALS = %K60_NAME_WITH_HONORIFICS("Yuugi")%
+		ENDIF
+		PRINTFORML 「대체 무슨 짓을 하고 있는 거냐?!」
+		PRINTFORMDW Parsee가 너를 노려본다.
+		PRINTFORMW 「네가 잊었을지도 모르지만, 나는 잊지 않았다. 너는 %LOCALS%와 사귀고 있다.」
+		;Case 0 requires the player to be Parsee's lover so this doesn't apply
+		SELECTCASE K60_ATTITUDE()
+			CASE 1
+				CALL PRINT_DIALOGUE, @"우리가 섹프라는 걸 알고 있지만, 그 합의는 당신이 %HIM_HER(LOCAL)%와 독점적인 관계를 맺은 순간 끝났다.", "w"
+				PRINTFORMW 「우리는 여전히 친구로 지낼 수 있어... 하지만 네가 계속 %HIM_HER(LOCAL)%을 바람피게 하려고 한다면 안 돼.」
+				CALL K60_GET_ANGRY(2)
+				CALL CHANGE_CFLAG(2, TARGET, -50)
+				CALL CHANGE_CFLAG(4, TARGET, -25)
+			CASE 2
+				CALL PRINT_STRW, @"「믿을 수가 없어. 너는 %LOCALS%를 속했을 뿐만 아니라, ITALIC나와 함께 %HIM_HER(LOCAL)%까지 속하고 있잖아.」"
+				CALL PRINT_STRL, @"「만약 당신이 %HIM_HER(LOCAL)%를 저 ITALIC나와 바람피웠다면, 그전에 당신은 정말로 모든 다른 여자들과 %HIM_HER(LOCAL)%에게 바람을 피웠어야 했다.」"
+				PRINTFORML
+				PRINTFORMDW 파르시가 이를 악문다.
+				PRINTFORMW 「당신은 내가 운 나쁘게 만난 적이 있는 가장 역겹고 불명예스러운 쓰레기야.」
+				PRINTFORMW 「내 눈앞에서 사라져.」
+				CALL K60_GET_ANGRY(3)
+				CALL CHANGE_CFLAG(2, TARGET, -200)
+				CALL CHANGE_CFLAG(4, TARGET, -100)
+			CASE 3
+				PRINTFORMW 「당신은 불명예스러운 쓰레기일 뿐만 아니라 바보이기도 하다. 그건 꽤 위험한 조합이다.」
+				PRINTFORMW 「%HIM_HER(LOCAL)%에게 진심으로 사과하고 다시는 이런 짓을 하지 않는다면 이 일은 그냥 넘어가 줄 용의가 있다.」
+				PRINTFORMW 「하지만 만약 네가 그렇게 한다면...」
+				CALL K60_GET_ANGRY(2)
+				CALL CHANGE_CFLAG(2, TARGET, -100)
+				CALL CHANGE_CFLAG(4, TARGET, -50)
+		ENDSELECT
+		DEBUGPRINTFORML -1을 반환한다.
+		PRINTFORML
+		RETURN -1
+	ELSE
+		PRINTFORMW 「%K60_MASTER()%은(는)... 연인이 없으신가요?」
+		SELECTCASE K60_ATTITUDE()
+			CASE 1
+				PRINTFORMDW 파씨가 한숨을 내쉬었다.
+				PRINTFORMW 「내가 그러면 안 된다는 걸 알지만...」
+				PRINTFORMW 「그녀가 모르는 건 그녀에게 해를 끼치지 않을 거야, 맞지?」
+			CASE 2
+				PRINTFORMDW 파씨는 사악하게 미소 짓는다.
+				PRINTFORMW 「너는 나에게 사랑을 베풀 뿐만 아니라, 그녀가 알게 되면 맛있는 식사까지 해줄 것이다.」
+				PRINTFORMW 「너무 친절하시네요...」
+			CASE 3
+				PRINTFORMW 「그녀가 알게 되면 마음이 부서질 거라는 걸 알고 있지, 안 그래?」
+				PRINTFORMW 「...난 상관없지만.」
+		ENDSELECT
+		DEBUGPRINTFORML 0을 반환한다
+		PRINTFORML
+		RETURN 0
+	ENDIF
+ELSE
+	IF (TALENT:83:恋人 || TALENT:84:恋人 || TALENT:64:恋人)
+		IF TALENT:83:恋人
+			LOCALS = 키스메
+		ELSEIF TALENT:84:恋人
+			LOCALS = 야마메
+		ELSE
+			LOCALS = 유우기
+		ENDIF
+		PRINTFORMDW %BREAKENG(@"As you're about to push Parsee down, %PARSE("you remember")% how angry %HE_SHE(TARGET)% was at you for trying to cheat on \@ nParseeLoversBrokenUpWith ? one of %HIS_HER(TARGET)% friends # %LOCALS%\@ and %PARSE("stop yourself")%.")%
+		DEBUGPRINTFORML -1을 반환한다.
+		PRINTFORML
+		RETURN -1
+	ENDIF
+ENDIF
+DEBUGPRINTFORML 0을 반환한다
+RETURN 0
+;==================================================
+;Calculates how jealous Parsee is of you
+;==================================================
+
+@K60_JEALOUSY
+#FUNCTION
+#DIM Jealousy
+Jealousy = 0
+SIF ABL:MASTER:清掃技能 > ABL:[[パルスィ]]:清掃技能
+	Jealousy += ABL:MASTER:清掃技能 - ABL:[[パルスィ]]:清掃技能
+SIF ABL:MASTER:話術技能 > ABL:[[パルスィ]]:話術技能
+	Jealousy += ABL:MASTER:話術技能 - ABL:[[パルスィ]]:話術技能
+SIF ABL:MASTER:戦闘能力 > ABL:[[パルスィ]]:戦闘能力
+	Jealousy += ABL:MASTER:戦闘能力 - ABL:[[パルスィ]]:戦闘能力
+SIF ABL:MASTER:教養 > ABL:[[パルスィ]]:教養
+	Jealousy += ABL:MASTER:教養 - ABL:[[パルスィ]]:教養
+SIF ABL:MASTER:料理技能 > ABL:[[パルスィ]]:料理技能
+	Jealousy += ABL:MASTER:料理技能 - ABL:[[パルスィ]]:料理技能
+SIF ABL:MASTER:料理技能 > ABL:[[パルスィ]]:料理技能
+	Jealousy += ABL:MASTER:料理技能 - ABL:[[パルスィ]]:料理技能
+DEBUGPRINTFORML 체크된 능력들, 파르시의 질투 점수는 이제 {Jealousy}이다.
+Jealousy *= 2
+DEBUGPRINTFORML 3배가 된 파시의 질투 점수는 이제 {Jealousy}이다.
+Jealousy += (CFLAG:K60EN_TIMES_DATED_OTHER_GIRLS_IN_FRONT_OF_PARSEE * 5)
+DEBUGPRINTFORML 그녀 앞에서 사귀었던 여자들에 기반한 질투가 추가되었으며, 파씨의 질투 점수는 이제 {Jealousy}이다.
+IF TALENT:[[パルスィ]]:恋人
+	Jealousy -= 10
+	Jealousy += LOVER_COUNT() * 3
+ELSE
+	Jealousy += LOVER_COUNT() * 10
+ENDIF
+DEBUGPRINTFORML 연인이 몇 명인지에 기반한 질투가 추가되었으며, 파르시의 질투 점수는 이제 {Jealousy}이다.
+SIF Jealousy == 0
+	Jealousy += 10
+RETURNF Jealousy
+;==================================================
+;Handles Parsee noticing and responding to your erection if you have one
+;==================================================
+
+@K60_ERECTION_RESPONSE
+IF BASE:MASTER:勃起 >= 1000 && SHIRAHU(60) && HAS_PENIS(MASTER)
+	IF !TCVAR:K60ENC_TCVAR_NOTICED_ERECTION
+		TCVAR:K60ENC_TCVAR_NOTICED_ERECTION = 1
+		PRINTFORML
+		PRINTFORMD 파시가 당신의 발기를 알아챈다. 
+		SELECTCASE SELECTCOM
+			CASE 302 ;Skinship
+				PRINTFORMDW 당신은 %HIM_HER(TARGET)%와 스킨십을 한다...
+			CASE 309 ;Headpat
+				PRINTFORMDW 당신은 %HIS_HER(TARGET)%의 머리를 쓰다듬는다…
+			CASE 311 ;Embrace
+				PRINTFORMDW 당신은 %HIM_HER(TARGET)%을/를 안는다...
+			CASE 336 ;Give Lap Pillow
+				PRINTFORMDW %HE_SHE(TARGET)%은 당신의 무릎에 누워있다...
+		ENDSELECT
+		PRINTFORML
+		SELECTCASE K60_ATTITUDE()
+			CASE 0
+				SELECTCASE RAND:3
+					CASE 0
+						PRINTFORMW 「나, 당신들 전부 흥분시킨 것 같네요.」
+						PRINTFORMDW 파르시가 당신의 %FSYN("crotch")%에 손을 올린다.
+						PRINTFORMW 「제가... 사과할 수 있도록 조용한 곳으로 가보실래요?」
+					CASE 1
+						PRINTFORMW 「Ah!」
+						PRINTFORMDW 파르시가 얼굴을 붉혔다.
+						PRINTFORML 「당신이 그렇게 애정 어린 기분이라는 걸 몰랐어...」
+						PRINTFORMW 「원하신다면 제가 처리해 드릴 수 있어요.」
+					CASE 2
+						PRINTFORMW 「음, 음, 이게 무슨 일이지?」
+						PRINTFORMDW 파씨가 미소 짓는다.
+						CALL PRINT_STRL, @"「ITALIC누군가이 안정을 필요로 하는 것 같다.」"
+						CALL HPH_PRINT, @"「그리고 기꺼이 그것을 제공해 줄 겁니다 HPH...」", "W"
+				ENDSELECT
+			CASE 1
+				SELECTCASE RAND:3
+					CASE 0
+						PRINTFORMW 「오? 여기 뭐가 있네?」
+						PRINTFORMDW 파씨가 미소를 짓는다.
+						PRINTFORMW 「모르겠군... 아무도 눈치채지 못하게 네 %SHOW_BOTTOM(MASTER,1)%로 끝낼 수 있을까?」
+					CASE 1
+						PRINTFORML 「오 이런, 당신을 온통 흥분시킨 것 같네요.」
+						PRINTFORMW 「제가 처리해 드릴 수 있도록 조용한 곳으로 갈까요?」
+					CASE 2
+						PRINTFORMW 「나에게 가까이 있는 것만으로도 이렇게 흥분하게 만들다니...」
+						PRINTFORMDW 파르시가 입술을 축였다.
+						PRINTFORMW 「더 가까워지고 싶지? 이 성가신 옷들이 방해하지 않도록?」
+				ENDSELECT
+			CASE 2
+				SELECTCASE RAND:3
+					CASE 0
+						PRINTFORMW 「나와 함께 있을 때도 다른 %PRINT_MALE("guy", TARGET)%들에 대해 상상하는 걸 멈출 수 없다고?」
+						PRINTFORMDW 파씨가 당신을 노려본다.
+						PRINTFORMW 「그럼 그들 중 한 명과 자러 가지 그래?」
+					CASE 1
+						PRINTFORML 「호르몬 조절 못 하겠어?」
+						PRINTFORMW 「아니면 물 한 바가지를 너한테 부어줘야 해?」
+					CASE 2
+						PRINTFORMDW %HE_SHE(TARGET,1)%은 갈등하는 듯하다...
+				ENDSELECT
+			CASE 3
+				SELECTCASE RAND:3
+					CASE 0
+						PRINTFORMW 「%K60_MASTER()%! 스스로 통제할 수 없단 거야?!」
+					CASE 1
+						PRINTFORMDW %HE_SHE(TARGET,1)%,은 침묵을 지키지만 당신은 %HIS_HER(TARGET)%의 귀 끝이 빨개지는 것을 볼 수 있다.
+					CASE 2
+						PRINTFORMDW %HIS_HER(TARGET,1)%은 계속 그것을 돌아본다.
+				ENDSELECT
+		ENDSELECT
+	ENDIF
+ELSE
+	TCVAR:K60ENC_TCVAR_NOTICED_ERECTION = 0
+ENDIF
+RETURN 1
+;==================================================
+;Handles Parsee freaking out about being pregnant, because she's terrified of her child inheriting her jealousy and being as miserable as she is
+;==================================================
+
+@K60_PARSEE_PREGNANT_FREAKOUT()
+PRINTFORMDW 파시(Parsee)는 침대에서 몸을 동그랗게 말고 울음을 터뜨리고 있다.
+PRINTFORMW 「내 %BABYPLNOUN("child",60)%... 나의 불쌍한, 불쌍한 %BABYPLNOUN("child",60)%...」
+PRINTFORMW 「내가 하시히메가 되었을 때, 이 저주를 절대 물려주지 않겠다고 맹세했었는데! 그런데 지금 나는...」
+PRINTFORMDW 그녀는 그 단어를 입 밖으로 내뱉을 수 없다.
+PRINTFORMW 「이제 내가 할 수 있는 건 없어. %BABYPLNOUN("this",60)% %BABYPLNOUN("child",60)%을 최선으로 키워야 해.」
+SELECTCASE K60_ATTITUDE()
+	CASE 0,1
+		PRINTFORMW 「그리고 %K60_MASTER()%이 나를 도와줄 거야, 안 그래 %HE_SHE(MASTER)%?: %HE_SHE(MASTER,1)%'가 나의 질투를 도와주고 있어...」
+	CASE 2
+		PRINTFORMW 「그리고 나는 그 개자식 %K60_MASTER()%을 책임지게 만들 것이다.」
+		PRINTFORMW 「만약 %HE_SHE(MASTER)%가 수치심을 느낄 능력이 있다면...」
+	CASE 3
+		PRINTFORMW 「그리고 나는 %K60_MASTER()%이 책임을 지도록 내가 가진 모든 힘을 다할 것이다...」
+ENDSELECT
+PRINTFORMW 「하지만... 왜?! 나에게 왜 이런 일이 생긴 거야?! 내 %BABYPLNOUN("child",60)%에게 왜 이런 일이 생긴 거야?!」
+PRINTFORMW 「아, 정말 죄송해요... 어리석은 당신의 어머니를 용서해 주세요...」
+PRINTFORMDW 파시가 아주 오랫동안 계속 울었다...
+RETURN 1
+;==================================================
+;Handles Parsee freaking out about being pregnant, because she's terrified of her child inheriting her jealousy and being as miserable as she is
+;0 = She knows you're the father, 1 = she doesn't know
+;==================================================
+
+@K60_PARSEE_BIRTH_FREAKOUT(ARG)
+PRINTFORMW 「드디어... 끝났구나. 다행이야.」
+PRINTFORMDW 파시(Parsee)는 울지 않으려고 노력하며 그녀의%COND_STR(" first",CFLAG:60:LatestChildCount > 1)% 새로 태어난 아기를 가슴에 안는다.
+PRINTFORMW 「오, 내 아이야, 나의 불쌍한 아이...」
+PRINTFORMW 「내 저주를 너에게 물려준 것이 너무 미안해.」
+PRINTFORMW 「\@ ARG == 0 ? 하지만 %K60_MASTER()% 그리고 # 어떻게 임신했는지 모르겠지만 \@ I will do everything in \@ ARG == 0 ? 우리 # 나의 \@ 힘을 다해서 네가 나보다 더 좋은 삶을 살도록 할 거야.」
+RETURN 1
+;==================================================
+;Handles Parsee being happy that she's pregnant, now that you've convinced her that her child will be fine and you'll do everything in your power to be the best damn parent there is
+;==================================================
+
+@K60_PARSEE_PREGNANT_HAPPY
+PRINTFORMW 「...%K60_MASTER()%?」
+PRINTFORMDW 파씨는 초조하게 손을 비틀고 있다.
+CALL PRINT_STRW, @"「나... 나 임신했어. 그리고 다른 「2」를 만질 거라고는 상상도 못 했으니까 %PRINT_MALE("man", MASTER)%그래서 당신이 그 @ ITALIC@dream@ of touching another %PRINT_MALE("man", MASTER)%, so... you're the \@IS_MALE(MASTER) ? 아버지 # 아버지인가. \@.」」"
+PRINTFORMW 「당신이 훌륭한 부모가 될 거란 건 알지만,%COND_STR(@" and I know you've raised children before,", CFLAG:MASTER:子供人数)% 하지만...」
+PRINTFORMDW 파씨는 한숨을 내쉰다.
+PRINTFORMW 「나도 당신이 어떤 사람인지 알잖아요. 나는 정말 걱정이 많은 사람이니까.」
+PRINTFORMW 「하지만 그럼에도 불구하고... 나도 설레요.」
+PRINTFORMW 「나는 항상 아이를 갖고 싶었지만, 내 질투심을 물려줄까 봐 너무 두려웠어요. 게다가 아이를 키울 여유도 없었고 말이죠.」
+PRINTFORMW 「그리고, 음...」
+PRINTFORMDW 파씨는 씁쓸하게 미소 짓는다.
+PRINTFORMW 「누군가 나를 사랑해 줄 거라고는 한 번도 생각 못 했어요. 그래서 함께 %BABYCONDSTR(" a",60,1)% %BABYPLNOUN("child",60)% 할 사람이 없었죠.」
+PRINTFORMW 「하지만 당신을 만나서...」
+PRINTFORMDW 파씨는 당신의 손을 잡고 자신의 배 위에 올려놓는다.
+PRINTFORMW 「당신을 사랑해요. 당신을 믿어요. 그리고 당신이 내 곁에 있다면... 모든 것이 괜찮을 거라고 확신해요.」
+PRINTFORMDW 당신은 파씨를 보며 미소 짓고 그녀를 부드럽게 안아준다...
+RETURN 1
+;==================================================
+;Displays a scene where you meet Parsee's cat
+;==================================================
+
+@K60_MEET_VAHBIZ()
+PRINTFORMW 「착한 아가씨는 누구지～? 바로 너야, Vahbiz! 정말 착한 작은 고양이구나～」
+PRINTFORMDW Parsee가 긴 회색 코트를 가진 고양이를 쓰다듬으며 애교를 부리고 있었다.
+PRINTFORMDW 그녀가 당신이 거기에 있는 것을 알아차리자 홍당무처럼 뺨을 물들이며 고양이는 그녀의 다리 뒤로 재빨리 숨었다.
+SELECTCASE K60_ATTITUDE()
+	CASE 0, 1
+		PRINTFORMW 「내 고양이를 이제 막 만났다는 게 놀랍네. 이름은 바비즈야.」
+	CASE 2
+		PRINTFORMW 「물론이지, 나는 미친 고양이 아줌마야. 네가 충격받았을 거라고 확신해.」
+		PRINTFORMW 「나를 믿어봐, 만약 네가 하시히메라면 Vahbiz 같은 사람이 인생에 있다는 것에 정말 감사할 거야.」
+	CASE 3
+		PRINTFORMW 「이 아이는 나의 고양이, 바비즈다.」
+ENDSELECT
+PRINTFORMW 「"신께 내려진"이라는 뜻의 파르시 이름이야. 그가 그녀를 나에게 보냈는지 확실히는 모르겠지만... 그렇게 생각하고 싶어.」
+PRINTFORMW 「그녀를 몇 년 동안 알고 지냈지.」
+IF (!K60_ATTITUDE() == 3 || TALENT:TARGET:恋慕)
+	PRINTFORMW 「한밤중에 나는 또다시 술에 취해 비틀거리며 집으로 향하고 있었다. 나 자신과 다른 모든 사람들이 얼마나 싫은지 생각하면서….」
+	SELECTCASE K60_ATTITUDE()
+		CASE 0, 1
+			PRINTFORMDW 파르시는 죄책감을 느끼며 당신을 바라본다.
+			PRINTFORMW 「너를 만나기 전에는 제대로 된 대처 방법이 없었어.」
+			PRINTFORMDW 그녀는 당신의 손을 잡고 말을 이었다.
+	ENDSELECT
+ELSE
+	PRINTFORMW 「어느 날 밤, 나는 술집에서 돌아가던 길이었는데...」
+ENDIF
+PRINTFORMW 「...골목에서 들려오는 이 가련한 작은 울음소리를 듣고 말이지.」
+PRINTFORMW 「내가 고개를 내밀어 무슨 소리인지 보았고, 나는 그녀를 보았다. 바비즈. 비를 피하려고 처마 밑에 웅크리고 있는 그녀를 말이다.」
+PRINTFORMDW 파르시는 미소 짓는다.
+PRINTFORMW 「그때 그녀는 그저 아기 고양이였을 뿐이었다. 그리고 내가 그녀를 본 순간, 그녀는 내 마음속으로 기어들어 왔다.」
+SELECTCASE K60_ATTITUDE()
+	CASE 2
+		PRINTFORMW 「그래, 가끔은 질투나 증오 외의 감정도 느낄 수 있어. 그렇게 놀랄 것 없어.」
+		PRINTFORMDW 너는 그렇지 않았잖아. 왜 파르시는 항상 모두에게 최악을 상상하는 걸까? 스스로 이루어지는 예언으로 만들고 싶은 거야?
+ENDSELECT
+PRINTFORMW 「나는 서둘러- 아니, 비틀거리며- 여자를 위해 고기를 시키고 선술집으로 돌아갔다.」
+PRINTFORMW 「그것을 내려놓고 그녀를 불렀을 때, 그녀는 처음에는 의심스러운 표정을 지었지만, 고기 냄새와 그녀의 허기가 저항을 이겼다.」
+PRINTFORMW 「나는 그녀가 먹는 동안 놀라 도망갈까 봐 쓰다듬어 주고 싶지 않았지만, 아, 얼마나 그러고 싶었는지...」
+PRINTFORMW 「배불리 먹은 후, 그녀는 마치 악마에게 쫓기듯 쓰레기통 뒤로 달려갔다.」
+PRINTFORMW 「그리고 그날 이후 매일 밤, 나는 그 골목으로 돌아가 그녀에게 먹을 것을 주었다.」
+PRINTFORMDW 그녀는 고개를 젓는다.
+PRINTFORMW 「이상하지... 그렇게 들리지만, 나는 그녀가 공감된다고 생각했다.」
+PRINTFORMW 「우리 둘 다 외로웠고, 우리 둘 다 믿었던 사람들에게 배신당하고 버려졌으니까...」
+PRINTFORMW 「그리고 나는 항상 고양이를 좋아했다. 예전에 내 길을 건너온 커플이 있었는데, 그들은 이 사랑스러운-」
+PRINTFORMDW 파르시는 말을 자른다.
+PRINTFORMW 「됐어. 내가 잃은 것에 대해 계속 생각하면 안 돼.」
+PRINTFORMW 「하루는 그녀에게 먹이를 주고 뒤돌아보았는데, 그녀가 나를 따라 집으로 오는 것을 발견했다. 그리고 그때부터 우리는 동반자가 되었다.」
+PRINTFORMDW 그녀는 다시 미소 짓는다.
+PRINTFORMW 「나를 더 나쁘게 만드는 대신 기분 좋게 해줄 누군가가 있다는 건 좋다. 그리고 나를 참아주고 무조건적으로 사랑해주는 바보 같은 사람이 있다는 것도 좋다...」
+PRINTFORMW 「음, 무조건적이지는 않다. 내가 계속 먹이를 주고 그녀의 화장실을 비워주는 한 말이다.」
+SELECTCASE K60_ATTITUDE()
+	CASE 2, 3
+		PRINTFORMW 「이게 영원하지 않을 거란 걸 알아.」
+		PRINTFORMW 「그녀는 노환으로 죽거나, 아니면 바케네코가 되어 \@ K60_ATTITUDE() == 2 ? 내가 얼마나 괴물인지 깨닫고 목숨을 부지하려고 도망치겠지. # %" "%그리고 떠나겠지. \@」
+		PRINTFORMW 「하지만 그런 생각은 하지 않으려고 노력한다.」
+		SIF K60_ATTITUDE() == 3 && !(TALENT:TARGET:恋慕 || MARK:TARGET:快楽刻印 == 3)
+			PRINTFORMDW 응? 바키즈가 백네코가 되었다고 해서 왜 떠나려고 하지? 파르시는 꽤 괜찮아 보이는데.
+ENDSELECT
+SELECTCASE K60_ATTITUDE()
+	CASE 0, 1, 3
+		PRINTFORMW 「그녀를 쓰다듬어 줄래? 그녀는 수줍음이 많지만, 물지는 않아.」
+		PRINTFORMDW 파르시는 바비즈를 품에 안아 당신에게 내민다.
+		PRINTFORMDW 당신은 손을 뻗어 바비즈를 쓰다듬는다. 처음에는 몸을 비틀었지만, 계속 쓰다듬자 그녀는 긴장을 풀고 골골거린다.
+		PRINTFORMW 「사랑스럽지 않아?」
+		PRINTFORMDW 파르시는 바비즈를 다시 땅에 내려놓고, 그녀는 당신의 다리에 몸을 비빈다.
+		PRINTFORMW 「다음에는 그녀에게 물고기 좀 사다 줘야 해. 그녀는 배스를 아주 좋아하거든.」
+ENDSELECT
+CFLAG:K60EN_MET_VAHBIZ = 1
+RETURN 1
+
+@K60_PARSEE_HUNGOVER()
+PRINTFORMDL 파시(Parsee)는 지옥처럼 보인다. 머리는 엉망이고, 눈 밑에는 다크서클이 있으며, 땀과 알코올 냄새가 난다...
+PRINTFORMDW 그리고 그녀는 이마를 문지고 있다.
+PRINTFORML 「안녕하세요, %K60_MASTER()%. 어젯밤 너무 과음했을지도 모르겠어요...」
+SELECTCASE K60_ATTITUDE()
+	;Loving
+	CASE 0
+		PRINTFORMW 「혹시 좋은 숙취 해소법 아는 거 있어?」
+		;Nice, horny
+	CASE 1
+		PRINTFORMW 「어쩌면 약간의 쾌락주의를 자제하라는 위로부터 온 신호일지도 모른다.」
+		;Grumpy tsundere
+	CASE 2
+		PRINTFORMW 「누군가에게 저주를 퍼부을 때 이런 기분인가?」
+		;Fake nice
+	CASE 3
+		PRINTFORMW 「요괴라는 존재는 모든 인간의 질병에 면역이 되게 하는데... 왜 숙취에는 면역이 안 되는 거지?」
+ENDSELECT
+;==================================================
+;Handles playing with Parsee's ears
+;==================================================
+
+@K60_PLAY_WITH_EARS
+#DIM PlayType
+;時間停止中
+IF FLAG:70
+	SIF !CFLAG:うふふ
+		TCVAR:[[パルスィ]]:K60ENC_TCVAR_TIMESTOP_HEADPATS ++
+	;睡眠中
+ELSEIF CFLAG:睡眠
+	;通常
+ELSE
+	IF CFLAG:うふふ
+		;These are separate statements ~~to pad Parsee's line count even further~~ so we can make sure we give the correct EXP (finger/mouth)
+		SELECTCASE RAND:2
+			CASE 0
+				PRINTFORMDW 당신은 %SPLIT_G("reach out and play with:massage:grope")%의 귀를 만진다...
+				PlayType = 1
+			CASE 1
+				PRINTFORMDW 당신은 %SPLIT_G("kiss:lick:nibble on")%의 귀를 만진다…
+				PlayType = 2
+		ENDSELECT
+	ELSE
+		SELECTCASE RAND:2
+			CASE 0
+				PRINTFORMDW 당신은 %SPLIT_G("reach out and play with:massage")%의 귀를...
+				PlayType = 1
+			CASE 1
+				PRINTFORMDW 당신은 파르시의 귀에 키스한다.
+				PlayType = 2
+		ENDSELECT
+	ENDIF
+	PRINTFORML
+	IF CFLAG:うふふ
+		IF FIRSTTIME("InWhichParseesEarsAreMolested") ;a touhou-project.com fic which I took a lot of inspiration from while writing these lines
+			PRINTFORMDW 파르시가 이상한 소리를 낸다... 놀람의 비명과 즐거움의 신음이 섞인 소리였다.
+			SELECTCASE K60_ATTITUDE()
+				CASE 0
+					PRINTFORMW 「기억이 안 나네... 내 귀가 에로틱 존이라고 말했었지?」
+					PRINTFORMDW 파시의 귀는 이미 붉어져 있었는데, 더욱 빨개졌다.
+					PRINTFORMW 「계속 만져줬으면 좋겠어...」
+				CASE 1
+					PRINTFORMW 「%MOAN("m")%... %MOAN("m")%... 멈추지 마...」
+					PRINTFORMDW 파르시의 숨소리가 거칠어진다. 아래를 내려 만족스럽게 미소를 짓는다.
+					PRINTFORMD \@ SHOW_TOP([[パルスィ]],1) == "" ? %HIS_HER(TARGET,1)%의 유두는 단단하고 당신은 # 당신이 \@ 볼 수 있다
+					IF HAS_PENIS(TARGET)
+						PRINTFORMD %HIS_HER(TARGET)%의 발기가 %COND_STR(@" through %HIS_HER(TARGET)% %SHOW_BOTTOM(60,1)%", SHOW_BOTTOM([[パルスィ]],1) != "")%
+						SIF HAS_VAGINA(TARGET)
+							PRINTFORMD 그리고 그 아래에, %HIS_HER(TARGET)%의 %FSYN("juice")% %FSYN("leak:ing")%가 %FSYN("vagina")%
+					ELSE
+						PRINTFORMD %FSYN("juice")%에서 %FSYN("leak:ing")%가 %HIS_HER(TARGET)%를 %FSYN("vagina")%로
+					ENDIF
+					PRINTFORMDW .
+				CASE 2, 3
+					PRINTFORMW 「갑자기 내 귀를 건드리지 마, 이 바보야!」
+					PRINTFORMW 「하시히메의 귀는... 민감해...」
+					PRINTFORMDW 파르시는 너를 노려보고 있지만, 그녀의 표정에서 욕망의 기색을 볼 수 있다...
+			ENDSELECT
+		ELSEIF NOWEX:4
+			IF FIRSTTIME("ParseeCumsFromHavingHerEarsPlayedWith")
+				PRINTFORMDW 파르시(Parsee)는 너무 큰 즐거움에 말을 제대로 할 수 없다. 당신이 그녀의 귀를 계속 자극하자 그녀는 몸을 비틀며 신음한다.
+				PRINTFORMW 「%MOAN("h",,2)%... %K60_MASTER()%, 내 귀가, 나... 나...」
+				PRINTFORMW 「%SLUR("Cumming", -2)%!!!」
+				PRINTFORMD 마지막 한 번의 신음과 함께 파씨는 등을 아치형으로 휘었다. 
+				IF HAS_PENIS(TARGET)
+					PRINTFORMD %HIS_HER(TARGET)%로부터 %SEMEN()% %FSYN("spurt:s")% %FSYN("penis")%
+					SIF HAS_VAGINA(TARGET)
+						PRINTFORMD 그리고 %HIS_HER(TARGET)%으로부터 %FSYN("juice")% 분수가 흘러나온다 %FSYN("vagina")%.
+				ELSE
+					PRINTFORMD %FSYN("juice")% %HIS_HER(TARGET)%에게서 쏟아진다 %FSYN("vagina")%
+				ENDIF
+				PRINTFORMDW .
+				PRINTFORMW 「%MOAN("m",,2)%... %MOAN("l")%...」
+				PRINTFORMDW 파르시(Parsee)는 잠시 축 늘어져 %HIS_HER(TARGET)%의 절정에서 오는 마지막 몇 번의 쾌감을 즐긴다.
+				PRINTFORMDW 그러고 나서 %HE_SHE(TARGET)%은 %HIM_HER(TARGET)% 자신을 %HIS_HER(TARGET)%의 팔꿈치에 기댄 채 \@ GROUPMATCH(K60_ATTITUDE(), 2, 3) ? 당신을 노려본다, 얼굴이 새빨개진다 # 당황해서 %HIS_HER(TARGET)%의 얼굴을 가린다 \@.
+				PRINTFORMW 「믿을 수가 없어...」
+				PRINTFORMW 「내가 방금 내 귀를 가지고 장난치다가... 절정에 도달했다니 믿을 수가 없어...」
+				SELECTCASE K60_ATTITUDE()
+					CASE 0, 1
+						PRINTFORMW 「아, %K60_MASTER()%... 나를 환상의 대퇴한 인간이라고 생각하는군.」
+						PRINTFORMDW 당신은 Parsee를 끌어안고 %HIM_HER(TARGET)%가 진정될 때까지 안아준다.
+						PRINTFORML
+						PRINTFORMW 「또 해버렸네... 너무 불안해서 미안해, %K60_MASTER()%.」
+						PRINTFORMDW 파르시가 당신의 뺨에 키스한다.
+						PRINTFORMW 「솔직히 다시 해도 상관없지만, 당분간은 안 될 것 같아. 아직 너무 예민하거든...」
+					CASE 2, 3
+						CALL PRINT_STRW, @"「만약 네가 이것에 대해 다른 누구에게라도 단 한 마디라도 말한다면...」"
+						PRINTFORMDW 당신은 둘만이 알게 될 것이라고 Parsee에게 약속한다.
+						PRINTFORMW 「그 약속을 지키는 편이 좋을 거야.」
+						PRINTFORMDW %HE_SHE(TARGET,1)%은(는) 옆으로 돌아 누워 당신에게서 등을 돌린다.
+						PRINTFORMDW 두 사람은 잠시 침묵 속에 있다가 Parsee가 말을 꺼낸다.
+						PRINTFORMW 「...네가 또 그렇게 해주면 상관없을 텐데.」
+						PRINTFORMW 「하지만 당분간은 안 돼. 아직 너무 예민하니까...」
+				ENDSELECT
+			ELSE
+				PRINTFORMW 「%SPLIT_G(@"Yes...:멈추지 마...!:내 귀가...:오, %K60_MASTER()%!:계속 자극해줘...:좋아...:%MOAN("m",,2)%")% %SPLIT_G("곧 할 것 같아...:곧 할 거야...:거의 다 왔어...!느낄 수 있어!")%」
+				PRINTFORMW 「...%MOAN("h",,2)%!」
+				PRINTFORMDW Parsee %SPLIT_G(@"clenches %HIS_HER(TARGET)% thighs:arches %HIS_HER(TARGET)% back:moans lewdly:grabs your hand and squeezes it")%가 %HE_SHE(TARGET)%의 절정에 달한다.
+				PRINTFORMW 「%MOAN("l")%... 또 귀를 자극해서 클라이맥스에 도달했다니 믿을 수가 없어...」
+			ENDIF
+		ELSE
+			GOTO GENERIC_REACTIONS
+		ENDIF
+	ELSE
+		;Outside ufufu
+		SELECTCASE TFLAG:193
+			CASE -1
+				PRINTFORMDW 파시가 당신에게서 피한다.
+				PRINTFORML
+				SELECTCASE K60_ATTITUDE()
+					CASE 0
+						IF INROOM(CFLAG:MASTER:現在位置)
+							PRINTFORMW 「%K60_MASTER()%! 스스로 통제할 수 없단 거야?!」
+						ELSE
+							PRINTFORMW 「%K60_MASTER()%이/가 공공장소에 있다는데!」
+						ENDIF
+					CASE 1
+						PRINTFORMW 「한 번만 음란하지 않은 걸 할 수는 없을까?」
+					CASE 2
+						PRINTFORML 「다음번에 그걸 시도한다면 사타구니를 걷어차 버릴 거야.」
+						PRINTFORMW 「그것에서도 어떻게든 즐거움을 찾을 거라 확신해.」
+					CASE 3
+						PRINTFORMW 「그런 변태짓 하지 마!」
+				ENDSELECT
+			CASE 0
+				$GENERIC_REACTIONS
+				SELECTCASE K60_ATTITUDE()
+					CASE 0
+						SELECTCASE RAND:3
+							CASE 0
+								PRINTFORMW 「더 거칠게 해도 돼...」
+							CASE 1
+								PRINTFORML 「%MOAN("l")%... 그들은 평소에 이렇게 민감하지 않은데...」
+								PRINTFORMW 「혹시 당신이 만지고 있기 때문일까요?」
+							CASE 2
+								PRINTFORMW 「아... 이게 하시히메라는 것의 유일한 좋은 점이군...」
+						ENDSELECT
+					CASE 1
+						SELECTCASE RAND:3
+							CASE 0
+								IF !INROOM(CFLAG:MASTER:現在位置) && ABL:[[パルスィ]]:露出癖 >= 2
+									PRINTFORML 「아... 모두가 볼 수 있는 공공장소에서 이걸 하고 있다니...」
+									PRINTFORMW 「왜 나는 이것이 그렇게... 스릴 있게 느껴지는 걸까?」
+								ELSEIF !INROOM(CFLAG:MASTER:現在位置)
+									PRINTFORMDW 파씨는 신음 소리를 참으려고 입술을 깨물며 홍당무처럼 빨개졌다.
+								ELSE
+									PRINTFORML 「공개적으로 이걸 한다면, 누가 음란했다고 알아챌까?」
+									PRINTFORMW 「원한다면 한번 시도해 볼 수 있어.」
+								ENDIF
+							CASE 1
+								PRINTFORMDW Parsee는 음란하게 미소 지으며 당신의 자유로운 손을 잡고 %HIS_HER(TARGET)%에게 \@ IS_FEMALE(TARGET) ? %FSYN("chest")% # %FSYN("crotch")% \@.
+								CALL PRINT_STRW, @"「\@ IS_FEMALE(TARGET) ? 그들 # 그것을 \@도 말이야. 정말 대단할 거라고 확신해...」"
+							CASE 2
+								IF ABL:TARGET:マゾっ気 >= 2
+									CALL HPH_PRINT, @"「흔적을 남겨야 해. 내가 당신에게 속해 있다는 걸 모두가 알게 하고 싶어...HPH」", "W"
+								ELSE
+									PRINTFORML 「%MOAN("l")%... 더 거칠게 하면 흔적이 남을 테니까.」
+									PRINTFORMW 「그것 때문에 크게 개의치 않는 건 아니지만...」
+								ENDIF
+						ENDSELECT
+					CASE 2
+						SELECTCASE RAND:4
+							CASE 0
+								PRINTFORMW 「내 귀는 성감대가 아니라고, 이 바보야.」
+								PRINTFORMW 「%MOAN("l")%... 설령 그렇다고 해도, 네가 자극하는 방식이 완전히 틀렸어!」
+								PRINTFORMW 「끝에서부터 아래로 작업해 봐! %MOAN("l")%...」
+							CASE 1
+								IF INROOM(CFLAG:MASTER:現在位置)
+									PRINTFORML 「적어도 아무도 볼 수 없는 곳에서 하고 있군.」
+									PRINTFORMW 「그래도 아예 하지 않는 게 더 좋았을 텐데...」
+								ELSE
+									PRINTFORMW 「이걸 해야 한다면, 적어도 사적인 곳에서 해 줄 수는 없나요?!」
+								ENDIF
+							CASE 2
+								PRINTFORMW 「내가 말했잖아, 내 귀는 예민하다고!」
+								PRINTFORMW 「너무 거칠게 다루지 마- 그러니까, 만지는 것 좀 그만해!」
+							CASE 3
+								PRINTFORML 「여기까지는 그냥 보내주지...」
+								CALL PRINT_STRW, @"「하지만 네가 그들을 침범하려고 생각조차 한다면, 나는 네 코를 부러뜨릴 것이다.」"
+						ENDSELECT
+					CASE 3
+						SELECTCASE RAND:3
+							CASE 0
+								PRINTFORMW 「너 이거 꽤 잘하네.」
+								CALL M_KOJO_COLOR_K60_JEALOUS
+								PRINTFORMW 「누가 너에게 자신의 귀로 놀게 해줬지?」
+								CALL M_KOJO_COLOR_K60
+							CASE 1
+								PRINTFORMW 「Ah!」
+								PRINTFORMDW 파시의 귀가 빨개지고 있다. 당신의 손길 때문만은 아니다.
+							CASE 2
+								PRINTFORMW 「그렇게 거칠지 않아! 그들은 정말로-%MOAN("l")%!- 민감하거든...」
+						ENDSELECT
+				ENDSELECT
+			CASE 1
+				PRINTFORMDW 당신이 %HIS_HER(TARGET)%의 귀를 가지고 놀리자 파르시가 숨을 들이쉰다.
+				SELECTCASE K60_ATTITUDE()
+					CASE 0
+						PRINTFORML 「너무 기분이 좋아... 내가 직접 가지고 놀 때보다 훨씬 나아...」
+						PRINTFORMW 「%K60_MASTER()% 하지 마!」
+					CASE 1
+						PRINTFORMW 「%SLUR(MOAN("m"), -3)%!!!」
+						PRINTFORMDW 파씨의 온몸이 쾌감으로 떨린다.
+					CASE 2
+						PRINTFORMW 「진심으로 말하는데, %K60_MASTER()%님, 지금 당장 멈추지 않으면 제가 때릴 거예요.」
+						PRINTFORMW 「계속 이러면 저... %SLUR(MOAN("m"), -2)%...」
+					CASE 3
+						CALL M_KOJO_COLOR_K60_JEALOUS
+						PRINTFORMW 「너는 그것들을 다루는 데 정말 능숙해... 나 너무 질투나.」
+						CALL M_KOJO_COLOR_K60
+				ENDSELECT
+		ENDSELECT
+	ENDIF
+ENDIF
+;Handle gems and EXP gain
+SOURCE:[[パルスィ]]:快Ｍ = 80
+IF PlayType == 1
+	SIF ABL:PLAYER:指 >= 4
+		SOURCE:[[パルスィ]]:快Ｍ += 50
+	SOURCE:[[パルスィ]]:快Ｍ += ABL:PLAYER:指 * 10
+	SIF !NOWEX:4 && !CFLAG:うふふ
+		CFLAG:溜まってる度 += MIN(10, RAND(MAX(ABL:PLAYER:指, 1)))
+	EXP:PLAYER:手淫経験 ++
+	PRINTFORMDW 수음경험 +1 (%CALLNAME:MASTER%)
+ELSE
+	SIF ABL:PLAYER:舌 >= 4
+		SOURCE:[[パルスィ]]:快Ｍ += 50
+	SOURCE:[[パルスィ]]:快Ｍ += ABL:PLAYER:舌 * 10
+	SIF !NOWEX:4 && !CFLAG:うふふ
+		CFLAG:溜まってる度 += MIN(10, RAND(MAX(ABL:PLAYER:舌, 1) + 1))
+	EXP:PLAYER:口淫経験 ++
+	PRINTFORMDW 펠라티오경험 +1 (%CALLNAME:MASTER%)
+ENDIF
+CALL SOURCE_快Ｍ([[パルスィ]])
+RETURN 1
+
+@K60_PARSEE_FIRST_VAGINAL_SEX_FULL(ARG, ARGS)
+SELECTCASE K60_ATTITUDE()
+	CASE 0
+		PRINTFORMDL 파르시는 당신을 보며 긴장한 듯 미소 짓는다.
+		PRINTFORML 「이런 경험을 할 수 있을지 궁금했는데... 고맙습니다, %K60_MASTER()%.」
+		IF ARGS == "missionary" || ARGS == "cowgirl"
+			PRINTFORML 「일단 한 가지 할게.」
+			PRINTFORMDL 그녀는 당신을 품에 안고 입술로 당신의 입술과 맞닿는다.
+			CALL MUTUAL_KISS
+			;MUTUAL_KISS resets the color for some reason
+			CALL M_KOJO_COLOR_K60
+			PRINTFORMDL 당신이 키스하자 그녀의 몸이 이완되기 시작하는 것을 느낄 수 있다. 그녀는 준비되었다.
+		ELSE
+			PRINTFORMW 「나에게… 먼저 손을 대줄 수 있어? 아직 좀 긴장돼서…」
+			LOCALS:0 = 
+			IF ARGS == "standingmissionary" || ARGS == "standingdoggy" || ARGS == "doggy"
+				LOCALS:0 = 아래로
+			ELSEIF ARGS == "cowgirl"
+				LOCALS:0 = 위로
+			ELSE
+				LOCALS:0 = 앞으로
+			ENDIF
+			PRINTFORMDW 당신은 %LOCALS:0%에 도달하여 %HIM_HER(TARGET)%의 손가락을 밀어 넣는다.
+			PRINTFORMDW %HE_SHE(TARGET,1)%는 정말로 긴장해 있다. 너를 받아들이기에는 너무 긴장한 상태다.
+			PRINTFORMDW 당신은 계속 밀어 넣으며 %HIS_HER(TARGET)%의 희미한 막에 너무 많은 압력을 가하지 않도록 주의한다. 그러다가 %HIM_HER([[パルスィ]])%가 다시 긴장하는 것을 느낄 때까지 한다.
+			PRINTFORMDW %HE_SHE(TARGET)%가 다시 이완하자, 당신은 손가락을 %HIS_HER(TARGET)% 안팎으로 넣기 시작한다.
+			PRINTFORMDW %CALLNAME:[[パルスィ]]%는 숨을 들이마시고, 당신의 손가락에서 약간의 습기를 느끼기 시작한다.
+			PRINTFORMDW 당신은 계속 나아가고, %HE_SHE(TARGET)%가 이완됨에 따라 두 번째 손가락을 추가한다.
+			PRINTFORMDW %HE_SHE(TARGET)%가 충분히 축축해지면, 당신은 %HIM_HER(TARGET)%에게 %HE_SHE(TARGET)%가 준비되었는지 묻고, %HE_SHE(TARGET)%는 고개를 끄덕인다.
+		ENDIF
+		CALL K60_PARSEE_FIRST_VAGINAL_SEX(1, ARGS)
+		PRINTFORMDL %BREAKENG(@"두 사람은 잠시 누워 그 감각을 즐긴 후 그녀에게 다시 키스하고 천천히 움직이기 시작했다.")%
+		CALL MUTUAL_KISS
+		CALL M_KOJO_COLOR_K60
+		PRINTFORML 「당신을 연모해요, %K60_MASTER()%...」
+	CASE 1
+		PRINTFORML 「나의 처녀성을 한 번도 빼지 않으면서 수백 번이나 나를 절정에 이르게 했네... 네가 그렇게 할 생각이 있었는지 궁금했어.」
+		PRINTFORMDL 파르시는 당신에게 미소 짓는다.
+		PRINTFORML 「좋아, %K60_MASTER()%, 준비됐어. 나를 범해줘.」
+		CALL K60_PARSEE_FIRST_VAGINAL_SEX(1, ARGS)
+		PRINTFORMDL %BREAKENG(@"두 사람은 잠시 그 상태로 누워 감각을 즐기다가 천천히 허리를 움직이기 시작했다.")%
+		PRINTFORMDL 파르시는 음란하게 신음하며 당신의 박자에 맞춰 골반을 흔들기 시작한다.
+	CASE 2
+		IF CFLAG:TARGET:アナル処女喪失記念日
+			PRINTFORMW 「아, 멋지군. 이번에 올바른 구멍을 찾았어. 좋은 %PRINT_MALE("boy", MASTER)%이네.」
+			PRINTFORMDW 당신은 Parsee의 말을 무시하고 그녀에게 돌진한다.
+			PRINTFORMW 「윽! 진정해, 이 바보야! 난 네 자위 도구 중 하나가 아니라고!」
+			PRINTFORMDW 당신은 계속 그녀를 무시하고 싶은 유혹을 느끼지만, 박는 속도를 늦춘다.
+			PRINTFORMDW 만약 Parsee의 심기를 건드린다면, 정액이 차서 아픈 것(blue balls)은 네 걱정 중 가장 작은 것이 될 거다.
+		ELSE
+			PRINTFORMDL 한 번뿐이지만, 파르시는 인상을 쓰고 있지 않다. 그녀는 기대하는 듯... 그리고 약간 긴장한 모습이다.
+			PRINTFORML 「뭘 기다리는 거야? 난 준비됐어. 내 순결을 가져가 봐.」
+			$PARSEE_VAGINAL_MISSIONARY_VIRGINITY_LOSS_23
+			CALL K60_PARSEE_FIRST_VAGINAL_SEX(1, ARGS)
+			PRINTFORMDL %BREAKENG(@"두 사람은 잠시 그 상태로 누워 감각을 즐기다가 천천히 허리를 움직이기 시작했다.")%
+		ENDIF
+	CASE 3
+		PRINTFORMDL 파시가 열망하는 듯해... 그리고 약간 긴장한 것 같다.
+		PRINTFORML 「준비됐어요. 해봐요. 제 처녀성을 가져가세요.」
+		GOTO PARSEE_VAGINAL_MISSIONARY_VIRGINITY_LOSS_23
+ENDSELECT
+
+@K60_PARSEE_FIRST_VAGINAL_SEX(ARG, ARGS)
+PRINTFORMDW 당신은 \@ HAS_PENIS(MASTER) ? 거시 # 스트랩온을 파세의 입구에 대고 누른다 \@.
+PRINTFORMDW 그녀는 다시 몸을 긴장시키고, 당신은 그녀의 몸이 한 번 더 이완될 때까지 잠시 멈췄다.
+PRINTFORMW 「그렇게 천천히 할 필요 없어, 알고 있잖아.」
+PRINTFORMDW 파세가 말하려고 당신에게서 떨어져 나갔다.
+IF ARG
+	PRINTFORMW 「잠깐 아플 뿐이야. 그러고 나면 난 실패자에서 조금은 벗어날 수 있겠지.」
+	PRINTFORMDW 오, 파시...
+	PRINTFORMDW 그녀는 자신이 처녀가 아닌 것에 자존감을 걸지 않기를 바라는 거야.
+	PRINTFORMDW 하지만 그녀도 일리가 있어. 서둘러야 해.
+ENDIF
+PRINTFORMDW 너는 그녀 안으로 들어가기 시작하는데, 상처를 입히지 않도록 천천히 주의한다.
+PRINTFORMDW 깊숙이 들어갈수록 파시의 호흡은 점점 거칠어진다.
+IF ARG
+	PRINTFORMDW 거의 다 들어갔을 때, 파씨는 움찔하며 당신은 잠시 멈춘다.
+	SELECTCASE K60_ATTITUDE()
+		CASE 0, 1
+			PRINTFORMW 「괜찮아! 계속해! 조금만 아플 뿐이야.」
+		CASE 2, 3
+			PRINTFORMW 「괜찮아! 아프기 마련이잖아?! 계속해!」
+	ENDSELECT
+	PRINTFORMDW 당신은 고개를 끄덕이고, 계속 파르시에 미끄러져 들어가서 당신의 \@ HAS_PENIS(MASTER) ? 거시기 # 스트랩온 \@ 이 완전히 들어갔다.
+	SELECTCASE K60_ATTITUDE()
+		CASE 0, 1
+			PRINTFORMDW 파씨는 작은 만족스러운 한숨을 내쉬며 미소 짓는다.
+			PRINTFORMW 「놀랐어요. 더 아플 거라고 생각했어요. 어쩌면 당신이 정말 대단한가 봐요.」
+		CASE 2, 3
+			PRINTFORMW 「드디어...」
+			PRINTFORMW 「더 이상 처녀인 것을 부끄러워할 필요가 없어졌어. 고마워요, %K60_MASTER()%...」
+			SIF ARGS == "missionary" || ARGS == "cowgirl"
+				PRINTFORMDW 파씨가 당신을 붙잡고 꼭 안아준다.
+			PRINTFORMDW 너에게는 별일 아닌 것 같지만... 그녀에게는 분명 큰 의미가 있으니, 너는 미소를 지으며 그녀를 안아준다.
+	ENDSELECT
+ELSE
+	PRINTFORMDW 머지않아 당신의 \@ HAS_PENIS(MASTER) ? 코크 # 스트랩온 \@이 완전히 들어갔다.
+ENDIF
+RETURN 1
+
+@K60_FULL_UNDRESSING
+;Time stop
+;時間停止時
+IF FLAG:70
+	PRINTFORMDL 시간이 정지된 동안 당신은 파르시의 옷을 벗긴다.
+	PRINTFORMDW 그녀가 완전히 나체 상태가 되면, 당신은 한 걸음 물러서 그녀를 감상한다.
+	LOCALS:0 = 
+	SELECTCASE K60_ATTITUDE()
+		CASE 0
+			LOCALS:0 = 집착하고 불안해한다
+		CASE 1
+			LOCALS:0 = 욕망스러운
+		CASE 2
+			LOCALS:0 = 새침한
+		CASE 3
+			LOCALS:0 = 수동공격적이다
+	ENDSELECT
+	PRINTFORMDW 그녀는 정말 좋은 몸을 가졌어. 만약 그녀가 그렇게 %LOCALS:0%가 아니라면 좋을 텐데...
+ELSEIF (TCVAR:無理矢理 || CFLAG:無理矢理膣射)
+	RETURN 1
+ELSEIF FIRSTTIME("ParseeGetsNaked", 1)
+	CALL K60_FIRST_UNDRESSING()
+	GOTO UNDRESSING_COMMENT
+ELSE
+	SELECTCASE K60_ATTITUDE()
+		;Loving
+		CASE 0
+			PRINTFORMDW 파씨는 옷을 다 벗고 수줍게 당신을 바라본다.
+			;Nice, horny
+		CASE 1
+			PRINTFORMDW 파씨는 서둘러 옷을 벗는다.
+			;Grumpy tsundere
+		CASE 2
+			PRINTFORMDW 파르시(Parsee)는 저항하며 옷을 벗는다.
+			;Fake nice
+		CASE 3
+			PRINTFORMDW 파르시가 옷 벗는 것을 마치고 당신에게 옅게 미소 짓는다.
+	ENDSELECT
+	$UNDRESSING_COMMENT
+	SELECTCASE K60_ATTITUDE()
+		;Loving
+		CASE 0
+			PRINTFORMW 「당신처럼 멋진 몸을 가졌으면 좋겠어. 내 건 별로 인상적이지 않아서...」
+			PRINTFORMW 「그 대신 당신을 만족시켜서 만회해야 할 것 같아.」
+			;Nice, horny
+		CASE 1
+			PRINTFORMW 「당신처럼 멋진 몸을 가졌으면 좋겠어. 내 몸은 별로 인상적이지 않아...」
+			PRINTFORMW 「하지만 다른 방식으로 만회할 계획이야.」
+			;Grumpy tsundere
+		CASE 2
+			PRINTFORMW 「나를 곁눈질하는 거 그만해 줄래? 소름 끼쳐.」
+			IF MARK:反発刻印 >= 1
+				GOTO HATEFUCK_UNDRESS
+			ENDIF
+			;Fake nice
+		CASE 3
+			PRINTFORMW 「네가 보는 게 마음에 드니?」
+			IF MARK:反発刻印 >= 1
+				$HATEFUCK_UNDRESS
+				PRINTFORML 「내가  \@ IS_MALE(TARGET) ? 별로 남자답지도 않고 # 미인도 아니고 \@, but I do have a \@ HAS_PENIS(TARGET) ? 음경 # 질 \@은 가지고 있다는 건 알아……」
+				PRINTFORMW 「그리고 그게 너한테 가장 중요한 거잖아?」
+			ENDIF
+	ENDSELECT
+ENDIF
+RETURN 1
+
+@K60_FIRST_UNDRESSING
+LOCALS:1 = 
+SELECTCASE K60_ATTITUDE()
+	CASE 0
+		LOCALS:1 = 당신을 사랑스럽게 바라본다.
+	CASE 1
+		LOCALS:1 = 음란하게 너를 비웃는다.
+	CASE 2
+		LOCALS:1 = 당신을 노려본다
+	CASE 3
+		LOCALS:1 = 당신을 보며 초조하게 미소 짓는다
+ENDSELECT
+PRINTFORMDW 그녀가 옷을 벗기 시작하자 %LOCALS:1%를 분석한다.
+IF IS_FUTA(TARGET)
+	PRINTFORMW 「시작하기 전에... 아마 알려야 할 것 같아.」
+	PRINTFORMW 「나는... 후타나리야.」
+	PRINTFORMDW 그녀는 입술을 깨문다.
+	CALL PRINT_STRW, @"「나는 아직 질이 있다. 내... 성기가 당신을 불편하게 한다면 뒤에서 할 수 있어.」"
+	PRINTFORMW 「하지만 나에게 사랑을 주고 싶지 않다면, 이제 알았으니... 떠나도 돼.」
+	PRINTFORMW 「그냥... 제발, 나를 비웃지도 말고, 미워하지도 말고, 다른 누구에게도 말하지 말아줘.」
+	PRINTFORML
+	PRINTFORMDW 파르시가 네가 떠나지 않을 것을 알자 안심하며 너에게 미소를 지었다.
+	CALL PRINT_DIALOGUE, "That's good. I know some people find futanari disgusting, and I didn't want you to hate me if you only found out once my underwear came off.", "w"
+	SELECTCASE K60_ATTITUDE()
+		CASE 0, 3
+			PRINTFORMW 「이제... 옷을 벗는 것으로 돌아갈 시간이야.」
+		CASE 1
+			PRINTFORMW 「이제... 충분히 기다리게 해줬어.」
+		CASE 2
+			PRINTFORMW 「이제 옷을 벗는 일로 돌아가야겠군...」
+	ENDSELECT
+	PRINTFORML
+	PRINTFORMDW 파르시가 스카프를 벗는다. 그리고 재킷을 벗는다.
+ELSE
+	PRINTFORMDW 먼저 그녀는 스카프를 벗는다. 그런 다음 재킷을 벗는다.
+ENDIF
+PRINTFORMDW 벗었으니 그녀의 몸에 꼭 맞는 레오타드 아래로 가슴을 더 잘 볼 수 있다.
+SELECTCASE TALENT:TARGET:バストサイズ
+	CASE 4
+		PRINTFORMDW 그들은...
+		PRINTFORMDW 파르시의 가슴을 묘사할 단어를 찾으려 애쓴다.
+		PRINTFORMDW 서 있을 때도 땅에 닿을 만큼 크면서 처짐이 없다. 그녀는 거의 여자라기보다 가슴이다!
+		PRINTFORMDW 어떻게 저 재킷 안에 그것들을 숨길 수 있었지?
+	CASE 3
+		PRINTFORMDW 그녀의 가슴은 머리 크기의 두 배 이상이다!
+		PRINTFORMDW 어떻게 저 재킷 아래에 숨길 수 있었을까?
+		;Big/Huge
+	CASE 1, 2
+		PRINTFORMDW 그녀의 가슴은 \@ TALENT:TARGET:バストサイズ == 2 ? 머리보다 훨씬 크다 # 거의 머리만 하다 \@!
+		PRINTFORMDW 어떻게 저 재킷 안에 숨겼지?
+		;Normal
+	CASE 0
+		PRINTFORMDW 그들은 보통 크기다. 너무 크지도 않고 작지도 않다. 한 줌 정도 되는 정도이다.
+		;Small
+	CASE -1
+		PRINTFORMDW 가슴이 꽤 작다. 완전히 납작한 건 아니지만, 그걸 말해주는 것도 많지 않다.
+		;Flat
+	CASE -2
+		PRINTFORMDW 음, 그녀가 평평한 판 같지 않다면 그렇게 했을 텐데.
+ENDSELECT
+PRINTFORMD 파르시가 당신이 그녀의 가슴을 바라보는 것을 본다. 
+SELECTCASE K60_ATTITUDE()
+	CASE 0, 1, 3
+		PRINTFORMDW 초조하게 미소 짓는다.
+	CASE 2
+		PRINTFORMDW 얼굴을 찡그린다.
+ENDSELECT
+CALL M_KOJO_COLOR_K60_JEALOUS
+SELECTCASE TALENT:TARGET:バストサイズ
+	CASE 3,4
+		PRINTFORMW 「네, 알아요, 너무 크잖아요.」
+		PRINTFORMW 「이런 가슴을 가진 걸 선택한 건 아니에요, 아시잖아요. 그냥 이렇게 된 거죠.」
+		PRINTFORMW 「그리고 제 월급으로는 유방 축소술을 받을 수가 없어요...」
+		;Big/Huge
+	CASE 1, 2
+		PRINTFORMW 「너무 크지 않으신가요?」
+		PRINTFORMW 「저는 항상 그렇게 생각했어요. 다리를 수리하려고 할 때 얼마나 자주 방해가 되는지 믿지 못하실 거예요...」
+		; 	;Normal
+	CASE 0
+		PRINTFORMW 「너무 작지는 않지 않아?」
+		PRINTFORMW 「확실히 %K60_NAME_WITH_HONORIFICS("Yuugi")%만큼 크진 않네...」
+		;Small
+	CASE -1
+		PRINTFORMW 「작다는 건 알고 있지만, 사이즈가 전부는 아니니까...」
+		;Flat
+	CASE -2
+		PRINTFORMW 「나는 가슴이 작다는 것을 알지만, 하지만 나는 다른 방식으로 분명 당신을 만족시킬 수 있어요!」
+		PRINTFORMDW 그녀는 별로 자신감이 없어 보인다...
+ENDSELECT
+PRINTFORML
+CALL M_KOJO_COLOR_K60
+PRINTFORMDW 다음으로, Parsee는 그녀의 %SHOW_BOTTOM(60,1)%을 벗는다. 그녀는 그것을 다리 위로 내리고 옆에 둔다.
+PRINTFORMDW 그녀의 다리는 놀라울 정도로 탄탄하다. 아니, 다시 생각해보니 그다지 놀랍지는 않다.
+PRINTFORMDW 그녀는 항상 다리를 순찰하고 있다. 물론 몸 관리를 잘 하고 있을 것이다.
+IF EQUIP:TARGET:下半身下着２
+	PRINTFORMD 그녀는 %ARTICLE_PANTIES(PANTSNAME(EQUIP:下半身下着２, TARGET))%를 입고 있다. 
+	SIF GROUPMATCH(EQUIP:TARGET:下半身下着２, 13, 14, 15, 16, 17, 18, 22, 23, 24, 25, 26)
+		PRINTFORMDW 꽤 노출이 심하네...
+	SELECTCASE CFLAG:[[パルスィ]]:K60ENC_SETTING_PUBIC_HAIR
+		CASE 1
+			PRINTFORMDW 허리띠에서 그녀의 무성한 음모가 살짝 나오는 것이 보인다.
+		CASE 2
+			PRINTFORMDW 허리띠에서 몇 가닥의 잡모가 비치는 것이 보인다.
+		CASEELSE
+			PRINTFORMDW
+	ENDSELECT
+ELSE
+	PRINTFORMDW 그녀는 속옷을 입고 있지 않다. 네가 그녀가 그렇게 대담할 줄은 몰랐겠지...
+ENDIF
+PRINTFORMDW 그녀가 양말을 신고 있다는 것을 알아채고 이유를 묻는다.
+SELECTCASE K60_ATTITUDE()
+	CASE 0, 1, 3
+		PRINTFORMDW 파르시가 불안하게 웃었다.
+		PRINTFORMW 「저... 소재가 당신 피부에 기분 좋게 느껴질 것 같아요...」
+		PRINTFORMDW 벌써 발을 빨아주려는 건가? 의외로 변태적이네.
+	CASE 2
+		PRINTFORMDW 파씨는 팔짱을 낀다.
+		PRINTFORMW 「그건 네가 상관할 바 아니야. 양말은 계속 신어둬.」
+		PRINTFORMDW 물론 그녀가 이것에 대해 까다롭게 굴 것이다.
+		PRINTFORMDW 하지만 너는 그것에 대해 논쟁할 만큼 신경 쓰지 않는다. 특히 그녀가 네 앞에서 옷을 벗고 있을 때라면 더욱 그렇다.
+ENDSELECT
+PRINTFORML
+PRINTFORMDW 치마가 사라졌으니 이제 상의도 그 뒤를 이을 시간이다. 파씨는 그것을 그녀의 머리 위로 잡아당기고 나머지 옷들과 함께 내려놓았다.
+LOCALS:0 = 
+IF EQUIP:TARGET:上半身下着１ && EQUIP:TARGET:下半身下着２
+	LOCALS:0 = %SHOW_上半身下着(TARGET)%을, 그녀의 %SHOW_上半身下着(TARGET)%을, 그리고
+ELSEIF EQUIP:TARGET:上半身下着１
+	LOCALS:0 = %SHOW_上半身下着(TARGET)%과
+ELSEIF EQUIP:TARGET:下半身下着２
+	LOCALS:0 = %SHOW_上半身下着(TARGET)%과
+ENDIF
+PRINTFORMDW 이제 그녀는 %LOCALS:0% 양말을 제외하고 나체이다.
+SELECTCASE TALENT:TARGET:バストサイズ
+	;Big/Huge
+	CASE 1, 2, 3, 4
+		IF EQUIP:TARGET:上半身下着１
+			PRINTFORMDW 무언가 파시에게 브래지어를 맞춤 제작해야 할 필요가 있다는 것을 말해준다.
+		ELSE
+			PRINTFORMDW 그녀가 브라를 안 하고 있는 걸 보고 놀라지 않는다. 저렇게 큰 브라도 만드는 건가?
+		ENDIF
+		;Flat
+	CASE -2
+		IF EQUIP:TARGET:上半身下着１
+			PRINTFORMDW 그녀는 왜 브래지어를 하고 있는 거지? 필요해 보이지도 않는데...
+		ELSE
+			PRINTFORMDW 그녀가 브래지어를 하지 않는 것을 보고 놀라지 않는다.
+		ENDIF
+	CASEELSE
+		IF !EQUIP:TARGET:上半身下着１
+			IF !EQUIP:TARGET:下半身下着２
+				PRINTFORMDW 그녀는 속옷을 전혀 입고 있지 않아?! 파르시가 그렇게 변태일 줄은 상상도 못 했어...
+			ELSE
+				PRINTFORMDW 그녀는 브래지어 같은 건 신경 쓰지 않는 것 같다.
+			ENDIF
+		ENDIF
+ENDSELECT
+PRINTFORMDW 당신은 파시의 상체를 좀 더 자세히 살펴본다.
+PRINTFORMDW 그녀의 피부는 매끄럽고 창백하다. 지하에서 사는 사람에게 기대할 수 있는 만큼 거의 빛을 발하는 것처럼 창백했다.
+PRINTFORMDW 이제 그녀가 \@ EQUIP:TARGET:上半身下着１ || EQUIP:TARGET:下半身下着２ ? 거의 알몸 # 나체 \@ 상태이므로, 당신은 그녀의 마른 체격을 볼 수 있다.
+PRINTFORMDW 하지만 그녀는 배에 약간의 군살을 가지고 있었다. 아마도 술 때문일 것이다.
+PRINTFORMDW 하지만 그녀의 골반은...
+PRINTFORMDL
+PRINTFORMDW 그들은 둥글고 못생겨 보이는 흉터들로 뒤덮여 있다. 화상 흉터다. 수십 개가 있을 것이다.
+PRINTFORMDW 그리고 그중 일부는 꽤 새로 생긴 것 같다.
+PRINTFORMDW %HIM_HER(TARGET)%에게 무슨 일이 있었던 거지?
+PRINTFORMDW 파르시는 입술을 깨물고 %HIS_HER(TARGET)% 손으로 %HIS_HER(TARGET)%의 흉터를 가린다.
+SELECTCASE K60_ATTITUDE()
+	CASE 0, 1, 3
+		PRINTFORMW 「그것들에 대해서는 말하고 싶지 않아.」
+	CASE 2
+		PRINTFORMDW %HE_SHE(TARGET,1)%은(는) 얼굴을 찌푸린다.
+		PRINTFORMW 「내 상처는 네가 알 바 아니야.」
+ENDSELECT
+IF EQUIP:TARGET:上半身下着１ || EQUIP:TARGET:下半身下着２
+	PRINTFORMD 그러더니, 일을 빨리 끝내려는 듯 %HE_SHE(TARGET)%이 
+	IF EQUIP:TARGET:上半身下着１
+		IF EQUIP:TARGET:下半身下着２
+			PRINTFORMDW 그녀의 브래지어를 만지작거리다가 벗어 옆에 던지고, 팬티를 내린 뒤 같은 더미에 던져버렸다.
+		ELSE
+			PRINTFORMDW 그녀의 브래지어를 만지작거리다가 벗어 던진다.
+		ENDIF
+	ELSE
+		PRINTFORMDW 그녀는 팬티를 벗어 옆에 던졌다.
+	ENDIF
+ENDIF
+IF CFLAG:[[パルスィ]]:K60ENC_SETTING_PUBIC_HAIR != -1 && FIRSTTIME("ParseePubicHairConfiguration")
+	PRINTFORML
+	PRINTFORMDW 파르시가 당신이 %HIS_HER(TARGET)%의 털 있는 \@ HAS_VAGINA(TARGET) ? %FSYN("vagina")% # %FSYN("crotch")% \@를 쳐다보는 것을 본다. %HIS_HER(TARGET,1)%은 얼굴을 붉힌다.
+	SELECTCASE K60_ATTITUDE()
+		CASE 0, 3
+			PRINTFORML 「거기 털 밀기는 전혀 신경 안 써.」
+			PRINTFORMW 「대중목욕탕 밖에서 벌거벗은 채로 보일 거라고는 생각 못 했어...」
+		CASE 1
+			PRINTFORML 「면 밀었어야 했을까요?」
+			PRINTFORMW 「용서해 주세요. 그렇게 하고 싶었지만, 남겨두길 바라시는지 전부 밀어버리길 원하시는지 잘 몰라서...」
+		CASE 2
+			PRINTFORML 「뭘 그렇게 쳐다봐? %PRINT_MALE("Men", TARGET)% 아래에 머리가 있잖아.」
+			PRINTFORMW 「너 같은 변태치라면 당연히 알겠지.」
+	ENDSELECT
+	CALL K60_STYLE_PUBIC_HAIR(1)
+ENDIF
+PRINTFORMD %HE_SHE(TARGET,1)% 
+SELECTCASE K60_ATTITUDE()
+	CASE 0, 3
+		PRINTFORMDW 불안하게 미소를 지으며 다리를 조금 벌린다.
+	CASE 1
+		PRINTFORMDW 미소 지으며 다리를 벌린다.
+	CASE 2
+		PRINTFORMDW 그녀는 가슴 위로 팔짱을 끼고 당신에게 얼굴을 찌푸린다.
+ENDSELECT
+PRINTFORML
+CALLF FIRSTTIME("ParseeGetsNaked")
+
+@K60_CHANGE_TRAITS_AT_FALL_STATE
+IF CFLAG:K60ENC_SETTING_TRAITS_CHANGED
+	IF TALENT:[[パルスィ]]:14
+		PRINTFORMDW 파르씨는 더 이상 [%GET_TALENTNAME_TR(14, 1)%]가 아니다.
+		TALENT:[[パルスィ]]:14 = 0
+	ENDIF
+	PRINTFORMDW 파르시는 이제 [%GET_TALENTNAME_TR(81, -1)%]이다.
+	TALENT:[[パルスィ]]:81 = -1
+	PRINTFORMDW 파시(Parsee)는 더 이상 [%GET_TALENTNAME_TR(121, 2)%]가 아니다.
+	PRINTFORMDW 파시(Parsee)는 이제 [%GET_TALENTNAME_TR(121, 1)%]이다.
+	TALENT:[[パルスィ]]:121 = 1
+ENDIF
+CLEARBIT CFLAG:13, 1
+
+@K60_CHANGE_TRAITS_AT_LOVER
+IF CFLAG:[[パルスィ]]:K60ENC_SETTING_TRAITS_CHANGED
+	IF TALENT:[[パルスィ]]:14
+		PRINTFORMDW 파르씨는 더 이상 [%GET_TALENTNAME_TR(14, 1)%]가 아니다.
+		TALENT:[[パルスィ]]:14 = 0
+	ENDIF
+	PRINTFORMDW 파르시는 이제 [%GET_TALENTNAME_TR(81, -1)%]이다.
+	TALENT:[[パルスィ]]:81 = -1
+	PRINTFORMDW 파시(Parsee)는 더 이상 [%GET_TALENTNAME_TR(121, 2)%]가 아니다.
+	PRINTFORMDW 파시(Parsee)는 이제 [%GET_TALENTNAME_TR(121, 1)%]이다.
+	TALENT:[[パルスィ]]:121 = 1
+	PRINTFORMDW 파르시가 이제 [%GET_TALENTNAME_TR(62, 1)%]이다.
+	TALENT:[[パルスィ]]:62 = 1
+ENDIF
+
+@K60_GET_ANGRY(ARG = -1)
+#DIM OriginalHateMarkValue
+DEBUGPRINTFORML 파르시는 반발의 각인 Lv{MARK:[[パルスィ]]:反発刻印}을 가지고 있으며, Hate Mark Lv{ARG}을 얻는다.
+OriginalHateMarkValue = MARK:TARGET:反発刻印
+CFLAG:[[パルスィ]]:不機嫌 = 1
+CFLAG:[[パルスィ]]:ブチギレ = 1
+BASE:[[パルスィ]]:怒り = MAXBASE:[[パルスィ]]:怒り
+TALENT:[[パルスィ]]:機嫌 = -1
+IF ARG > 0 && ARG > MARK:[[パルスィ]]:反発刻印
+	SIF ARG > 3
+		ARG = 3
+	MARK:[[パルスィ]]:反発刻印 = ARG
+	MARK:[[パルスィ]]:反発取得履歴 = MAX(MARK:[[パルスィ]]:反発取得履歴,ARG)
+	TFLAG:反発刻印取得 = MARK:[[パルスィ]]:反発刻印 ;need this to make the kojo lines appear for heartfelt apology, etc
+	IF OriginalHateMarkValue != MARK:[[パルスィ]]:反発刻印
+		SETCOLOR 247,171,166
+		PRINTFORMDW 파르시가 증오 각인 레벨Lv{MARK:[[パルスィ]]:反発刻印}을 얻었다.
+		RESETCOLOR
+	ENDIF
+	TFLAG:反発刻印取得 = 0
+ENDIF
+
+@K60_PARSEE_GOT_HER_HEART_BROKEN
+PRINTFORML
+PRINTFORMDW 파시의 눈에서 무언가가 사라졌다...
+IF CFLAG:[[パルスィ]]:K60ENC_SETTING_TRAITS_CHANGED
+	IF TALENT:[[パルスィ]]:81 != 3
+		PRINTFORMDW 파르시는 이제 [%GET_TALENTNAME_TR(81, 3)%]이다.
+		TALENT:[[パルスィ]]:81 = 3
+	ENDIF
+	IF TALENT:[[パルスィ]]:121 != 3
+		PRINTFORMDW 파르시가 이제 [%GET_TALENTNAME_TR(121, 3)%]이다.
+		TALENT:[[パルスィ]]:121 = 3
+	ENDIF
+	IF TALENT:[[パルスィ]]:62 == 1
+		PRINTFORMDW 파르시의 재능은 더 이상 [%GET_TALENTNAME_TR(62, 1)%]이 아니다.
+		TALENT:[[パルスィ]]:62 = 0
+	ENDIF
+	IF TALENT:[[パルスィ]]:72 == 1
+		PRINTFORMDW 파르시가 더 이상 %GET_TALENTNAME_TR(72, 1)%이 아니다.
+		TALENT:[[パルスィ]]:72 = 0
+	ENDIF
+	IF !TALENT:TARGET:恋人
+		PRINTFORMDW 파르시는 다시 당신에게 고백하려고 시도하지 않을 것이다.
+		SETBIT CFLAG:13, 1
+	ENDIF
+ENDIF
+;==================================================
+;Determines if Parsee's more insecure lines display or not
+;Made this a function in case I decide to change the Trust threshold, so I won't have to change it in multiple places
+;==================================================
+
+@K60_PARSEE_INSECURE()
+#FUNCTION
+RETURNF CFLAG:[[パルスィ]]:信頼度 < 2000
+
+@K60_BECOME_TSUNDERE
+IF CFLAG:K60ENC_SETTING_TRAITS_CHANGED
+	PRINTFORMDW 파씨는 [%GET_TALENTNAME_TR(14, 1)%]이 되었다.
+	TALENT:[[パルスィ]]:14 = 1
+ENDIF
+SIF K60ENC_SETTING_DOMINANCE == 1
+	CFLAG:[[パルスィ]]:性格傾向 = 4
+
+@K60_YAMAME_BACKSTORY()
+PRINTFORMW 「%K60_NAME_WITH_HONORIFICS("Yamame")%은 내가 지하세계에서 만든 첫 번째 친구였다.」
+PRINTFORMW 「나는 아무도 건너지 않는 다리를 지키며 휴식을 취하고 강둑을 따라 걷고 있었다...」
+PRINTFORMW 「거대한 거미줄에 걸려 넘어졌을 때. 빠져나올 수 없었고, 기다리는 것 외에는 할 일이 없었다.」
+PRINTFORMW 「나는 평소 하던 대로 시간을 보냈다.」
+PRINTFORMW 「처음에는 그 거미줄을 만든 사람이 얼마나 질투가 나는지 생각했다. 우아하게 만들어졌지만 먹이를 붙잡기엔 충분히 강했다.」
+PRINTFORMW 「그리고 지금 지하 세계를 돌아다니며 거미줄에 걸리지 않은 모든 사람들이 얼마나 질투가 나는지 생각했다.」
+PRINTFORMW 「그 후, 자신의 일에 충실한 모든 사람들이 얼마나 질투가 나는지 생각했다.」
+PRINTFORMW 「자신의 실수로 다른 사람을 다치게 하지 않는 사람들 말이다.」
+PRINTFORMW 「나는 이 상황 자체를 피할 만큼 충분히 똑똑했을 그 지옥 같은 사토리에게 질투하고 있었다...」
+PRINTFORMW 「그때 %K60_NAME_WITH_HONORIFICS("Yamame")%이 나를 발견했다.」
+PRINTFORML
+PRINTFORMW 「%HE_SHE(84,1)%는 연신 사과하며 나를 놓아주고, 내가 강해 보인다고 말하며 단막우 배틀을 요청했다.」
+PRINTFORMW 「나는 %HIM_HER(84)%에게 %HE_SHE(84)%가 틀렸고, 나는 누구에게도 도전할 만큼 너무 약하다고 말했다.」
+PRINTFORMW 「그리고 나는 나의 다리로 돌아갔다.」
+PRINTFORMW 「다음 날, 내가 직장에 도착했을 때... 그곳에 %HE_SHE(84)%가 나를 기다리고 있었다.」
+PRINTFORMW 「보아하니 %HE_SHE(84)%는 주변을 알아보고 내가 누구인지 그리고 어디에 있는지 찾아낸 것 같다.」
+PRINTFORMW 「나는 %HIM_HER(84)%에게 가버리고 싸울 만한 누군가를 찾으라고 말했다...」
+PRINTFORMW 「하지만 그때 %HE_SHE(84)%는 여기서 나를 붙잡고 함께 있겠다고 했다!」
+PRINTFORMW 「"너 혼자 그 다리에서 외로웠을 것이다."」
+PRINTFORMW 「내가 아무리 노력해도, 나는 %HIM_HER(84)%가 눈치채고 대신 이야기할 만한 누군가를 찾도록 만들 수 없었다.」
+PRINTFORMDW 파르시의 목소리가 약간 부드러워진다.
+PRINTFORMW 「있잖아... 너는 그때의 %HIM_HER(84)%를 조금 닮았어.」
+PRINTFORML
+PRINTFORMW 「어쨌든, 그녀는 내 주변에 어슬렁거리는 습관을 들였고, 어느 순간 나를 친구로 생각하기 시작한 것 같아.」
+PRINTFORMW 「솔직히 이해가 안 돼. %HE_SHE(TARGET,1)%은 너무 명랑하고 외향적이야... 내가 아닌 모든 것이지. 모두가 %HIM_HER(84)%을 좋아해.」
+PRINTFORMW 「%HE_SHE(84,1)%는 심지어 %HIS_HER(84)%의 건물을 짓는 재능 덕분에 지상에도 친구들이 있어.」
+PRINTFORMDW %HE_SHE(TARGET,1)%은 미간을 찌푸린다.
+PRINTFORMW 「그거 생각나네... 이 불안정한 다리 구간을 고치는 걸 %HIM_HER(84)%에게 부탁해야겠어.」
+PRINTFORML
+PRINTFORMW 「하지만 내 요점은 %HE_SHE(84)%는 함께 어울릴 다른 사람들이 많은 멋진 사람이란 거야.」
+PRINTFORMW 「그런데도 %HE_SHE(84)%는 모두가 마땅히 미워하는 쓰레기 같은, 조종적인 하시히메에게 시간을 할애하기로 선택해.」
+PRINTFORMW 「이상하지. 하지만 솔직히 말하자면...」
+PRINTFORMDW 파르시가 목소리를 낮춘다.
+PRINTFORMW 「나는 그녀의 존재를 즐기고, 그녀가 나를 참아주는 친절함에 감사해.」
+PRINTFORMW 「하지만 내가 그렇게 말했다는 건 그녀에게 말하지 마. 아마 또 나 때문에 걱정하기 시작할 거야.」
+CALLF FIRSTTIME("ParseeYamameConvo")
+
+@K60_YAMAME_BARFIGHT()
+PRINTFORMDW 파씨가 웃었다.
+PRINTFORMW 「야마메는 괜찮은 여자지만, 커피를 마시면... 무서울 정도로 변할 수 있어.」
+PRINTFORMW 「한 번 그녀와 내가 술을 마시러 나간 적이 있었는데, 메뉴에 새로운 외부 세계 음료가 있었지. "에스프레소 마티니"라는 거 말이야.」
+PRINTFORMW 「야마메는 그것을 한번 마셔보기로 했고... 전부 다 마시고 나서야 그 안에 커피가 들어있다는 걸 깨달았어.」
+PRINTFORMW 「그녀는 전에 나에게 커피가 들어간 건 절대로 주지 말라고 했었어. 왜냐하면 그게 그녀를 공격적으로 만들거든.」
+PRINTFORMW 「그리고 우리는 옛 수도의 바에 있었기 때문에, 거기에 있던 다른 사람들은 대부분 오니들이었지.」
+PRINTFORMW 「나는 그녀가 바에서 이상한 짓을 하기 전에 나가라고 설득하려고 했지만, 그녀는 내 말을 들으려 하지 않았어.」
+PRINTFORMW 「그녀는 그냥 바 건너편에 있는 어떤 남자가 자신을 이상하게 쳐다본다고 으르렁거렸고, 더는 참지 않겠다고 말했지.」
+PRINTFORMW 「그래서 그녀가 그에게 달려가 소리를 지르기 시작했고, 그도 맞서 소리를 질렀어. 그러다 금세 상황이 격해져 그 남자가 그녀를 때리게 됐지.」
+PRINTFORMDW 파씨가 움츠러들었다.
+PRINTFORMW 「그녀는 방 건너편으로 날아가 벽에 충돌했는데, 흔적을 남길 정도로 세게 부딪혔어.」
+PRINTFORMW 「나는 경악했지. 그녀가 의식을 잃었거나, 아니면 더 나쁜 상황이라고 생각했거든...」
+PRINTFORMW 「하지만 내가 달려가 그녀를 들고 나가기도 전에, 그녀는 다시 일어서서 그 오니에게 돌진해 그를 붙잡고 테이블을 뚫고 내던졌어!」
+PRINTFORMW 「내 턱이 빠질 지경이었지. 그 오니는 그녀보다 훨씬 컸는데, 그녀가 아무렇지도 않게 들어 올렸다고!」
+PRINTFORMW 「그러자 바텐더가 카운터를 뛰어넘어 그녀를 붙잡고 길거리로 던져버렸어.」
+CALL PRINT_STRL, @"「그때 내가 달려가 그녀를 에이텐에 데려갔지.」"
+PRINTFORMW 「그녀는 그곳에 일주일 동안 있었어. 어떻게든, 그녀는 저 벽에 던져졌음에도 뼈 하나 부러뜨린 곳은 없었지... 하지만 그 오니를 들어 올리면서 근육을 찢었어.」
+PRINTFORMW 「그리고 그날 이후로, 나는 내가 정확히 무엇이 들었는지 모르는 것을 그녀가 주문하도록 절대 두지 않았어.」
+CALLF FIRSTTIME("ParseeYamameBarfight")
+
+@K60_KISUME_CONVO()
+PRINTFORML 「나는 수십 년 동안 %K60_NAME_WITH_HONORIFICS("Kisume")%을 알고 있었지만, %HIM_HER(83)%가 %HIS_HER(83)%의 대야를 떠나는 것을 단 한 번도 본 적이 없다.」
+PRINTFORMW 「먹지도 않고, 자지도 않는다. 심지어 목욕조차 하지 않았다!」
+PRINTFORML 「어느 날 %HE_SHE(83)%, %K60_NAME_WITH_HONORIFICS("Yamame")%와 나는 함께 공중목욕탕에 갔었다...」
+PRINTFORMW 「그런데 %K60_NAME_WITH_HONORIFICS("Kisume")%이 그냥 물을 %HIS_HER(83)%의 대야에 떠서 %HIM_HER(83)% 자신을 그렇게 씻긴 것이다!」
+PRINTFORMW 「물론 %HE_SHE(83)%,가 나가서 %K60_NAME_WITH_HONORIFICS("Yamame")%나 다른 것을 씻고 내가 놓쳤을 가능성도 있다.」
+PRINTFORMDW 파르시는 약간 당황한 표정을 짓는다.
+PRINTFORMW 「나는 다른 손님들을 노려보며 내 몸이 그들처럼 멋지기를 바쁘게 생각하고 있었다...」
+CALLF FIRSTTIME("ParseeKisumeConvo")
+
+@K60_SATORI_PARTIAL_BACKSTORY()
+PRINTFORMW 「저 사토리를 피해 경로를 짜야 한다는 게 정말 싫다.」
+PRINTFORMW 「마음 읽는 건 너무 성가셔.」
+PRINTFORMW 「그녀를 만났을 때부터 모든 것이 시작됐어. 내가 되기 직후에...」
+PRINTFORMDW Parsee 자신을 자해하며 %HIS_HER(TARGET)%의 입술을 깨문다.
+PRINTFORMW 「하지만 그 얘기는 하고 싶지 않아.」
+PRINTFORML
+PRINTFORMW 「아무튼, 그때 이후로, 내가 그녀를 볼 때마다- 다행히 자주 있는 일은 아니지만- 그녀는 내가 괜찮은지 물어본다.」
+PRINTFORMW 「한 번은 %K60_NAME_WITH_HONORIFICS("Yuugi")%이 공포심을 조장하는 말 같은 걸 하는 것을 들었다.」
+CALL CHARA_TEXT([[さとり]], @"「\"나는 파르시에 대해 걱정돼\@ IS_MALE([[パルスィ]]) ? -군 # -짱 \@그녀는 항상 너무 슬퍼, 마치 코이시가 그랬던 것처럼...\"」", "w")
+CALL CHARA_TEXT([[さとり]], @"「\"너는 %HIS_HER(TARGET)% 최고의 친구야... 확실히 해줄 수 있어 %HE_SHE(TARGET)% 멍청한 짓 안 하도록 해줄 수 있어?\"」", "w")
+PRINTFORMDW %HIS_HER(TARGET, 1)%의 미간이 깊어진다.
+PRINTFORML
+PRINTFORMW 「그 참 오지랖 넓은 것... 왜 못 알아채는 거야 %HE_SHE(49)% 내가 큰 존재라는 걸 깨닫지 못하는 %PRINT_MALE("boy", TARGET)% 그리고 스스로를 돌볼 수 있는지?」
+PRINTFORMW 「게다가, 나는 그들이 지하 세계에서 지옥을 옮기기 전부터 이곳에 살아왔다.」
+PRINTFORMW 「내가 그동안 아무것도 안 했다면 "멍청한 짓" 그동안 내가 바보 같은 짓을 안 했다면 왜 그녀는 내가 갑자기 폭발할 거라고 가정하는 거지?」
+PRINTFORMW 「적어도 아무도 좋아하지 않으니까 %HIM_HER(49)% 도 역시」
+PRINTFORMW 「%HIS_HER(49)%의 저 건들거리는 \@ IS_MALE(39) ? 형 # 언니 \@과는 다르지만... 그건 나중에 할 이야기다.」
+CALLF FIRSTTIME("ParseeSatoriPartialBackstory")
+
+@K60_OKUU_CONVO()
+IF FIRSTTIME("ParseeOkuuBackstory")
+	PRINTFORMW 「%HIM_HER(37)%을/를 아직 만났어?」
+	IF CFLAG:37:面識
+		PRINTFORMDW 고개를 끄덕인다.
+		PRINTFORMW 「좋아. 그녀는... 흥미로운 사람이지 않나?」
+	ELSE
+		PRINTFORMDW 고개를 젓는다.
+		PRINTFORMW 「치정이다.」
+		PRINTFORMW 「너는 핵발전소를 운영하는 %PRINT_MALE("man", 37)%을 만나봐야 할 것이다.」
+		PRINTFORMW 「결국 %HE_SHE(37)%이 임무에서 실수를 한다면, 우리 모두 핵 지옥불 속에서 타 죽게 될 테니까.」
+		PRINTFORMW 「네가 확인해 봐야 할 종류의 사람이 바로 그런 사람 아닌가?」
+	ENDIF
+	PRINTFORML
+ENDIF
+PRINTFORMW 「나는 어느 날, %K60_NAME_WITH_HONORIFICS("Yamame")%이 내가 다리 수리를 돕고 있을 때 %HE_SHE(37)%가 왔던 것을 기억한다.」
+PRINTFORMW 「"안녕, 파르세 씨! 안녕, 야마메 씨! 다리 고치는 거 좀 도와줄까?"」
+PRINTFORMW 「그리고 그녀는 %HIS_HER(37)% 팔포를 꺼내 충전을 시작했다.」
+PRINTFORMW 「"썩은 것들을 전부 날려버리고 새 것처럼 만들어 줄게!"」
+PRINTFORMW 「나는 그저 얼어붙었다. 무슨 말을 해야 할지 전혀 몰랐다. 뭘 해야 할지도 전혀 몰랐다.」
+PRINTFORMW 「내가 할 수 있는 건 그 바보가 내 다리를 부수려 준비하는 것을 앉아서 응시하는 것뿐이었다.」
+PRINTFORMW 「다행히 %K60_NAME_WITH_HONORIFICS("Yamame")%이 그녀를 "돕는" 것으로부터 말로 설득할 수 있었다.」
+PRINTFORMW 「적어도 오쿠우는 나중에 부끄러워할 정도의 태도를 보였다.」
+PRINTFORMW 「"어머... 당신들 다리까지 날려버릴 줄 몰랐어요! 정말 죄송해요, 여러분!"」
+PRINTFORMW 「결국 %HE_SHE(37)%도 도왔다. %HE_SHE(37)%는 %K60_NAME_WITH_HONORIFICS("Yamame")%이 못을 박는 동안 판자를 제자리에 고정하는 것을 도왔다.」
+PRINTFORMW 「하지만 우리가 다리를 수리하는 내내, 나는 걱정을 하고 있었다.」
+PRINTFORMW 「저렇게 멍청한 사람이 핵반응로를 운영하고 있는 건가?! 만약 그녀가 반짝이는 것에 정신 팔려서 반응로가 녹아버리면 어떡하지?」
+PRINTFORML
+PRINTFORMW 「다음 날, 나는 사토리를 찾아가 불만을 토로했다.」
+PRINTFORMW 「가능한 한 그녀를 피하려고 노력했지만, 이번 일은 심각했다.」
+PRINTFORMW 「물론 그녀는 내 마음을 읽었고, 내가 입을 열기도 전에:」
+PRINTFORMW 「"우츠호쨩이 그다지 똑똑하지 않다는 건 알지만, 핵물리학에 대해 알아야 할 모든 것은 알고 있어."」
+PRINTFORMW 「그녀는 자리를 떠서 엄청나게 두꺼운 책을 들고 돌아왔다.」
+PRINTFORMW 「"이건 외부 세계의 핵물리학 교과서야. 이 안의 질문들 중 몇 가지를 물어봐. 실망하지 않을 거라 장담해."」
+PRINTFORML
+PRINTFORMW 「나는 책을 들고 오쿠우를 찾으러 갔다. 그녀를 찾는 데 오래 걸리지 않았다.」
+PRINTFORMDW 파시가 고개를 저으며 미소 짓는다.
+PRINTFORMW 「원자력 물리학에 대해 이야기할 때는 마치 완전히 다른 사람이 된 것 같아.」
+PRINTFORMW 「나는 계속 질문을 던졌는데, 내가 무슨 말을 하는지도 반쯤 이해하지 못하고 있었어...」
+PRINTFORMW 「그리고 그녀는 중성미자와 양전자, 감마선 붕괴, 쿼크-글루온 플라즈마에 대해 답을 계속 늘어놓았지.」
+PRINTFORMW 「내가 아는 바로는 그녀가 전부 지어낸 것일 수도 있지만... 솔직히 말해서, 나는 그녀가 똑똑하다고 생각하지 않아.」
+PRINTFORML
+PRINTFORMDL 파르시가 한숨을 쉬었다.
+CALL M_KOJO_COLOR_K60_JEALOUS
+PRINTFORMW 「그녀를 부러워해, 있잖아.」
+PRINTFORMW 「음, 물론 부러워하지. 나는 모두를 부러워해. 나는 하시히메니까.」
+PRINTFORMW 「하지만... 그녀처럼 낙관적이고 친절했으면 좋겠어.」
+PRINTFORMW 「그녀를 볼 때마다 항상 웃고 들떠서 나랑 같이 놀자고 해...」
+PRINTFORMW 「그리고 내가 우울할 때, 그게 대부분이지만, 그녀는 항상 내 불평을 들어줘.」
+PRINTFORMW 「내가 하는 말을 절반 정도 이해하는 건지 잘 모르겠지만, 노력해 주거든.」
+PRINTFORMW 「그러고 나면 항상 안아주곤 해. 정말 따뜻하고 부드럽고, 가끔은 너무 세게...」
+PRINTFORMW 「하지만 안겨있는 것도 기분 좋잖아.\@ THINKS_IS_VIRGIN([[パルスィ]]) ? 그건 내가 가질 수 있는 친밀감에 가장 가까운 거야. # 나도 되돌려 안아줄 사람이 있었으면 좋겠어... \@」
+
+@K60_JOON_CONVO()
+PRINTFORML 「내가 그 사토리의 존재 앞에 5초 이상 서 있을 수 있다면...」
+PRINTFORMW 「나는 그녀에게 그 지옥 같은 역병 여신을 저승에서 추방해 달라고 애원할 것이다.」
+PRINTFORML 「어쨌든 그녀가 권한이 있다고 가정한다면 말이다. 이 곳을 누가 운영하는지 잘 모르겠군.」
+PRINTFORMW 「하지만 누구든, 그들은 나에게 빚을 지고 있어...」
+PRINTFORMDW Parsee는 혼잣말을 중얼거리며 손가락으로 숫자를 센다.
+PRINTFORMW 「엄청난 후불 급여를 말이지.」
+PRINTFORMW 「하지만 주제에서 벗어났다. 저 여자는 무슨 문제야?!」
+PRINTFORML
+PRINTFORMW 「내가 주변에서 가장 기분 좋은 사람이 아니라는 걸 알아, 하지만 그녀는 나를 성인처럼 보이게 해!」
+PRINTFORML 「그녀가 나를 보는 순간, 그녀는 "야! 더 가까이 오지 마."라고 말한다.」
+PRINTFORMW 「"너 같은 사람과는 인사한 기억이 없다!"」
+PRINTFORML 「매번 시계추처럼 그렇다. 그리고 드물게 그 후에 그녀와 대화하려고 노력할 때도...」
+PRINTFORMW 「그녀는 항상 나에게 어떤 사소하고 쓸데없는 것에 돈을 쓰도록 만들려고 한다.」
+PRINTFORML
+PRINTFORMDW 파씨가 코웃음친다.
+PRINTFORML 「내가 얼마나 바보라고 생각하는 거야? 그녀가 역병의 여신이라는 걸 몰랐다고 해도...」
+PRINTFORMW 「나는 돈을 쓸 훨씬 더 중요한 것들이 있어. 술 같은 거랑...」
+PRINTFORMW 「Hm...」
+PRINTFORMDW 그녀는 잠시 생각한다.
+PRINTFORMW 「아니, 그냥 술이야. 그래도 말이지!」
+CALLF FIRSTTIME("ParseeJoonConvo")
+
+@K60_SEIJA_CONVO()
+PRINTFORMW 「아마노자쿠에게 조금이라도 공감하지 않을 수 없다.」
+PRINTFORML 「오해하지 마라, 나는 그녀가 정말 싫다.」
+PRINTFORMW 「그녀의 이상은 희망 없는 순진함이다, 만약 그녀가 그것들을 믿고 있다고 가정한다면 그리고 단순히 최대한 많은 혼란을 야기하려는 것이 아니라...」
+PRINTFORMW 「그녀의 성격은 역겹다...」
+PRINTFORMW 「그리고 그녀의 드레스는 내가 불행하게 본 것 중 가장 취향이 없는 물건이다.」
+PRINTFORMW 「하지만 그 모든 것에도 불구하고... 나는 그녀에게 공감한다.」
+PRINTFORMW 「우리 둘 다 대화하는 사람들에게 끊임없이 고통을 퍼뜨리고, 우리 둘 다 우리의 본성 때문에 그렇게 움직인다.」
+PRINTFORMW 「나는 먹고 살기 위해 그렇게 하고, 그녀는 타인을 불행하게 만들지 않으면 행복할 수 없다는 이유로 그렇게 한다.」
+PRINTFORMW 「궁금하다... 그녀도 그저 평범해지고 싶어 하는 걸까? 다른 사람들처럼 평범하고 건강한 방식으로 타인과 교류하고 싶어 할까?」
+PRINTFORMW 「물어보고 싶지만, 아마 그녀는 나의 동정심에 증오로만 반응할 것이다.」
+RESETCOLOR
+CALLF FIRSTTIME("ParseeSeijaConvo")
+
+@K60_YUUGI_BACKSTORY()
+PRINTFORMW 「나는 아직도 처음 %K60_NAME_WITH_HONORIFICS("Yuugi")%을 만났던 날이 생생하다.」
+CALL PRINT_DIALOGUE, "Back when I moved down here, I used to spend night after night staring at the lights of the city from across my bridge, clenching my fist until my nails drew blood.", "W"
+PRINTFORMW 「물론 거기 내려가서 그들과 합류할 수도 있었지. 오니들은 친절한 무리니까.」
+PRINTFORMW 「하지만...」
+PRINTFORMDW 파르시가 한숨을 쉰다.
+PRINTFORMW 「나는 두려웠어. 내 인생의 대부분을 직장 외에는 누구와도 거의 말하지 않고 보냈으니까.」
+PRINTFORMW 「그리고 네가 이제 깨달았겠지만, 나는 생각하기 전에 말을 하는 데 문제가 있어.」
+PRINTFORMW 「내가 의도치 않게 실수를 해서 누군가를 불쾌하게 하고, 그들이 모두 나를 비웃을 거라는 걸 알고 있었어.」
+PRINTFORMW 「그것이 가장 고통스러웠다. 내가 그렇게 겁쟁이가 아니라 그들과 어울릴 수 있었다는 것을 알면서도 내 질투 속에서 괴로워해야 했다는 사실을 말이야.」
+PRINTFORML
+PRINTFORMW 「어느 날 밤, 나의 사색은 누군가 내 다리를 넘어오는 소리에 방해받았다.」
+CALL PRINT_STRW, @"「알코올 냄새가 나는 사람.」"
+PRINTFORMW 「누군지 보러 나섰고, 혹시 강에 빠지는 일 같은 건 없는지 확인하려고...」
+PRINTFORMW 「그리고 그녀가 그곳에 있었다. 호시구마 유우기。」
+IF CFLAG:[[パルスィ]]:K60ENC_SETTING_YUUPARU_CRUSH == 1
+	PRINTFORMDW 파르시가 얼굴을 붉힌다.
+	PRINTFORMW 「그녀는 내 숨을 멎게 했어. 그녀는 너무나 아름답고, 그리고 너무나 강했거든...」
+	PRINTFORMW 「비록 그때 그녀는 강물에 토하고 있었지만.」
+ELSE
+	PRINTFORMW 「강물에 토했다.」
+ENDIF
+PRINTFORMW 「그녀는 끝내고 소매로 입가를 닦더니 나를 보고 사과하기 시작했다.」
+PRINTFORMDW 그녀는 당신에게서 시선을 돌린다.
+PRINTFORML
+PRINTFORMW 「그 후 일어난 일은 별로 기억나지 않는다. 내가 그녀를 옛 수도로 돌려보내는 것을 도왔던 것 같다...」
+PRINTFORMW 「하지만 내 머릿속에서 울부짖는 나의 질투심 가득한 생각만이 기억난다.」
+PRINTFORMW 「그녀가 나에게 얼굴을 때린 듯, 그녀를 너무 질투했다.」
+PRINTFORMW 「나는 그녀처럼 강하지도, 아름답지도, 친절하지도 못하다는 사실에 스스로가 싫었다...」
+PRINTFORMDW 파르씨는 씁쓸하게 웃는다.
+PRINTFORMW 「그날 밤 나는 잠이 올 때까지 울었다. 처음도 아니고 마지막도 아닐 것이다.」
+PRINTFORMW 「다음 날, 내가 다리 한 부분을 다시 칠하고 있을 때 그녀가 내 어깨를 두드렸다.」
+PRINTFORMW 「"야, 파르씨 씨! 그거 좀 도와줄까?"」
+PRINTFORMW 「그녀는 내 일을 도와주었을 뿐만 아니라, 전날의 당황스러운 행동에 대한 사과로 술 한 병을 건네주었다.」
+PRINTFORML
+IF TALENT:64:恋人 && VAR_OR_DEFAULT("MORELOVER")
+	PRINTFORMDW 그녀가 한숨을 쉰다.
+	PRINTFORMW 「그녀가 미소 지으며 이렇게 말하던 모습이 기억난다. "어... 너무 어두워서 네 얼굴을 제대로 보지 못했거든.」
+	PRINTFORMW 「너처럼 귀여운 애가 다리 지킴이일 줄은 몰랐어!"」
+	SIF CFLAG:[[パルスィ]]:K60ENC_SETTING_YUUPARU_CRUSH == 1
+		PRINTFORMW 「나중에야 깨달았지만... 돌이켜보면 그게 그녀를 사랑하게 된 순간이었던 것 같다.」
+	PRINTFORMDW 파르시가 얼굴을 더욱 붉히며 당신의 손을 잡았다.
+	IF CFLAG:[[パルスィ]]:K60ENC_SETTING_YUUPARU_CRUSH == 1
+		PRINTFORMW 「우리가 함께하게 될 줄은 상상도 못 했어... 혹은 우리 둘 다 당신과 함께 있게 될 줄은.」
+		PRINTFORMDW 그녀가 당신을 향해 미소 짓는다.
+		PRINTFORMW 「내가 처음으로 두 사람의 손을 한꺼번에 잡았던 날 기억해?」
+		PRINTFORMW 「아... 그때 나는 정말 행복해서 죽을 것 같았어.」
+		PRINTFORMW 「나를 더 행복하게 만들 수 있는 유일한 것은 우리 셋이 결혼하는 것이었어-」
+		PRINTFORMW 「아니, 욕심내면 안 되지.」
+	ELSE
+		PRINTFORMW 「내가 너랑 나랑 사귄다고 말했을 때의 그 웃음이 아직도 기억나.」
+		PRINTFORMW 「인정해야겠어, 가끔 다른 사람들과 너를 나눠 가져야 한다는 것에 질투가 난단 말이야...」
+		PRINTFORMW 「하지만 %HIS_HER(TARGET)% 눈 속의 빛을 생각하면 그런 감정이 사라져 버려.」
+		PRINTFORMW 「너는 나를 정말 행복하게 해줬어. %HIM_HER(TARGET)%도 정말 행복하게 만들어줬지. 그 행복을 나 혼자 가지려고 하는 건 이기적인 일일 거야.」
+		PRINTFORMDW 파르시가 너의 손을 잡는다.
+		PRINTFORMW 「그거 생각나서 말인데... 내일 %HE_SHE(TARGET)%는 아무것도 안 하는 것 같아. 우리 다 같이 나가서 술 한잔할까?」
+	ENDIF
+ELSE
+	PRINTFORMW 「그리고 그때부터 그녀는 계속 나를 찾아와 이야기했다.」
+	PRINTFORMW 「이상해... 내가 사귀었던 모든 친구들은 내게 다가오고 내가 밀어낼 수 없는 사람들이었지.」
+	PRINTFORMDW 파르시가 당신의 손을 잡는다.
+	PRINTFORMW 「당신도 포함해서...」
+ENDIF
+CALLF FIRSTTIME("ParseeYuugiBackstory")
+
+@K60_ALTERNATE_WORLDS_CONVO
+PRINTFORML 「"사람이 상상할 수 있는 만큼의 겐소쿄가 있다"는 말을 들어본 적 있니?」
+PRINTFORMW 「흥미로운 생각이지, 그렇지 않아?」
+PRINTFORMDW 파씨는 팔을 넓게 벌렸다가 다시 옆으로 내렸다.
+PRINTFORML 「그 말이 사실이라면, 나는 방금 천만 개의 다른 겐소쿄를 스쳐 지나갔지만, 그들 중 누구도 알지 못할 거야.」
+PRINTFORMW 「그것들은 어떤 모습일까?」
+PRINTFORML
+PRINTFORMDW 파르시가 입술을 깨문다.
+PRINTFORML 「너와 내가 만나지 않은 세상들이 분명 많을 거야...」
+PRINTFORMW 「그리고 내가 하시히메가 되지 않은 다른 세상들도 있지.」
+PRINTFORML 「스칼렛 미스트 사건이나 리버설 사건, 혹은 다른 어떤 사건도 끝나지 않은 세상들 말이야...」
+PRINTFORMW 「그리고 아주 사소한 것 하나만 다르고 모든 것이 똑같은, 더 평범한 세상들도 있겠지.」
+SIF FLAG:周回数
+	PRINTFORMDW 당신은 스스로를 알아차리기 직전 거의 고개를 끄덕인다.
+CALL PRINT_DIALOGUE, "For instance, there might be one where the only difference from this world is that the black-white witch did battle with me back when Okuu went mad instead of the shrine maiden.", "w"
+PRINTFORMW 「그리고 이 세계들 중 일부는 완전히 터무니없을 수도 있다.」
+PRINTFORML
+PRINTFORMW 「모든 것이젠코의 남성인 곳, 모두가 치명적인 무장을 하고 돌아다니는 곳...」
+PRINTFORMW 「단막 배틀 대신 마작 게임으로 분쟁을 해결하는 곳...」
+PRINTFORMW 「우리 모두 일본어 대신 영어 혹은 중국어나 한국어를 사용하는 곳...」
+CALL PRINT_DIALOGUE, @"바깥세상이 우리가 지어낸 환상의 땅일 수도 있고, 우리는 그곳을 여행하고 그곳의 인간들과 사랑에 빠지는 이야기를 쓸지도 모른다.", "w"
+PRINTFORMDW 파시가 웃는다.
+PRINTFORMW 「아니면 어쩌지. 여기가 상식이 없는 땅이라는 건 알지만, 그것조차도 너무 터무니없는 것들이 있어.」
+PRINTFORML
+PRINTFORML 「하나 가보고 싶지만, 내 운으로는 분명 잘 끝나지 않을 거라 확신해.」
+PRINTFORMW 「아마 독가스 나는 곳에 가서 살아남지 못할지도 몰라.」
+;something something motherfucking JoJo reference
+PRINTFORML 「아니면 내 다른 자아를 마주하게 되고, 뭔가 끔찍한 일이 일어날 거야.」
+PRINTFORMW 「우리는 서로를 죽이려 하거나, 혹은 서로 부딪혀서 둘 다 소멸할지도 몰라.」
+PRINTFORMDW 파씨는 아련하게 한숨을 내쉰다.
+PRINTFORMW 「가능성이 낮다는 건 알아... 하지만 네가 다른 세계에 가본다면, 그곳이 어떤지 알고 싶어.」
+IF GROUPMATCH(K60_ATTITUDE(), 0, 1)
+	PRINTFORMDW 그녀는 미소 짓는다.
+	PRINTFORMW 「모든 그곳에서 당신이 똑같이 멋질 거라고 확신해요.」
+ENDIF
+CALLF FIRSTTIME("ParseeAlternateWorldsConvo")
+
+@K60_THOUGHTS_ON_HUMANS()
+IF IS_NONHUMAN(MASTER)
+	LOCALS:1 = 그들은
+	LOCALS:2 = 그들의 목 중 하나
+	LOCALS:3 = 그들
+	LOCALS:4 = 그들
+	LOCALS:5 = 그들을
+	LOCALS:6 = 그들의
+ELSE
+	LOCALS:1 = 당신은
+	LOCALS:2 = 네 목
+	LOCALS:3 = 당신
+	LOCALS:4 = 당신
+	LOCALS:5 = 당신
+	LOCALS:6 = 너의
+ENDIF
+PRINTFORML 「나는 인간을 이해할 수 없다. 앞으로도 그럴지 확신이 서지 않는다.」
+IF GROUPMATCH(K60_ATTITUDE(), 2, 3) && !(TALENT:TARGET:恋慕 || MARK:TARGET:快楽刻印 == 3)
+	PRINTFORMW 「%LOCALS:1%라니 너무 연약해! 난 땀 한 방울 흘리지 않고 %LOCALS:2%를 부러뜨릴 수 있는데, 나는 그다지 강한 요괴도 아니거든.」
+	IF !(IS_NONHUMAN(MASTER)) && FIRSTTIME("ParseeHumansAreWeak")
+		PRINTFORMW 「...진정해, 이 바보야. 너를 죽일 생각은 없어.」
+		PRINTFORMW 「나에게는 셀 수도 없이 많은 결함이 있지만, 나는 살인자는 아니야.」
+		PRINTFORMW 「그리고 지루한 독백에서 요점을 강조하기 위해 사람을 죽이는 종류의 사람은 절대 아니거든.」
+		PRINTFORMW 「게다가 설령 그렇다고 해도, 너는 나를 견딜 수 있는 몇 안 되는 사람들이니까.」
+		IF CFLAG:MASTER:現在位置 == 946
+			CALL PRINT_STRL, @"「그리고 당신은 내 다리 위에 서 있군요.」"
+			PRINTFORML 「나는 그 경계를 넘는 누구의 안전에도 책임이 있다, 인간이든 요괴든 혹은 그 외의 존재든.」
+			PRINTFORMW 「네가 수년 전 그 신사 계집처럼 문제를 일으키지 않는 한 말이다. 그리고 너는 그러지 않고 있군.」
+		ENDIF
+		PRINTFORMW 「하지만 우리는 주제에서 벗어나고 있어.」
+		PRINTFORML
+	ENDIF
+ENDIF
+PRINTFORML 「%LOCALS:3%는 도저히 시간을 살지 못한다- 한 세기 미만! %LOCALS:3%은 날지 못하고, %LOCALS:4%는 어둠 속에서 볼 수 없다...」
+PRINTFORMW 「그리고 %LOCALS:4%는 %LOCALS:5%을 먹으려고 하는 생물들 사이에서 살아야 한다.」
+IF IS_NONHUMAN(MASTER)
+	PRINTFORMDW 파세는 %PARSE("you")%에게 아는 듯한 미소를 지었다.
+	PRINTFORML 「적어도, 우리가 그들에게 그렇게 생각하게 만드는 거지.」
+	PRINTFORML 「우리는 실제로 그들을 먹을 필요가 없어, 다만 그들의 공포를 먹기 위해 우리가 그렇다고 믿게 만들 뿐이야.」
+	PRINTFORMW 「비록 우리 중 일부는 어쨌든 그들을 먹는 것을 선호하지만... 하지만 화제를 벗겼군.」
+ENDIF
+PRINTFORMw 「%LOCALS:4%이 어떻게 그런 건지 모르겠다. 나는 절대로 저렇게 살 수 없을 것이다.」
+PRINTFORMW 「하지만 그게 「1」에 대한 가장 이상한 점이야 %LOCALS:5%약함에도 불구하고 %LOCALS:4% are, %LOCALS:4% 절대 포기하지 않는다.」
+PRINTFORMW 「%LOCALS:6%의 의지가 너무 부럽다.」
+CALLF FIRSTTIME("ParseeThoughtsOnHumansConvo")
+
+@K60_KOISHI_CONVO()
+IF !TALENT:38:恋人
+	PRINTFORMDW 파르시가 당신을 바라보며 팔짱을 낀다.
+	PRINTFORMW 「나에게 솔직해져 봐, %K60_MASTER()%. 나만 코이시가 엄청 짜증 난다고 생각하는 거야?」
+	IF CFLAG:38:面識
+		PRINTFORMDW 당신은 코이시가 자신에게 귀찮게 보이지 않는다고 그녀에게 말한다.
+		PRINTFORMDW 그녀는 얼굴을 찡그린다.
+		PRINTFORML 「결국 나만 그렇구나. 알고 있었어.」
+		PRINTFORMW 「음, 나는 아이들과 잘 지낸 적이 없고, 심지어 그 아이들도 그녀처럼 완전히 본능적으로 행동하지는 않거든.」
+	ELSE
+		PRINTFORMDW 그녀에게 당신은 그 사람이 누군지 모른다고 말한다.
+		PRINTFORMDW 그녀는 얼굴을 찌푸린다.
+		PRINTFORMW 「질투 나. 너 운 좋다.」
+		PRINTFORML 「그녀는 사토리의 여동생이야.」
+		PRINTFORMW 「몇 년 전에, 사람들에게 미움받지 않으려고 정신 읽기 능력을 없애려 세 번째 눈을 감았어.」
+		PRINTFORMW 「나도 저렇게 쓸모없는 힘을 끌 수 있으면 좋겠는데... 하지만 주제에서 벗어났네.」
+		PRINTFORMW 「그건 효과가 있었지만, 대가를 치렀지. 그녀의 의식을 봉인해서, 이제 그녀는 완전히 본능대로 행동해.」
+	ENDIF
+	PRINTFORML
+ELSE
+	PRINTFORMW 「%HE_SHE(38)%이 네 %PRINT_MALE("boy", 38)% 친구인 건 알지만... 솔직히 말해서, %HE_SHE(38)%은 나를 짜증나게 해.」
+ENDIF
+PRINTFORMW 「나는 그녀를 안쓰러워해야 한다고 생각했고, 어느 정도는 그렇지만... 솔직히 말하면 나는 그녀가 질투 난다.」
+PRINTFORML 「내 최악의 날에는, 내 마음이 나를 혼자 두기만 하면 기꺼이 내 생각을 꺼버리고 싶다는 생각이 들지 않을 수 없었다.」
+PRINTFORMW 「그리고 나는 그녀의 담력이 질투 난다. 그녀는 내가 하듯이 끊임없이 스스로를 의심하거나 자멸하지 않았다. 그냥 자신이 원하는 것을 했을 뿐이다.」
+PRINTFORMW 「그리고 그녀가 귀여워서 \@ GROUPMATCH(K60_ATTITUDE(), 0, 1) ?  # , 거친 못생긴 브릿 트롤 대신 더 자주 잘 풀렸다.」 \@
+PRINTFORML
+PRINTFORMW 「나도 그녀의 모자가 질투 난다.」
+IF IS_NONHUMAN(MASTER)
+	PRINTFORMW 「모자가 없는 요괴라는 건, 먹을 인간도 잡지 못하는 요괴 같잖아!」
+	;If player is wearing a hat
+	IF EQUIP:MASTER:帽子 == 1
+		PRINTFORM 그게 문제가 될 리 없다고 확신해. 
+		IF GROUPMATCH(K60_ATTITUDE(), 2, 3)
+			PRINTFORMW 당신은 정말 강하고 지적이며, \@ IS_MALE(MASTER) ? 손이 크다 # 아름답다. \@
+		ELSE
+			PRINTFORMW 당신은 정말 강하고 똑똑하며, 그리고 \@ IS_MALE(MASTER) ? 손이 크다 # 아름답다 \@...」
+		ENDIF
+	ELSE
+		PRINTFORMDL 파르시가 %PARSE("you aren't")% 모자를 쓰고 있다는 것을 깨닫고 %HIS_HER(TARGET)%의 입술을 깨물었다.
+		PRINTFORML 「...음, 당신은 모자가 필요할 것 같지 않아.」
+		PRINTFORM 「당신은 정말 강하고, 똑똑하고, \@ IS_MALE(MASTER) ? 잘생겼다 # 아름답다 \@.」 
+		IF GROUPMATCH(K60_ATTITUDE(), 2, 3)
+			PRINTFORMW 누구도 감히 y를 깔 수 없었다.
+		ELSE
+			PRINTFORMW 아무도 당신을 깔볼 수 없을 테니...」
+		ENDIF
+	ENDIF
+ELSE
+	PRINTFORMW 「그냥 정말 멋지지 않아! 요괴들에게 모자가 얼마나 중요한지 알아?!」
+	PRINTFORMW 「왜 여기 아래 사람들은 거의 모자를 쓰지 않는데, 지상의 사람들은 거의 다 쓰는 것 같아?」
+	IF (IS_VIRGIN([[パルスィ]]) + IS_DOUTEI([[パルスィ]])) && RAND:2
+		PRINTFORMW 「모자 없는 요괴라는 건 인간을 잡아먹지 못하는 요괴 같거나, 수백 년 된 처녀와 같은 거다.」
+	ELSE
+		PRINTFORMW 「모자가 없는 요괴라는 건, 먹을 인간도 잡지 못하는 요괴 같잖아!」
+		IF GROUPMATCH(K60_ATTITUDE(), 0, 1)
+			PRINTFORMW 「인간을 먹는 건 아니야, 물론이지. 그리고 설령 그랬다 해도, 너는 너무 \@ IS_MALE(MASTER) ? 잘생겨서 # 예뻐서 \@ 먹기엔...」
+		ELSE
+			PRINTFORMDW 파씨는 당신 얼굴의 걱정스러운 표정을 보고 눈을 굴린다.
+			PRINTFORML 「너를 먹으려는 게 아니야, 이 바보! 나는 질투를 먹지 사람을 먹지 않아!」
+			PRINTFORMW 「게다가 설령 그렇게 한다 해도, 너는 너무 \@ IS_MALE(MASTER) ? 잘생겼다 # 예쁘다 \@고 먹을 수 없어-」
+		ENDIF
+	ENDIF
+ENDIF
+PRINTFORMDW 파씨는 살짝 홍당무가 되어 당신에게서 시선을 돌린다.
+PRINTFORMDL 짧은 어색한 침묵 끝에, %HE_SHE(TARGET)%이 %HIS_HER(TARGET)% 목을 가다듬고 계속해서 %HIS_HER(TARGET)%의 잔소리를 이어나간다.
+PRINTFORML
+PRINTFORMW 「어쨌든... 그녀는 여전히 나를 짜증나게 해.」
+PRINTFORMW 「잔인하다는 건 알지만, 마치 Vahbiz가 모래 상자가 아닌 내 바닥에 배설하는 것 같아.」
+IF !CFLAG:K60EN_MET_VAHBIZ
+	PRINTFORMDW 파시가 너의 혼란스러운 표정을 보고 미소 지었다.
+	PRINTFORMW 「아, 깜빡했네, 아직 그녀를 만나지 못했구나. 그녀는 내 고양이야.」
+ENDIF
+PRINTFORMW 「그녀가 일부러 그런 건 아니라는 걸 알고 있고, 그녀도 더 나은 방법을 모른다는 것도 알지만... 여전히 짜증이 난다.」
+PRINTFORML
+CALL PRINT_DIALOGUE, @"예를 하나 들어보자. 우리는 그저 함께 낚시를 하고 세상 근심 없이 지내고 있었는데, 그때 %HE_SHE(38)%이 나타나 우리에게 합류할 수 있는지 물었다.", "w"
+PRINTFORMW 「그녀는 가족들을 위해 생선을 잡고 싶다고 말했다.」
+PRINTFORMW 「내가 최대한 공손하게 "안 돼"라고 말하기도 전에, %K60_NAME_WITH_HONORIFICS("Yamame")%이 끼어들어 괜찮을 거라고 말했다.」
+PRINTFORMDW 파씨가 고개를 저었다.
+PRINTFORMW 「%K60_NAME_WITH_HONORIFICS("Yamame")%은 가끔 인물 판단에 서툴 수 있지... 그녀가 나와 어울린다는 사실이 그걸 드러내지 않았다면 말이야.」
+PRINTFORMW 「어쨌든, 그녀는 우리 옆에 앉더니... 그러고는 자신이 낚싯대가 없어서 내 것을 빌릴 수 있는지 물었다!」
+CALL PRINT_DIALOGUE, @"나 혼자였다면 그녀에게 자기놈의 낚싯대를 사러 가라고 말했을 테지만, 나는 %K60_NAME_WITH_HONORIFICS("Yamame")% 앞에서 그렇게 할 수는 없었다.", "w"
+PRINTFORMW 「그래서 내 낚싯대를 꺼내 %HIM_HER(38)%에게 건넸는데, 뭐가 그렇게 웃긴 거야?!」
+PRINTFORMDW 파르시가 당신을 노려본다. 당신은 혼자 킥킥대던 것을 멈추고 그녀에게 계속하라고 묻는다.
+PRINTFORML
+PRINTFORMW 「그리고 그게 우리가 하루 종일 했던 일이야. %K60_NAME_WITH_HONORIFICS("Yamame")%이랑 그녀는 마치 한 몸처럼 붙어서 수다를 떨고, 나는 그냥 거기 앉아 그녀에게 노려보고 있었지.」
+PRINTFORMW 「그 작은 애도 최고급 물고기들을 많이 잡았어... 그걸 내 거였어야 했는데, 제기랄!」
+PRINTFORMW 「하지만 어차피 내가 그것들을 잡을 수 없었을지도 모르겠군.」
+PRINTFORMDW 파르시가 이를 악문다.
+PRINTFORML 「게다가 그녀는 내가 평생 따라잡을 수 없을 만큼 훨씬 뛰어난 낚시꾼이야.」
+PRINTFORMW 「적어도 내 낚싯대를 빌려준 것에 대해 고맙다고는 하더라.」
+PRINTFORML 「하지만 최악인 걸 알아? 이제 %HE_SHE(38)%는 우리가 친구라고 생각하고 있어.」
+PRINTFORMW 「그리고 내가 %HIS_HER(49)% %PRINT_MALE("brother:sister", 38)%의 기분을 상하게 하면 사토리가 폭주할 테니 그걸 참아야 해.」
+IF GROUPMATCH(K60_ATTITUDE(), 0, 1) && ABL:38:親密 >= 2
+	PRINTFORMDW 그녀는 한숨을 내쉰다.
+	PRINTFORMW 「당신을 위해서라도, 내가 좀 더 친절해져야겠지...」
+ELSE
+	PRINTFORML 「유일한 희망은 히지리가 맞다면 그녀가 깨달음에 가깝다는 것이다.」
+	PRINTFORMW 「어쩌면 한계 없는 지혜를 얻으면 \@ GROUPMATCH(K60_ATTITUDE(), 0, 1) ? 떠날 # 내가 어떤 사람인지 깨닫고 나를 완전히 내버려 둘지도 모른다.」 \@
+ENDIF
+CALLF FIRSTTIME("ParseeKoishiConvo")
+
+@K60_PARSEE_TOO_JEALOUS_FOR_SEX()
+#FUNCTION
+#DIM Jealousy
+#DIM JealousyResistance
+DEBUGPRINTFORML 태도 2 또는 3에서...
+IF !(TALENT:TARGET:恋慕 || MARK:TARGET:快楽刻印 == 3) && !IN_HEAT([[パルスィ]]) && !GETBIT(CFLAG:[[パルスィ]]:K60EN_PARSEE_TEMP_LOVE_HOTEL_PERMISSION, 0) && !THINKS_IS_VIRGIN([[パルスィ]])
+	DEBUGPRINTFORML 파르시는 연모도 즐거움의 각인 3도 아니며, 발정 중이 아니고, 당신은 그녀의 임시적 동의를 얻지 못했으며, 그녀는 자신이 처녀가 아니라고 생각한다...
+	Jealousy = ((MARK:TARGET:反発刻印 * 20) + K60_JEALOUSY())
+	[IF_DEBUG]
+	; Jealousy = 9999
+	; Jealousy = 0
+	[ENDIF]
+	DEBUGPRINTFORML 파르시의 질투 점수는 {Jealousy}이다.
+	JealousyResistance = RAND(100)
+	DEBUGPRINTFORML 질투저항은 {JealousyResistance}이다.
+	DEBUGPRINTFORML K60_YUUGI_IS_FALLEN은 {K60_YUUGI_IS_FALLEN()}이다.
+	IF (JealousyResistance < Jealousy || K60_YUUGI_IS_FALLEN() || !THINKS_IS_VIRGIN([[パルスィ]])) && !CFLAG:[[パルスィ]]:K60EN_PARSEE_MELTDOWN || CFLAG:[[パルスィ]]:K60EN_PARSEE_MELTDOWN == 1
+		DEBUGPRINTFORML 파르시는 당신과 섹스를 하기엔 너무 질투한다...
+		RETURNF 1
+	ELSE
+		RETURNF 0
+	ENDIF
+ENDIF
+RETURNF 0
+
+@K60_PARSEE_MELTDOWN(ARG = -1)
+DEBUGPRINTFORML 멜트다운 체크를 한다...
+SIF ARG == 1 || (CFLAG:[[パルスィ]]:K60EN_PARSEE_MELTDOWN == 1)
+	GOTO PARSEE_MELTDOWN
+SELECTCASE K60_ATTITUDE()
+	;Loving
+	CASE 0, 1
+		RETURN 1
+	CASE 2, 3
+		;If she's in love with you she'll be making a conscious effort to be nice to you so she won't melt down at you if you try and push her down
+		DEBUGPRINTFORML ARG는 {ARG}이다.
+		IF (TALENT:TARGET:恋慕 || MARK:TARGET:快楽刻印 == 3) && !TALENT:TARGET:恋人
+			DEBUGPRINTFORML 파르시는 당신에게 친절하려고 노력한다. 메일다운은 없다.
+			RETURN 0
+		ELSEIF K60_PARSEE_TOO_JEALOUS_FOR_SEX()
+			$PARSEE_MELTDOWN
+			IF !CFLAG:[[パルスィ]]:K60EN_PARSEE_MELTDOWN
+				IF CFLAG:TARGET:同行
+					CFLAG:TARGET:同行 = 0
+					CFLAG:MASTER:同行 = 0
+				ENDIF
+				CALL M_KOJO_COLOR_K60_VERY_JEALOUS
+				PRINTFORMW 「내 앞에서 사라져!」
+				CALL K60_GET_ANGRY(3)
+				CALL M_KOJO_COLOR_K60_VERY_JEALOUS
+				PRINTFORMDW 파르시는 %PARSE("you")%을 %HIM_HER(TARGET)%가 할 수 있는 한 세게 밀쳐낸다. 분노가 %HIS_HER(TARGET)%의 눈 속에서 타오른다.
+				PRINTFORML
+				PRINTFORMW 「나 너한테 얼마나 지독하게 질투하는지 알아?! 너도 알아?!」
+				PRINTFORMDW 파르시는 거칠게 숨을 몰아쉬며 분노로 떨고 있다.
+				PRINTFORMW 「너는 모든 것을 가졌어. 외모, 지성, 재능... 내가 가지지 못한 모든 것들.」
+				PRINTFORMW 「넌 완벽해! 말 그대로 완벽해! 견딜 수가 없어!」
+				CALL PRINT_STRL, @"「그리고 아무것도, ITALIC아무것도가 네 연애 생활만큼 나를 질투하게 만들지 않아.」"
+				PRINTFORMW 「너는 별로 아무것도 할 필요도 없어. 이 지경에선 네가 원하는 누구와도 자게 될 거라는 소문이 돌고 있거든.」
+				PRINTFORMW 「그리고 침대 위에서도 굉장하잖아. 정말이지 너무 대단해서 아무도 입을 다물지 못하고 있지.」
+				PRINTFORMW 「이 속도라면 한 달 안에 그전교가 너의 개인 놀이터가 될 거야.」
+				PRINTFORMW 「권력 투쟁? 인간과 요괴 사이의 갈등 같은 건? 이제 아무도 그런 것에는 신경 쓰지 않을 테니까.」
+				PRINTFORMW 「모든 사람들이 신경 쓸 것은 \@ HAS_PENIS(MASTER) ? 네 거랑 누가 그걸 빨게 될지 # 네 혀와 누가 그것에 핥히게 될지만일 거야 \@.」
+				IF K60_YUUGI_IS_FALLEN() && CFLAG:[[パルスィ]]:K60ENC_SETTING_YUUPARU_CRUSH == 1
+					PRINTFORML
+					PRINTFORMW 「너 감히 유우기마저 나에게서 빼앗다니!」
+					PRINTFORMW 「나는 그녀를 수십 년 동안 알고 있었다! 나는 그녀를 수십 년 동안 연모해 왔다!」
+					PRINTFORMW 「그런데 너는 아무 일 없었다는 듯 나타나 그녀를 유혹하다니!」
+					PRINTFORMDW 파르시가 이를 악물었다.
+					PRINTFORMW 「그녀, 네 것에 대해 끊임없이 이야기하잖아, 알지.」
+					PRINTFORMW 「그녀는 항상 네가 얼마나 좋은 사람인지, 그리고 너로 인해 그녀가 어떻게 웃는지, 그리고 네가 그녀를 얼마나 행복하게 만드는지에 대해 말하고 있어...」
+					CALL PRINT_STRW, @"「그리고 난 그저 앉아서 미소 짓고 고개를 끄덕이며 속으로 분노를 소리치지 않는 척해야 한다.」"
+					PRINTFORMW 「내가 사랑하는 여자가 나에게 고백하기엔 너무 비겁해서 다른 사람과 사귄다는 걸 아는 게 더 나쁜 건지...」
+					PRINTFORMW 「아니면 그녀가 나와 사귀는 것보다 당신과 사귀는 편이 훨씬 낫다는 걸 아는 건지.」
+					CALL PRINT_STRL, @"「내가 그녀에게 줄 수 있는 게 당신이 못 주는 것 중에 도대체 뭐가 있겠어? 당신이 못 주는 걸 나는 누구에게나 줄 수 있을까?」"
+					PRINTFORMW 「폭력적이고 예측 불가능한 기분 변화? 알코올 중독? 끝이 없고 참을 수 없는 의존성과 불안감?」
+					PRINTFORMDW 파르시가 비웃는다.
+					PRINTFORMW 「우리가 함께한다면 그녀는 비참해질 것이다.」
+					PRINTFORMW 「하지만 다시 너에게로 돌아오자.」
+				ELSE
+					PRINTFORMW 「그리고 거기엔 내가 있다.」
+				ENDIF
+				PRINTFORML
+				CALL PRINT_STRW, @"「너는 모든 것을 가졌지만 나는 아무것도 없어. 나는 ITALIC아무것도 아니야.」"
+				PRINTFORMW 「나는 못생겼고, 바보 같고, 재능도 없고, 아무도 나를 좋아하지 않아, 특히 연애적으로는...」
+				PRINTFORMDW 그녀가 코웃음을 친다.
+				IF K60_HAS_FUCKED_PARSEE()
+					PRINTFORMW 「넌 아마 모든 %PRINT_MALE("man", TARGET)%와 잠자리를 가졌다고 말하려고 나랑 자려는 것뿐이겠지.」
+					PRINTFORMW 「하지만 난 그렇게 못 하게 둘 거야. 네 하렘에 끼지 않을 유일한 사람이 될 테니.」
+					PRINTFORMW 「내가 너를 딱 한 번 내 침대로 들인 건, 네가 \@ CFLAG:K60EN_PARSEE_STARTING_VIRGINITY && !THINKS_IS_VIRGIN([[パルスィ]]) ? 나의 처녀성을 취하든 # 나의 가뭄을 깨든 할 수 있게 해 주기 위해서였어.」 \@
+				ELSE
+					PRINTFORMW 「넌 아마 모든 %PRINT_MALE("man", TARGET)%와 잠자리를 가졌다고 말하려고 나랑 자려는 것뿐이겠지.」
+					PRINTFORMW 「하지만 난 그렇게 안 둘 거야. 네가 정복할 수 없는 유일한 존재가 될 테니까.」
+				ENDIF
+				PRINTFORMW 「그것이 내가 이 거대한 계획 속에서 실제로 의미 있는 유일하고 첫 번째 일일 거야.」
+				PRINTFORMW 「당신을 진정으로 완벽하게 만드는 단 하나의 것.」
+				SIF CFLAG:MASTER:現在位置 == 940
+					PRINTFORMW 「이제 가버리고 나를 내버려 두어라.」
+				PRINTFORML
+				PRINTFORMDW 파르시가 당신을 노려본다. %HIS_HER(TARGET)%의 눈에는 눈물이 반짝이고 있다.
+				PRINTFORMDW 당신은 그녀가 당신을 질투하고 있다는 것을 알고 있었지만, %PARSE("you had")% %HE_SHE(TARGET)%이 이토록 질투할 줄은 몰랐다...
+				SIF MASTER_IS_VIRGIN()
+					PRINTFORMDW 그리고 %HE_SHE(TARGET)%는 당신이 어떤 종류의 성적인 \@ IS_MALE(MASTER) ? 신 # 여신이라고 생각한 건 어디서야 \@? %PARSE("You're")% 처녀라고!
+				PRINTFORMDW %PARSE("You open")% %PARSE("your")% 무언가 말하려 했지만, 파르시는 당신을 더욱 독기를 담아 노려보았고 %PARSE("you decide")% 아무것도 하지 않았다.
+				IF CFLAG:MASTER:現在位置 == 940
+					PRINTFORMDW 당분간은 %HIM_HER(TARGET)%를 그냥 내버려 두는 게 좋겠다.
+					PRINTFORML
+					PRINTFORMDW ......
+					PRINTFORMDW ...
+					PRINTFORML
+					PRINTFORMDW 파르시가 %PARSE("you're")%이 들리지 않음을 확신하면 그녀는 두 손으로 얼굴을 감싸고 울기 시작한다.
+					CFLAG:MASTER:現在位置 = KICKOUT()
+				ELSE
+					PRINTFORMDW %HE_SHE(TARGET,1)% \@ INROOM(CFLAG:MASTER:現在位置) ? 가 소리를 지르며 문을 쾅 닫고 나간다 # %HE_SHE(TARGET,1)%이 떠난다 \@.
+					PRINTFORML
+					PRINTFORMDW ......
+					PRINTFORMDW ...
+					PRINTFORML
+					PRINTFORMDW 파르시가 주변에 다른 사람이 아무도 없다는 것을 확신하자, 그녀는 달리기 시작한다.
+					PRINTFORMDW 눈물이 얼굴을 타고 흐르며, 그녀는 취해서 정신을 놓기 위해 자신의 방으로 도망친다.
+					CALL RUNOFF(60, 0)
+					CALL RECOVER(60, 2000, "酒気", " ")
+				ENDIF
+				SIF CFLAG:[[パルスィ]]:うふふ
+					CALL ENDUFUFU(LOCAL)
+				CALL K60_BECOME_TSUNDERE()
+				CALL M_KOJO_COLOR_K60
+				CFLAG:[[パルスィ]]:K60EN_PARSEE_MELTDOWN = 1
+			ELSE
+				$PARSEE_POST_MELTDOWN
+				PRINTFORMDW 네가 파르시를 밀어붙이려 할 때, 그 질투에 찬 잔소리 %PARSE("you remember")%가 계속되었고 %HE_SHE(TARGET)%%PARSE("stop yourself")%.
+			ENDIF
+			RETURN -1
+		ELSE
+			RETURN 0
+		ENDIF
+ENDSELECT
+RETURN 0
+
+@K60_FUCKED_PARSEE()
+#FUNCTION
+RETURNF GETBIT(CFLAG:[[パルスィ]]:既成事実, 1) || CFLAG:[[パルスィ]]:ヤラせちゃった
+
+@K60_YUUGI_IS_FALLEN()
+#FUNCTION
+RETURNF IS_FALLEN(64)
+
+@K60_SET_AFFINITIES(ARG = -1)
+IF (RELATION:[[パルスィ]]:64 == 80 || RELATION:[[パルスィ]]:64 == 80)
+	PRINTFORML
+	IF ARG == 1
+		PRINTFORMDL 확장된 친밀도가 설정되지 않았다. 파르시의 친구들을 위해 친밀도를 설정한다...
+	ENDIF
+	RELATION:[[パルスィ]]:64 = 150
+	RELATION:[[パルスィ]]:83 = 120
+	RELATION:[[パルスィ]]:84 = 120
+ENDIF
+RELATION:[[パルスィ]]:37 = 110
+RELATION:[[パルスィ]]:41 = 110
+RELATION:[[パルスィ]]:49 = 70
+RELATION:[[パルスィ]]:38 = 60
+RELATION:[[パルスィ]]:1 = 80
+RELATION:[[パルスィ]]:26 = 80
+RELATION:[[パルスィ]]:17 = 40
+RELATION:[[パルスィ]]:97 = 60
+RELATION:[[パルスィ]]:157 = 30
+IF CHARANUM >= 171
+	RELATION:[[パルスィ]]:171 = 80
+	IF ARG == 1
+		PRINTFORML
+	ENDIF
+ENDIF
+
+@K60_SET_ABILITIES(ARG = -1)
+;Fancy displays stolen from Sanae's dialogue
+;NAS custom code: made it universal
+IF ABL:[[パルスィ]]:清掃技能 != universalRank("C")
+	IF ARG == 1
+		PRINT 	청소 레벨(
+		CALL PRINT_RANK(ABL:[[パルスィ]]:清掃技能,"MAX_6")
+		PRINTFORM  {ABL:[[パルスィ]]:清掃技能} →
+		CALL PRINT_RANK(universalRank("C"),"MAX_6")
+		RESETCOLOR
+		PRINTFORML  {universalRank("C")})
+	ENDIF
+	ABL:[[パルスィ]]:清掃技能 = universalRank("C")
+	EXP:[[パルスィ]]:清掃経験 = EXPLV:(ABL:[[パルスィ]]:清掃技能 + 2)
+ENDIF
+IF ABL:[[パルスィ]]:話術技能 != universalRank("B")
+	IF ARG == 1
+		PRINT 	발화 레벨(
+		CALL PRINT_RANK(ABL:[[パルスィ]]:話術技能,"MAX_6")
+		PRINTFORM  {ABL:[[パルスィ]]:話術技能} →
+		CALL PRINT_RANK(universalRank("B"),"MAX_6")
+		RESETCOLOR
+		PRINTFORML  {universalRank("B")})
+	ENDIF
+	ABL:[[パルスィ]]:話術技能 = universalRank("B")
+	EXP:[[パルスィ]]:会話経験 = EXPLV:(ABL:[[パルスィ]]:話術技能 + 2)
+ENDIF
+IF ABL:[[パルスィ]]:教養 != universalRank("B")
+	IF ARG == 1
+		PRINT 	지식 레벨(
+		CALL PRINT_RANK(ABL:[[パルスィ]]:教養,"MAX_6")
+		PRINTFORM  {ABL:[[パルスィ]]:教養} →
+		CALL PRINT_RANK(universalRank("B"),"MAX_6")
+		RESETCOLOR
+		PRINTFORML  {universalRank("B")})
+	ENDIF
+	ABL:[[パルスィ]]:教養 = universalRank("B")
+	EXP:[[パルスィ]]:学習経験 = EXPLV:(ABL:[[パルスィ]]:教養 + 2)
+ENDIF
+IF ABL:[[パルスィ]]:44 != universalRank("G")
+	IF ARG == 1
+		PRINT 	요리 레벨(
+		CALL PRINT_RANK(ABL:[[パルスィ]]:44,"MAX_6")
+		PRINTFORM  {ABL:[[パルスィ]]:44} →
+		CALL PRINT_RANK(universalRank("G"),"MAX_6")
+		RESETCOLOR
+		PRINTFORML  {universalRank("G")})
+	ENDIF
+	ABL:[[パルスィ]]:44 = universalRank("G")
+	EXP:[[パルスィ]]:料理経験 = 0
+ENDIF
+IF ABL:[[パルスィ]]:66 != universalRank("A") && STRLENS(ABLNAME:66)
+	IF ARG == 1
+		PRINT 	슈팅 레벨(
+		CALL PRINT_RANK(ABL:[[パルスィ]]:66,"MAX_6")
+		PRINTFORM  {ABL:[[パルスィ]]:66} →
+		CALL PRINT_RANK(universalRank("A"),"MAX_6")
+		RESETCOLOR
+		PRINTFORML  {universalRank("A")})
+	ENDIF
+	ABL:[[パルスィ]]:66 = universalRank("A")
+	EXP:[[パルスィ]]:96 = EXPLV:(ABL:[[パルスィ]]:66 + 2)
+	;change equips
+	CFLAG:60:215 = 0
+	CFLAG:60:216 = 0
+	CFLAG:60:218 = 103
+	EQUIP:60:15 = 0
+	EQUIP:60:16 = 0
+	EQUIP:60:18 = 103
+ENDIF
+
+@K60_SET_TRAITS(ARG = -1)
+SIF ARG == 1
+	PRINTFORMDW 변경 사항이 적용되었다.
+IF EXISTVAR("AlcoholAddict")
+	;NAS alcohol addiction system
+	LOCALS = AlcoholAddict
+ELSE
+	TALENT:[[パルスィ]]:121 = 2
+ENDIF
+TALENT:[[パルスィ]]:103 = 1
+CFLAG:K60ENC_SETTING_TRAITS_CHANGED = 1
+;Borrowed from Yumeko's dialogue
+
+@K60_PARSEE_MILK()
+IF CFLAG:[[パルスィ]]:K60ENC_SETTING_LACTATION && !TALENT:[[パルスィ]]:母乳体質 && SHIRAHU([[パルスィ]]) && FIRSTTIME("ParseeLactates",1)
+	IF EXP:[[パルスィ]]:Ｂ絶頂経験 > 50 && EXP:[[パルスィ]]:Ｂ経験 > 250
+		PRINTFORMDL
+		CALL M_KOJO_COLOR_K60
+		SELECTCASE K60_ATTITUDE()
+			CASE 0, 1, 3
+				PRINTFORML 「으윽... 내 가슴이... 팽팽한 기분이야, 무슨 이유에서인지는 모르겠지만.」
+				PRINTFORMW 「당신이 너무 거칠게 다뤘던 것 같아...」
+			CASE 2
+				PRINTFORML 「그리고 이제 내 가슴이 아픈 건 네가 그것들을 난도질하는 걸 멈추지 못했기 때문이야.」
+				PRINTFORMW 「네가 유치하다는 건 알지만, 너한테 아기의 정신 상태가 있을 거라고는 생각 못 했어.」
+		ENDSELECT
+		PRINTFORMDW 파르시가 %HIS_HER(TARGET)%의 가슴을 주무르기 시작하며 놀라 꺅 소리를 낸다.
+		PRINTFORMDW 흰 방울들이 끝에서 흘러나오고 있다.
+		PRINTFORMW 「뭐... 이거 우유야?!」
+		PRINTFORMDW %HE_SHE(TARGET,1)%은/는 그것이 %HIS_HER(TARGET)%의 가슴 곡선을 따라 흘러내리는 것을 놀라 바라본다.
+		PRINTFORMW 「하지만 어떻게? 나 임신 안 했어... 그치?」
+		PRINTFORMDW 파르시는 \@ K60_ATTITUDE() == 2 ? 너를 노려본다 # 당황해서 너를 본다 \@.
+		SELECTCASE K60_ATTITUDE()
+			CASE 0,1
+				PRINTFORMW 「당신이 내 가슴을 얼마나 자극했기 때문에 내가 모유를 분비하기 시작한 걸까?」
+				PRINTFORMW 「그게 가능할 줄은 몰랐어...」
+				PRINTFORMW 「하지만 매일 당신이 그걸 비우도록 만들 거야. 결국 네 잘못이니까~」
+				PRINTFORMDW %CALLNAME:[[パルスィ]]%는 당신을 보며 미소 짓는다.
+			CASE 2,3
+				PRINTFORMW 「네가 뭘 했는지는 모르겠지만, 내일 아침에 제일 먼저 에이전테이에 갈 거야.」
+				PRINTFORMW 「그리고 야고코로에게 네 청구서를 보내라고 말할게.」
+		ENDSELECT
+		PRINTFORMDL
+		TALENT:母乳体質 = 2
+		TALENT:Ｂ感度 = 1
+		PRINTFORMDW %CALLNAME:[[パルスィ]]%는 이제 [모유체질]이다.
+		PRINTFORMDW %CALLNAME:[[パルスィ]]%는 이제 [B 민감] 상태이다.
+		PRINTFORMDL
+		CALLF FIRSTTIME("ParseeLactates")
+	ENDIF
+ENDIF
+
+@PARSEESPEAK(ARGS, ARGS:1 = "通常")
+CALL CUTSCENESPEAK(ARGS, ARGS:1, [[パルスィ]])
+
+@KISUMESPEAK(ARGS, ARGS:1 = "通常")
+CALL CUTSCENESPEAK(ARGS, ARGS:1, [[キスメ]])
+
+@YAMAMESPEAK(ARGS, ARGS:1 = "通常")
+CALL CUTSCENESPEAK(ARGS, ARGS:1, 84)
+
+@YUUGISPEAK(ARGS, ARGS:1 = "通常")
+CALL CUTSCENESPEAK(ARGS, ARGS:1, [[勇儀]])
+
+@K60_LOSE_HATE_MARKS(ARG)
+IF MARK:TARGET:反発刻印 <= 3 && MARK:TARGET:反発刻印 > 0
+	MARK:TARGET:反発取得履歴 = MAX(MARK:TARGET:反発取得履歴,MARK:TARGET:反発刻印)
+	CFLAG:TARGET:ブチギレ = 0
+	BASE:TARGET:怒り = 0
+	TALENT:TARGET:機嫌 = 0
+	CFLAG:TARGET:不機嫌 = 0
+	PRINTFORMDL
+	IF ARG
+		MARK:TARGET:反発刻印 = 0
+		PRINTFORMDW 파르시는 %HIS_HER(TARGET)%의 모든 반발적인 각인을 잃었다!
+	ELSE
+		MARK:TARGET:反発刻印--
+		PRINTFORMDW 파르시가 증오의 낙인을 하나 잃었다!
+	ENDIF
+ENDIF
+;===========================================================================================
+;Determines if Parsee should lose a hate mark if you've gone long enough without seeing her
+;ARG is how many days it's been since the last time you saw her
+;===========================================================================================
+
+@K60_PARSEE_COOLS_OFF(ARG)
+#FUNCTION
+LOCAL = ARG * 10
+SIF !FIRSTTIME("NTRedParseesFriend", 1) && FIRSTTIME("NTRedParseesFriendForgave", 1)
+	LOCAL /= 10
+;She's also less likely to forgive you the more hate marks she has
+LOCAL /= (MARK:TARGET:反発刻印 + 1)
+;But more likely the more she likes you, unless she's tsundere
+SIF K60_ATTITUDE() != 2
+	LOCAL += (CFLAG:[[パルスィ]]:好感度 / 100)
+LOCAL:1 = RAND(100)
+DEBUGPRINTFORML 주사위 {LOCAL:1}을 굴렸다, 용서치는 {LOCAL}이다.
+IF MARK:TARGET:反発刻印 > 0 && MARK:TARGET:反発刻印 < 4 && LOCAL:1 < LOCAL
+	RETURNF 1
+ELSE
+	RETURNF 0
+ENDIF
+
+@K60_PARSEE_MORNING_SEX_EVENTS()
+SELECTCASE IFRAND("0", HAS_PENIS(MASTER), "1, 7, 9", 1, "2", (HAS_PENIS(MASTER) && (IS_FEMALE([[パルスィ]]) && !IS_VIRGIN([[パルスィ]]))) || IS_MALE([[パルスィ]]), "3", HAS_VAGINA(MASTER), "4", TALENT:[[パルスィ]]:バストサイズ > -2, "5", TALENT:[[パルスィ]]:母乳体質, "6", TALENT:MASTER:母乳体質, "8", TALENT:[[パルスィ]]:母乳体質 && HAS_PENIS(MASTER))
+	;blowjob
+	CASE 0
+		EXP:[[パルスィ]]:口淫経験 += 3
+		EXP:MASTER:射精経験 += 3
+		EXP:MASTER:Ｃ絶頂経験 += 1
+		EXP:MASTER:Ｃ経験 += 1
+		EXP:[[パルスィ]]:精飲経験 += 3
+		;thighjob (+ scissoring by me)
+	CASE 1
+		IF HAS_PENIS(MASTER)
+		ELSE
+		ENDIF
+		IF HAS_PENIS(MASTER)
+			EXP:MASTER:射精経験 += 3
+			EXP:MASTER:Ｃ絶頂経験 += 1
+			EXP:MASTER:Ｃ経験 += 1
+		ELSE
+			EXP:MASTER:Ｖ絶頂経験 += 1
+			EXP:MASTER:Ｖ経験 += 1
+		ENDIF
+		IF HAS_PENIS([[パルスィ]])
+			EXP:[[パルスィ]]:射精経験 += 3
+			EXP:[[パルスィ]]:Ｃ絶頂経験 += 1
+			EXP:[[パルスィ]]:Ｃ経験 += 1
+		ELSE
+			EXP:[[パルスィ]]:Ｖ絶頂経験 += 1
+			EXP:[[パルスィ]]:Ｖ経験 += 1
+		ENDIF
+		EXP:[[パルスィ]]:精液経験 += 3
+		;cowgirl
+	CASE 2
+		EXP:MASTER:射精経験 += 3
+		EXP:MASTER:Ｃ絶頂経験 += 1
+		EXP:MASTER:Ｃ経験 += 1
+		IF HAS_VAGINA([[パルスィ]])
+			EXP:[[パルスィ]]:Ｖ絶頂経験 += 1
+			EXP:[[パルスィ]]:Ｖ経験 += 1
+		ELSE
+			EXP:[[パルスィ]]:Ａ絶頂経験 += 1
+			EXP:[[パルスィ]]:Ａ経験 += 1
+		ENDIF
+		;cunnilingus
+	CASE 3
+		EXP:[[パルスィ]]:口淫経験 += 3
+		EXP:MASTER:Ｖ絶頂経験 += 1
+		EXP:MASTER:Ｖ経験 += 1
+		;paizuri
+	CASE 4
+		EXP:MASTER:射精経験 += 3
+		EXP:MASTER:Ｃ絶頂経験 += 1
+		EXP:MASTER:Ｃ経験 += 1
+		EXP:[[パルスィ]]:パイズリ経験 += 1
+		EXP:[[パルスィ]]:Ｂ経験 += 1
+		;breastfeeding (parsee feeding you), inspired by Marisa
+	CASE 5
+		EXP:[[パルスィ]]:Ｂ経験 += 1
+		EXP:[[パルスィ]]:噴乳経験 += 1
+		;breastfeeding (you feeding parsee), inspired by Marisa
+	CASE 6
+		EXP:[[パルスィ]]:Ｂ経験 += 1
+		EXP:[[パルスィ]]:噴乳経験 += 1
+		;Naked apron, inspired by Marisa
+	CASE 7
+		;Nursing handjob
+	CASE 8
+		IF ABL:TARGET:精液中毒 >= 3
+			EXP:[[パルスィ]]:精飲経験 += 3
+			EXP:[[パルスィ]]:噴乳経験 += 1
+			EXP:MASTER:Ｃ経験 += 1
+		ELSE
+		ENDIF
+		EXP:[[パルスィ]]:手淫経験 += 3
+		EXP:[[パルスィ]]:Ｂ経験 += 1
+		EXP:[[パルスィ]]:噴乳経験 += 1
+		EXP:MASTER:射精経験 += 3
+		EXP:MASTER:Ｃ絶頂経験 += 1
+		EXP:MASTER:Ｃ経験 += 1
+		;Dry humping
+	CASE 9
+		SIF HAS_PENIS([[パルスィ]])
+			EXP:[[パルスィ]]:射精経験 += 3
+		EXP:[[パルスィ]]:Ｃ絶頂経験 += 1
+		EXP:[[パルスィ]]:Ｃ経験 += 1
+		;Double blowjob
+	CASE 10
+		;Blowjob + cunnilingus
+	CASE 11
+		;Double titjob
+	CASE 12
+		;Reverse spitroast (cowgirl + giving oral)
+	CASE 13
+ENDSELECT
+CFLAG:[[パルスィ]]:好感度 += 100
+IF IS_FEMALE(MASTER) && IS_FEMALE([[パルスィ]])
+	EXP:MASTER:レズ経験 += 3
+	EXP:[[パルスィ]]:レズ経験 += 3
+ELSEIF IS_MALE(MASTER) && IS_MALE([[パルスィ]])
+	EXP:MASTER:ゲイ経験 += 3
+	EXP:[[パルスィ]]:ゲイ経験+= 3
+ENDIF
+;Parsee's hand milking scene
+;Made it a function so it's easier to handle the different lines for her Loving/Horny and Tsundere/Fake Nice attitudes
+
+@PARSEE_HAND_MILKING(ARG = -1)
+IF ARG == 1
+	PRINTFORMW 「아, 직접 하는 걸 선호하는 거군요? 그것도 괜찮아요.」
+	PRINTFORMW 「제 안을 비워주기만 하면 돼요. 계속 옷으로 모유가 새는 건 너무 창피하거든요...」
+ELSEIF ARG == 2
+	PRINTFORMDW 파시가 마지못해 %HIS_HER(TARGET)%의 가슴을 드러낸다.
+	PRINTFORMW 「좋아, 벌써 서둘러. 이걸 빨리 끝내고 싶어.」
+ENDIF
+PRINTFORMDW 당신은 벽 쪽으로 가서 빈 병 두 개를 집는다.
+PRINTFORMDW 당신은 하나를 이부자 옆에 놓고, 다른 하나는 파르시의 우유가 흘러내리는 유두 중 하나에 가져다 댄다.
+IF ARG == 2
+	PRINTFORMW 「으윽, 나 소 된 기분이야.」
+ELSE
+	PRINTFORMW 「하아... 소가 된 기분이야...」
+ENDIF
+IF TALENT:TARGET:バストサイズ >= 3
+	PRINTFORMDW 이거 까다로울 것 같아. %CALLNAME:[[パルスィ]]%의 유두가 병에 들어갈 만큼 크지 않아.
+	PRINTFORMDW 나중에 청소 좀 해야 할 것 같은데.
+ENDIF
+LOCALS:0 = 
+SELECTCASE TALENT:TARGET:バストサイズ
+	CASE 4
+		LOCALS:0 = 파르시의 주먹만 한 유두
+	CASE 2, 3
+		LOCALS:0 = 파르시의 유륜
+	CASE -1, 0, 1
+		LOCALS:0 = 파르시의 가슴
+	CASE -2, -3
+		LOCALS:0 = 파르시의 가슴
+ENDSELECT
+PRINTFORMDW 당신은 %LOCALS:0%에 손을 대고 짜낸다.
+PRINTFORMDW 파르시는 숨을 들이마시고, 그녀의 유두에서 우유 줄기가 병 안으로 분수처럼 뿜어져 나온다.
+PRINTFORMW 「계속해!」
+PRINTFORMDW %HIS_HER(TARGET)% 다른 쪽 유두에서도 우유가 나오고 있다. 당신은 다른 병을 그 아래에 놓는다.
+PRINTFORMDW 소를 짜 본 적은 없지만, 아마 이런 것일 것이다.
+PRINTFORMDW 기저부부터 시작하여 부드럽게 짜고 %HIS_HER(TARGET)% 유두 쪽으로 이동한 뒤, 다른 가슴으로 같은 과정을 반복한다.
+PRINTFORMDW 당신이 그녀의 젖을 짜자 파르시는 숨을 들이쉬며 신음하지만, 당신은 그것을 거의 듣지 못한다. 일에 너무 바쁘기 때문이다.
+PRINTFORMDW 첫 번째 병이 채워지고, 당신은 그것을 옆에 두고 다른 두 개를 집어 파르시의 젖 짜기를 계속한다.
+PRINTFORMDW %HIS_HER(TARGET)% 가슴에서 우유를 계속 짜자 파르시의 신음 소리는 점점 커진다...
+PRINTFORMDW %HE_SHE(TARGET)%가 떨며 양쪽 %HIS_HER(TARGET)% 유두에서 우유가 분사되어 두 병을 넘치게 할 때까지.
+PRINTFORMDW 당신은 %HIS_HER(TARGET)% 가슴에서 손을 떼고, 병들을 옆으로 치운 뒤, %HE_SHE(TARGET)%가 절정에 이를 때까지 기다린다.
+PRINTFORMW 「%MOAN("l")%... %MOAN("l")%...」
+PRINTFORMDW 파르시가 %HIS_HER(TARGET)%의 숨을 몰래 들으려고 애쓴다. 우유는 %HIS_HER(TARGET)%의 유두에서 계속 흘러나온다.
+PRINTFORMW 「아... 가슴을 짜지는 것만으로 절정에 달했다니 믿을 수가 없어...」
+EXP:[[パルスィ]]:Ｂ絶頂経験 ++
+EXP:[[パルスィ]]:Ｂ経験 += 5
+EXP:[[パルスィ]]:噴乳経験 += 5
+EXP:MASTER:手淫経験 += 5
+IF ARG == 1
+	PRINTFORMDW %HE_SHE(TARGET,1)%이 너를 노려본다.
+	PRINTFORMW 「절대 아무에게도 말하지 마!」
+	PRINTFORMDW 당신은 그럴 계획은 없었지만, %HIM_HER(TARGET)%에게 그러지 않겠다고 확신시켰다.
+	PRINTFORMW 「좋아. 아마 또 일어날 테니까.」
+ELSE
+	PRINTFORMW 「그리고 아마 또 일어날 거야...」
+ENDIF
+PRINTFORMW 「아직 안 비었어.」
+PRINTFORMDW %HE_SHE(TARGET,1)%이 한숨을 내쉰다.
+PRINTFORMW 「하지만 가까워지고 있어.」
+SIF TALENT:TARGET:バストサイズ >= 3
+	PRINTFORMDW 다행이다. 병이 거의 바닥났군.
+PRINTFORMD 파세가 사정한다. 
+SELECTCASE TALENT:TARGET:バストサイズ
+	CASE 4
+		PRINTFORMD 다섯 번 더 
+		EXP:[[パルスィ]]:Ｂ絶頂経験 += 5
+	CASE 3
+		PRINTFORMD 세 번 더 
+		EXP:[[パルスィ]]:Ｂ絶頂経験 += 3
+		;Big/Huge
+	CASE 1, 2
+		PRINTFORMD 두 번 더 
+		EXP:[[パルスィ]]:Ｂ絶頂経験 += 2
+		;Normal
+	CASE -2, -1, 0
+		PRINTFORMD 다시 
+		EXP:[[パルスィ]]:Ｂ絶頂経験 += 1
+ENDSELECT
+PRINTFORMDW 당신이 마침내 %HIS_HER(TARGET)%의 가슴을 비우는 것을 끝내기 전에.
+PRINTFORMDW %BREAKENG(@"%HIS_HER(TARGET,1)%이불이 완전히 젖었고, 우유 냄새가 공기를 가득 채우며, 너는 어떻게 해야 할지 모를 분유병들을 산더미처럼 가지고 있다.")%
+IF ARG == 1 || ARG == 3
+	PRINTFORMW 「아... 훨씬 기분이 좋아졌어.」
+	PRINTFORMW 「고마워요, %K60_MASTER()%.」
+	PRINTFORMDW %HE_SHE(TARGET,1)%이 당신에게 열정적인 키스를 건넨다. 당신은 그 품에 안겨 %HIM_HER(TARGET)%을 꼭 껴안는다.
+	CALL MUTUAL_KISS(TARGET)
+	PRINTFORMW 「이제... 이 우유들을 가지고 뭘 해야 할까?」
+	PRINTFORMW 「팔 수 있을지 모르겠어...?」
+ELSE
+	PRINTFORMW 「...고마워요.」
+	PRINTFORMDW %CALLNAME:[[パルスィ]]%가 희미하게 미소 짓는다.
+	PRINTFORMW 「사실 당신에게 고맙다고 할 상황은 아닌데, 이건 다 당신 때문이니까...」
+	PRINTFORMDW %HIS_HER(TARGET,1)%의 얼굴이 붉어진다.
+	PRINTFORMW 「정말... 기분 좋았어요...」
+	PRINTFORMW 「이제 이 병들 전부 여기서 치워줘요.」
+	PRINTFORMW 「내가 얼마나 모유를 뽑았는지 깨닫는 게 더 창피한 건지, 아니면 내가 얼마나 마셨는지 깨닫는 게 더 창피한 건지 모르겠네요.」
+ENDIF
+SELECTCASE TALENT:TARGET:バストサイズ
+	CASE 4
+		LOCAL = 20
+	CASE 3
+		LOCAL = 12
+	CASE 2
+		LOCAL = 9
+	CASE 1
+		LOCAL = 6
+	CASE 0
+		LOCAL = 4
+	CASE -1
+		LOCAL = 3
+	CASE -2
+		LOCAL = 2
+ENDSELECT
+PRINTFORMDL 
+;Hacky workaround so I can merge this directly into the translation branch
+IF GETNUM(ITEM, "ミルク瓶")
+	PRINTFORMDW 당신은 {LOCAL} 병의 %CALLNAME:[[パルスィ]]%의 모유를 얻는다.
+	PRINTFORMDL 
+	ITEM:991 += LOCAL
+ENDIF
+EXP:[[パルスィ]]:噴乳経験 += LOCAL
+EXP:[[パルスィ]]:Ｂ経験 += 5 * LOCAL
+EXP:[[パルスィ]]:噴乳経験 += 5 * LOCAL
+EXP:MASTER:手淫経験 += 5 * LOCAL
+TIME += 10 * LOCAL
+DOWNBASE:MASTER:気力 += 100 * LOCAL
+
+@K60_EARPLAY_DURING_ORAL
+IF !RAND:10
+	PRINTL
+	PRINTFORMDL 당신은 %CALLNAME:[[パルスィ]]%의 귀가 움직이는 것을 알아차린다, %HE_SHE(TARGET)%이 당신을 모시면서.
+	CALL K60_PLAY_WITH_EARS()
+	PRINTL
+ENDIF
+
+@K60_MISCLICK(MISCLICK_TYPE)
+#DIM MISCLICK_TYPE
+PRINTFORMW 「꺄아!」
+PRINTFORMDW 파씨는 당신에게서 움찔하며 노려본다.
+IF FIRSTTIME("ParseeMisclick")
+	PRINTFORMW 「대체 뭘 하고 있는 거야?! 갑자기 \@ MISCLICK_TYPE == 310 ? 내 엉덩이를 잡거나 # 치마를 확 올리는 건 그만둬, 이 변태 같아!」 \@
+	PRINTFORMDW 네가 실수였다고 설명하려고 하지만 파르시는 그냥 %HIS_HER(TARGET)%의 눈을 굴릴 뿐이다.
+	PRINTFORMW 「정말이야, %CALLNAME:MASTER%? 정말로?」
+	LOCALS:0 = 
+	SELECTCASE PREVCOM
+		CASE 300
+			LOCALS:0 = 나랑 얘기해 봐
+		CASE 302
+			LOCALS:0 = 나와의 스킨십
+		CASE 301
+			LOCALS:0 = 나에게 차를 대라
+	ENDSELECT
+	PRINTFORMW 「당신은 %LOCALS:0%를 하려고 했지만, "실수로" \@ MISCLICK_TYPE == 310 ? 내 엉덩이를 더듬기 시작했거나 # 모두에게 속옷을 보여주었어 \@?」
+	PRINTFORMW 「내가 얼마나 바보라고 생각하는 거야?! 그런 걸 실수로 하지 않아!」
+ELSE
+	PRINTFORMW 「내가 맞춰보자, 너는 "실수로" \@ MISCLICK_TYPE == 310 ? 나를 만졌나 # 내 치마를 다시 뒤집었나 \@?」
+	PRINTFORMW 「다음번에 너를 보면 내가 "실수로" 최대한 세게 사타구니를 차 버려야 할지도 모르겠어.」
+ENDIF
+
+@K60_DOES_PARSEE_KNOW_YOU_RAPED_HER
+IF CFLAG:[[パルスィ]]:K60EN_PARSEE_KNOWS_ABOUT_YOUR_BTD_RELATIONSHIP && CFLAG:MASTER:現在位置 == CFLAG:[[パルスィ]]:現在位置
+	PRINTFORMW 「%조사처리(CALLNAME:MASTER,"가")% 나를 강간했다고?」
+	LOCAL = CFLAG:[[パルスィ]]:2
+	CALL CHANGE_CFLAG(GETNUM(CFLAG, "好感度"), [[パルスィ]], -LOCAL)
+	CFLAG:[[パルスィ]]:2 = 0
+	LOCAL = CFLAG:[[パルスィ]]:4
+	CALL CHANGE_CFLAG(GETNUM(CFLAG, "信頼度"), [[パルスィ]], -LOCAL)
+	CFLAG:[[パルスィ]]:4 = 0
+	ABL:[[パルスィ]]:従順 = 0
+	ABL:[[パルスィ]]:親密 = 0
+	JUEL:[[パルスィ]]:10 = 0
+	JUEL:[[パルスィ]]:16 = 0
+	JUEL:[[パルスィ]]:12 = 0
+	JUEL:[[パルスィ]]:20 = 0
+	PRINTFORMDW 순종이 LV0으로 감소했다...
+	PRINTFORMDW 친밀도가 LV0으로 감소했다...
+	CALL K60_GET_ANGRY(3)
+	IF CFLAG:TARGET:同行
+		CFLAG:TARGET:同行 = 0
+		CFLAG:MASTER:同行 = 0
+	ENDIF
+	PRINTFORMDW 파르시가 살기 어린 눈빛으로 당신을 노려본 후 자리를 떠버린다.
+	CALL RUNOFF(60, 0)
+	CFLAG:[[パルスィ]]:K60EN_PARSEE_RAPE_REVENGE = 1
+ENDIF
+
+@K60_HAS_FUCKED_PARSEE
+#FUNCTION
+SIF CFLAG:K60EN_PARSEE_STARTING_VIRGINITY && !THINKS_IS_VIRGIN([[パルスィ]])
+	RETURNF 1
+SIF CFLAG:[[パルスィ]]:ヤラせちゃった
+	RETURNF 1
+SIF GETBIT(CFLAG:[[パルスィ]]:K60EN_PARSEE_TEMP_LOVE_HOTEL_PERMISSION, 1)
+	RETURNF 1
+SIF !GETBIT(CFLAG:[[パルスィ]]:K60EN_PARSEE_TEMP_LOVE_HOTEL_PERMISSION, 0) && GETBIT(CFLAG:[[パルスィ]]:既成事実,1)
+	RETURNF 1
+RETURNF 0

@@ -1,0 +1,1091 @@
+﻿; Modular ERB: ANON/Achievements/New AL.ERB
+;Create the achievement list.
+
+@AL_LIST
+#DIM               AL_LINECOUNT
+#DIMS DYNAMIC      AL_CATEGORIES,15                ;A list of all available categories
+#DIM               AL_CURRENT_CATEGORY             ;Current achievement category
+#DIM               AL_ENTRIES,1000                 ;Achievement entries
+#DIMS              AL_ROWS,100                     ;Achievement entry rows
+#DIM               AL_COUNT                        ;Achievement entry count
+#DIM               AL_COMPLETE                     ;Achievements completed count
+#DIM               AL_HIT                          ;Result of the input
+#DIM               AL_ROW_MAX                      ;Maximum rows per page
+#DIM               AL_COL_MAX                      ;Maximum columns per page
+#DIM               AL_ENT_MAX                      ;Maximum entries per page
+#DIM DYNAMIC       GET_LIST = 1                    ;When set to 1, recreates the achievement list
+#DIM               NOW_GROUP = 1                   ;Current achievement page
+#DIM               LAST_GROUP                      ;Last page of the list
+#DIM               AL_CURRENT                      ;Current entry in the page.
+#DIM               AL_CURRENT_FIND                 ;Current entry in the page, used for FINDELEMENT
+#DIM               CRedraw                         ;Current Redraw
+#DIMS              AL_STR                          ;String that's being built
+#DIM               AL_CURRENT_ROW                  ;Current row that's being built
+#DIMS DYNAMIC      AL_SEARCHING                    ;Searching string, looks for the search query in requirements and in names
+#DIMS DYNAMIC      AL_XML, 2                       ;Importing global achievements from an XML file.
+;set up maximum achievements per row
+AL_ROW_MAX = (CLIENTHEIGHT()/GETCONFIG("LINE HEIGHT")-10)/8
+AL_COL_MAX = CLIENTWIDTH()/GETCONFIG("FONT SIZE")/(AL_BUTTON_LENGTH+2+7*(GETCONFIG("Line Height"))/GETCONFIG("Font Size"))
+AL_ENT_MAX = AL_ROW_MAX*AL_COL_MAX
+CALL AL_CATEGORIES(AL_CATEGORIES)
+;release and recreate global achievements
+DT_RELEASE "globalAchievements"
+CALL MakeAchievementList(1)
+DT_TOXML @"globalAchievements", AL_XML:0
+AL_XML:1 '= LOADTEXT(@"sav/globalAchievements.xml")
+DT_FROMXML @"globalAchievements", AL_XML:0, AL_XML:1
+AL_LINECOUNT = LINECOUNT
+CRedraw = CURRENTREDRAW()
+DO
+CLEARLINE LINECOUNT-AL_LINECOUNT
+REDRAW 0
+IF GET_LIST
+	CALL AL_MAKE_LIST(AL_ENTRIES, AL_COUNT, AL_CATEGORIES:AL_CURRENT_CATEGORY,AL_COMPLETE,AL_CATEGORIES,AL_SEARCHING)
+	GET_LIST = 0
+ENDIF
+;make the list here
+AL_CURRENT_ROW = 0
+LOCAL:1 = 0
+VARSET AL_ROWS
+LAST_GROUP = 1 + (AL_COUNT - 1) / AL_ENT_MAX
+FOR AL_CURRENT, (NOW_GROUP - 1) * AL_ENT_MAX, NOW_GROUP * AL_ENT_MAX
+IF DT_CELL_GET("achievements", AL_ENTRIES:AL_CURRENT, "id", 1)
+	AL_ROWS:AL_CURRENT_ROW += @"{AL_ENTRIES:AL_CURRENT}/"
+ELSE
+	CONTINUE
+ENDIF
+LOCAL:1++
+;when current count is equal to column max we make a new row
+IF LOCAL:1 >= AL_COL_MAX
+	LOCAL:1 = 0
+	AL_CURRENT_ROW++
+ENDIF
+NEXT
+CUSTOMDRAWLINE ━
+SETCOLOR C_AQUA
+FONTBOLD
+PRINTFORML ★업적★
+FONTREGULAR
+RESETCOLOR
+PRINTFORM {AL_COMPLETE}/{AL_COUNT} 완료 ({AL_COMPLETE*100/MAX(AL_COUNT,1)}\%)
+PRINTBUTTON " [모두 주장하기]", -500
+PRINTBUTTON " [전체]", -600
+PRINTL
+SETCOLOR C_GRAY
+CUSTOMDRAWLINE ━
+RESETCOLOR
+FOR LOCAL,0,VARSIZE("AL_CATEGORIES")
+SIF !STRLENS(AL_CATEGORIES:LOCAL)
+	CONTINUE
+SIF AL_CURRENT_CATEGORY == LOCAL
+	SETCOLOR C_AQUA
+PRINTBUTTON @"[%AL_CATEGORIES_TR(AL_CATEGORIES:LOCAL)%]", 8000+LOCAL
+RESETCOLOR
+NEXT
+PRINTL
+SETCOLOR C_GRAY
+CUSTOMDRAWLINE ━
+RESETCOLOR
+;PRINTBUTTON "[Claim Filtered]", -501
+;PRINTL
+FOR AL_CURRENT_ROW,0,AL_ROW_MAX
+FOR LOCAL,0,8
+IF AL_CURRENT_ROW || LOCAL
+	VARSET AL_STR
+ELSE
+	;AL_STR = <br>
+	AL_STR = <button value='-501'>[Claim Filtered]</button>
+	IF STRLENS(AL_SEARCHING)
+		AL_STR += @"<font color='#66FFFF'><button value='-502'>[검색 중: %AL_SEARCHING%]</button></font><font color='#FFA500'><button value='-503'>[검색 초기화]</button></font>"
+	ELSE
+		AL_STR += @"<button value='-502'>[Search]</button>"
+	ENDIF
+	AL_STR += @"<br>"
+ENDIF
+FOR AL_CURRENT, 0, STRCOUNT(AL_ROWS:AL_CURRENT_ROW,"/")
+VARSET AL_ENTRY_INTS
+LOCAL:2 = TOINT(SPLIT_SINGLE(AL_ROWS:AL_CURRENT_ROW,AL_CURRENT,"/"))
+AL_CURRENT_FIND = FINDELEMENT(AL_ENTRIES,LOCAL:2)
+SIF !DT_CELL_GET("achievements", LOCAL:2, "id", 1)
+	CONTINUE
+CALL AL_ENTRY(AL_CURRENT_FIND, AL_ENTRIES, AL_ROW_MAX, AL_COL_MAX, AL_STR, LOCAL,LOCAL:2)
+NEXT
+SIF STRLENS(AL_STR)
+	HTML_PRINT AL_STR
+NEXT
+IF !STRLENS(AL_STR)
+	HTML_PRINT "<br>"*(7+(AL_CURRENT_ROW==0))
+ENDIF
+NEXT
+IF LAST_GROUP == 1
+	SETCOLOR 0x606060
+	PRINTFORM 이전 페이지
+	RESETCOLOR
+ELSE
+	PRINTBUTTON @"이전 페이지", -888
+ENDIF
+PRINTFORM %CENTER(@"페이지 {NOW_GROUP}/{LAST_GROUP}",15)%
+IF LAST_GROUP == 1
+	SETCOLOR 0x606060
+	PRINTFORM 다음 페이지
+	RESETCOLOR
+ELSE
+	PRINTBUTTON @"다음 페이지", -222
+ENDIF
+PRINTL
+CUSTOMDRAWLINE ━
+PRINTBUTTON "[반환]", -9999
+INPUT
+AL_HIT = RESULT
+SELECTCASE AL_HIT
+	CASE 8000 TO 8000+VARSIZE("AL_CATEGORIES")
+		;change filters
+		AL_CURRENT_CATEGORY = RESULT-8000
+		GET_LIST = 1
+		NOW_GROUP = 1
+	CASE -222, -888
+		;page
+		SIF LAST_GROUP == 1
+			CONTINUE
+		NOW_GROUP = PAGE_HANDLE(RESULT, -888, NOW_GROUP, 1, LAST_GROUP)
+	CASE -9999
+		RETURN
+	CASE -500
+		;claim all
+		FOR LOCAL,0,DT_ROW_LENGTH("achievements")
+		CALL ClaimAchievement(DT_CELL_GET("achievements", LOCAL, "id"),1)
+		NEXT
+		GET_LIST = 1
+	CASE -501
+		;claim only shown
+		FOR LOCAL,0,AL_COUNT
+		CALL ClaimAchievement(AL_ENTRIES:LOCAL,1)
+		NEXT
+		GET_LIST = 1
+	CASE -502
+		PRINTFORML 검색어를 입력하라
+		PRINTBUTTON "[취소]", ""
+		PRINTL
+		INPUTS
+		AL_SEARCHING '= RESULTS
+		GET_LIST = 1
+	CASE -503
+		VARSET AL_SEARCHING
+		GET_LIST = 1
+	CASE -600
+		;global
+		PRINTFORML [100] 보존하기
+		PRINTFORML [200] 초기화하기
+		PRINTFORML [999] 취소하기
+		INPUT
+		SELECTCASE RESULT
+			CASE 100
+				PRINTFORML 이 세이브의 현재 업적 진행 상황을 글로벌 세이브로 복사하시겠습니까?
+				PRINTFORML 이 세이브에서 완료된 모든 업적은 어떤 세이브에서도 수령할 수 있습니다.
+				CALL ASK_YN
+				IF !RESULT
+					CALL CopyAchievementListToGlobal
+					PRINTFORMW 완료했다.
+				ENDIF
+			CASE 200
+				PRINTFORML 전역 저장 데이터의 모든 도전과제 진행 상황을 초기화하시겠습니까.
+				PRINTFORML ※현재 저장된 상태는 영향을 받을 수도 있고 받지 않을 수도 있습니다.
+				PRINTFORML 계속하시겠습니까?
+				CALL ASK_YN
+				IF !RESULT
+					DT_RELEASE "globalAchievements"
+					SAVETEXT "", @"sav/globalAchievements.xml"
+					PRINTFORMW 완료.
+				ENDIF
+			CASEELSE
+		ENDSELECT
+	CASE IS >= 6000000000000
+		CLEARLINE 1
+		CALL ClaimAchievement(AL_HIT)
+		GET_LIST = 1
+ENDSELECT
+LOOP 1
+
+@ClaimAchievement(AL_HIT, ARG:1)
+#DIM AL_HIT
+#DIMS AL_DEF
+#DIM AL_ENT_ID
+AL_DEF '= DT_CELL_GETS("achievements", AL_HIT, "defName", 1)
+CALL AchievementClaimed(AL_DEF,0)
+LOCAL = RESULT
+SELECTCASE ARG:1
+	CASE 0
+		SIF GROUPMATCH(LOCAL,0,-999)
+			RETURN
+	CASE 1
+		SIF LOCAL != 1
+			RETURN
+ENDSELECT
+SIF ARG:1
+	PRINTFORMSL AL_CLAIMING_ACHIVEMENT_TR(DT_CELL_GETS("achievements", AL_HIT, "defName", 1))
+;edit the DT entry else we create our own
+IF DT_SELECT("saveAchievements", @"defName = '%AL_DEF%'")
+	AL_ENT_ID = RESULT:1
+	;set a reclaim flag instead of going back to front
+	SIF DT_CELL_GET("saveAchievements", AL_ENT_ID, "claimed", 1)
+		DT_CELL_SET "saveAchievements", AL_ENT_ID, "completed", -1, 1
+	DT_CELL_SET "saveAchievements", AL_ENT_ID, "claimed", !DT_CELL_GET("saveAchievements", AL_ENT_ID, "claimed", 1), 1
+ELSE
+	DT_ROW_ADD "saveAchievements", "defName",              AL_DEF, "claimed",                   1, "completed",                 1,
+ENDIF
+TRYCCALLFORM AL_ENTRY_TOGGLE_%AL_DEF%
+CATCH
+SETCOLOR C_RED
+PRINTL
+PRINTFORML %"-"*89%
+PRINTFORML 성취에 defName [%AL_DEF%]은 보너스 기능이 없다!
+PRINTFORML !REPORT THIS!
+PRINTFORML %"-"*89%
+RESETCOLOR
+FORCEWAIT
+RETURN
+ENDCATCH
+
+@AL_ENTRY(ARG, AL_ENTRIES, AL_ROW_MAX, AL_COL_MAX, AL_STR, AL_SEQUENCE, AL_ACHIEVE)
+#DIM AL_ROW_MAX
+#DIM AL_COL_MAX
+#DIM REF AL_ENTRIES
+#DIMS REF AL_STR
+#DIM AL_IMG_ID
+#DIM AL_SEQUENCE
+#DIMS AL_DESC
+#DIM AL_ACHIEVE
+#DIM AL_NUM_IN_PAGE
+#DIM COL_FIRST
+#DIM COL_LAST
+#DIM COL_MIDDLE
+#DIM ROW_FIRST
+#DIM ROW_LAST
+#DIM ROW_MIDDLE
+#DIM AL_WIDTH_MAX
+#DIM AL_IMAGE_EXIST
+#DIM AL_IMAGE_SPACING
+#DIMS AL_COLORS
+#DIMS AL_BONUS
+#DIM AL_CAN_CLAIM
+;here we check the positions of the
+AL_NUM_IN_PAGE = ARG%((AL_ROW_MAX*AL_COL_MAX))
+COL_FIRST = AL_NUM_IN_PAGE%AL_COL_MAX == 0
+COL_LAST = AL_NUM_IN_PAGE%AL_COL_MAX == AL_COL_MAX-1 || AL_ENTRIES:(ARG+1) == 0
+COL_MIDDLE = !COL_FIRST && !COL_LAST
+ROW_FIRST = AL_NUM_IN_PAGE/AL_COL_MAX == 0
+ROW_LAST = AL_NUM_IN_PAGE/AL_COL_MAX == AL_ROW_MAX-1 || AL_ENTRIES:(ARG+AL_COL_MAX) == 0
+AL_IMAGE_EXIST = EXISTFILE(@"RESOURCES/%DT_CELL_GETS("achievements", AL_ACHIEVE, "icon", 1)%") && STRLENS(DT_CELL_GETS("achievements", AL_ACHIEVE, "icon", 1))
+;on 16 size and height we can fit a 96x96 image
+;       - this would be 6
+;on a 16 size and 20 height we can fit a 112x112 image
+;       - this would be 7
+AL_IMAGE_SPACING = AL_BUTTON_IMAGE_SIZE*(GETCONFIG("Line Height"))/GETCONFIG("Font Size")
+AL_WIDTH_MAX = ((GETCONFIG("FONT SIZE")*AL_BUTTON_LENGTH))
+SIF !AL_IMAGE_EXIST
+	AL_WIDTH_MAX += (GETCONFIG("FONT SIZE")*AL_IMAGE_SPACING)
+AL_WIDTH_MAX = (AL_WIDTH_MAX/(GETCONFIG("FONT SIZE")/2))
+RESETCOLOR
+IF AL_SEQUENCE == 5 || AL_SEQUENCE == 6
+	AL_BONUS '= AL_ENTRY_BONUS_TR(DT_CELL_GETS("achievements", AL_ACHIEVE, "defName", 1))
+	CALL AchievementClaimed(DT_CELL_GETS("achievements", AL_ACHIEVE, "defName", 1),0)
+	AL_CAN_CLAIM = RESULT
+	SELECTCASE AL_CAN_CLAIM
+		CASE 1
+			AL_COLORS '= TOSTR(C_AQUA,"X6")
+			AL_BONUS '= @"CLAIM: %AL_BONUS%"
+		CASE -1
+			AL_COLORS '= TOSTR(C_P_BLUE,"X6")
+			AL_BONUS '= @"회수: %AL_BONUS%"
+		CASE -2
+			AL_COLORS '= TOSTR(C_P_BLUE,"X6")
+			AL_BONUS '= @"클레임 해제: %AL_BONUS%"
+		CASE -999
+			AL_COLORS '= "202020"
+			AL_BONUS '= @"완료됨: %AL_BONUS%"
+		CASEELSE
+			AL_COLORS '= "858585"
+	ENDSELECT
+	AL_BONUS '= AL_LINEBREAK(AL_BONUS,,"<tempbr>",AL_WIDTH_MAX)
+ELSEIF AL_SEQUENCE == 2 || AL_SEQUENCE == 3 || AL_SEQUENCE == 4
+	TRYCCALLFORM AL_ENTRY_INFO_%DT_CELL_GETS("achievements", AL_ACHIEVE, "defName", 1)%
+	CATCH
+	ENDCATCH
+	AL_DESC '= AL_ENTRY_DESC_TR(DT_CELL_GETS("achievements", AL_ACHIEVE, "defName", 1))
+	SIF AL_ENTRY_INTS:Progress || AL_ENTRY_INTS:ProgressMax
+		AL_DESC += @" ({AL_ENTRY_INTS:Progress}/{AL_ENTRY_INTS:ProgressMax})"
+	AL_DESC '= AL_LINEBREAK(AL_DESC,,"<tempbr>",AL_WIDTH_MAX)
+ENDIF
+SELECTCASE AL_SEQUENCE
+	CASE 0
+		;first line
+		IF COL_FIRST && ROW_FIRST
+			AL_STR += "┌"
+		ELSEIF ROW_FIRST
+			AL_STR += "┬"
+		ENDIF
+		SIF ROW_FIRST
+			AL_STR += @"%"─"*(AL_BUTTON_LENGTH+AL_IMAGE_SPACING)%"
+		IF ROW_FIRST && COL_LAST
+			AL_STR += @"┐"
+		ENDIF
+	CASE 1
+		;second line
+		SIF COL_FIRST
+			AL_STR += "│"
+		;icon
+		;if icon does not exist we give the
+		IF AL_IMAGE_EXIST
+			AL_IMG_ID = RAND(2000000,20000000)
+			LOCALS '= @"iconTest{AL_IMG_ID}"
+			GCREATEFROMFILE AL_IMG_ID, @"%DT_CELL_GETS("achievements", AL_ACHIEVE, "icon", 1)%"
+			SPRITECREATE LOCALS, AL_IMG_ID
+			AL_STR += @"<img src='%LOCALS%' height='{(GETCONFIG("FONT SIZE")*AL_IMAGE_SPACING)}px' width='{(GETCONFIG("FONT SIZE")*AL_IMAGE_SPACING)}px' ypos='0px'>"
+		ENDIF
+		AL_STR += @"%AL_SPACING(AL_ENTRY_NAME_TR(DT_CELL_GETS("achievements", AL_ACHIEVE, "defName", 1)),AL_WIDTH_MAX,"LEFT")%"
+		AL_STR += @"│"
+	CASE 2
+		SIF COL_FIRST
+			AL_STR += "│"
+		SIF AL_IMAGE_EXIST
+			AL_STR += @"<shape type='space' param='{(GETCONFIG("FONT SIZE")*AL_IMAGE_SPACING)}px'>"
+		AL_STR += @"<font color='#858585'>%AL_SPACING(SPLIT_SINGLE(AL_DESC,0,"<tempbr>"),AL_WIDTH_MAX,"LEFT")%</font>"
+		AL_STR += @"│"
+	CASE 3
+		SIF COL_FIRST
+			AL_STR += "│"
+		SIF AL_IMAGE_EXIST
+			AL_STR += @"<shape type='space' param='{(GETCONFIG("FONT SIZE")*AL_IMAGE_SPACING)}px'>"
+		AL_STR += @"<font color='#858585'>%AL_SPACING(SPLIT_SINGLE(AL_DESC,1,"<tempbr>"),AL_WIDTH_MAX,"LEFT")%</font>"
+		AL_STR += @"│"
+	CASE 4
+		SIF COL_FIRST
+			AL_STR += "│"
+		SIF AL_IMAGE_EXIST
+			AL_STR += @"<shape type='space' param='{(GETCONFIG("FONT SIZE")*AL_IMAGE_SPACING)}px'>"
+		AL_STR += @"<font color='#858585'>%AL_SPACING(SPLIT_SINGLE(AL_DESC,2,"<tempbr>"),AL_WIDTH_MAX,"LEFT")%</font>"
+		AL_STR += @"│"
+	CASE 5
+		SIF COL_FIRST
+			AL_STR += "│"
+		SIF AL_IMAGE_EXIST
+			AL_STR += @"<shape type='space' param='{(GETCONFIG("FONT SIZE")*AL_IMAGE_SPACING)}px'>"
+		SIF AL_CAN_CLAIM > 0 || GROUPMATCH(AL_CAN_CLAIM,-1,-2)
+			AL_STR += @"<button value='{AL_ACHIEVE}'>"
+		AL_STR += @"<font color='#%AL_COLORS%'>"
+		IF STRLENS(SPLIT_SINGLE(AL_BONUS,1,"<tempbr>"))
+			AL_STR += @"%AL_SPACING((SPLIT_SINGLE(AL_BONUS,0,"<tempbr>")),AL_WIDTH_MAX,"LEFT")%"
+		ELSE
+			AL_STR += @"<shape type='space' param='{(GETCONFIG("FONT SIZE")*AL_BUTTON_LENGTH)}px'>"
+			SIF !AL_IMAGE_EXIST
+				AL_STR += @"<shape type='space' param='{(GETCONFIG("FONT SIZE")*AL_IMAGE_SPACING)}px'>"
+		ENDIF
+		AL_STR += @"</font>"
+		SIF AL_CAN_CLAIM > 0 || GROUPMATCH(AL_CAN_CLAIM,-1,-2)
+			AL_STR += @"</button>"
+		AL_STR += @"│"
+	CASE 6
+		SIF COL_FIRST
+			AL_STR += "│"
+		SIF AL_IMAGE_EXIST
+			AL_STR += @"<shape type='space' param='{(GETCONFIG("FONT SIZE")*AL_IMAGE_SPACING)}px'>"
+		SIF AL_CAN_CLAIM > 0 || GROUPMATCH(AL_CAN_CLAIM,-1,-2)
+			AL_STR += @"<button value='{AL_ACHIEVE}'>"
+		AL_STR += @"<font color='#%AL_COLORS%'>"
+		IF STRLENS(SPLIT_SINGLE(AL_BONUS,1,"<tempbr>"))
+			AL_STR += @"%AL_SPACING(SPLIT_SINGLE(AL_BONUS,1,"<tempbr>"),AL_WIDTH_MAX,"LEFT")%"
+		ELSE
+			AL_STR += @"%AL_SPACING(SPLIT_SINGLE(AL_BONUS,0,"<tempbr>"),AL_WIDTH_MAX,"LEFT")%"
+		ENDIF
+		AL_STR += @"</font>"
+		SIF AL_CAN_CLAIM > 0 || GROUPMATCH(AL_CAN_CLAIM,-1,-2)
+			AL_STR += @"</button>"
+		AL_STR += @"│"
+	CASE 7
+		;last line
+		IF COL_FIRST && ROW_LAST
+			AL_STR += "└"
+		ELSEIF COL_FIRST
+			AL_STR += "├"
+		ELSEIF ROW_LAST && (AL_ENTRIES:(ARG+AL_COL_MAX-1) == 0 || (ARG+AL_COL_MAX-1)/((AL_ROW_MAX*AL_COL_MAX)) != ARG/((AL_ROW_MAX*AL_COL_MAX)))
+			AL_STR += "┸"
+		ELSE
+			AL_STR += "╂"
+		ENDIF
+		AL_STR += @"%"─"*(AL_BUTTON_LENGTH+AL_IMAGE_SPACING)%"
+		IF ROW_LAST && (COL_LAST||AL_ENTRIES:(ARG+1) == 0)
+			AL_STR += @"┘"
+		ELSEIF COL_LAST
+			AL_STR += "┤"
+		ENDIF
+ENDSELECT
+;Edit the category list to categories you have in your respective branch
+;Keep in mind that base tags are in English. Translations are done in `@AL_CATEGORIES_TR`
+
+@AL_CATEGORIES(AL_CATEGORIES)
+#DIMS REF AL_CATEGORIES
+AL_CATEGORIES '= "All", "Social", "Sexual", "Fall States", "Collections", "Combat", "Character/Story", "Excretion", "Legend of Gensokyo", "Other"
+;Function to detect game language using multiple signs
+;Ideally the best way to do it is to check for a variable like BBAS_VERSION which is only present in BBASaikou
+
+@AL_DETECT_LANGUAGE()
+#FUNCTIONS
+#DIMS DYNAMIC AL_LANGUAGE = "eng"
+IF EXISTVAR("BBAS_VERSION")
+	AL_LANGUAGE '= "zh-Hant"
+ELSEIF GAMEBASE_TITLE == "eraThe World" && GAMEBASE_INFO == "※画像が表示されない場合はreadmeを確認しリソースを導入してください"
+	AL_LANGUAGE '= "ja"
+ELSE
+	AL_LANGUAGE '= "eng"
+ENDIF
+RETURNF AL_LANGUAGE
+
+@AL_MAKE_LIST(AL_ENTRIES, AL_COUNT, AL_CATEGORY_MATCH, AL_COMPLETE, AL_CATEGORIES, AL_SEARCHING)
+#DIM REF AL_ENTRIES
+#DIM REF AL_COUNT
+#DIM REF AL_COMPLETE
+#DIMS REF AL_CATEGORIES
+#DIMS REF AL_SEARCHING
+#DIMS AL_CATEGORY_MATCH
+VARSET AL_ENTRIES
+VARSET AL_COUNT
+VARSET AL_COMPLETE
+VARSET AL_PROG
+FOR LOCAL, 0, DT_ROW_LENGTH("achievements")
+VARSET AL_ENTRY_INTS
+SIF !DT_CELL_GET("achievements", LOCAL, "id")
+	CONTINUE
+SELECTCASE AL_CATEGORY_MATCH
+	CASE "All"
+	CASE "Other"
+		SIF FINDELEMENT(AL_CATEGORIES,DT_CELL_GETS("achievements", LOCAL, "category")) != -1 && DT_CELL_GETS("achievements", LOCAL, "category") != "Other"
+			CONTINUE
+	CASEELSE
+		SIF DT_CELL_GETS("achievements", LOCAL, "category") != AL_CATEGORY_MATCH
+			CONTINUE
+ENDSELECT
+;searching
+IF STRLENS(AL_SEARCHING)
+	SIF STRFIND(TOLOWER(AL_ENTRY_NAME_TR(DT_CELL_GETS("achievements", LOCAL, "defName"))),TOLOWER(AL_SEARCHING)) == -1 && STRFIND(TOLOWER(AL_ENTRY_DESC_TR(DT_CELL_GETS("achievements", LOCAL, "defName"))),TOLOWER(AL_SEARCHING)) == -1
+		CONTINUE
+ENDIF
+CALL AchievementClaimed(DT_CELL_GETS("achievements", LOCAL, "defName"))
+IF RESULT
+	AL_COMPLETE++
+ELSEIF AL_ENTRY_INTS:Hidden
+	CONTINUE
+ENDIF
+AL_ENTRIES:AL_COUNT = DT_CELL_GET("achievements", LOCAL, "id")
+AL_COUNT ++
+NEXT
+;sort by completed, claimed, and whatever
+LOCAL:0 = 1
+WHILE LOCAL:0 < AL_COUNT
+SIF !(LOCAL:0)
+	LOCAL:0 ++
+CALL AchievementClaimed(DT_CELL_GETS("achievements", AL_ENTRIES:(LOCAL:0 - 1), "defName", 1))
+LOCAL:1 = RESULT
+CALL AchievementClaimed(DT_CELL_GETS("achievements", AL_ENTRIES:(LOCAL:0), "defName", 1))
+LOCAL:2 = RESULT
+IF LOCAL:1 >= LOCAL:2
+	LOCAL:0 ++
+ELSE
+	SWAP AL_ENTRIES:(LOCAL:0 - 1), AL_ENTRIES:(LOCAL:0)
+	LOCAL:0 --
+ENDIF
+WEND
+;make achievement lists
+
+@MakeAchievementList(ARG)
+#DIMS nTableName
+IF ARG
+	nTableName '= "globalAchievements"
+ELSE
+	nTableName '= "saveAchievements"
+ENDIF
+DT_CREATE nTableName
+DT_COLUMN_ADD nTableName, "defName"
+SIF !ARG
+	DT_COLUMN_ADD nTableName, "claimed", "int16"
+DT_COLUMN_ADD nTableName, "completed", "int16"
+
+@MakeAchievementListTemp()
+DT_RELEASE "achievements"
+CALL MakeAchievementListModular("achievements")
+CALL MakeAchievementList(0)
+CALL MakeAchievementList(1)
+CALL AL_ENTRY_MAKE
+CALL AL_ENTRY_MAKE_NAS
+SIF !AL_LEGACY_PROS
+	CALL VerifyLegacyAchievements
+
+@MakeAchievementListModular(ARGS="achievements")
+#DIMS nTableName
+nTableName '= ARGS
+DT_CREATE nTableName
+DT_COLUMN_ADD nTableName, "defName"
+DT_COLUMN_ADD nTableName, "label"
+DT_COLUMN_ADD nTableName, "requirement"
+DT_COLUMN_ADD nTableName, "bonus"
+DT_COLUMN_ADD nTableName, "icon"
+DT_COLUMN_ADD nTableName, "category"
+
+@CopyAchievementListToGlobal()
+#DIM CAL_NUM
+#DIM CAL_AC
+#DIM CAL_MAX
+#DIM CAL_ID
+#DIMS CAL_DEF
+#DIMS CAL_XML, 2
+;copying to global
+DT_RELEASE "globalAchievements"
+CALL MakeAchievementList(1)
+CAL_MAX = DT_ROW_LENGTH("saveAchievements")
+FOR CAL_NUM,0,CAL_MAX
+CAL_ID = DT_CELL_GET("saveAchievements", CAL_NUM, "id")
+CAL_DEF '= DT_CELL_GETS("saveAchievements", CAL_ID, "defName",1)
+CALL AchievementClaimed(CAL_DEF,1)
+CAL_AC = RESULT
+DT_ROW_ADD "globalAchievements", "defName",    CAL_DEF, "completed",  CAL_AC,
+NEXT
+CAL_XML:1 '= DT_TOXML(@"globalAchievements", CAL_XML)
+SAVETEXT CAL_XML:1, @"sav/globalAchievements.xml"
+;ARG:1 is to ignore global unlocks
+
+@AchievementClaimed(ARGS,ARG:1=0)
+#DIM AC_TABLE
+RESULT:1 = 0
+AC_TABLE = 0
+;check if we had done it previously
+DT_SELECT "saveAchievements", @"defName = '%ARGS%'"
+AC_TABLE = RESULT:1
+IF AC_TABLE
+	IF DT_CELL_GET("saveAchievements", AC_TABLE, "claimed", 1)
+		TRYCCALLFORM AL_ENTRY_INFO_%ARGS%
+		CATCH
+		RETURN 0
+		ENDCATCH
+		IF AL_ENTRY_INTS:Removable
+			RETURN -2
+		ELSE
+			RETURN -999
+		ENDIF
+	ELSEIF DT_CELL_GET("saveAchievements", AC_TABLE, "completed", 1)
+		RETURN DT_CELL_GET("saveAchievements", AC_TABLE, "completed", 1)
+	ENDIF
+ENDIF
+;else check if it's currently obtainable
+TRYCCALLFORM AL_ENTRY_INFO_%ARGS%
+CATCH
+RETURN 0
+ENDCATCH
+IF AL_ENTRY_INTS:Obtained
+	;edit the DT entry else we create our own
+	IF DT_SELECT("saveAchievements", @"defName = '%ARGS%'")
+		DT_CELL_SET "saveAchievements", RESULT:1, "claimed", 1, 1
+		DT_CELL_SET "saveAchievements", RESULT:1, "completed", 1, 1
+	ELSE
+		DT_ROW_ADD "saveAchievements", "defName",                       ARGS, "claimed",     AL_ENTRY_INTS:Obtained, "completed",                        1,
+	ENDIF
+	IF AL_ENTRY_INTS:Removable
+		RETURN -1
+	ELSE
+		RETURN -999
+	ENDIF
+ELSEIF AL_ENTRY_INTS:Obtainable
+	;edit the DT entry else we create our own
+	IF DT_SELECT("saveAchievements", @"defName = '%ARGS%'")
+		DT_CELL_SET "saveAchievements", RESULT:1, "completed", 1, 1
+	ELSE
+		DT_ROW_ADD "saveAchievements", "defName",                       ARGS, "claimed",     AL_ENTRY_INTS:Obtained, "completed",                        1,
+	ENDIF
+	RETURN AL_ENTRY_INTS:Obtainable
+ENDIF
+;then check globals
+IF !ARG:1
+	DT_SELECT "globalAchievements", @"defName = '%ARGS%'"
+	IF RESULT:1
+		IF DT_CELL_GET("globalAchievements", RESULT:1, "completed", 1)
+			RETURN 1
+		ENDIF
+	ENDIF
+ENDIF
+
+@SaveAchievementClaimed(ARGS)
+#FUNCTION
+#DIM AC_TABLE
+RESULT:1 = 0
+AC_TABLE = 0
+DT_SELECT "saveAchievements", @"defName = '%ARGS%'"
+AC_TABLE = RESULT:1
+IF AC_TABLE
+	RETURNF DT_CELL_GET("saveAchievements", AC_TABLE, "claimed", 1)
+ENDIF
+
+@SaveAchievementCompleted(ARGS)
+#FUNCTION
+#DIM AC_TABLE
+RESULT:1 = 0
+AC_TABLE = 0
+DT_SELECT "saveAchievements", @"defName = '%ARGS%'"
+AC_TABLE = RESULT:1
+IF AC_TABLE
+	RETURNF DT_CELL_GET("saveAchievements", AC_TABLE, "completed", 1)
+ENDIF
+
+@CompleteAchievement(ARGS)
+#FUNCTION
+;edit the DT entry else we create our own
+IF DT_SELECT("saveAchievements", @"defName = '%ARGS%'")
+	DT_CELL_SET "saveAchievements", RESULT:1, "completed", 1, 1
+ELSE
+	DT_ROW_ADD "saveAchievements", "defName",                       ARGS, "claimed",                          0, "completed",                        1,
+ENDIF
+;Notify the player of achievement completions
+
+@AL_NOTIFY_ACHIEVEMENT_COMPLETION(ARGS)
+#DIM ALNC_ENTRIES,10
+#DIM ALNC_ID
+#DIMS ALNC_STR
+#DIM ALNC_LOCAL,10
+#DIM ALNC_ROW_MAX
+#DIM ALNC_COL_MAX
+#DIMS CONST ALNC_UNLOCK_STR = @"Ａ　Ｃ　Ｈ　Ｉ　Ｅ　Ｖ　Ｅ　Ｍ　Ｅ　Ｎ　Ｔ　　Ｕ　Ｎ　Ｌ　Ｏ　Ｃ　Ｋ　Ｅ　Ｄ！"
+DT_SELECT "saveAchievements", @"defName = '%ARGS%'"
+ALNC_ID = RESULT:1
+SIF DT_CELL_GET("saveAchievements", ALNC_ID, "completed", 1)
+	RETURN
+PRINTL
+NOSKIP
+FOR LOCAL,1,STRLENS(ALNC_UNLOCK_STR)+1, 12
+CLEARLINE 1
+PRINTFORMSL SUBSTRING(ALNC_UNLOCK_STR,0,LOCAL)
+TWAIT 150 ,1
+NEXT
+ENDNOSKIP
+CLEARLINE 1
+PRINTFORMSL (ALNC_UNLOCK_STR)
+DT_SELECT "achievements", @"defName = '%ARGS%'"
+ALNC_ROW_MAX = 1
+ALNC_COL_MAX = 1
+ALNC_ENTRIES:0 = RESULT:1
+;CALLF CompleteAchievement(ARGS)
+FOR ALNC_LOCAL,0,8
+VARSET ALNC_STR
+CALL AL_ENTRY(0,ALNC_ENTRIES,ALNC_ROW_MAX,ALNC_COL_MAX,ALNC_STR,ALNC_LOCAL,ALNC_ENTRIES:0)
+SIF STRLENS(ALNC_STR)
+	HTML_PRINT ALNC_STR
+NEXT
+CALLF CompleteAchievement(ARGS)
+WAIT
+;scrapped code to force an input when an achievement is unlocked
+; PRINTBUTTON "[No thanks]", 0
+; INPUT
+; SELECTCASE RESULT
+; CASE 0
+; CASEELSE
+; CALL ClaimAchievement(ALNC_ID)
+; ENDSELECT
+;for all things character related we can just do one loop and checks
+
+@AL_CHARACTER_CHECK()
+#FUNCTION
+#DIM Impregnations, 15
+VARSET Impregnations
+;from @PRINT_BONUS_4
+FOR LOCAL,8,14
+AL_PROG:LOCAL = 0
+NEXT
+FOR LOCAL,0,CHARANUM
+;relationships
+IF !TALENT:LOCAL:行きずり
+	SIF TALENT:LOCAL:恋慕
+		AL_PROG:LoveCount ++
+	SIF TALENT:LOCAL:セフレ || TALENT:LOCAL:184 ;AL EDIT: Also allow characters with Lust to count
+		AL_PROG:SexFriendCount ++
+	SIF CFLAG:LOCAL:生解禁 >= 2
+		AL_PROG:DDayCount ++
+	SIF CFLAG:LOCAL:清い交際
+		AL_PROG:PureCount ++
+	SIF CFLAG:LOCAL:ヤラせちゃった
+		AL_PROG:NoConsentCount ++
+	SIF CFLAG:LOCAL:既成事実 & 合意_うふふ
+		AL_PROG:ConsentCount ++
+ENDIF
+;pregnancy
+IF CFLAG:LOCAL:妊娠経過日数 || CFLAG:LOCAL:子供人数 || TALENT:LOCAL:NESTING
+	SIF CHECK_CHARA(LOCAL, "巫女")
+		Impregnations:2 = 1
+	SIF CHECK_CHARA(LOCAL, "妖精")
+		Impregnations:3 = 1
+	SIF CHECK_CHARA(LOCAL, "神霊")
+		Impregnations:4 = 1
+	SIF CHECK_CHARA(LOCAL, "付喪神")
+		Impregnations:5 = 1
+	SIF CHECK_CHARA(LOCAL, "鬼")
+		Impregnations:6 = 1
+	SIF CHECK_CHARA(LOCAL, "天狗")
+		Impregnations:7 = 1
+	SIF CHECK_CHARA(LOCAL, "蓬莱人")
+		Impregnations:8 = 1
+	SIF CHECK_CHARA(LOCAL, "妖怪") && !CHECK_CHARA(LOCAL, "鬼") && !CHECK_CHARA(LOCAL, "天狗")
+		Impregnations:9 = 1
+	SIF CHECK_CHARA(LOCAL, "魔法使い")
+		Impregnations:10 = 1
+	SIF CHECK_CHARA(LOCAL, "幽霊")
+		Impregnations:11 = 1
+	SIF CHECK_CHARA(LOCAL, "人形")
+		Impregnations:12 = 1
+	;SIF IS_MOB(LOCAL)
+	;SIF TALENT:LOCAL:300
+	;	Impregnations:13 = 1
+	SIF CHECK_CHARA(LOCAL, "メイド")
+		Impregnations:14 = 1
+ENDIF
+;Mob special case
+SIF FLAG:行きずり孕ませ数
+	Impregnations:13 = 1
+;abilities
+SIF TALENT:LOCAL:淫乳 || GETBIT (CFLAG:LOCAL:引き継ぎ, 5)
+	AL_PROG:LewdBreast ++
+SIF TALENT:LOCAL:淫壺 || GETBIT (CFLAG:LOCAL:引き継ぎ, 3)
+	AL_PROG:LewdVag ++
+SIF TALENT:LOCAL:尻穴狂い || GETBIT (CFLAG:LOCAL:引き継ぎ, 4)
+	AL_PROG:LewdAnal ++
+SIF TALENT:LOCAL:キス魔 || GETBIT (CFLAG:LOCAL:引き継ぎ, 6)
+	AL_PROG:LewdLip ++
+SIF TALENT:LOCAL:自慰狂い
+	AL_PROG:LewdMasturb ++
+SIF CFLAG:LOCAL:弾幕勝負勝利
+	AL_PROG:CombatWins ++
+;NAS Custom
+IF IsDead:LOCAL:0
+	AL_PROG:Dead++
+	IF KilledBy:LOCAL:0 == MASTER
+		AL_PROG:KilledByPlayer++
+	ENDIF
+ENDIF
+NEXT
+AL_PROG:Pregnancy = SUMARRAY(Impregnations, 2, 15)
+AL_PROG:PregnancyRacesAll = VARSIZE("Impregnations")-2
+FOR LOCAL,2,15
+SIF Impregnations:LOCAL
+	SETBIT AL_PROG:PregnancyRaces, LOCAL
+NEXT
+AL_PROG:CharacterCheck = 1
+;for dealing with eastern languages that do not have spaces
+;we can simply change the strMatch parameter to use "." to match any character instead of "\s" which checks for whitespaces
+
+@AL_LINEBREAK(strInput, nIndent = 0, strBreakLine = "\n", nLength = 0, strMatch = "\s")
+#FUNCTIONS
+#DIM nIndent
+#DIM nLength
+#DIMS strInput
+#DIMS strBreakLine
+#DIMS strMatch
+#DIMS nMaking
+SELECTCASE AL_DETECT_LANGUAGE()
+	CASE "zh-Hant", "ja"
+		;variant of breakeng.
+		nMaking '= REPLACE(strInput, @"(.\{1,{(nLength/2)-1}\})(.|$)", "$1$2\n")
+		;remove strBreakLine contents at the end
+		RETURNF SUBSTRING(nMaking, 0, STRLENS(nMaking) - STRLENS(strBreakLine))
+	CASEELSE
+		;account for branches that still use eastern brackets
+		;regex is dum dum and counts full-length characters the same as half-lengths.
+		nLength -= STRCOUNT(strInput, "【")
+		nLength -= STRCOUNT(strInput, "】")
+		nLength -= STRCOUNT(strInput, "『")
+		nLength -= STRCOUNT(strInput, "』")
+		RETURNF BREAKENG(strInput, nIndent, strBreakLine, nLength, strMatch)
+ENDSELECT
+;spacing with escaped characters
+
+@AL_SPACING(strInput,nLength,nOrientation="LEFT")
+#FUNCTIONS
+#DIM nLength
+#DIMS strInput
+#DIMS strEscaped
+#DIMS nOrientation
+strEscaped '= HTML_ESCAPE(strInput)
+IF HTML_STRINGLEN(strEscaped) < nLength
+	RETURNF strEscaped + @"%" "*(nLength-HTML_STRINGLEN(strEscaped))%"
+ENDIF
+RETURNF strEscaped
+;we need to verify all legacy achievements or else we get players losing their's or getting rewards again
+
+@VerifyLegacyAchievements
+VARSET AL_PROG
+CALLF AL_CHARACTER_CHECK
+AL_PROG:BestFavor = 最大好感度()
+CALL VerifyLegacyAchievementDef("meet10", GETBIT(FLAG:面識ボーナス取得状況, 1))
+CALL VerifyLegacyAchievementDef("meet30", GETBIT(FLAG:面識ボーナス取得状況, 2))
+CALL VerifyLegacyAchievementDef("meet50", GETBIT(FLAG:面識ボーナス取得状況, 3))
+CALL VerifyLegacyAchievementDef("meet80", GETBIT(FLAG:面識ボーナス取得状況, 4))
+CALL VerifyLegacyAchievementDef("meet120", GETBIT(FLAG:面識ボーナス取得状況, 5))
+CALL VerifyLegacyAchievementDef("favor100", GETBIT(FLAG:好感度ボーナス取得状況, 1))
+CALL VerifyLegacyAchievementDef("favor500", GETBIT(FLAG:好感度ボーナス取得状況, 2))
+CALL VerifyLegacyAchievementDef("favor1000", GETBIT(FLAG:好感度ボーナス取得状況, 3))
+CALL VerifyLegacyAchievementDef("favor10000", GETBIT(FLAG:好感度ボーナス取得状況, 4))
+CALL VerifyLegacyAchievementDef("favor30000", GETBIT(FLAG:好感度ボーナス取得状況, 5))
+CALL VerifyLegacyAchievementDef("favor50000", GETBIT(FLAG:好感度ボーナス取得状況, 6))
+CALL VerifyLegacyAchievementDef("favor100000", GETBIT(FLAG:好感度ボーナス取得状況, 7))
+CALL VerifyLegacyAchievementDef("favor1000000", GETBIT(FLAG:好感度ボーナス取得状況, 8))
+CALL VerifyLegacyAchievementDef("panty10", GETBIT(FLAG:パンツボーナス取得状況, 1))
+CALL VerifyLegacyAchievementDef("panty30", GETBIT(FLAG:パンツボーナス取得状況, 2))
+CALL VerifyLegacyAchievementDef("panty100", GETBIT(FLAG:パンツボーナス取得状況, 3))
+CALL VerifyLegacyAchievementDef("panty300", GETBIT(FLAG:パンツボーナス取得状況, 4))
+CALL VerifyLegacyAchievementDef("panty500", GETBIT(FLAG:パンツボーナス取得状況, 5))
+CALL VerifyLegacyAchievementDef("panty750", GETBIT(FLAG:パンツボーナス取得状況, 6))
+CALL VerifyLegacyAchievementDef("panty1000", GETBIT(FLAG:パンツボーナス取得状況, 7))
+CALL VerifyLegacyAchievementDef("panty2000", GETBIT(FLAG:パンツボーナス取得状況, 8))
+CALL VerifyLegacyAchievementDef("love1", GETBIT(FLAG:陥落ボーナス取得状況, 1))
+CALL VerifyLegacyAchievementDef("love3", GETBIT(FLAG:陥落ボーナス取得状況, 2))
+CALL VerifyLegacyAchievementDef("love5", GETBIT(FLAG:陥落ボーナス取得状況, 3))
+CALL VerifyLegacyAchievementDef("getLover", GETBIT(FLAG:陥落ボーナス取得状況, 4))
+CALL VerifyLegacyAchievementDef("dangerousDay", GETBIT(FLAG:陥落ボーナス取得状況, 5))
+CALL VerifyLegacyAchievementDef("SexFriend1", GETBIT(FLAG:陥落ボーナス取得状況, 6))
+CALL VerifyLegacyAchievementDef("SexFriend3", GETBIT(FLAG:陥落ボーナス取得状況, 7))
+CALL VerifyLegacyAchievementDef("SexFriend5", GETBIT(FLAG:陥落ボーナス取得状況, 8))
+CALL VerifyLegacyAchievementDef("pureRelationship", GETBIT(FLAG:陥落ボーナス取得状況, 9))
+CALL VerifyLegacyAchievementDef("sexConsent", GETBIT(FLAG:陥落ボーナス取得状況, 10))
+CALL VerifyLegacyAchievementDef("sexNonConsent", GETBIT(FLAG:陥落ボーナス取得状況, 11))
+CALL VerifyLegacyAchievementDef("sexPartners10AndKnowledge4", TALENT:MASTER:習得速度 == 1)
+CALL VerifyLegacyAchievementDef("impregnate5", GETBIT(FLAG:孕ませボーナス取得状況, 1))
+;CALL VerifyLegacyAchievementDef("impregnate10", TALENT:MASTER:習得速度 == 1)
+CALL VerifyLegacyAchievementDef("impregnateAll", TALENT:MASTER:容姿 == 1)
+CALL VerifyLegacyAchievementDef("pregnancyRace_Miko", GETBIT(FLAG:孕ませボーナス取得状況, 2))
+CALL VerifyLegacyAchievementDef("pregnancyRace_Fairy", GETBIT(FLAG:孕ませボーナス取得状況, 3))
+CALL VerifyLegacyAchievementDef("pregnancyRace_God", GETBIT(FLAG:孕ませボーナス取得状況, 4))
+CALL VerifyLegacyAchievementDef("pregnancyRace_Tsukumogami", GETBIT(FLAG:孕ませボーナス取得状況, 5))
+CALL VerifyLegacyAchievementDef("pregnancyRace_Oni", GETBIT(FLAG:孕ませボーナス取得状況, 6))
+CALL VerifyLegacyAchievementDef("pregnancyRace_Tengu", GETBIT(FLAG:孕ませボーナス取得状況, 7))
+CALL VerifyLegacyAchievementDef("pregnancyRace_Hourai", GETBIT(FLAG:孕ませボーナス取得状況, 8))
+CALL VerifyLegacyAchievementDef("pregnancyRace_Youkai", GETBIT(FLAG:孕ませボーナス取得状況, 9))
+CALL VerifyLegacyAchievementDef("pregnancyRace_Magician", GETBIT(FLAG:孕ませボーナス取得状況, 10))
+CALL VerifyLegacyAchievementDef("pregnancyRace_Ghost", GETBIT(FLAG:孕ませボーナス取得状況, 11))
+CALL VerifyLegacyAchievementDef("pregnancyRace_Doll", GETBIT(FLAG:孕ませボーナス取得状況, 12))
+CALL VerifyLegacyAchievementDef("pregnancyRace_Mob", GETBIT(FLAG:孕ませボーナス取得状況, 13))
+CALL VerifyLegacyAchievementDef("pregnancyRace_Maid", GETBIT(FLAG:孕ませボーナス取得状況, 14))
+CALL VerifyLegacyAchievementDef("LewdLTM3", GETBIT(FLAG:技能ボーナス取得状況, 1))
+CALL VerifyLegacyAchievementDef("LewdB3", GETBIT(FLAG:技能ボーナス取得状況, 2))
+CALL VerifyLegacyAchievementDef("LewdV3", GETBIT(FLAG:技能ボーナス取得状況, 3))
+CALL VerifyLegacyAchievementDef("LewdA3", GETBIT(FLAG:技能ボーナス取得状況, 4))
+CALL VerifyLegacyAchievementDef("LewdM3", GETBIT(FLAG:技能ボーナス取得状況, 5))
+CALL VerifyLegacyAchievementDef("combat10", GETBIT(FLAG:弾幕勝負ボーナス取得状況, 1))
+CALL VerifyLegacyAchievementDef("combat25", GETBIT(FLAG:弾幕勝負ボーナス取得状況, 2))
+CALL VerifyLegacyAchievementDef("combat50", GETBIT(FLAG:弾幕勝負ボーナス取得状況, 3))
+CALL VerifyLegacyAchievementDef("combat75", GETBIT(FLAG:弾幕勝負ボーナス取得状況, 4))
+CALL VerifyLegacyAchievementDef("combat100", GETBIT(FLAG:弾幕勝負ボーナス取得状況, 5))
+CALL VerifyLegacyAchievementDef("lunaShooter", GETBIT(FLAG:弾幕勝負ボーナス取得状況, 6))
+CALL VerifyLegacyAchievementDef("insightPain", ADD_ACHIEVEMENT_TOGGLED:Achievement_PainInsight, ADD_ACHIEVEMENT_OBTAINFLAG:Achievement_PainInsight)
+CALL VerifyLegacyAchievementDef("insightPleasure", ADD_ACHIEVEMENT_TOGGLED:Achievement_PleasureInsight, ADD_ACHIEVEMENT_OBTAINFLAG:Achievement_PleasureInsight)
+CALL VerifyLegacyAchievementDef("insightLewd", ADD_ACHIEVEMENT_TOGGLED:Achievement_TrustInsight, ADD_ACHIEVEMENT_OBTAINFLAG:Achievement_TrustInsight)
+CALL VerifyLegacyAchievementDef("insightTime", ADD_ACHIEVEMENT_TOGGLED:Achievement_TSPInsight, ADD_ACHIEVEMENT_OBTAINFLAG:Achievement_TSPInsight)
+CALL VerifyLegacyAchievementDef("insightHate", ADD_ACHIEVEMENT_TOGGLED:Achievement_HateMarkPrayRemoval, ADD_ACHIEVEMENT_OBTAINFLAG:Achievement_HateMarkPrayRemoval)
+CALL VerifyLegacyAchievementDef("insightDateForgiveness", ADD_ACHIEVEMENT_TOGGLED:Achievement_HateMarkDateForgiveness, ADD_ACHIEVEMENT_OBTAINFLAG:Achievement_HateMarkDateForgiveness)
+CALL VerifyLegacyAchievementDef("serialFuckUp", ADD_ACHIEVEMENT_TOGGLED:Achievement_HateMarkApology, ADD_ACHIEVEMENT_OBTAINFLAG:Achievement_HateMarkApology)
+CALL VerifyLegacyAchievementDef("redemption", ADD_ACHIEVEMENT_TOGGLED:Achievement_HateMarkRedemption, ADD_ACHIEVEMENT_OBTAINFLAG:Achievement_HateMarkRedemption)
+CALL VerifyLegacyAchievementsNAS
+AL_LEGACY_PROS = 1
+
+@VerifyLegacyAchievementDef(ARGS, VLA_CLAIMED, VLA_OBTAINED=0)
+#DIM VLA_ID
+#DIM VLA_OBTAINED
+#DIM VLA_CLAIMED
+RESULT:1 = 0
+VARSET AL_ENTRY_INTS
+IF !VLA_OBTAINED
+	TRYCCALLFORM AL_ENTRY_INFO_%ARGS%
+	CATCH
+	RETURN 0
+	ENDCATCH
+	VLA_OBTAINED = AL_ENTRY_INTS:Obtainable
+ENDIF
+DT_SELECT "saveAchievements", @"defName = '%ARGS%'"
+VLA_ID = RESULT:1
+IF VLA_ID
+	DT_CELL_SET "saveAchievements", VLA_ID, "claimed", VLA_CLAIMED, 1
+	DT_CELL_SET "saveAchievements", VLA_ID, "completed", VLA_OBTAINED, 1
+ELSE
+	DT_ROW_ADD "saveAchievements", "defName",                       ARGS, "claimed",                VLA_CLAIMED, "completed",             VLA_OBTAINED,
+ENDIF
+;for giving unique talents
+;ARG is in case there's other characters that get talents as well
+;defName is the def of the achievement, used for validation.
+;talentBit is the bit of the talent to change, set to -1 to be a toggle from 0 to 1
+;valueSet sets the talent value when claimed and valueReSet does the same when unclaiming
+;spoilerModeInfo is meant to give detailed info when in spoiler mode
+;regularModeInfo is meant to give more vague notes about the talent
+;customGainString and customLoseString are for custom strings when getting and losing the tlaent
+
+@AL_GIVE_TALENT(ARG,defName,nTalentID,talentBit=-1,spoilerModeInfo,regularModeInfo,customGainString,customLoseString,valueSet=1,valueReSet=0)
+#DIM  DYNAMIC nTalentID
+#DIM  DYNAMIC nCurrentTable
+#DIM  DYNAMIC talentBit
+#DIM  DYNAMIC hasGottenTalent
+#DIM  DYNAMIC valueSet
+#DIM  DYNAMIC valueReSet
+#DIMS DYNAMIC defName
+#DIMS DYNAMIC spoilerModeInfo
+#DIMS DYNAMIC regularModeInfo
+#DIMS DYNAMIC customGainString
+#DIMS DYNAMIC customLoseString
+RESULT:1 = 0
+nCurrentTable = 0
+;using the claimed stat since the previous way was very unreliable
+DT_SELECT "saveAchievements", @"defName = '%defName%'"
+nCurrentTable = RESULT:1
+IF !nCurrentTable
+	PRINTFORMW 정의 "%defName%"에 대한 저장된 업적 항목이 없다.
+	RETURN
+ENDIF
+IF DT_CELL_GET("saveAchievements", nCurrentTable, "claimed", 1)
+	IF !INRANGE(talentBit,0,63)
+		TALENT:ARG:nTalentID = valueSet
+	ELSE
+		SETBIT TALENT:ARG:nTalentID, talentBit
+	ENDIF
+ELSE
+	IF !INRANGE(talentBit,0,63)
+		TALENT:ARG:nTalentID = valueReSet
+	ELSE
+		CLEARBIT TALENT:ARG:nTalentID, talentBit
+	ENDIF
+ENDIF
+IF !INRANGE(talentBit,0,63)
+	hasGottenTalent = TALENT:MASTER:nTalentID
+ELSE
+	hasGottenTalent = GETBIT(TALENT:MASTER:nTalentID,talentBit)
+ENDIF
+IF hasGottenTalent
+	;obtaining
+	IF ARG == MASTER
+		IF STRLENS(customGainString)
+			PRINTFORML %customGainString%
+		ELSE
+			PRINTFORML %GET_TALENTNAME_TR(nTalentID,valueSet)%을 얻었다.
+		ENDIF
+	ELSE
+		PRINTFORML %CALLNAME:ARG%은(는) %GET_TALENTNAME_TR(nTalentID,valueSet)%을 얻었다.
+	ENDIF
+	;if spoiler mode is on or there's nothing for regular mode
+	IF STRLENS(spoilerModeInfo) && (nSpoilerMode || !STRLENS(regularModeInfo))
+		PRINTFORML %spoilerModeInfo%
+	ENDIF
+	;if spoiler mode is off or there's nothing for spoiler mode
+	IF STRLENS(regularModeInfo) && (!nSpoilerMode || !STRLENS(spoilerModeInfo))
+		PRINTFORML %regularModeInfo%
+	ENDIF
+	WAIT
+ELSE
+	IF STRLENS(customGainString)
+		PRINTFORMW %customLoseString%
+	ELSE
+		PRINTFORMW %GET_TALENTNAME_TR(nTalentID,1)%을/를 잃었다.
+	ENDIF
+ENDIF
+;like AL_GIVE_TALENT, but for items
+
+@AL_GIVE_ITEM(defName,nItemID,spoilerModeInfo,regularModeInfo,customGainString,customLoseString)
+#DIM  DYNAMIC nItemID
+#DIM  DYNAMIC nCurrentTable
+#DIM  DYNAMIC hasGottenItem
+#DIMS DYNAMIC defName
+#DIMS DYNAMIC spoilerModeInfo
+#DIMS DYNAMIC regularModeInfo
+#DIMS DYNAMIC customGainString
+#DIMS DYNAMIC customLoseString
+RESULT:1 = 0
+nCurrentTable = 0
+;using the claimed stat since the previous way was very unreliable
+DT_SELECT "saveAchievements", @"defName = '%defName%'"
+nCurrentTable = RESULT:1
+IF !nCurrentTable
+	PRINTFORMW 정의 "%defName%"에 대한 저장된 성취 기록이 없다.
+	RETURN
+ENDIF
+IF DT_CELL_GET("saveAchievements", nCurrentTable, "claimed", 1)
+	ITEM:nItemID = 1
+ELSE
+	ITEM:nItemID = 0
+ENDIF
+hasGottenItem = ITEM:nItemID
+IF hasGottenItem
+	;obtaining
+	IF STRLENS(customGainString)
+		PRINTFORML %customGainString%
+	ELSE
+		PRINTFORMW %ITEMNAME_TR(nItemID)%을 얻었다.
+	ENDIF
+	;if spoiler mode is on or there's nothing for regular mode
+	IF STRLENS(spoilerModeInfo) && (nSpoilerMode || !STRLENS(regularModeInfo))
+		PRINTFORML %spoilerModeInfo%
+	ENDIF
+	;if spoiler mode is off or there's nothing for spoiler mode
+	IF STRLENS(regularModeInfo) && (!nSpoilerMode || !STRLENS(spoilerModeInfo))
+		PRINTFORML %regularModeInfo%
+	ENDIF
+	WAIT
+ELSE
+	IF STRLENS(customGainString)
+		PRINTFORMW %customLoseString%
+	ELSE
+		PRINTFORMW %ITEMNAME_TR(nItemID)%을/를 잃었다.
+	ENDIF
+ENDIF
+
+@AL_GIVE_FLAG(defName,nFlagID,talentBit=-1,spoilerModeInfo,regularModeInfo,customGainString,customLoseString,valueSet=1,valueReSet=0)
+#DIM  DYNAMIC nFlagID
+#DIM  DYNAMIC nCurrentTable
+#DIM  DYNAMIC talentBit
+#DIM  DYNAMIC hasGottenTalent
+#DIM  DYNAMIC valueSet
+#DIM  DYNAMIC valueReSet
+#DIMS DYNAMIC defName
+#DIMS DYNAMIC spoilerModeInfo
+#DIMS DYNAMIC regularModeInfo
+#DIMS DYNAMIC customGainString
+#DIMS DYNAMIC customLoseString
+RESULT:1 = 0
+nCurrentTable = 0
+;using the claimed stat since the previous way was very unreliable
+DT_SELECT "saveAchievements", @"defName = '%defName%'"
+nCurrentTable = RESULT:1
+IF !nCurrentTable
+	PRINTFORMW def "%defName%"에 대한 저장된 업적 항목이 없다.
+	RETURN
+ENDIF
+IF DT_CELL_GET("saveAchievements", nCurrentTable, "claimed", 1)
+	IF !INRANGE(talentBit,0,63)
+		FLAG:nFlagID = valueSet
+	ELSE
+		SETBIT FLAG:nFlagID, talentBit
+	ENDIF
+ELSE
+	IF !INRANGE(talentBit,0,63)
+		FLAG:nFlagID = valueReSet
+	ELSE
+		CLEARBIT FLAG:nFlagID, talentBit
+	ENDIF
+ENDIF
+IF !INRANGE(talentBit,0,63)
+	hasGottenTalent = FLAG:nFlagID
+ELSE
+	hasGottenTalent = GETBIT(FLAG:nFlagID,talentBit)
+ENDIF
+IF hasGottenTalent
+	;obtaining
+	PRINTFORML %customGainString%
+	;if spoiler mode is on or there's nothing for regular mode
+	IF STRLENS(spoilerModeInfo) && (nSpoilerMode || !STRLENS(regularModeInfo))
+		PRINTFORML %spoilerModeInfo%
+	ENDIF
+	;if spoiler mode is off or there's nothing for spoiler mode
+	IF STRLENS(regularModeInfo) && (!nSpoilerMode || !STRLENS(spoilerModeInfo))
+		PRINTFORML %regularModeInfo%
+	ENDIF
+	WAIT
+ELSE
+	PRINTFORMW %customLoseString%
+ENDIF

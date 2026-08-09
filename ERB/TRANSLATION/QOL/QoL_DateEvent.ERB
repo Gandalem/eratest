@@ -1,0 +1,211 @@
+﻿; Modular ERB: QOL/QoL_DateEvent.ERB
+
+@DateEvent_Checksum(ARG)
+#FUNCTION
+LOCAL = MARK:ARG:不埒刻印 * 10 + MARK:ARG:快楽刻印 * 10
+IF TALENT:ARG:恋慕
+	LOCAL += MIN(ABL:ARG:親密 * 10, 100) + MIN(ABL:ARG:欲望 * 10,100) + MIN(ABL:ARG:奉仕精神 * 10,100)
+	LOCAL += MIN(EXP:ARG:デート経験,100) + MIN(EXP:ARG:愛情経験,100)
+ELSEIF TALENT:ARG:思慕
+	LOCAL += MIN(ABL:ARG:親密 * 10, 50) + MIN(ABL:ARG:欲望 * 10,50) + MIN(ABL:ARG:奉仕精神 * 10,50)
+	LOCAL += MIN(EXP:ARG:デート経験,50)
+ENDIF
+LOCAL += GETPALAMLV(PALAM:ARG:欲情,10) * 5 + GETPALAMLV(PALAM:ARG:好意,10) * 5 + GETPALAMLV(PALAM:ARG:恭順,10) * 5
+;60
+LOCAL += BASE:ARG:ムード / 50 + (1000 - BASE:ARG:理性) / 30
+LOCAL += TALENT:ARG:度胸 * 10 + TALENT:ARG:性的興味 * 10 - TALENT:ARG:自制心 * 10 - TALENT:ARG:無関心 * 10
+SIF TALENT:MASTER:容姿 > 0
+	LOCAL += 10
+DEBUGPRINTFORML 【DATE_EVENT({ARG})】DateEvent_Checksum = {LOCAL}
+RESULT = LOCAL
+RETURNF LOCAL
+
+@DATE_EVENT_TR(ARG)
+#DIM 珠不足
+#DIM 経験不足
+VARSET LOCAL
+;キャンセルフラグ（外部参照にて使用のこと 例:LOCAL@DATE_EVENT:99 = 1
+LOCAL:99 = 0
+SIF LOCAL:99 ;custom - activate the possibility of canceling the date event (does this shit even work, lmao?)
+	RETURN 1
+;パラメータによる発生基礎値生成
+LOCAL = DateEvent_Checksum(ARG)
+SIF nDateDebug:0
+	LOCAL = 9999
+;qol custom, check for given gifts from the character right away without burying it
+IF nDateDebug:4 || GIFT_DATE_CHECK(ARG)
+	CALL GIFT_DATE_EVENT(ARG)
+	;Addition custom code, egg gifts.
+ELSEIF GROUPMATCH(TALENT:ARG:PREGNANCY_TYPE, PREGNANCY_EGGS, PREGNANCY_CLUTCH) && IS_FALLEN(ARG) && EGG_GIFT_DATE_CHECK(ARG)
+	CALL EGG_GIFT_DATE_EVENT(ARG)
+ELSE
+	CALL COLORMESSAGE(@"%CALLNAME:ARG%에게서 선물은 없다...",C_GRAY,1)
+	PRINTL
+ENDIF
+;別れ際にプレゼント
+CALL GIFT(ARG)
+IF ALLSAMES(nDateDebug:0, nDateDebug:1, nDateDebug:2, nDateDebug:3, 0) && RESULT == 1
+	;合意無し（キス成功してない）
+	;qol: activate this event even if had sex but never kissed
+ELSEIF nDateDebug:1 || ( (!(CFLAG:ARG:1 & 1) || TALENT:ARG:キス未経験) && !(CFLAG:ARG:13 & 1) )
+	;qol custom, add visible date score
+	SIF nDateScoreDisplay
+		CALL COLORMESSAGE(@"날짜 끝! 키스 루트 - 합의 점수: {CFLAG:ARG:合意判定}/180, 날짜 점수:{LOCAL} 대 {220 + FuckReserved(ARG) * 30 + ABS(TALENT:ARG:キス未経験 * 20)}",C_YELLOW,0,1)
+	SIF !(TALENT:ARG:思慕 + TALENT:ARG:恋慕) && nDateScoreDisplay
+		CALL COLORMESSAGE(@" 연모도 사모도 없다!", C_RED, 0, 1)
+	;成功判定
+	IF nDateDebug:1 || ( (LOCAL > 220 + FuckReserved(ARG) * 30 + ABS(TALENT:ARG:キス未経験 * 20)) && CFLAG:ARG:合意判定 > 180 && (TALENT:ARG:思慕 || TALENT:ARG:恋慕) )
+		SIF nDateScoreDisplay
+			CALL COLORMESSAGE(@" 성공!", C_GREEN, 2, 1)
+		CALL KOJO_MESSAGE_SEND("SP_EVENT",1,ARG,0,LOCAL)
+		;キャンセルフラグ
+		IF !TCVAR:ARG:キスキャンセル
+			CALL ADD_KISS(ARG)
+			SETBIT CFLAG:ARG:デート後イベントフラグ , 0
+		ELSEIF TCVAR:ARG:キスキャンセル && nDateScoreDisplay
+			CALL COLORMESSAGE(@"대화로 인해 연기되었다...", C_GRAY, 2)
+		ENDIF
+	ELSEIF !MARK:ARG:反発刻印
+		SIF nDateScoreDisplay
+			CALL COLORMESSAGE(@" 실패!", C_RED, 2, 1)
+		CALL KOJO_MESSAGE_SEND("SP_EVENT",3,ARG,0,LOCAL)
+	ELSE
+		SIF nDateScoreDisplay
+			CALL COLORMESSAGE(@" 실패!", C_RED, 2, 1)
+		IF LOCAL > 50 ;qol added, redirect to hate mark reduction if above failed
+			SIF nDateScoreDisplay
+				CALL COLORMESSAGE(@"증오 마크 감소 여부를 확인한다.", C_YELLOW, 1, 1)
+			GOTO HATEMARK
+		ENDIF
+	ENDIF
+	;反発刻印消去処理
+ELSEIF nDateDebug:2 || (MARK:ARG:反発刻印 && LOCAL > 50)
+	$HATEMARK
+	SIF nDateScoreDisplay
+		CALL COLORMESSAGE(@"날짜 종료! 용서 루트 - 날짜 점수:{LOCAL} 대 50",C_YELLOW,0,1)
+	CALL Add_HateMarkForgiveness(ARG) ;addition custom code, replace
+	GOTO HATEMARKSKIP
+	LOCAL:9 = 0
+	;ABL:親密LVUP処理取り込み。解読が面倒だったので要所々々取り摘んで…
+	FOR LOCAL,0,4
+	珠不足 = 0
+	経験不足 = 0
+	IF !nDateDebug:2 && JUEL_DEMAND(9,LOCAL,0,ARG) == -2
+		SIF nDateScoreDisplay
+			CALL COLORMESSAGE(@" 실패, \@ LOCAL:9 ? 아니면 경험치야! #  \@의 보석이 충분치 않다.", C_RED, 2, 1)
+		BREAK
+	ENDIF
+	IF !nDateDebug:2 && JUEL_DEMAND(9,LOCAL,0,ARG) < 0
+		SIF LOCAL == 3 && nDateScoreDisplay ;display failure message at the last loop cycle
+			CALL COLORMESSAGE(@" 실패했다, 충분한 보석(\@ LOCAL:9 ? )이 없거나 경험치가 부족하다! #  \@", C_RED, 2, 1)
+		CONTINUE
+	ENDIF
+	;必要な宝珠を探す
+	FOR LOCAL:1,0,100
+	IF JUEL_DEMAND(9,LOCAL,LOCAL:1,ARG) > 0
+		IF JUEL:(ARG):(LOCAL:1) < JUEL_DEMAND(9,LOCAL,LOCAL:1,ARG) / 2
+			LOCAL:7 = JUEL:(ARG):(LOCAL:1)
+			LOCAL:8 = JUEL_DEMAND(9,LOCAL,LOCAL:1,ARG) / 2
+			珠不足 ++
+			BREAK
+		ENDIF
+	ENDIF
+	NEXT
+	IF !nDateDebug:2 && 珠不足
+		SIF LOCAL == 3 && nDateScoreDisplay ;display failure message at the last loop cycle
+			CALL COLORMESSAGE(@" 실패, 보석이 충분하지 않다 {LOCAL:7}/{LOCAL:8}\@ LOCAL:9 ? 아니면 경험치! #  \@", C_RED, 2, 1)
+		CONTINUE
+	ENDIF
+	;必要な経験を探す
+	FOR LOCAL:1,0,100
+	IF EXP_DEMAND(9,LOCAL,LOCAL:1,ARG) > 0
+		IF EXP:(ARG):(LOCAL:1) < EXP_DEMAND(9,LOCAL,LOCAL:1,ARG) / 2
+			経験不足 ++
+			LOCAL:9 = 1
+			BREAK
+		ENDIF
+	ENDIF
+	NEXT
+	IF !nDateDebug:2 && 経験不足
+		SIF LOCAL == 3 && nDateScoreDisplay ;display failure message at the last loop cycle
+			CALL COLORMESSAGE(@" 실패, \@ LOCAL:9 ? 아니면 경험치다! #  \@의 보석이 충분하지 않다.", C_RED, 2, 1)
+		CONTINUE
+	ENDIF
+	SIF nDateScoreDisplay
+		CALL COLORMESSAGE(@" 성공!", C_GREEN, 2, 1)
+	;ここまで来れたら反発刻印消去
+	;要するにデートでいい雰囲気＋親密LVUP水準の1/2満たしたら反発消去
+	MARK:ARG:反発刻印 --
+	CALL KOJO_MESSAGE_SEND("SP_EVENT",3,ARG,(MARK:ARG:反発刻印 + 1),LOCAL)
+	PRINTL
+	IF MARK:ARG:反発刻印
+		PRINTFORMW %CALLNAME:ARG%의 {MARK:ARG:反発刻印} 증오 마크가 낮아졌다!
+	ELSE
+		PRINTFORMW %CALLNAME:ARG%의 레벨 1 증오 표식이 제거되었다!
+	ENDIF
+	BREAK
+	NEXT
+	$HATEMARKSKIP
+	;告白していない（MASTERに恋人が居ない）
+ELSEIF nDateDebug:3 || ( !(CFLAG:ARG:1 & 4) && !(CFLAG:ARG:13 & 2) &&  !FLAG:告白禁止 && CAN_MAKE_恋人() && !TALENT:ARG:恋人 )
+	SIF nDateScoreDisplay
+		CALL COLORMESSAGE(@"데이트 종료! 고백 루트 - 데이트 점수:{LOCAL} 대 {530 + FuckReserved(ARG) * 20}",C_YELLOW,0,1)
+	;成功判定
+	IF nDateDebug:3 || (LOCAL > 530 + FuckReserved(ARG) * 20)
+		SIF nDateScoreDisplay
+			CALL COLORMESSAGE(@" 성공!", C_GREEN, 2, 1)
+		CALL Qol_ConfessionQuestion(ARG)
+		;贈り物イベント
+		;ELSEIF GIFT_DATE_CHECK(ARG) ;moved on top
+		;	CALL GIFT_DATE_EVENT(ARG)
+	ELSEIF !MARK:ARG:反発刻印
+		SIF nDateScoreDisplay
+			CALL COLORMESSAGE(@" 실패!", C_RED, 2, 1)
+		CALL KOJO_MESSAGE_SEND("SP_EVENT",3,ARG,0,LOCAL)
+	ELSE
+		SIF nDateScoreDisplay
+			CALL COLORMESSAGE(@" 실패!", C_RED, 2, 1)
+	ENDIF
+	;贈り物イベント
+	;ELSEIF GIFT_DATE_CHECK(ARG) ;moved on top
+	;	CALL GIFT_DATE_EVENT(ARG)
+ELSE
+	SIF nDateScoreDisplay
+		CALL COLORMESSAGE(@"날짜 종료! 이벤트 없음!",,2,1)
+	CALL KOJO_MESSAGE_SEND("SP_EVENT",3,ARG,0,LOCAL)
+ENDIF
+;reset debug flags after date
+VARSET nDateDebug
+
+@Qol_ConfessionQuestion(ARG)
+CALL KOJO_MESSAGE_SEND("SP_EVENT",2,ARG,0)
+PRINTFORML 당신은 %CALLNAME:ARG%의 고백에 어떻게 반응합니까?
+CALL ASK_YN(@"수락한다 \@ FLAG:追加恋人枠 >= 150 ? (제한 없음) # (%NUM_COUNT(FLAG:追加恋人枠 + 1)%!만 가질 수 있다) \@","거절하기")
+IF !RESULT
+	SETBIT CFLAG:ARG:既成事実 , 2
+	SETBIT CFLAG:MASTER:既成事実, 2
+	TALENT:MASTER:恋人 = NO:ARG
+	TALENT:ARG:恋人 = NO:ARG
+	SETBIT CFLAG:ARG:デート後イベントフラグ , 1
+	CALL KOJO_MESSAGE_SEND("SP_EVENT",2,ARG,1)
+	PRINTL
+	PRINTFORM 당신과 %CALLNAME:ARG%은(는) 이제 
+	SETCOLOR C_PINK
+	PRINT 연인들
+	RESETCOLOR
+	PRINTW !
+	CALL QoL_Info_Write(ARG, Qol_Dates_GF) ;qol custom code
+ELSE
+	CALL KOJO_MESSAGE_SEND("SP_EVENT",2,ARG,2)
+ENDIF
+;-------------------------------
+;Custom config section
+;-------------------------------
+
+@CUSTOM_OPTION_302
+PRINTFORML [302] - 날짜 점수 표시 : \@ nDateScoreDisplay ? 예 # 아니요 \@
+
+@CUSTOM_OPTION_RESULT_302
+nDateScoreDisplay = !nDateScoreDisplay
+SIF nDateScoreDisplay
+	PRINTFORMW 참고: 데이트 점수는 데이트가 얼마나 성공적이었는지를 나타내는 지표가 아니며, 단지 이벤트 발동에 얼마나 가까운지를 보여줄 뿐이다.

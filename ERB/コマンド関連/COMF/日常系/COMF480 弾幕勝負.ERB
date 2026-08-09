@@ -1,0 +1,178 @@
+﻿; Modular ERB: COMF/日常系/COMF480 弾幕勝負.ERB
+;-------------------------------------------------
+;弾幕勝負
+;日常系コマンド、レベル1
+;-------------------------------------------------
+
+@COM480
+#DIM OPPONENT_REMAIN
+#DIM FirstWinBonus
+#DIM BattleEXP
+#DIM WON ;rape patch
+WON = 0 ;rape patch
+HANDICAP_FIXED = 0
+HANDICAP_RAND = 0
+TFLAG:GipsLV = 0
+IF !GETBIT(TALENT:MASTER:ESP,0)
+	PRINTFORMW 당신은 "단마쿠"가 뭔지 모른다
+	RETURN -1
+ELSEIF !GETBIT(TALENT:TARGET:ESP,0)
+	PRINTFORML %조사처리(CALLNAME:TARGET,"는")%(는) "단막"을 어떻게 사용하는지 모른다.
+	PRINTFORMW %HIM_HER(TARGET)%에게 유술의 기술을 가르쳐 보라.
+	RETURN -1
+ENDIF
+SIF TFLAG:口上によるCOM成否判定 == -1 ;addition custom code
+	RETURN -1
+IF TCVAR:TARGET:弾幕勝負不能
+	PRINTFORML %조사처리(CALLNAME:TARGET,"는")%(는) 너무 지쳤다. 내일 다시 시도해라.
+	RETURN -1
+ENDIF
+$INPUT_LOOP
+CALL DANMAKU_OPPONENT_STATUS(TARGET)
+PRINTFORML Challenge %CALLNAME:TARGET% to a Danmaku match?%COND_STR(@" Cast Strength: {TFLAG:GipsLV}", TFLAG:GipsLV)%
+SIF CFLAG:TARGET:弾幕勝負勝利 == 1
+	PRINTFORM 　격파됨
+PRINTL 
+CALL ASK_M("신경 쓰지 마", 1, "싸우기", 1, "규칙 설명", 1, "장착하다", (ITEM:シューターギプス || ITEM:ルナシューター養成ギプス))
+SELECTCASE RESULT
+	CASE 0
+		TFLAG:GipsLV = 0
+		RETURN -1
+	CASE 1
+	CASE 2
+		CALL SHOW_DANMAKU_RULE
+		GOTO INPUT_LOOP
+	CASE 3
+		CALL DANMAKU_GipsEquip
+		GOTO INPUT_LOOP
+ENDSELECT
+;台詞・選択肢は幽香口上内に記述、口上がない場合は賭けや勝利報酬は無し
+;ここでHANDICAP_FIXED, HANDICAP_RANDに数値を入れると、あなたのダイス判定にマイナス補正がかかるよ
+;判定値 -= (HANDICAP_FIXED + RAND:(HANDICAP_RAND))
+VARSET RESULT
+;CALL KOJO_MESSAGE_SEND("DANMAKU", 0, TARGET, -1, -1, "戦闘前")
+;IF RESULT == -1
+;	RETURN -1
+;ENDIF
+PRINTFORMW 게임 시작!!
+CALL DANMAKU_BATTLE(TARGET)
+OPPONENT_REMAIN = RESULT
+CALL KOJO_MESSAGE_SEND("DANMAKU", OPPONENT_REMAIN, TARGET, -1, -1, "戦闘後")
+PRINTL 
+;source操作他
+TCVAR:TARGET:弾幕勝負不能 = 1
+DOWNBASE:気力 += 500
+DOWNBASE:MASTER:気力 += 500
+DOWNBASE:体力 += 500
+DOWNBASE:MASTER:体力 += 500
+SOURCE:歓楽 += (3000 + ABL:親密 * 100) / (OPPONENT_REMAIN + 1)
+IF !CFLAG:TARGET:弾幕勝負勝利 && OPPONENT_REMAIN == 0
+	CALL COLORMESSAGE(@"【%CALLNAME:TARGET%에 대한 첫 승리.】",C_YELLOW,1)
+	TFLAG:好感度ボーナス = 400 / (OPPONENT_REMAIN + 1)
+	TFLAG:信頼度管理 = 3 - OPPONENT_REMAIN
+	CFLAG:TARGET:弾幕勝負勝利 = 1
+	SELECTCASE ABL:TARGET:戦闘能力
+		CASE 0
+			FirstWinBonus = 1
+		CASE 1
+			FirstWinBonus = 3
+		CASE 2
+			FirstWinBonus = 5
+		CASE 3
+			FirstWinBonus = 10
+		CASE 4
+			FirstWinBonus = 20
+		CASE 5
+			FirstWinBonus = 30
+		CASEELSE
+			FirstWinBonus = 50
+	ENDSELECT
+	EXP:MASTER:戦闘経験 += FirstWinBonus
+ENDIF
+SIF OPPONENT_REMAIN == 0 ;rape patch
+	WON = 1
+BattleEXP = 5 - OPPONENT_REMAIN
+IF ABL:MASTER:戦闘能力 <= ABL:TARGET:戦闘能力
+	BattleEXP *= 2
+	CALL COLORMESSAGE(@"【강한 상대와 싸우면 보너스 경험치를 얻는다.】",C_YELLOW,1)
+	;addition custom code, set up these RESULT at DANMAKU.erb
+	IF RESULT:9
+		CALL COLORMESSAGE(@"【완벽한 승리!】",C_YELLOW,1)
+		BattleEXP += 5
+	ENDIF
+	IF RESULT:10
+		CALL COLORMESSAGE(@"【폭탄을 사용하지 않았다!】",C_YELLOW,1)
+		BattleEXP += 5
+	ENDIF
+	;--------------------
+ENDIF
+EXP:MASTER:戦闘経験 += BattleEXP
+TIME += 60
+SIF AT_HOME(MASTER)
+	YOGORE:(CFLAG:MASTER:現在位置) = LIMIT(YOGORE:(CFLAG:MASTER:現在位置) + 3000, 0, 6000)
+;rape patch
+IF WON == 1 && RAPE_CONDITION()
+	CALL ASK_M("아무것도 하지 않는다", 1, "아래로 밀어내라", 1, "강간", 1)
+	SELECTCASE RESULT
+		CASE 0
+		CASE 1
+			CFLAG:うふふ = 1
+			CFLAG:負け犬 = 1
+			TEQUIP:拘束 = 1
+			TEQUIP:縄 = 1
+		CASE 2
+			CFLAG:うふふ = 1
+			CFLAG:負け犬 = 1
+			TCVAR:無理矢理 = 1
+			TEQUIP:拘束 = 1
+			TEQUIP:縄 = 1
+	ENDSELECT
+	IF INRANGE(RESULT, 1, 2) ;call the unused makeinu dialogue line if exists
+		TFLAG:194 = 0
+		TCVAR:抱き寄せ初回 = 20
+		CALL COM_KOJO_CALL(TARGET, 350)
+		;custom code, set up the pushdown time variables
+		UFUFU_START_TIME = TIME
+		UFUFU_START_DAY = DAY
+	ENDIF
+ENDIF
+;-----------------------------------------------------------------------------
+RETURN 1
+;-------------------------------------------------
+;実行判定
+;-------------------------------------------------
+
+@COM_ABLE480
+;停止中は不可
+SIF FLAG:70 == 1
+	RETURN 0
+;実行判定
+SIF !TFLAG:100
+	RETURN 0
+;一括管理
+SIF GLOBAL_COMABLE(480)
+	RETURN RESULT
+SIF TARGET == MASTER
+	RETURN 0
+SIF !SHIRAHU(TARGET)
+	RETURN 0
+SIF CFLAG:うふふ
+	RETURN 0
+;仕事中
+SIF CFLAG:行動 == 5
+	RETURN 0
+;戦闘能力0以外
+SIF ABL:TARGET:戦闘能力 == 0
+	RETURN 0
+SIF !戦闘訓練可(CFLAG:MASTER:現在位置) && !RAPE_CONDITION()
+	RETURN 0
+;体力・気力不足
+SIF BASE:MASTER:気力 < 500 || BASE:MASTER:体力 < 500
+	RETURN 0
+;体力・気力不足
+SIF BASE:TARGET:気力 < 500 || BASE:TARGET:体力 < 500
+	RETURN 0
+;Legend of Gensokyo. Use the Challenge command instead.
+SIF SaveIsEZB
+	RETURN 0
+RETURN 1

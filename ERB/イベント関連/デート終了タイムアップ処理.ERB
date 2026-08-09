@@ -1,0 +1,153 @@
+﻿; Modular ERB: デート終了タイムアップ処理.ERB
+
+@デート終了タイムアップ処理
+;bugfix custom code
+#DIM DYNAMIC AFFECTED_CHARAS, キャラクタ数上限
+VARSET LOCAL
+;気力ゼロ,衰弱時デート中断
+SIF NEMUKE() >= 720 || BASE:MASTER:酒気 >= MAXBASE:MASTER:酒気 ;Custom code, moved from below.
+	LOCAL:2 ++
+FOR LOCAL,0,CHARANUM
+SIF IsDead:LOCAL:0
+	RETURN
+;bugfix custom code
+IF CHK_DATENOW(CFLAG:LOCAL:デート中) && (LOCAL:2 || CFLAG:LOCAL:衰弱 || (BASE:LOCAL:気力 == 0 && CFLAG:LOCAL:現在位置 != 連れ込み宿 && CFLAG:LOCAL:現在位置 != ラブホ && CFLAG:LOCAL:現在位置 != OMANEKIBEYA()))
+	LOCAL:1 ++
+	AFFECTED_CHARAS:LOCAL = 1
+ENDIF
+;bug fix, separate master
+IF LOCAL:1 && LOCAL == MASTER
+	LOCAL:1 --
+	LOCAL:3 ++
+ENDIF
+SIF CHK_DATENOW(CFLAG:LOCAL:デート中) && CFLAG:LOCAL:衰弱
+	CALL ENDUFUFU(LOCAL)
+NEXT
+;SIF NEMUKE() >= 720 || BASE:MASTER:酒気 >= MAXBASE:MASTER:酒気 ;Custom code, moved up.
+;	LOCAL:2 ++
+;bugfix custom code
+SIF LOCAL:2 || LOCAL:3
+	AFFECTED_CHARAS:MASTER = 1
+;お招きしていて連泊でなければ泊めて貰える
+IF CFLAG:MASTER:お招き && (LOCAL:3 || LOCAL:2) && !FLAG:70 ;bug fix, replace local:1 with local:3
+	IF !TALENT:TARGET:恋慕
+		PRINTFORML %CALLNAME:(CFLAG:MASTER:お招き)%은 천천히 %HIS_HER(CFLAG:MASTER:お招き)%의 감각으로도 다가온다, 일단 지금은 그것을 부를 시간이다...
+		IF CFLAG:TARGET:うふふ
+			PRINTFORMW %TNAME(CFLAG:MASTER:お招き),1%이 당신에게 매달하지만 결국 당신은 %GET_MAPNAME(MAIN_MAP)%로 떠난다...
+		ELSE
+			PRINTFORMW 열에 달한 시선에서 벗어나기 위해, 당신은 %TNAME(CFLAG:MASTER:お招き,,,1)%을 뒤로하고 %GET_MAPNAME(MAIN_MAP)%으로 떠난다...
+		ENDIF
+		GOTO ESCAPE
+	ELSEIF TFLAG:泡風呂
+		CALL 泡風呂終了判定("あなた限界")
+		GOTO ESCAPE
+	ENDIF
+	;bug fix
+	IF LOCAL:3
+		PRINTL 당신의 에너지가 고갈되었다.
+	ELSEIF LOCAL:2
+		PRINTL 이제 집에 갈 시간이다.
+	ENDIF
+	SIF !TCVAR:(CFLAG:MASTER:お招き):連泊禁止
+		PRINTFORMW 오늘 %CALLNAME:(CFLAG:MASTER:お招き)%에서 숙박하는 것이 가능한 것 같다.
+	SIF TCVAR:(CFLAG:MASTER:お招き):連泊禁止
+		PRINTFORMW %CALLNAME:(CFLAG:MASTER:お招き)%에게 숙박이 가능한지 물어본다?
+	PRINTL [0] 집에 가자 [1]
+	WHILE 1
+	INPUT
+	SIF RESULT == 0 || RESULT == 1
+		BREAK
+	WEND
+	IF !RESULT && !TCVAR:(CFLAG:MASTER:お招き):連泊禁止
+		PRINTFORMW  %CALLNAME:(CFLAG:MASTER:お招き)%은(는) 숙박을 허용한다.
+		;デートは終了
+		CFLAG:MASTER:デート中 = MAIN_MAP
+		CFLAG:TARGET:デート中 = MAIN_MAP
+		FLAG:デート相手 = MASTER
+		TFLAG:デート前好感度 = 0
+		TFLAG:デート道中 = 0
+		SIF MOREDATE
+			CALL CLEAN_GROUP_DATES
+		CALL 守矢くじデート相手のリセット()
+		CALL HYPNO_DATE_RESET() ;hypnosis custom code
+		;以後の処理をカット
+		GOTO OTOMARI
+	ELSEIF !RESULT && TCVAR:(CFLAG:MASTER:お招き):連泊禁止
+		PRINTFORMW %CALLNAME:(CFLAG:MASTER:お招き)%은(는) 당신이 이틀 연속 머무르는 것을 허락하지 않는다...
+	ENDIF
+ENDIF
+$ESCAPE
+;bug fix
+IF LOCAL:3 && CFLAG:MASTER:現在位置
+	PRINTL 
+	PRINTFORMW 에너지가 모두 소진되어 집으로 돌아가야 한다.
+	CALL 帰宅の時間経過
+	FLAG:時間停止 = 0
+	;(天候パッチ)時刻・天候に応じて背景色を変更
+	CALL SET_MAP_WEATHER_BGCOLOR
+ELSEIF LOCAL:2
+	PRINTL
+	IF BASE:MASTER:酒気 >= MAXBASE:MASTER:酒気
+		PRINTFORMW 너무 취해서 비틀거리며 집에 도착한다
+		PRINTFORMW %GET_MAPNAME(MAIN_MAP)%에 돌아오자마자 잠이 든다
+	ELSE
+		PRINTFORMW 당신은 졸음에 사로잡혀 집으로 돌아간다 ★★★
+	ENDIF
+	CALL 帰宅の時間経過
+ENDIF
+IF LOCAL:1 || LOCAL:2 || LOCAL:3 ;bug fix
+	FOR LOCAL, 0, CHARANUM
+	;bugfix custom code
+	SIF !AFFECTED_CHARAS:LOCAL
+		CONTINUE
+	IF LOCAL && CFLAG:LOCAL:衰弱
+		IF !CFLAG:LOCAL:神社在住
+			CFLAG:LOCAL:初期位置 = SUKIMA()
+			CFLAG:LOCAL:現在位置 = SUKIMA()
+			CFLAG:LOCAL:拠点来訪 = 0
+			IF IS_HERE(LOCAL) ;bugfix custom code
+				CALL KOJO_MESSAGE_SEND("EVENT",20,LOCAL,2,0)
+				PRINTFORMW 지친 %CALLNAME:LOCAL%가 집으로 돌아간다.
+			ENDIF
+		ELSE
+			;custom code
+			IF IS_HERE(LOCAL) ;bugfix custom code
+				PRINTFORMW %CALLNAME:LOCAL%은(는) %NAME_FROM_PLACE_THE(CFLAG:LOCAL:初期位置)%에서 돌아온다.
+			ENDIF
+			SIF CFLAG:MASTER:初期位置 != CFLAG:LOCAL:初期位置
+				LOCK:(CFLAG:LOCAL:初期位置) = 1
+			CFLAG:LOCAL:現在位置 = CFLAG:LOCAL:初期位置
+			SIF IS_HERE(LOCAL) ;bugfix custom code
+				CALL KOJO_MESSAGE_SEND("EVENT",3,LOCAL,1,0) ;bugfix custom code
+		ENDIF
+	ENDIF
+	IF MOREDATE
+		CALL SET_DATES(99, Datees, NumberOfDates)
+	ELSE
+		CALL SET_DATE(99, LOCAL)
+	ENDIF
+	IF CFLAG:LOCAL:お招き
+		CFLAG:LOCAL:お招き = 0
+		IF LOCAL == 0
+		ELSEIF CFLAG:LOCAL:神社在住
+			CFLAG:LOCAL:初期位置 = CFLAG:LOCAL:神社在住
+		ELSE
+			CFLAG:LOCAL:初期位置 = SUKIMA()
+		ENDIF
+	ENDIF
+	SIF CFLAG:LOCAL:添い寝中 > 0
+		CFLAG:LOCAL:添い寝中 = 0
+	SIF CFLAG:LOCAL:うふふ
+		CALL ENDUFUFU(LOCAL)
+	;イタズラOFF
+	CALL SET_PRANK(0,LOCAL,1)
+	NEXT
+	CALL 守矢くじデート相手のリセット()
+	CALL HYPNO_DATE_RESET() ;hypnosis custom code
+ENDIF
+IF TFLAG:デート道中 && !FLAG:デート相手
+	TIME += TFLAG:デート道中
+	TFLAG:デート道中 = 0
+	CFLAG:MASTER:現在位置 = GET_ENTRANCE(CFLAG:MASTER:デート中)
+ENDIF
+$OTOMARI

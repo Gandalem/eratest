@@ -1,0 +1,425 @@
+﻿; Modular ERB: MOVEMENT_SUB.ERB
+;----------------------------
+;ここで1を返すキャラはMOVEMENT関係の処理を一切行わない
+;----------------------------
+
+@MOVEMENTスキップ判定(ARG)
+#FUNCTION
+SIF TALENT:ARG:妄想の産物
+	RETURNF 1
+SIF (FLAG:守矢くじデート相手 == ARG || FLAG:催眠デート相手 == ARG) && GET_MAPID(CFLAG:MASTER:現在位置) != MAIN_MAP ;hypnosis custom code
+	RETURNF 1
+SIF CFLAG:ARG:出禁
+	RETURNF 1
+SIF inTrain == 3
+	RETURNF 1
+SIF SaveIsEZB && !LoG_RivalCanAppear(ARG)
+	RETURNF 1
+RETURNF 0
+;----------------------------
+;MASTER含む全てのキャラに適用
+;時間経過による自然変動、会話累積度、風呂の処理
+;----------------------------
+
+@MOVEMENT共通処理(ARG)
+;BASEの自然変動
+CALL BASE自然変動(ARG)
+;会話累積値（100以上会話すると時間経過100分経過まで会話不能）
+SIF TCVAR:ARG:301 > 100
+	TCVAR:ARG:302 = 1
+TCVAR:ARG:301 = MAX(TCVAR:ARG:301 - TIME_PROGRESS(TIME:1) , 0)
+;時刻経過で累積値が0になったら会話可能
+SIF TCVAR:ARG:301 == 0
+	TCVAR:ARG:302 = 0
+;身体の清潔度
+LOCAL = CFLAG:ARG:風呂
+;DEBUGPRINTFORML 【MOVEMENT】BATH_NO:{ARG} , {LOCAL} , \@ CFLAG:ARG:現在位置 == BATHROOM() ? in_BATH # {CFLAG:ARG:現在位置} \@
+;IF BATHCHECK(CFLAG:ARG:現在位置) && GET_MAPID(CFLAG:ARG:現在位置) == MAIN_MAP
+IF BATHROOM(CFLAG:ARG:現在位置) && GET_MAPID(CFLAG:ARG:現在位置) == MAIN_MAP
+	;汚臭耐性が低いほど長風呂（風呂フラグが下がりにくい）,一日分の汚れは大体30分で洗浄
+	CFLAG:ARG:風呂 = MAX(CFLAG:ARG:風呂 - TIME_PROGRESS(TIME:1) * (50 + TALENT:ARG:汚臭耐性 * 15), 0)
+ELSE
+	;二日分弱まで蓄積
+	CFLAG:ARG:風呂 = MIN(CFLAG:ARG:風呂 + TIME_PROGRESS(TIME:1), 2500)
+	;max if peed self
+	SIF SoiledSelf:ARG:0 || SoiledSelf:ARG:1
+		CFLAG:ARG:風呂 = 2500
+ENDIF
+;抱きつき禁止時間の減少
+IF TCVAR:ARG:抱きつき禁止時間 > 0
+	TCVAR:ARG:抱きつき禁止時間 = MAX(TCVAR:ARG:抱きつき禁止時間 - TIME_PROGRESS(TIME:1), 0)
+ENDIF
+;----------------------------
+;不適切な位置にいるキャラを別の場所へ移動させる
+;----------------------------
+
+@強制移動(ARG)
+;時間停止中は処理しない
+IF !FLAG:70
+	;虫カゴに入らないキャラを虫カゴから追い出す
+	IF CFLAG:ARG:現在位置 == 54 && TALENT:ARG:体型 > -5
+		IF ARG == [[針妙丸]]
+			TALENT:ARG:体型 = -5
+		ELSE
+			CFLAG:ARG:現在位置 = 9
+		ENDIF
+	ENDIF
+ENDIF
+;----------------------------
+;同行中のキャラをあなたに合わせて移動させる
+;----------------------------
+
+@同行処理(ARG)
+;※泥酔中は可能
+SIF FLAG:時間停止 || CFLAG:ARG:衰弱 || CFLAG:ARG:お招き || CFLAG:ARG:睡眠 || IsDead:ARG:0
+	RETURN
+;仕事中は基本的に無理、ただし宴会で酔いつぶれている場合は例外
+SIF CFLAG:ARG:行動 == 5 && CFLAG:ARG:職種 != 51
+	RETURN
+;addition custom code
+SIF ADD_BANQUET_PREVENT_MOVEMENT(ARG)
+	RETURN
+;同行フラグは1時間持続
+;qol custom code
+IF !CHK_DATENOW(CFLAG:ARG:デート中) && TFLAG:PublicToyPlay != ARG && CFLAG:ARG:同行
+	CFLAG:ARG:同行 = MAX(CFLAG:ARG:同行 - TIME_PROGRESS(TIME:1),0)
+	SIF CFLAG:ARG:同行 <= 0 && !CFLAG:ARG:うふふ
+		PRINTFORMW %CALLNAME:ARG%가 당신에게서 떨어져 나간다.
+ENDIF
+SIF CFLAG:ARG:同行 || CHK_DATENOW(CFLAG:ARG:デート中)
+	CFLAG:ARG:現在位置 = CFLAG:MASTER:現在位置
+;@キャラ移動前処理(ARG)
+;;衰弱中
+;IF CFLAG:ARG:衰弱 || TCVAR:ARG:泥酔 || CFLAG:ARG:お招き
+;	RETURN
+;ENDIF
+;
+;;お招き中(睡眠などを独自処理)
+;IF
+;	CALL MOVEMENT_OMANEKI(ARG)
+;	RETURN
+;ENDIF
+;
+;;昼寝を除いた睡眠時間中
+;IF !CFLAG:ARG:睡眠 && 睡眠時間(ARG)
+;	;住み込みキャラの家にお泊まりした時は帰らないように97 + MAIN_MAP * 100に避難
+;	IF CFLAG:(ARG):現在位置 != 97 + MAIN_MAP * 100
+;		;デート中なら強制的に中止して帰宅
+;		CALL 睡眠時デート中断(ARG)
+;	ENDIF
+;ENDIF
+;------------------------------------------
+;時間に合わせてキャラを起こす／寝かす
+;------------------------------------------
+
+@起床就寝処理(ARG)
+SIF FLAG:時間停止 || CFLAG:ARG:衰弱 || TCVAR:ARG:泥酔
+	RETURN
+SIF CFLAG:ARG:うふふ && (CFLAG:ARG:溜まってる度 > 0 || TCVAR:ARG:好きにして) ;bug fix, don't get drowsy when they're raping you
+	RETURN
+IF CFLAG:ARG:イタズラ ;bug fix, don't dress the character when already molested, etc
+	IF !睡眠時間(ARG) && TCVAR:ARG:睡眠薬強度;additional check if being molested + it's time to wake up + on sleep pills
+	ELSE
+		RETURN
+	ENDIF
+ENDIF
+SIF IsDead:ARG:0 ; do not allow dead characters
+	RETURN
+;睡眠時間帯の場合
+IF 睡眠時間(ARG) && !QOL_STAY_AWAKE(ARG) ;qol custom code
+	;起きてたら寝かせる
+	IF !CFLAG:ARG:睡眠
+		;デート中なら昼寝は無視する
+		IF !(CHK_DATENOW(CFLAG:ARG:デート中) && !睡眠時間(ARG))
+			;CHARA_SLEEP改良に伴い一旦凍結
+			;			;住み込みキャラの家にお泊まりした時は帰らないように97 + MAIN_MAP * 100に避難
+			;			IF CFLAG:ARG:現在位置 != 97 + MAIN_MAP * 100
+			;				;デート中に就寝時間になったら強制的に中止して帰宅
+			;				CALL 睡眠時デート中断(ARG)
+			;			ENDIF
+			IF !CFLAG:ARG:お招き && !(CFLAG:ARG:神社在住 && CFLAG:ARG:現在位置 == CFLAG:ARG:初期位置)
+				IF CFLAG:MASTER:現在位置 == CFLAG:ARG:現在位置 && !CFLAG:MASTER:睡眠
+					IF CFLAG:ARG:うふふ || CHK_DATENOW(CFLAG:ARG:デート中)
+						PRINTFORMW %CALLNAME:ARG% %HIS_HER(ARG)%의 졸음을 이길 수 없었고, 돌아가기로 결정했다 \@ CFLAG:ARG:神社在住 ? %HIS_HER(ARG)% 방으로 # 집으로 \@.
+					ELSEIF IN_HOME(CFLAG:ARG:現在位置)
+						PRINTFORMW %CALLNAME:ARG%은 작별 인사를 한다. %HE_SHE(ARG,1)%는 %HE_SHE(ARG)%가 떠나자 약간 졸려 보인다.
+					ENDIF
+					;CALL KOJO_MESSAGE_SEND("EVENT",3,ARG,1,0) ;addition custom code
+				ENDIF
+			ENDIF
+		ENDIF
+	ENDIF
+	;主人公が起床中ならメッセージ表示
+	CALL CHARA_SLEEP, ARG, !CFLAG:MASTER:睡眠
+	;睡眠時間帯から外れている場合
+ELSE
+	;寝てたら起こす
+	IF CFLAG:ARG:睡眠
+		CALL CHARA_AWAKE, ARG
+		;住み込みキャラが自分の家で起きた場合、参道の向こうに移動させる
+		SIF CFLAG:ARG:神社在住 && CFLAG:ARG:現在位置 == 97 + MAIN_MAP * 100
+			CFLAG:ARG:現在位置 = MAXROOM
+	ENDIF
+ENDIF
+;------------------------------------------
+;訪問フラグが立っているキャラをあなたの拠点物件に移動させる
+;キャラを自分の家に返す／在宅中の処理を行う
+;------------------------------------------
+
+@訪問帰宅処理(ARG)
+;NAS: Corpses, target is you, lucid dream
+SIF FLAG:時間停止 || CFLAG:ARG:衰弱 || TCVAR:ARG:泥酔 || CFLAG:ARG:お招き || CFLAG:ARG:うふふ || 仕事中チェック(ARG) || IsDead:ARG:0 || ARG == MASTER || CharaTrauma:ARG:0 >= 5
+	RETURN
+;NAS: Vehicles
+SIF TALENT:ARG:NonSentient
+	RETURN
+;住み込みキャラ・宴会に参加するキャラは来訪・帰宅の処理を行わない
+IF !CFLAG:ARG:神社在住 && !CFLAG:ARG:宴会参加 && !ADD_BANQUET_PREVENT_MOVEMENT(ARG) ;addition custom code
+	;活動時間内
+	IF VISIT(ARG)
+		IF CFLAG:ARG:拠点来訪
+			;来訪フラグがあるなら主人公の拠点に出現させる(仕事中は無理)
+			IF !AT_HOME(ARG) && !仕事中チェック(ARG)
+				CALL 主人公物件へ向かう(ARG)
+			ENDIF
+		ENDIF
+		;活動時間外
+	ELSE
+		;帰宅・在宅処理
+		CALL KITAKU(ARG)
+	ENDIF
+ENDIF
+;------------------------------------------
+;仕事がないキャラを外出させる
+;------------------------------------------
+
+@休日移動処理(ARG)
+SIF FLAG:時間停止 || CFLAG:ARG:衰弱 || TCVAR:ARG:泥酔 || CFLAG:ARG:睡眠 || CFLAG:ARG:お招き || CFLAG:ARG:うふふ || IsDead:ARG:0 || CharaTrauma:ARG:0 >= 5
+	RETURN
+;神社に行く予定のキャラ、当日仕事のあるキャラ、神社に住んでいるキャラは無視
+SIF CFLAG:ARG:拠点来訪 || 仕事日チェック(ARG) || CFLAG:ARG:神社在住
+	RETURN
+SIF ADD_BANQUET_PREVENT_MOVEMENT(ARG) ;addition custom code
+	RETURN
+SIF SaveIsEZB && !LegendModeStage
+	RETURN
+;訪問時間でまだ移動していない場合
+IF VISIT(ARG) && CFLAG:ARG:現在位置 != CFLAG:ARG:遭遇位置 && ARG != [[モブ子]] && !CFLAG:ARG:行動 ;bug fix, don't apply to mobs, not in the middle of work
+	LOCAL = 0
+	IF CFLAG:ARG:現在位置 == CFLAG:MASTER:現在位置
+		;お泊まりすると起きる現象（連動キャラを考慮すると面倒なことに）
+		LOCAL = 1
+	ENDIF
+	;全員共通の処理
+	CFLAG:ARG:現在位置 = CFLAG:ARG:遭遇位置 ? CFLAG:ARG:遭遇位置 # SUKIMA()
+	CFLAG:ARG:同行 = 0
+	IF CFLAG:ARG:現在位置 != CFLAG:MASTER:現在位置 && LOCAL
+		IF TALENT:ARG:恋慕 && !GROUPMATCH(NAME_FROM_PLACE(CFLAG:ARG:遭遇位置, 1), "", "不明", "スキマ空間") ;custom code, ARG for NAME_FROM_PLACE
+			PRINTFORMW %CALLNAME:ARG%은/는 외출하기 전에 %HE_SHE(ARG)%가 %NAME_FROM_PLACE_THE(CFLAG:ARG:遭遇位置)%로 향하는 것을 말한다.
+		ELSE
+			PRINTFORMW %CALLNAME:ARG%가 나가는 것 같다.
+		ENDIF
+		CALL Add_Move_Follow(ARG) ;addition custom code
+	ENDIF
+ENDIF
+;------------------------------------------
+;仕事中なら1を返す
+;@WORKINGとは挙動が違うので注意
+;------------------------------------------
+
+@仕事中チェック(ARG)
+#FUNCTION
+SIF TCVAR:ARG:仕事開始 >= 0 && BETWEENTIME(TCVAR:ARG:仕事開始,TCVAR:ARG:仕事終了) && BASE:ARG:仕事量 > 0
+	RETURNF 1
+RETURNF 0
+;------------------------------------------
+;当日に仕事の予定があるなら1を返す
+;@WORKINGとは挙動が違うので注意
+;------------------------------------------
+
+@仕事日チェック(ARG)
+#FUNCTION
+SIF TCVAR:ARG:仕事開始 >= 0
+	RETURNF 1
+RETURNF 0
+
+@主人公物件へ向かう(ARG)
+;来訪不能（口上用）
+IF CFLAG:ARG:来訪不能
+	CFLAG:ARG:拠点来訪 = 0
+	RETURN
+ENDIF
+;LoG custom code
+IF SaveIsEZB
+	RETURN
+ENDIF
+;///////////////////
+;お泊まりすると起きる現象
+IF CFLAG:ARG:現在位置 == CFLAG:MASTER:現在位置 && !CHK_DATENOW(CFLAG:ARG:デート中) && !TALENT:ARG:行きずり
+	IF CFLAG:ARG:態度 && (MOREDATE || (!MOREDATE && FLAG:デート相手 == MASTER))
+		PRINTFORMW %CALLNAME:ARG%는 %GET_MAPNAME(MAIN_MAP)%로 가고 싶은 것 같다.
+		PRINTFORML [1] - %HIM_HER(ARG)%에게 데이트 신청하기
+		PRINTFORML [2] - 같이 가기　
+		PRINTFORML [0] - %HIM_HER(ARG)%를 배웅하다 
+		INPUT
+		IF RESULT == 1
+			PRINTFORMW %CALLNAME:ARG%과 데이트하기로 결정했다.
+			;Group date check
+			SIF MOREDATE
+				CALL ADD_TO_GROUP_DATE(ARG)
+			CFLAG:MASTER:同行 = 1440
+			CFLAG:ARG:同行 = 1440
+			CFLAG:ARG:デート中 = CFLAG:MASTER:現在位置 / 100
+			FLAG:デート相手 = ARG
+			TFLAG:デート前好感度 = CFLAG:ARG:好感度
+		ELSEIF RESULT == 2
+			PRINTFORMW %CALLNAME:ARG%와 함께하기로 결정했다.
+			CALL 帰宅の時間経過
+			;Group date check
+			IF MOREDATE
+				CALL ADD_TO_GROUP_DATE(ARG)
+				CALL SET_DATES(99, Datees, NumberOfDates)
+			ELSE
+				CALL SET_DATE(99,ARG)
+			ENDIF
+			CFLAG:ARG:現在位置 = ENTRANCE
+			CFLAG:MASTER:現在位置 = ENTRANCE
+			CFLAG:ARG:デート中 = MAIN_MAP
+			CFLAG:MASTER:デート中 = MAIN_MAP
+			CFLAG:ARG:同行 = 60
+			CFLAG:MASTER:同行 = 60
+			RESULT = 0 ;custom code atw
+			SIF TARGET ;custom code atw
+				CALL KOJO_CHECK(TARGET, "CUSTOM_MOVEMENT", , 0)
+			IF TARGET == 93 && !GETBIT (FLAG:プール, 0) && !RESULT ;custom code atw
+				TIME += 30
+				BASE:MASTER:体力 = MAX(BASE:MASTER:体力 - 500,500)
+			ENDIF
+		ELSE
+			PRINTFORMW %CALLNAME:ARG%은(는) %GET_MAPNAME(MAIN_MAP)%로 향한다.
+			IF CFLAG:ARG:(450 + MAIN_MAP)
+				CFLAG:ARG:現在位置 = CFLAG:ARG:(450 + MAIN_MAP)
+			ELSE
+				CFLAG:ARG:現在位置 = MAXROOM
+			ENDIF
+		ENDIF
+	ELSE
+		PRINTFORMW %CALLNAME:ARG%은(는) %GET_MAPNAME(MAIN_MAP)%로 떠나는 것 같다.
+		IF CFLAG:ARG:(450 + MAIN_MAP)
+			CFLAG:ARG:現在位置 = CFLAG:ARG:(450 + MAIN_MAP)
+		ELSE
+			CFLAG:ARG:現在位置 = MAXROOM
+		ENDIF
+	ENDIF
+ELSE
+	IF CFLAG:ARG:(450 + MAIN_MAP)
+		CFLAG:ARG:現在位置 = CFLAG:ARG:(450 + MAIN_MAP)
+		;後戸組特殊処理
+	ELSEIF GROUPMATCH(ARG, [[舞]], [[里乃]], [[隠岐奈]]) && AT_HOME(MASTER) && MAP_CAN_MOVE(CFLAG:MASTER:現在位置, ARG) && !CFLAG:MASTER:うふふ
+		CFLAG:ARG:現在位置 = CFLAG:MASTER:現在位置
+	ELSE
+		CFLAG:ARG:現在位置 = MAXROOM
+	ENDIF
+	TCVAR:ARG:Arrival_Time = TIME ;addition custom code, keep track of arrival time
+	CALL Add_Special_NPC_Travel(ARG) ;addition custom code, handle special travel mechanics
+	IF CFLAG:ARG:現在位置 == MAXROOM ;qol custom code, choose random destination
+		CALL QOL_VISITOR_LOCATION_SELECTION(ARG)
+	ENDIF
+	SIF GETBIT(TALENT:MASTER:居場所察知, 1) && AT_HOME(MASTER) == 1 && !CFLAG:MASTER:睡眠 && !CFLAG:MASTER:うふふ
+		PRINTFORMW 【%CALLNAME:ARG%가 방문했다】
+	BASE:ARG:尿意 = 0
+	BASE:ARG:Poo = 0
+ENDIF
+CALL EX_COSTUME(ARG, "おうちデート")
+;------------------------------------------
+;仕事や宴会の開始／経過／終了やメッセージの表示を行う
+;------------------------------------------
+
+@仕事宴会処理(ARG)
+;SIF IsDead:ARG:0 && CFLAG:ARG:宴会参加 > 0 && !BASE:ARG:仕事量
+;	CALL ENKAI_WORK(ARG)
+SIF FLAG:時間停止 || CFLAG:ARG:衰弱 || CFLAG:ARG:お招き || CFLAG:ARG:睡眠 || IsDead:ARG:0 || ARG == MASTER
+	RETURN
+IF TCVAR:ARG:泥酔
+	;宴会で酔いつぶれた場合はメッセージのみ表示して戻る
+	IF CFLAG:ARG:職種 == 51 && CFLAG:ARG:現在位置 == TFLAG:宴会場 && CFLAG:MASTER:現在位置 == CFLAG:ARG:現在位置
+		CALL 宴会描写(ARG)
+	ENDIF
+	RETURN
+ENDIF
+IF !CFLAG:ARG:うふふ || WORKING(ARG) || (CFLAG:ARG:うふふ == 2 && CFLAG:ARG:宴会参加 == 2)
+	;宴会時間帯呼び出し
+	IF CFLAG:ARG:宴会参加 == 1 || CFLAG:ARG:宴会参加 == 2
+		CALL ENKAI_WORK(ARG)
+	ENDIF
+	;addition custom code, disabled
+	; ;宴会会場に立ち寄ったり近づいたキャラは一定確率で宴会に加わる
+	; ELSEIF FLAG:参加人数 >= 2 && (CFLAG:ARG:現在位置 == TFLAG:宴会場 || CAN_MOVE(CFLAG:ARG:現在位置, TFLAG:宴会場) >= 2) && !CFLAG:ARG:うふふ
+	; 	IF CFLAG:ARG:宴会参加 == 0 && RAND:5 < 4 && 宴会開催中判定() && TIME_PROGRESS(TIME:1) && 仕事中チェック(ARG) == 0
+	; 		IF CFLAG:MASTER:現在位置 == TFLAG:宴会場
+	; 			IF FLAG:参加人数 >= 8
+	; 				PRINTFORMW %CALLNAME:ARG% noticed the ongoing banquet and decided to join!
+	; 			ELSE
+	; 				PRINTFORMW %CALLNAME:ARG% saw the sorry state of the banquet and decided to join!
+	; 			ENDIF
+	; 		ENDIF
+	; 		CFLAG:ARG:宴会参加 = 1
+	; 		CALL ENKAI_START(ARG)
+	; 	ENDIF
+	; ENDIF
+	;デート相手が宴会やその準備に加わった場合、デートは強制的に中止
+	IF GROUPMATCH(CFLAG:ARG:職種, 48, 49, 50, 51) && CHK_DATENOW(CFLAG:ARG:デート中)
+		PRINTFORMW %CALLNAME:ARG%와의 데이트를 취소하도록 강요받았다.
+		CFLAG:ARG:デート中 = MAIN_MAP
+		FLAG:デート相手 = MASTER
+		TFLAG:デート前好感度 = 0
+		CFLAG:ARG:同行 = 0
+		SIF MOREDATE
+			CALL REMOVE_FROM_GROUP_DATE(ARG)
+	ENDIF
+	;宴会の片付け予定が入っているキャラは手が空き次第片付け開始
+	IF CFLAG:ARG:片付け仕事量
+		IF CFLAG:ARG:行動 == 0 && FLAG:参加人数 == 0
+			CALL ENKAI_KATAZUKE(ARG)
+			CFLAG:ARG:片付け仕事量 = 0
+			CFLAG:ARG:片付け場所 = 0
+		ENDIF
+	ENDIF
+	;仕事時間中、宴会参加中、宴会準備中ならばCHARA_JOBSTR(ARG)
+	;addition custom code, moved banquet stuff
+	IF (WORKING(ARG) || (CFLAG:ARG:職種 == 50 && BASE:ARG:仕事量 > 0)) && !GROUPMATCH(CFLAG:ARG:職種, 48, 49, 51)
+		CALL CHARA_JOBSTR(ARG)
+		;仕事終了していれば終了処理
+	ELSEIF CFLAG:ARG:行動 == 5 && !GROUPMATCH(CFLAG:ARG:職種, 48, 49, 51) ;addition custom code
+		CALL CHARA_JOBEND(ARG)
+	ENDIF
+ENDIF
+;CHARA_SLEEP改良に伴い一旦凍結
+;@睡眠時デート中断(ARG)
+;IF CHK_DATENOW(CFLAG:ARG:デート中)
+;	IF CFLAG:ARG:衰弱
+;		PRINTFORMW %CALLNAME:ARG% is about to fall asleep...
+;	ELSE
+;		PRINTFORMW %CALLNAME:ARG% decides it's time to go home and sleep...
+;	ENDIF
+;	IF GET_MAPID(CFLAG:ARG:自宅位置) == MAIN_MAP
+;		PRINTFORMW Decided to return together to %GET_MAPNAME(MAIN_MAP)%.
+;		CALL SET_DATE(99, ARG)
+;	ELSE
+;		CALL ASK_YN("Escort them home","Send them off")
+;		IF RESULT == 0
+;			PRINTFORMW Decided to escort %CALLNAME:ARG% back to %HIS_HER(ARG)% home.
+;			CALL SET_DATE(99, ARG)
+;		ELSE
+;			PRINTFORMW The date with %CALLNAME:ARG% ends on the spot.
+;			FLAG:デート相手 = MASTER
+;			TFLAG:デート前好感度 = 0
+;			CFLAG:ARG:デート中 = MAIN_MAP
+;		ENDIF
+;		CFLAG:ARG:現在位置 = CFLAG:ARG:自宅位置
+;	ENDIF
+;	IF CFLAG:ARG:うふふ
+;		CALL ENDUFUFU(ARG)
+;	ENDIF
+;	CFLAG:ARG:同行 = 0
+;ENDIF

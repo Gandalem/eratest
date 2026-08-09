@@ -1,0 +1,58 @@
+﻿; Modular ERB: OMOGATARI/GO_OUT_EV32_Faction Checkpoint.ERB
+;イベント発生判定。EVXのXを一括置換で空いてる数字に変えてください。
+
+@GO_OUT_CONDITION_EV32
+SIF GETBIT(TFLAG:一日一回, 9)
+	RETURN 0
+SIF RAND:3
+	RETURN 0
+SIF !nFactions
+	RETURN 0
+SIF !RaidGraceElapsed()
+	RETURN 0
+CALL GO_OUT_EV32
+RETURN RESULT
+;イベント本体。最後はRETURN 1でお願いします。
+
+@GO_OUT_EV32
+#DIM nEnemy = -1
+#DIM nPrice = 2500
+CALLF FISHER_YATES_SHUFFLE_F(MaxFactions)
+FOR LOCAL,0,MaxFactions
+SIF !FactionExist(LOCAL)
+	CONTINUE
+LOCAL:1 = SHAFFLE_ARRAY:(LOCAL)
+BREAK
+NEXT
+SIF nEnemy == -1
+	RETURN 0
+PRINTFORML 가는 도중에 당신은 갑자기 %FactionName(nEnemy)%가 설치한 체크포인트를 마주친다!
+SELECTCASE FactionRelationCompElse(MASTER,nEnemy)
+	CASE IS <= -50000
+		PRINTFORML 그들은 당신의 존재와 당신과 싸우고 있는 것에 동요한다.
+		CALL FACTION_ASSAIANS(MASTER, nEnemy)
+	CASEELSE
+		nPrice = 2500 - (FactionRelationCompElse(MASTER,nEnemy)/10)
+ENDSELECT
+IF nPrice <= 0
+	PRINTFORML %FactionName(nEnemy)%에게 존경받았기 때문에, 그들은 당신이 무료로 지나가도록 허용한다.
+	GOTO ENDEVENT
+ENDIF
+PRINTFORML 그들은 통과하기 위해 당신에게 %金額表示(nPrice)%를 지불하라고 요구한다.
+CALL ASK_M( @"%金額表示(nPrice)%를 지불한다.", MONEY >= nPrice, @"공격한다 (적에게 변함)", 1, @"집으로 가라", 1 )
+SELECTCASE RESULT
+	CASE 0
+		PRINTFORML 플레이어는 해당 세력에게 요구 가격을 지불한다.
+		CALL FACTION_GIVE_MONEY(nEnemy,nPrice)
+		PRINTFORML 그들은 무기를 내리고 당신이 지나가도록 한다.
+	CASE 1
+		PRINTFORML 당신은 체크포인트를 공격하기로 결정한다.
+		CALL FACTION_ASSAIANS(MASTER, nEnemy)
+		GOTO ENDEVENT
+	CASEELSE
+		PRINTFORML 돌아가기로 결정한다.
+		CFLAG:MASTER:デート中 = CFLAG:MASTER:現在位置 / 100
+ENDSELECT
+$ENDEVENT
+SETBIT TFLAG:一日一回, 9
+RETURN 1

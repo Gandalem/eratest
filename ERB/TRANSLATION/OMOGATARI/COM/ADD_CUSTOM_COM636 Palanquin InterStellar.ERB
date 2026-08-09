@@ -1,0 +1,185 @@
+﻿; Modular ERB: OMOGATARI/COM/ADD_CUSTOM_COM636 Palanquin InterStellar.ERB
+
+@ADD_CUSTOM_COM636
+CALL PAL_TAXI
+RETURN RESULT
+
+@ADD_CUSTOM_COM_ABLE636
+;押し倒す実行判定
+SIF !TFLAG:100
+	RETURN 0
+SIF FLAG:70
+	RETURN 0
+SIF InTrain == 3
+	RETURN 0
+;location
+SIF !GROUPMATCH(GET_MAPID(CFLAG:MASTER:300),1,10,11)
+	RETURN 0
+IF AT_HOME(MASTER)
+	SIF CFLAG:MASTER:300 != ENTRANCE
+		RETURN 0
+ELSE
+	SIF CFLAG:MASTER:300%(CFLAG:MASTER:300/100*100) != 10
+		RETURN 0
+ENDIF
+RETURN 1
+
+@PAL_TAXI
+#DIM CHARISMA
+#DIM ItemId
+#DIM nResult
+#DIM DYNAMIC nTimeSpent
+#DIM nCost,10
+#DIM nTravelArea,10
+gLineCount = LINECOUNT
+REDRAW 0
+DO
+SIF LINECOUNT - gLineCount > 0
+	CLEARLINE LINECOUNT - gLineCount
+SETCOLOR C_AQUA
+FONTBOLD
+PRINTFORML ★팔라순퀸 성간 서비스★
+FONTREGULAR
+RESETCOLOR
+LOCALS '= @"「안녕하세요, PISS에 오신 것을 환영합니다!」/「어디로 가고 싶으신지 말씀해 주세요. 티켓은 편도 여행에만 유효하다는 점을 염두에 두시기 바랍니다.」"
+CALL PAL_TAXI_SPEAK(LOCALS)
+PRINTFORML 가용 \@ CHARISMA ? 카리스마 : CM%DIGIT_GROUP(MONEY:2)% # 돈 : %金額表示(MONEY)% \@
+CUSTOMDRAWLINE ━
+FOR LOCAL,0,4
+SELECTCASE LOCAL
+	CASE 0
+		SIF GET_MAPID(CFLAG:MASTER:300) == 11
+			CONTINUE
+		LOCALS '= "Makai"
+		nTravelArea:LOCAL = 11
+	CASE 1
+		SIF GET_MAPID(CFLAG:MASTER:300) == 10
+			CONTINUE
+		LOCALS '= "the Lunar Capital"
+		nTravelArea:LOCAL = 10
+	CASE 2
+		SIF !GROUPMATCH(GET_MAPID(CFLAG:MASTER:300),10,11)
+			CONTINUE
+		LOCALS '= "Gensokyo"
+		nTravelArea:LOCAL = 1
+	CASE 3
+		SIF GET_MAPID(CFLAG:MASTER:300) == GET_MAPID(CFLAG:MASTER:311)
+			CONTINUE
+		LOCALS '= "Home"
+		nTravelArea:LOCAL = GET_MAPID(CFLAG:MASTER:311)
+ENDSELECT
+nCost:LOCAL = PAL_TAXI_COST(nTravelArea:LOCAL)
+PRINTFORML [{100+LOCAL}] - To %LOCALS% (\@ CHARISMA ? CM%DIGIT_GROUP(nCost:LOCAL/(MAX(1,CHARISMA_NOW())))% # %金額表示(nCost:LOCAL)%\@)
+NEXT
+PRINTL
+PRINTFORML [-2] 카리스마로 전환한다.
+PRINTFORML [-1] 취소한다.
+INPUT
+nResult = RESULT
+SIF nResult == -1
+	RETURN -1
+SELECTCASE nResult
+	CASE -2
+		CHARISMA = !CHARISMA
+		CONTINUE
+ENDSELECT
+nResult -= 100
+IF GET_MAPID(CFLAG:MASTER:300) == nTravelArea:nResult
+	CALL PAL_TAXI_SPEAK("「You are already at where you want to go. There's no need.」")
+	WAIT
+	CONTINUE
+ELSEIF MONEY < nCost:nResult && !CHARISMA
+	CALL PAL_TAXI_SPEAK(@"「거기까지 여행할 돈이 부족해... 아쉽네.」")
+	WAIT
+	CONTINUE
+ELSEIF (MONEY:1 < nCost:nResult/(MAX(1,CHARISMA_NOW())) && CHARISMA)
+	CALL PAL_TAXI_SPEAK(@"「거기까지 여행할 만큼 카리스마가 부족해... 아쉽네.」")
+	WAIT
+	CONTINUE
+ENDIF
+SELECTCASE IFRAND("0TO4", CFLAG:86:現在位置 != CFLAG:PLAYER:現在位置, "5TO9", CFLAG:86:現在位置 == CFLAG:PLAYER:現在位置)
+	CASE 0
+		LOCALS '= "「I was once an adventurer like you, until...」"
+	CASE 1
+		LOCALS '= "「I may be still on the clock, but I just got enough time to transport one more person.」"
+	CASE 2
+		LOCALS '= "「You see a lot of people flying on their own these days...」"
+	CASE 3
+		LOCALS '= "「Traveling without a vehicle is rather dangerous, especially with the checkpoints...」"
+	CASE 4
+		LOCALS '= "「Well, hop on board.」"
+	CASE 5
+		LOCALS '= "「Did you know that this ship is actually a recreation, since the original is being used as a temple...」"
+	CASE 6
+		LOCALS '= @"「사람들은 계속 부르고 있어 %CALLNAME:55% 하나 \"가슴 여자\"왜 그들이 대상화하는지 모르겠어 %HIM_HER(55)% 그렇게 많이!」"
+	CASE 7
+		LOCALS '= @"「이 배에는 당신에게 필요한 모든 것이 있습니다. 무엇이든 필요하면 저에게 물어보세요.」"
+	CASE 8
+		LOCALS '= @"「별들 사이를 여행할 때, 나는 저 첨단 프로텍토레이트 함선들을 보았다. 정말 거대했다!」"
+	CASE 9
+		LOCALS '= @"「하늘에 스스로 날아다니는 해적들이 많이 있다. 다행히 나의 힘으로 그들을 땅에 붙일 수 있다.」"
+ENDSELECT
+CALL PAL_TAXI_SPEAK(LOCALS)
+PRINTFORML %GET_MAPNAME(nTravelArea:nResult)%로 향한다.
+IF CHARISMA
+	CALL PAY_MONEY_CM(nCost:nResult/(MAX(1,CHARISMA_NOW())), 2)
+ELSE
+	CALL PAY_MONEY_YEN(nCost:nResult, 2)
+ENDIF
+IF TFLAG:運搬
+	CALL SET_DATE(nTravelArea:nResult, TFLAG:運搬, TIME_REQUIRED(GET_MAPID(CFLAG:MASTER:300), nTravelArea:nResult)/4, 0)
+ELSE
+	CALL SET_DATE(nTravelArea:nResult, 0, TIME_REQUIRED(GET_MAPID(CFLAG:MASTER:300), nTravelArea:nResult)/4, 0)
+ENDIF
+PRINTL .
+PRINTL ..
+PRINTL ...
+PRINTW
+PRINTL
+PRINTFORML 배가 착륙하고 당신은 그것이 날아가기 전에 차량에서 내린다.
+RETURN 1
+LOOP 1
+;Destinations
+;Area                   | Shortcode | Planet       | Star System | Price
+;-----------------------------------------------------------------
+;Gensokyo               | ERTH-RJGS | Earth        | Sol         | 3000
+;Lunar Capital          | ELUC      | Luna         | Sol         | 3000
+;Makai City             | MKAI-CITY | Self         | Makai       | 25000
+;Nagoya                 | ERTH-RJGG | Earth        | Sol         | Temp. Unavail.
+;New York               | ERTH-KLGA | Earth        | Sol         | Temp. Unavail.
+;Night City             | ERTH-KNCX | Earth        | Sol         | Temp. Unavail.
+;Venus Orbital          | VORB      | Venus        | Sol         | Temp. Unavail.
+;Nnamdi Azikiwe Station | OKLG      | 1036 Ganymed | Sol         | Temp. Unavail.
+;Alta Hai               | VHAI-ALTA | Alta Hai     | Hevru Hai   | Temp. Unavail.
+;Glaze                  | ADHB-GLA  | Glaze        | Aldhibain   | Temp. Unavail.
+;Ring of Friendship     | QURU-R    | Ring of F... | Quaru       | Temp. Unavail.
+;New Boston             | RTIL-NB   | New Boston   | Rutilicus   | Temp. Unavail.
+
+@PAL_TAXI_COST(ARG)
+#FUNCTION
+#DIM DYNAMIC nEstCost
+#DIM DYNAMIC nEstMult
+;if from makai, 25K
+SIF GET_MAPID(CFLAG:MASTER:300) == 11 || ARG == 11
+	RETURNF 25000
+;else, calculate cost from movement
+nEstCost = TIME_REQUIRED(GET_MAPID(CFLAG:MASTER:300), ARG)
+IF GET_MAPID(CFLAG:MASTER:300) == 10 || ARG == 10
+	nEstMult = 130
+ELSE
+	nEstMult = 75
+ENDIF
+RETURNF nEstCost*nEstMult
+;Ship Captain
+
+@PAL_TAXI_SPEAK(ARGS, ARGS:1 = "通常")
+SIF ARGS:1 == "smile"
+	ARGS:1 '= "笑顔"
+SIF ARGS:1 == "blush"
+	ARGS:1 '= "発情"
+IF CFLAG:86:現在位置 == CFLAG:PLAYER:現在位置
+	CALL SPTALK, 86, ARGS:1, 0, ARGS, 1
+ELSE
+	CALL SPTALK, 0, ARGS:1, 12, ARGS, 1
+ENDIF
+RESETCOLOR

@@ -1,0 +1,1524 @@
+﻿; Modular ERB: OMOGATARI/DAILY EVENTS/DAILY_EV901 Bedwetting.ERB
+; custom code, adds a random bedwetting event if you have the peeing habit trait. Also can appear randomdly at a 1% chance
+; guarantted if your peeing habit level is 2 or higher
+; when i add the pee bar i'll also make it dependent on it as well (more pee before going to bed = higher chance of bedwetting)
+;hardcore content toggle, <urine: wetting> <scat: messing>
+; - Mr Pops Alot
+
+@DAILY_INFO_EV901
+#FUNCTION
+DAILY_INFO_NAME '= @"야뇨증"
+DAILY_INFO_DESC '= @"잠을 자는 동안 사고를 당했다."
+DAILY_INFO_TYPE '= @"사소한"
+
+@DAILY_CONDITION_EV901
+#DIM HasPiss
+#DIM HasScat
+#DIM UnwareWetting
+#DIM LucidDream
+#DIM FormerStats,2
+VARSET LOCAL
+LucidDream = 0
+HasPiss = 0
+HasScat = 0
+UnwareWetting = 0
+SIF !GETBIT(nPee, 1) && !GETBIT(nScat, 2)
+	RETURN -1
+IF GETBIT(nPee, 1)
+	IF RAND:1000 > BedWetThreshold(MASTER, 1, 1)
+		HasPiss = 1
+		UnwareWetting = 1
+	ELSEIF RAND:1000 > BedWetThreshold(MASTER, 1, 0)
+		HasPiss = 1
+		;BASE:MASTER:尿意 = MAXBASE:MASTER:尿意
+	ENDIF
+ENDIF
+IF GETBIT(nScat, 2)
+	IF RAND:1000 > BedWetThreshold(MASTER, 2, 1)
+		HasScat = 1
+		UnwareWetting = 1
+	ELSEIF RAND:1000 > BedWetThreshold(MASTER, 2, 0)
+		HasScat = 1
+		;BASE:MASTER:Poo = MAXBASE:MASTER:Poo
+	ENDIF
+ENDIF
+IF (CFLAG:MASTER:溜まってる度 >= 650 || RAND:1000 > BedWetDreamAddict(MASTER, HasPiss, HasScat) || K102_SweetDreamsTonight || DreamDropTaken == 1) && !DAILY_Lucid_Stats
+	LucidDream = 1
+ENDIF
+SIF DreamDropTaken == -1
+	LucidDream = 0
+DreamDropTaken = 0
+D = 0
+[IF_DEBUG]
+D = 1
+D:5 = LINECOUNT
+VARSET LOCAL
+DO
+CLEARLINE LINECOUNT-D:5
+SIF !TCVAR:MASTER:906
+	BREAK
+SIF PeeBarStage(MASTER) < 5 && PooBarStage(MASTER) < 5
+	UnwareWetting = 0
+IF LucidDream && (HasPiss || HasScat)
+	LOCALS = 루시드 드림 - %LucidDreamNames(DAILY_Lucid_Stats:3)%
+ELSEIF UnwareWetting
+	LOCALS = 인지하지 못한 사고
+ELSEIF HasPiss || HasScat
+	LOCALS = 절박함
+ELSE
+	LOCALS = 깊은 잠
+ENDIF
+CALL EasyImage(@"EV901","OMOGATARI/Menus/EV901.png")
+CUSTOMDRAWLINE ━
+DEBUG_Target = MASTER
+FormerStats:0 = BASE:MASTER:4
+FormerStats:1 = BASE:MASTER:Poo
+PRINTFORM -%LOCALS% (
+IF HasPiss
+	SETCOLOR PEECOLOR_C(MASTER)
+	PRINTFORM 축축한 
+	RESETCOLOR
+ENDIF
+IF HasScat
+	SETCOLOR 0x6b4737
+	PRINTFORM 지저분한
+	RESETCOLOR
+ENDIF
+PRINTFORML )-
+CALL INFO_SHOW_NYOUI(MASTER)
+PRINTFORM %" - "%
+CALL INFO_SHOW_BENI(MASTER)
+PRINTFORML
+SETCOLOR C_GRAY
+CUSTOMDRAWLINE ━
+RESETCOLOR
+CALL Com_DiaperCheck(MASTER)
+SETCOLOR C_GRAY
+CUSTOMDRAWLINE ━
+RESETCOLOR
+PRINTFORML 방광 EPL: {EffectivePottyLevel(MASTER, 1, 1)} - 장 EPL: {EffectivePottyLevel(MASTER, 2, 1)}
+FOR LOCAL:6,0,6
+CALLF PeeMe(MASTER,LOCAL:6)
+CALLF PooMe(MASTER,LOCAL:6)
+W = MAX(1000-BedWetThreshold(MASTER, 1, 1),0)
+X = MAX(1000-BedWetThreshold(MASTER, 1, 0),0)
+M = MAX(1000-BedWetThreshold(MASTER, 2, 1),0)
+N = MAX(1000-BedWetThreshold(MASTER, 2, 0),0)
+PRINTFORML 스테이지 {LOCAL:6}: Wet: %DecimalPlace(W)%\% (%DecimalPlace(X)%\% 깨어나기)-혼란: %DecimalPlace(M)%\% (%DecimalPlace(N)%\% 깨어나다)
+NEXT
+BASE:MASTER:4 = FormerStats:0
+BASE:MASTER:Poo = FormerStats:1
+SETCOLOR C_GRAY
+CUSTOMDRAWLINE ━
+RESETCOLOR
+PRINTFORML [  0] [ 0] - 방광 상태 변경 ({BASE:MASTER:尿意}/{MAXBASE:MASTER:尿意})
+PRINTFORML [  1] [ 1] - 장 상태 변경 ({BASE:MASTER:Poo}/{MAXBASE:MASTER:Poo})
+PRINTFORML [  2] [ 2] - 당신의 %PantiesType:MASTER:0%를 변경한다
+PRINTFORML [  3] [ 3] - 선명한 꿈을 설정한다
+PRINTFORML [  4] [ 4] - 수면 이벤트 또는 기상 이벤트: \@ TCVAR:MASTER:906 ? 잠든다 # 깨어난다 \@
+CUSTOMDRAWLINE ━
+PRINTFORML [999] - 시작이다!
+INPUT
+SELECTCASE RESULT
+	CASE 0
+		CALL COM_DEBUG_VISUAL_PEEME
+		IF PeeBarStage(MASTER) >= 5
+			HasPiss = 1
+			UnwareWetting = 1
+		ELSEIF PeeBarStage(MASTER) >= 3
+			HasPiss = 1
+		ELSE
+			HasPiss = 0
+		ENDIF
+	CASE 1
+		CALL COM_DEBUG_VISUAL_POOME
+		IF PooBarStage(MASTER) >= 5
+			HasScat = 1
+			UnwareWetting = 1
+		ELSEIF PooBarStage(MASTER) >= 3
+			HasScat = 1
+		ELSE
+			HasScat = 0
+		ENDIF
+	CASE 2
+		CALL Com_Debug_PantsGet
+	CASE 3
+		DAILY_Lucid_Stats:14 = 1
+		CALL LucidDreamRecollection
+		IF RESULT == 0
+			DAILY_Lucid_Stats:3 = 0
+			LucidDream = 0
+		ELSEIF RESULT == -1
+			DAILY_Lucid_Stats:3 = 0
+			LucidDream = 1
+		ELSE
+			LucidDream = 1
+		ENDIF
+	CASE 4
+		TCVAR:MASTER:906 = !TCVAR:MASTER:906
+	CASE 999
+		BREAK
+ENDSELECT
+LOOP 1
+[ENDIF]
+IF LucidDream && (HasPiss || HasScat) && (TCVAR:MASTER:906)
+	;lucid dreams are fucky as fuck
+	CALL LucidDream(D ? "" # "Pee",HasPiss,HasScat,DAILY_Lucid_Stats:3)
+	;CALL BEDWETTING(HasPiss,HasScat)
+	RETURN 1
+ELSEIF UnwareWetting
+	CALL BEDWETTING(HasPiss,HasScat)
+	RETURN 1
+ELSEIF (HasPiss || HasScat) && TCVAR:MASTER:906
+	CALL DAILY_EV_901(HasPiss,HasScat)
+	RETURN 1
+ELSE
+	RETURN -1
+ENDIF
+
+@DAILY_EV_901(HasPiss=0,HasScat=0)
+#DIM HasPiss
+#DIM HasScat
+#DIM CHARA
+#DIM 変動値
+#DIM 行動番号
+#DIM ReactionTime
+IF HasPiss && HasScat
+	ReactionTime = (2500 + (500*PeeHold:MASTER:0)) + (2500 + (500*PooHold:MASTER:0))
+ELSEIF HasScat
+	ReactionTime = 5000 + (1000*PooHold:MASTER:0)
+ELSE
+	ReactionTime = 5000 + (1000*PeeHold:MASTER:0)
+ENDIF
+CALL FISHER_YATES_SHAFFLE(CHARANUM)
+VARSET LOCAL
+FOR LOCAL, 1, CHARANUM
+CHARA = SHAFFLE_ARRAY:LOCAL
+;対象があなた
+SIF CHARA == MASTER
+	CONTINUE
+;でてこない
+SIF CFLAG:CHARA:出禁
+	CONTINUE
+;拠点キャラではない
+SIF !CFLAG:CHARA:神社在住
+	CONTINUE
+LOCAL:1 = CHARA
+BREAK
+NEXT
+SIF LOCAL:1 <= 0
+	RETURN
+PRINTFORML 잠든 동안 방광에서 \@ HasPiss ? 한 움찔거림을 느끼고 #  \@ \@ HasPiss && HasScat ? %" "%and%" "% #  \@ \@ HasScat ? 배에서 고통을 느꼈다 #  \@...
+SELECTCASE BedProtectSettings:4
+	CASE 0
+		FORCEWAIT
+		PRINTFORML [  0] 일어나서 화장실에 가라.
+		PRINTFORML [  1] 참아 보려고 노력해라.
+		PRINTFORML [  2] 식물에게 물 줄 시간이다.
+		SIF nOmutsu && !IsPadded(MASTER)
+			PRINTFORML [  3] - 기저귀를 사용한다.
+		CALL YoujutsuMagicCanDo(MASTER,18,28)
+		SIF RESULT
+			PRINTFORML [4] - 아페돈!
+		PRINTFORML [999] 내보내라...
+		TINPUT ReactionTime, -1, 1
+		PRINTFORML
+	CASE 1
+		RESULT = 0
+	CASE 2
+		RESULT = 1
+	CASE 3
+		RESULT = 999
+	CASE 4
+		RESULT = 4
+ENDSELECT
+SELECTCASE RESULT
+	CASE 0
+		PRINTFORMW 당신은 %BED_FUTON()%에서 뛰어내려 화장실로 달려가 손으로 몸을 붙잡았다.
+		PRINTFORM 당신은 문고리를 잡아보려고 노력했다. 
+		IF !RAND:2
+			PRINTFORML 열린다!
+			PRINTFORMW 너는 %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))%을 벗고 변기에 앉을 시간이 겨우 있다. \@ HasPiss ? %FSYN("pee:n")% #  \@\@ HasPiss && HasScat ? %" "%and%" "% #  \@\@ HasScat ? %FSYN("poo:n")% #  \@가 너를 서둘러 지나간다.			
+			IF RAND(100) <= 50
+				PRINTFORMW 뚜껑이 닫혔다!
+				PRINTFORML [  0] - 들어라
+				TINPUT 1000, -1, 1
+				SELECTCASE RESULT
+					CASE 0
+						PRINTFORMW 모든 힘을 다해 좌석 덮개를 들어 올리고 그 위에 앉는다.
+						GOTO ToiletSuccess
+					CASEELSE
+						SIF HasPiss
+							CALL PEESOUNDS("loc")
+						SIF HasScat
+							CALL POOSOUNDS("loc")
+						PRINTFORMW 안도하며 신음했고, 무사하다는 사실에 놀랐다.
+						PRINTFORMW 알고 보니 네가 손해를 본 거였고 \@ HasPiss ? %FSYN("pee:ing")% #  \@\@ HasPiss && HasScat ? %" "%and%" "% #  \@\@ HasScat ? %FSYN("poo:ing")% #  \@ 너의 %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))%...
+						CALL WetFeelings(MASTER)
+						PRINTFORMW 당신의 %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))%은 완전히 \@ HasPiss ? %FSYN("wet")% #  \@\@ HasPiss && HasScat ? %" "%and%" "% #  \@\@ HasScat ? 엉겨 붙어 #  \@ in your \@ HasPiss ? %FSYN("pee:n")% #  \@\@ HasPiss && HasScat ? %" "%and%" "% #  \@\@ HasScat ? %FSYN("poo:n")% #  \@ 변기 뚜껑에서 떨어지는 것처럼.
+						PRINTFORMW 당신은 절망하며 손을 얼굴에 가져다 대었다...
+						SIF HasPiss
+							CALL PEESOUNDS("v")
+						SIF HasScat
+							CALL POOSOUNDS("v")
+						$AlmostMadeIt
+						PRINTFORMW 거의 해냈어...
+						PRINTFORMW 그저, 아슬아슬하게...			
+						SIF HasPiss
+							CALL PEESOUNDS("v")
+						SIF HasScat
+							CALL POOSOUNDS("v")
+						PRINTFORMW 너무 가까웠는데... 너무 멀었다...
+						IF HasPiss
+							CALL COLORMESSAGE(@"소변 본 횟수 +1",C_PINK,1)
+							CALL COLORMESSAGE(@"방뇨경험 +{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+							CALL COLORMESSAGE(@"소변 참기 경험치+{15}",C_PINK,1)
+							BASE:MASTER:尿意 = 0
+							PeeHoldExp:MASTER:0 += 15
+							EXP:MASTER:放尿経験 += MAXBASE:MASTER:尿意/100
+							EXP:MASTER:GeneralPeeExp += MAXBASE:MASTER:尿意*3/2/100
+							Qol_Info_Count_Array:MASTER:Qol_Count_Wetting += 1
+							CALL QoL_Info_Write(MASTER, Qol_Dates_Wetting)
+						ENDIF
+						IF HasScat
+							CALL COLORMESSAGE(@"배변한 횟수 +1",C_PINK,1)
+							CALL COLORMESSAGE(@"배설 경험치 +{MAXBASE:MASTER:Poo/100}",C_PINK,1)
+							CALL COLORMESSAGE(@"변의 보유 경험치 +{15}",C_PINK,1)
+							BASE:MASTER:Poo = 0
+							PooHoldExp:MASTER:0 -= 15
+							EXP:MASTER:PooExp += MAXBASE:MASTER:Poo/100
+							Qol_Info_Count_Array:MASTER:Qol_Count_Messing += 1
+							EXP:MASTER:GeneralPoopExp += MAXBASE:MASTER:Poo*3/2/100
+							CALL QoL_Info_Write(MASTER, Qol_Dates_Messing)
+						ENDIF
+						CALL KOJO_MESSAGE_SEND("DAILY", 901, LOCAL:1)
+				ENDSELECT
+			ELSE
+				$ToiletSuccess
+				SIF HasPiss
+					CALL PEESOUNDS("v")
+				SIF HasScat
+					CALL POOSOUNDS("v")
+				PRINTFORMW 안도의 한숨을 내쉬며 무사하다는 사실에 놀란다.
+				IF !RAND:2
+					PRINTFORMW 당신이 \@ HasPiss ? %FSYN("pee:ing")% #  \@\@ HasPiss && HasScat ? %" "%하고%" "% #  \@\@ HasScat ? %FSYN("poo:ing")% #  \@하는 동안, %CALLNAME:(LOCAL:1)%가 문을 쾅쾅 두드리는 소리가 들린다.
+					PRINTFORML [  0] 하던 일을 멈추고 문을 연다.
+					PRINTFORML [999] 「싫은데.」
+					TINPUT 5000, -1, 1
+					SELECTCASE RESULT
+						CASE 0
+							PRINTFORMW \@ HasPiss ? peeing #  \@\@ HasPiss && HasScat ? %" "%and%" "% #  \@\@ HasScat ? pooing #  \@ 그리고 즉시 최대한 빨리 청소한다, 심지어 변기를 내리는 것도 잊는다.					
+							PRINTFORMW %CALLNAME:(LOCAL:1)%는 축축한 %CLOTHES_TR(PANTSNAME(EQUIP:(LOCAL:1):下半身下着２, LOCAL:1))%을 벗고 격렬하게 %FSYN("pee:ing")%하며 진심으로 감사 인사를 전했다.
+							CALL PEESOUNDS("loc")
+							PRINTFORMW 그녀는 깊은 안도감에 신음했다.
+							PRINTFORMW 네가 \@ HasPiss ? 방광 #  \@\@ HasPiss && HasScat ? %" "%and%" "% #  \@\@ HasScat ? 장 #  \@you can, still feel some \@ HasPiss ? 오줌 #  \@\@ HasPiss && HasScat ? %" "%and%" "% #  \@\@ HasScat ? 똥 #  \@이 남아 있는 것을 느낄 수 있다.
+							PRINTFORMW 너는 방으로 돌아가 잠을 잔다.				
+							IF HasPiss
+								CALL COLORMESSAGE(@"배뇨경험 +{MAXBASE:MASTER:尿意*3/5/100}",C_PINK,1)
+								CALL COLORMESSAGE(@"소변 참기 경험치 +{10}",C_PINK,1)
+								BASE:MASTER:尿意 = MAXBASE:MASTER:尿意*2/5
+								EXP:MASTER:放尿経験 += MAXBASE:MASTER:尿意*3/5/100
+								PeeHoldExp:MASTER:0 += 10
+							ENDIF
+							IF HasScat
+								CALL COLORMESSAGE(@"배설 경험치 + {MAXBASE:MASTER:Poo*3/5/100}",C_PINK,1)
+								CALL COLORMESSAGE(@"대변 참 경험치 +{10}",C_PINK,1)
+								BASE:MASTER:Poo = MAXBASE:MASTER:Poo*2/5
+								PooHoldExp:MASTER:0 += 10
+								EXP:MASTER:PooExp += MAXBASE:MASTER:Poo*3/5/100
+								EXP:MASTER:GeneralPoopExp += MAXBASE:MASTER:Poo*3/5/100
+							ENDIF
+						CASEELSE
+							IF !RAND:2
+								CALL OSHIKKO_OMORASHI(LOCAL:1)
+								PRINTFORMW 당신은 \@ HasPiss ? 방광 #  \@\@ HasPiss && HasScat ? %" "%and%" "% #  \@\@ HasScat ? 장 #  \@ 완전히 비웠지만, 그 대가가 무엇이었을까...
+								PRINTFORMW 문을 열자 그녀가 처한 굴욕적인 상태를 보게 된다.
+								PRINTFORMW 당신은 그녀에게 연민을 느낀다.					
+							ELSE
+								PRINTFORMW 당신이 자신을 비울 때 %CALLNAME:(LOCAL:1)%은(는) 인내심 있게 기다린다.
+								PRINTFORMW 끝난 후, 당신은 청소하고 문을 연다.
+								PRINTFORMW %CALLNAME:(LOCAL:1)%은(는) 축축한 %CLOTHES_TR(PANTSNAME(EQUIP:(LOCAL:1):下半身下着２, LOCAL:1))%를 벗어 던지고 격렬하게 %FSYN("pee:ing")%하기 시작하며 진심으로 감사 인사를 전한다.
+								CALL PEESOUNDS("loc")
+								PRINTFORMW 그녀는 깊은 안도감에 신음한다.	
+								CALL COLORMESSAGE(@"%CALLNAME:(LOCAL:1)% 방뇨경험 +{MAXBASE:(LOCAL:1):尿意/100}",C_PINK,1)
+								CALL COLORMESSAGE(@"%CALLNAME:(LOCAL:1)% 소변 참기 경험치 +{10}",C_PINK,1)
+								BASE:(LOCAL:1):尿意 = 0
+								EXP:(LOCAL:1):放尿経験 += MAXBASE:(LOCAL:1):尿意/100
+								EXP:(LOCAL:1):GeneralPeeExp += MAXBASE:(LOCAL:1):尿意/100
+								PeeHoldExp:(LOCAL:1):0 += 10
+							ENDIF
+							$ToiletVoid
+							PRINTFORMW 너는 맑은 정신으로 방으로 돌아간다 \@ HasPiss && HasScat ? , 빈 방광과 깨끗한 %FSYN("anus")% #  \@\@ HasPiss && !HasScat ? %" "%과 빈 방광 #  \@\@ !HasPiss && HasScat ? %" "%그리고 깨끗한 %FSYN("anus")% #  \@.
+							CALL COLORMESSAGE("최대 TSP와 에너지가 일시적으로 증가했다.",C_YELLOW,2,1)
+							変動値 = MIN(MAXBASE:MASTER:気力 / 10, 300)
+							CALL BUFF_BASE(MASTER,BASE_気力,変動値)
+							変動値 = MIN(MAXBASE:MASTER:TSP / 2, 500)
+							CALL BUFF_BASE(MASTER,BASE_TSP,変動値)
+							IF HasPiss
+								CALL COLORMESSAGE(@"방뇨경험 +{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+								CALL COLORMESSAGE(@"소변 참기 경험치 +{10}",C_PINK,1)
+								BASE:MASTER:尿意 = 0
+								EXP:MASTER:放尿経験 += MAXBASE:MASTER:尿意/100
+								EXP:MASTER:GeneralPeeExp += MAXBASE:MASTER:尿意/100
+								PeeHoldExp:MASTER:0 += 10
+							ENDIF
+							IF HasScat
+								CALL COLORMESSAGE(@"배설 경험치 +{MAXBASE:MASTER:Poo/100}",C_PINK,1)
+								CALL COLORMESSAGE(@"배변 참 경험치 +{10}",C_PINK,1)
+								BASE:MASTER:Poo = 0
+								PooHoldExp:MASTER:0 += 10
+								EXP:MASTER:PooExp += MAXBASE:MASTER:Poo/100
+								EXP:MASTER:GeneralPoopExp += MAXBASE:MASTER:Poo/100
+							ENDIF
+					ENDSELECT
+				ELSE
+					GOTO ToiletVoid
+				ENDIF
+			ENDIF
+		ELSE
+			PRINTFORML 잠겨 있다.
+			$LockedDoor
+			PRINTFORML [  0] 문을 두드린다.
+			PRINTFORML [  1] 밖에 나가라.
+			SIF !HasScat
+				PRINTFORML [  2] 병을 사용한다.
+			PRINTFORML [  3] 목욕하러 간다.
+			PRINTFORML [999] \@ HasPiss ? 소변본다 #  \@\@ HasPiss && HasScat ? %" "%and%" "% #  \@\@ HasScat ? 똥본다 #  \@ 스스로.
+			TINPUT ReactionTime, -1, 1
+			SELECTCASE RESULT
+				CASE 0
+					PRINTFORMW 너는 변기 문을 두드리며 네 요구사항을 소리친다.
+					PRINTFORMW 너는 모든 집중이 그것을 참는 데 가 있기 때문에 완벽한 'pee dance'를 하고 있다.
+					IF !RAND:2
+						PRINTFORMW %CALLNAME:(LOCAL:1)%은(는) 화장실에서 하던 일을 멈추고 문을 연다.
+						PRINTFORMW 그녀는 당신이 그런 불쌍한 상태인 것을 보고 당신이 괜찮아질지 살핀다.
+						IF RAND(100) <= 70 + (15*PeeHold:MASTER:0)
+							SIF HasPiss
+								CALL PEESOUNDS("s")
+							SIF HasScat
+								CALL POOSOUNDS("f")
+							PRINTFORMW 당신은 \@ HasPiss ? %FSYN("leak")%에서 %FSYN("pee:n")%을 조금 내보내고 #  \@\@ HasPiss && HasScat ? %" "%그리고%" "% #  \@\@ HasScat ? 방귀를 뀌지만 #  \@ %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))% 안에서 간신히 옷을 내리고 변기에 앉는다.
+							SIF HasPiss
+								CALL PEESOUNDS("loc")
+							SIF HasScat
+								CALL POOSOUNDS("loc")
+							PRINTFORMW 당신은 상상할 수 없다고 생각했던 강도의 북소리를 듣는다.						
+							PRINTFORMW 당신은 안도감에 신음하며 오르가즘을 느끼고, 해냈다는 사실에 놀란다.
+							PRINTFORMW ... 비록 문을 잠그는 것을 잊었지만.
+							PRINTFORMW 당신은 얼굴을 붉히지만 %CALLNAME:(LOCAL:1)%이 대신 문을 닫아준다.
+							PRINTFORMW 할 일을 마치면 \@ HasPiss ? %FSYN("pee:ing")% #  \@\@ HasPiss && HasScat ? %" "%and%" "% #  \@\@ HasScat ? %FSYN("poo:ing")% #  \@, 당신은 방으로 돌아가 다른 한 벌의 %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))%로 갈아입고 다시 잠이 든다.
+							CALL COLORMESSAGE("최대 TSP와 에너지가 일시적으로 증가했다.",C_YELLOW,2,1)
+							IF HasPiss
+								CALL COLORMESSAGE(@"방뇨경험 +{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+								CALL COLORMESSAGE(@"소변 참기 경험치 +{30}",C_PINK,1)
+								BASE:MASTER:尿意 = 0
+								EXP:MASTER:放尿経験 += MAXBASE:MASTER:尿意/100
+								EXP:MASTER:GeneralPeeExp += MAXBASE:MASTER:尿意/100
+								PeeHoldExp:MASTER:0 += 30
+							ENDIF
+							IF HasScat
+								CALL COLORMESSAGE(@"배설 경험치 +{MAXBASE:MASTER:Poo/100}",C_PINK,1)
+								CALL COLORMESSAGE(@"변의 유지 경험치 +{30}",C_PINK,1)
+								BASE:MASTER:Poo = 0
+								PooHoldExp:MASTER:0 += 30
+								EXP:MASTER:PooExp += MAXBASE:MASTER:Poo/100
+								EXP:MASTER:GeneralPoopExp += MAXBASE:MASTER:Poo/100
+							ENDIF
+							変動値 = MIN(MAXBASE:MASTER:気力 / 10, 300)
+							CALL BUFF_BASE(MASTER,BASE_気力,変動値)
+							変動値 = MIN(MAXBASE:MASTER:TSP / 2, 500)
+							CALL BUFF_BASE(MASTER,BASE_TSP,変動値)
+							EXP:MASTER:絶頂経験 ++
+						ELSE
+							PRINTFORMW 불행하게도...
+							PRINTFORMW 변기만 봐도 멈춰서 \@ HasPiss ? 방광 #  \@\@ HasPiss && HasScat ? %" "%and%" "% #  \@\@ HasScat ? 장 #  \@ 근육이 ...
+							SIF HasPiss
+								CALL PEESOUNDS("loc")
+							SIF HasScat
+								CALL POOSOUNDS("loc")
+							PRINTFORMW 당신은 손으로 %FSYN("crotch")%을 감싼다...
+							PRINTFORMW ... 흐름이 멈추지 않는다...
+							CALL WetFeelings(MASTER)
+							SIF HasPiss
+								PRINTFORMW 당신의 %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))%는 발에 큰 웅덩이를 만들면서 당신의 %FSYN("pee:n")%로 완전히 흠뻑 젖는다.
+							SIF HasScat
+								PRINTFORMW 당신의 %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))% 믿을 수 없을 정도로 더럽다 당신이 %FSYN("poo")% 그것에 모든 것을 쏟아붓다.
+							SIF HasPiss
+								PRINTFORMW 방광이 소변을 밀어내는 것을 멈춘다.
+							SIF HasScat
+								PRINTFORMW 당신의 장 운동이 멈춘다.
+							PRINTFORMW 당신은 안도감의 한숨을 느끼고, 뒤돌아보았을 때 %CALLNAME:(LOCAL:1)%를 보고 깊은 당혹감을 느낀다.
+							SIF HasPiss
+								CALL PEESOUNDS("v")
+							SIF HasScat
+								CALL POOSOUNDS("v")
+							PRINTFORMW 당신은 \@ HasPiss ? %FSYN("pee:ing")% #  \@\@ HasPiss && HasScat ? %" "%and%" "% #  \@\@ HasScat ? %FSYN("poo:ing")% #  \@ 자신을 다시 시작한다, 바로 앞에 있는 화장실에 갈 시간조차 없을 정도로 말이다.
+							PRINTFORMW 당신의 얼굴은 홍당무처럼 붉어진다. 만약 5분 일찍 일어났다면 이런 상황에 처하지 않았을 거라고 생각하면서 말이다.
+							GOTO AlmostMadeIt
+							CALL KOJO_MESSAGE_SEND("DAILY", 901, LOCAL:1)
+						ENDIF
+					ELSE
+						PRINTFORMW %CALLNAME:(LOCAL:1)%은 문을 열지 않는다. 그들은 현재 무언가로 바쁘다...
+						IF RAND(100) > 50 + (10*PeeHold:MASTER:0)
+							PRINTFORMW 당신은 살아남을 모든 희망을 잃는다...
+							IF HasScat
+								CALL UNCHI_OMORASHI(MASTER,HasPiss)
+							ELSE
+								CALL OSHIKKO_OMORASHI(MASTER)
+							ENDIF
+							PRINTFORMW %CALLNAME:(LOCAL:1)%은(는) 문을 열고 당신이 처한 치욕적인 상태를 보게 된다.
+							PRINTFORMW 그녀는 당신에게 연민을 느낀다.
+							IF HasPiss
+								CALL COLORMESSAGE(@"소변 본 횟수 +1",C_PINK,1)
+								CALL COLORMESSAGE(@"방뇨경험 +{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+								CALL COLORMESSAGE(@"소변 참기 경험치 +{10}",C_PINK,1)
+								PeeHoldExp:MASTER:0 += 10
+							ENDIF
+							IF HasScat
+								CALL COLORMESSAGE(@"배변한 횟수 +1",C_PINK,1)
+								CALL COLORMESSAGE(@"배설 경험치 +{MAXBASE:MASTER:Poo/100}",C_PINK,1)
+								CALL COLORMESSAGE(@"배변 참 경험치 +{10}",C_PINK,1)
+								PooHoldExp:MASTER:0 += 10
+							ENDIF
+							CALL KOJO_MESSAGE_SEND("DAILY", 901, LOCAL:1)
+						ELSE
+							PRINTFORMW 문을 다시 두드려 볼 수도 있거나...
+							GOTO LockedDoor
+						ENDIF
+					ENDIF
+				CASE 1
+					$TouchGrass
+					PRINTFORMW 당신은 \@ HasPiss ? 소변을 본다 #  \@\@ HasPiss && HasScat ? %" "%and%" "% #  \@\@ HasScat ? 대변을 본다 #  \@ 정원 구역 중 한 곳에 간다.
+					IF HasPiss
+						CALL PEESOUNDS("s")
+						PRINTFORMW 당신의 방광에서 소변이 폭포수처럼 새기 시작한다.
+						CALL PEESOUNDS("s")
+						PRINTFORMW 당신의 방광은 간절히 안도(해소)를 부르고 있다...					
+						CALL PEESOUNDS("hs")
+					ENDIF
+					IF HasScat
+						CALL POOSOUNDS("s")
+						PRINTFORMW 당신의 배가 심하게 아프기 시작한다.
+						CALL POOSOUNDS("hs")
+						PRINTFORMW 당신의 장은 절실하게 해방을 부른다...					
+						CALL POOSOUNDS("hf")
+					ENDIF
+					PRINTFORMW 너는 소변을 볼 수 있는 곳을 찾아야 한다, 그렇지 않으면...					
+					IF RAND(100) <= 10
+						PRINTFORMW 비가 온다!
+						PRINTFORMW 물소리와 당신에게 떨어지는 물방울 소리가 당신을 한계까지 몰아넣기에 충분하다...
+						IF HasScat
+							CALL UNCHI_OMORASHI(MASTER,HasPiss)
+						ELSE
+							CALL OSHIKKO_OMORASHI(MASTER)
+						ENDIF
+						IF HasPiss
+							CALL COLORMESSAGE(@"소변 본 횟수 +1",C_PINK,1)
+							CALL COLORMESSAGE(@"방뇨경험 +{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+							CALL COLORMESSAGE(@"소변 참기 경험치 +{10}",C_PINK,1)
+							PeeHoldExp:MASTER:0 += 10
+						ENDIF
+						IF HasScat
+							CALL COLORMESSAGE(@"배변한 횟수 +1",C_PINK,1)
+							CALL COLORMESSAGE(@"배설 경험치 +{MAXBASE:MASTER:Poo/100}",C_PINK,1)
+							CALL COLORMESSAGE(@"배변 참 경험치 +{10}",C_PINK,1)
+							PooHoldExp:MASTER:0 += 10
+						ENDIF
+						CALL KOJO_MESSAGE_SEND("DAILY", 901, LOCAL:1)
+					ELSEIF RAND(100) <= 40 + (8*PeeHold:MASTER:0)
+						CALL DesperateGardening
+						PRINTFORMW 할 일이 끝나면 \@ HasPiss ? %FSYN("pee:ing")% #  \@\@ HasPiss && HasScat ? %" "%and%" "% #  \@\@ HasScat ? %FSYN("poo:ing")% #  \@, 방으로 돌아가 다른 한 벌의 %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))%로 갈아입은 후 다시 잠이 든다.
+						CALL COLORMESSAGE("최대 TSP와 에너지가 일시적으로 증가했다.",C_YELLOW,2,1)
+						変動値 = MIN(MAXBASE:MASTER:気力 / 10, 300)
+						CALL BUFF_BASE(MASTER,BASE_気力,変動値)
+						変動値 = MIN(MAXBASE:MASTER:TSP / 2, 500)
+						CALL BUFF_BASE(MASTER,BASE_TSP,変動値)
+						IF HasPiss
+							CALL COLORMESSAGE(@"방뇨경험 +{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+							CALL COLORMESSAGE(@"소변 참기 경험치 +{30}",C_PINK,1)
+							EXP:MASTER:放尿経験 += MAXBASE:MASTER:尿意/100
+							EXP:MASTER:GeneralPeeExp += MAXBASE:MASTER:尿意/100
+							PeeHoldExp:MASTER:0 += 30
+						ENDIF
+						IF HasScat
+							CALL COLORMESSAGE(@"배설 경험치 +{MAXBASE:MASTER:Poo/100}",C_PINK,1)
+							CALL COLORMESSAGE(@"변의 유지 경험치 +{30}",C_PINK,1)
+							PooHoldExp:MASTER:0 += 30
+							EXP:MASTER:PooExp += MAXBASE:MASTER:Poo/100
+							EXP:MASTER:GeneralPoopExp += MAXBASE:MASTER:Poo/100
+						ENDIF
+					ELSE
+						PRINTFORMW \@ HasPiss ? 방광 #  \@\@ HasPiss && HasScat ? %" "%과%" "% #  \@\@ HasScat ? 항문 괄약근 #  \@에서 날카로운 고통을 느낀다……	
+						IF HasScat
+							CALL UNCHI_OMORASHI(MASTER,HasPiss)
+						ELSE
+							CALL OSHIKKO_OMORASHI(MASTER)
+						ENDIF
+						IF HasPiss
+							CALL COLORMESSAGE(@"소변 본 횟수 +1",C_PINK,1)
+							CALL COLORMESSAGE(@"방뇨경험 +{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+							CALL COLORMESSAGE(@"소변 참기 경험치+{15}",C_PINK,1)
+							PeeHoldExp:MASTER:0 += 15
+						ENDIF
+						IF HasScat
+							CALL COLORMESSAGE(@"배변한 횟수 +1",C_PINK,1)
+							CALL COLORMESSAGE(@"배설 경험치 +{MAXBASE:MASTER:Poo/100}",C_PINK,1)
+							CALL COLORMESSAGE(@"변의 보유 경험치 +{15}",C_PINK,1)
+							PooHoldExp:MASTER:0 += 15
+						ENDIF
+						CALL KOJO_MESSAGE_SEND("DAILY", 901, LOCAL:1)
+					ENDIF
+				CASE 2
+					PRINTFORMW 당신은 필사적으로 병을 찾으려 한다.
+					CALL PEESOUNDS("s")
+					PRINTFORMW 당신의 방광에서 소변이 폭포수처럼 새기 시작한다.
+					CALL PEESOUNDS("s")
+					PRINTFORMW 당신의 방광은 간절히 안도(해소)를 부르고 있다...					
+					CALL PEESOUNDS("hs")
+					PRINTFORMW 소변을 볼 곳을 찾아야 한다, 그렇지 않으면...				
+					IF RAND(100) <= 50
+						PRINTFORMW 근처에서 병을 발견한다. 
+						PRINTFORMW 당신은 %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))%를 벗고 그 병을 당신의 %FSYN("crotch")%에 가져간다. 
+						CALL PEESOUNDS("loc")
+						PRINTFORMW 당신은 안도하며 신음하고 오르가즘을 느끼고, 해냈다는 사실에 놀란다.					
+						PRINTFORMW 끝난 후 %FSYN("pee:ing")%, 방으로 돌아가 다른 %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))%로 갈아입고 보너스를 저장한 뒤 다시 잠이 든다.
+						CALL COLORMESSAGE("최대 TSP와 에너지가 일시적으로 증가했다.",C_YELLOW,2,1)
+						変動値 = MIN(MAXBASE:MASTER:気力 / 10, 300)
+						CALL BUFF_BASE(MASTER,BASE_気力,変動値)
+						変動値 = MIN(MAXBASE:MASTER:TSP / 2, 500)
+						CALL BUFF_BASE(MASTER,BASE_TSP,変動値)
+						IF HasPiss
+							CALL COLORMESSAGE(@"방뇨경험 +{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+							CALL COLORMESSAGE(@"소변 참기 경험치 +{20}",C_PINK,1)
+							BASE:MASTER:尿意 = 0
+							EXP:MASTER:放尿経験 += MAXBASE:MASTER:尿意/100
+							PeeHoldExp:MASTER:0 += 20
+						ENDIF
+						EXP:MASTER:絶頂経験 ++
+					ELSE
+						PRINTFORMW 병을 찾을 수 없다!
+						PRINTFORMW 다른 것을 할 시간은 없으니 포기할 뿐이다...			
+						IF HasScat
+							CALL UNCHI_OMORASHI(MASTER,HasPiss)
+						ELSE
+							CALL OSHIKKO_OMORASHI(MASTER)
+						ENDIF
+						IF HasPiss
+							CALL COLORMESSAGE(@"소변 본 횟수 +1",C_PINK,1)
+							CALL COLORMESSAGE(@"방뇨경험 +{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+							CALL COLORMESSAGE(@"소변 참기 경험치 +{10}",C_PINK,1)
+							PeeHoldExp:MASTER:0 += 10
+						ENDIF
+						CALL KOJO_MESSAGE_SEND("DAILY", 901, LOCAL:1)
+					ENDIF
+				CASE 3
+					IF HasPiss
+						CALL PEESOUNDS("s")
+						PRINTFORMW 당신의 방광에서 소변이 폭포수처럼 새기 시작한다.
+						CALL PEESOUNDS("s")
+						PRINTFORMW 당신의 방광은 간절히 안도(해소)를 부르고 있다...					
+						CALL PEESOUNDS("hs")
+					ENDIF
+					IF HasScat
+						CALL POOSOUNDS("s")
+						PRINTFORMW 당신의 배가 심하게 아프기 시작한다.
+						CALL POOSOUNDS("hs")
+						PRINTFORMW 당신의 장은 절실하게 해방을 부른다...					
+						CALL POOSOUNDS("hf")
+					ENDIF
+					PRINTFORMW 차가운 바닥 타일이 당신을 한계까지 몰아붙인다...
+					PRINTFORMW 화장실에 갈 곳을 찾아야 한다. 그렇지 않으면...		
+					IF RAND(100) <= 30 + (6*PeeHold:MASTER:0)
+						PRINTFORMW 너는 지금 당장 소변 볼 곳을 찾아야 해!!
+						PRINTFORML [  0] - BATH.
+						PRINTFORML [999] - 젠장...
+						TINPUT (ReactionTime*2/5), -1, 1
+						SELECTCASE RESULT
+							CASE 0
+								PRINTFORMW 너는 욕조로 비틀거리며 걸어간다.
+								PRINTFORMW 잘못된 발걸음 하나에 모든 것을 잃게 될 것이다...
+								PRINTFORMW 너는 욕조에 오르려고 노력한다.
+								IF RAND(100) <= 20 + (4*PeeHold:MASTER:0)
+									PRINTFORMW 어떤 기적으로 당신은 %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))%을 바꾸게 된다, 네가 %FSYN("pee:ing")%를 시작할 때.
+									SIF HasPiss
+										CALL PEESOUNDS("loc")
+									SIF HasScat
+										CALL POOSOUNDS("loc")
+									PRINTFORMW 당신은 안도감에 신음하며 절정에 이르고, 해냈다는 사실에 놀란다.			
+									PRINTFORMW 당신의 황금 샤워가 하수구로 흘러내린다...						
+									PRINTFORMW 다 끝난 후 \@ HasPiss ? %FSYN("pee:ing")% #  \@\@ HasPiss && HasScat ? %" "%and%" "% #  \@\@ HasScat ? %FSYN("poo:ing")% #  \@, 당신은 방으로 돌아가 또 다른 %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))%로 갈아입고 다시 잠이 든다.
+									CALL COLORMESSAGE("최대 TSP와 에너지가 일시적으로 증가했다.",C_YELLOW,2,1)
+									IF HasPiss
+										CALL COLORMESSAGE(@"방뇨경험 +{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+										CALL COLORMESSAGE(@"소변 참기 경험치 +{50}",C_PINK,1)
+										EXP:MASTER:放尿経験 += MAXBASE:MASTER:尿意/100
+										PeeHoldExp:MASTER:0 += 50
+									ENDIF
+									IF HasScat
+										CALL COLORMESSAGE(@"배설 경험치 +{MAXBASE:MASTER:Poo/100}",C_PINK,1)
+										CALL COLORMESSAGE(@"변변(똥 참기 경험치)+ {50}",C_PINK,1)
+										PooHoldExp:MASTER:0 += 50
+										EXP:MASTER:PooExp += MAXBASE:MASTER:Poo/100
+									ENDIF
+									変動値 = MIN(MAXBASE:MASTER:気力 / 10, 300)
+									CALL BUFF_BASE(MASTER,BASE_気力,変動値)
+									変動値 = MIN(MAXBASE:MASTER:TSP / 2, 500)
+									CALL BUFF_BASE(MASTER,BASE_TSP,変動値)
+									EXP:MASTER:絶頂経験 ++
+								ELSEIF RAND(100) <= 50
+									$FallDown
+									PRINTFORMW 당신은 미끄러져 엉덩방아를 찧는다...
+									PRINTFORMW 허드즈...						
+									CALL PEESOUNDS("loc")
+									PRINTFORMW 네가 이걸 막을 방법은 없어...
+									CALL WetFeelings(MASTER)
+									PRINTFORMW %CAPITALIZE(FSYN("pee:n"))%은 당신의 %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))%를 통과하며 또 다른 경이로운 웅덩이로 아름다운 호를 그리며 흘러내린다.
+									GOTO AlmostMadeIt
+								ELSE
+									PRINTFORMW 항상 소변을 보는 자연스러운 장소에서, 당신은 %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))%를 바꿀 기회도 없이 방광이 터진다.
+									IF HasPiss
+										CALL OSHIKKO_OMORASHI(MASTER,HasScat)
+									ELSE
+										CALL UNCHI_OMORASHI(MASTER)
+									ENDIF
+									PRINTFORMW The %FSYN("pee:n")% that doesn't get absorbed by your %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))% is falling down the drain...
+									PRINTFORMW Much like your sanity...		
+									PRINTFORMW You almost made it...
+									PRINTFORMW Just, almost...			
+									CALL PEESOUNDS("v")
+									PRINTFORMW 너무 가까웠는데... 너무 멀었다...	
+									IF HasPiss
+										CALL COLORMESSAGE(@"소변 본 횟수 +1",C_PINK,1)
+										CALL COLORMESSAGE(@"방뇨경험 +{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+										CALL COLORMESSAGE(@"소변 참기 경험치+{15}",C_PINK,1)
+										PeeHoldExp:MASTER:0 += 15
+									ENDIF
+									IF HasScat
+										CALL COLORMESSAGE(@"배변한 횟수 +1",C_PINK,1)
+										CALL COLORMESSAGE(@"배설 경험치 +{MAXBASE:MASTER:Poo/100}",C_PINK,1)
+										CALL COLORMESSAGE(@"변의 보유 경험치 +{15}",C_PINK,1)
+										PooHoldExp:MASTER:0 += 15
+									ENDIF
+									CALL KOJO_MESSAGE_SEND("DAILY", 901, LOCAL:1)
+								ENDIF
+							CASEELSE
+								PRINTFORMW 당신은 쪼그리고 앉아 황홀경에 빠지며 축축한 %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))%를 움직인다.
+								SIF HasPiss
+									CALL PEESOUNDS("loc")
+								SIF HasScat
+									CALL POOSOUNDS("loc")
+								PRINTFORMW 당신은 안도감에 신음하며 오르가즘을 느끼고, 해냈다는 사실에 놀란다.			
+								PRINTFORMW 바닥에 지저분한 것을 남겼지만, 그것을 다른 사람이 치도록 내버린다.	
+								PRINTFORMW 할 일이 끝나면 \@ HasPiss ? %FSYN("pee:ing")% #  \@\@ HasPiss && HasScat ? %" "%and%" "% #  \@\@ HasScat ? %FSYN("poo:ing")% #  \@, 당신은 방으로 돌아가 다른 %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))%로 갈아입고 다시 잠이 든다.
+								CALL COLORMESSAGE("최대 TSP와 에너지가 일시적으로 증가했다.",C_YELLOW,2,1)
+								IF HasPiss
+									CALL COLORMESSAGE(@"방뇨경험 +{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+									CALL COLORMESSAGE(@"소변 참기 경험치 +{30}",C_PINK,1)
+									BASE:MASTER:尿意 = 0
+									EXP:MASTER:放尿経験 += MAXBASE:MASTER:尿意/100
+									EXP:MASTER:GeneralPeeExp += MAXBASE:MASTER:尿意/100
+									PeeHoldExp:MASTER:0 += 30
+								ENDIF
+								IF HasScat
+									CALL COLORMESSAGE(@"배설 경험치 +{MAXBASE:MASTER:Poo/100}",C_PINK,1)
+									CALL COLORMESSAGE(@"변의 유지 경험치 +{30}",C_PINK,1)
+									BASE:MASTER:Poo = 0
+									EXP:MASTER:PooExp += MAXBASE:MASTER:Poo/100
+									EXP:MASTER:GeneralPoopExp += MAXBASE:MASTER:Poo/100
+									PooHoldExp:MASTER:0 += 30
+								ENDIF
+								変動値 = MIN(MAXBASE:MASTER:気力 / 10, 300)
+								CALL BUFF_BASE(MASTER,BASE_気力,変動値)
+								変動値 = MIN(MAXBASE:MASTER:TSP / 2, 500)
+								CALL BUFF_BASE(MASTER,BASE_TSP,変動値)
+								EXP:MASTER:絶頂経験 ++
+						ENDSELECT
+					ELSE
+						PRINTFORMW 당신은 흐르는 물소리를 듣는다...
+						PRINTFORMW 당신의 방광이 %FSYN("pee")%과 동기화된다...							
+						IF HasScat
+							CALL UNCHI_OMORASHI(MASTER,HasPiss)
+						ELSE
+							CALL OSHIKKO_OMORASHI(MASTER)
+						ENDIF
+						IF HasPiss
+							CALL COLORMESSAGE(@"소변 본 횟수 +1",C_PINK,1)
+							CALL COLORMESSAGE(@"방뇨경험 +{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+							CALL COLORMESSAGE(@"소변 참기 경험치+{15}",C_PINK,1)
+							PeeHoldExp:MASTER:0 += 15
+						ENDIF
+						IF HasScat
+							CALL COLORMESSAGE(@"배변한 횟수 +1",C_PINK,1)
+							CALL COLORMESSAGE(@"배설 경험치 +{MAXBASE:MASTER:Poo/100}",C_PINK,1)
+							CALL COLORMESSAGE(@"변의 보유 경험치 +{15}",C_PINK,1)
+							PooHoldExp:MASTER:0 += 15
+						ENDIF
+						CALL KOJO_MESSAGE_SEND("DAILY", 901, LOCAL:1)
+					ENDIF
+					; this is dumb as fuck so i removed it.
+				CASEELSE
+					IF HasScat
+						CALL UNCHI_OMORASHI(MASTER,HasPiss)
+					ELSE
+						CALL OSHIKKO_OMORASHI(MASTER)
+					ENDIF
+					PRINTFORMW %CALLNAME:(LOCAL:1)%은(는) 문을 열고 당신이 처한 치욕적인 상태를 보게 된다.
+					PRINTFORMW 그녀는 당신에게 연민을 느낀다.
+					IF HasPiss
+						CALL COLORMESSAGE(@"소변 본 횟수 +1",C_PINK,1)
+						CALL COLORMESSAGE(@"방뇨경험 +{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+						CALL COLORMESSAGE(@"소변 참기 경험치+{15}",C_PINK,1)
+						PeeHoldExp:MASTER:0 += 15
+					ENDIF
+					IF HasScat
+						CALL COLORMESSAGE(@"배변한 횟수 +1",C_PINK,1)
+						CALL COLORMESSAGE(@"배설 경험치 +{MAXBASE:MASTER:Poo/100}",C_PINK,1)
+						CALL COLORMESSAGE(@"변의 보유 경험치 +{15}",C_PINK,1)
+						PooHoldExp:MASTER:0 += 15
+					ENDIF
+					CALL KOJO_MESSAGE_SEND("DAILY", 901, LOCAL:1)
+			ENDSELECT
+		ENDIF
+	CASE 1
+		PRINTFORMW 참으려고 노력한다...
+		IF RAND(100) <= 25 + (5*PeeHold:MASTER:0)
+			PRINTFORMW 성공적으로 참았네.
+			PRINTFORMW 하지만 네가 한 건 이걸 내일의 문제로 미룬 것뿐이지만...
+		ELSE
+			PRINTFORMW 불행하게도...
+			PRINTFORMW 방광이 포기하기 전까지는 몇 시간밖에 버틸 수 없었다...		
+			CALL BEDWETTING(HasPiss,HasScat)
+		ENDIF
+	CASE 2
+		GOTO TouchGrass
+	CASE 3
+		VARSET LOCAL
+		LOCAL:1 += MAXBASE:MASTER:尿意
+		LOCAL:2 += MAXBASE:MASTER:Poo
+		PRINTFORMW 당신은 소변이 갈 곳으로 기저귀에 의지하기로 결정했다.
+		IF DiapeCharges:MASTER:0 >= LOCAL:1 && DiapePooCharges:MASTER:0 >= LOCAL:2
+			PRINTFORMW 깨어나자마자 자연이 주는 부름에 즉시 응한다...
+			IF HasScat
+				CALL UNCHI_OMORASHI(MASTER,HasPiss)
+			ELSE
+				CALL OSHIKKO_OMORASHI(MASTER)
+			ENDIF
+		ELSE
+			PRINTFORMW 당신의 %PeeProtectType(MASTER)%이 충분하다고 생각하지는 않지만..
+			PRINTFORMW 서둘러 자신의 %PeeProtectType(MASTER)%을 벗고, 구겨지는 기저귀를 집어 열어 패드가 있는 면을 %FSYN("crotch")%에 대었다.
+			IF HasPiss
+				CALL PEESOUNDS("loc")
+				BASE:MASTER:尿意 = 0
+				EXP:MASTER:放尿経験 += MAXBASE:MASTER:尿意/100
+				EXP:MASTER:GeneralPeeExp += MAXBASE:MASTER:尿意/100
+			ENDIF
+			IF HasScat
+				CALL POOSOUNDS("loc")
+				BASE:MASTER:Poo = 0
+				EXP:MASTER:PooExp += MAXBASE:MASTER:Poo/100
+				EXP:MASTER:GeneralPoopExp += MAXBASE:MASTER:Poo/100
+			ENDIF
+			PRINTFORMW 착용하는 도중에 \@ HasPiss ? %FSYN("pee:n")% #  \@\@ HasPiss && HasScat ? %" "%and%" "% #  \@\@ HasScat ? %FSYN("poo:n")% #  \@ 소변이 나오기 시작했다.	
+			PRINTFORMW 즐거움이 몸을 지배하며 \@ HasPiss ? 소변 보거나 #  \@\@ HasPiss && HasScat ? %" "%and%" "% #  \@\@ HasScat ? 대변을 보고 #  \@ 아기처럼 모든 것을 배출했다.			
+		ENDIF
+		PRINTFORMW 지금 버리기엔 아깝기 때문에 기저귀를 계속 차고 있다.	
+		PRINTFORMW 보호구가 의도대로 작동하니 깊이 잠든다.
+		PRINTFORMW 언제 어디서든 용변을 볼 수 있다는 것은 분명 중독성이 있군...
+		CFLAG:MASTER:指定パンツ = 102
+		CALL SET_PANTS(MASTER)
+		CALL SET_PANTS(MASTER,"今日のパジャマ")
+		CFLAG:MASTER:指定パンツ = 0
+		CALLF MessUndies(MASTER, "liquid", 0, LOCAL:1)
+		CALL COLORMESSAGE("최대 TSP와 에너지가 일시적으로 증가했다.",C_YELLOW,2,1)
+		IF HasPiss
+			CALL COLORMESSAGE(@"소변 본 횟수 +1",C_PINK,1)
+			CALL COLORMESSAGE(@"방뇨경험 +{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+			CALL COLORMESSAGE(@"소변 참기 경험치 -{MAXBASE:MASTER:尿意/100}",C_PINK,1)
+			BASE:MASTER:尿意 = 0
+			PeeHoldExp:MASTER:0 -= MAXBASE:MASTER:尿意/100
+			Qol_Info_Count_Array:MASTER:Qol_Count_Wetting += 1
+			CALL QoL_Info_Write(MASTER, Qol_Dates_Wetting)
+		ENDIF
+		IF HasScat
+			CALL COLORMESSAGE(@"배변한 횟수 +1",C_PINK,1)
+			CALL COLORMESSAGE(@"배설 경험치 +{MAXBASE:MASTER:Poo/100}",C_PINK,1)
+			CALL COLORMESSAGE(@"변의 보유 경험치 - {MAXBASE:MASTER:Poo/100}",C_PINK,1)
+			BASE:MASTER:Poo = 0
+			PooHoldExp:MASTER:0 -= MAXBASE:MASTER:Poo/100
+			Qol_Info_Count_Array:MASTER:Qol_Count_Messing += 1
+			CALL QoL_Info_Write(MASTER, Qol_Dates_Messing)
+		ENDIF
+		変動値 = MIN(MAXBASE:MASTER:気力 / 10, 300)
+		CALL BUFF_BASE(MASTER,BASE_気力,変動値)
+		変動値 = MIN(MAXBASE:MASTER:TSP / 2, 500)
+		CALL BUFF_BASE(MASTER,BASE_TSP,変動値)
+	CASE 4
+		CALL PROCESS_YOUJUTSU_COMMAND(MASTER,MASTER,18,28)
+		IF RESULT != 9530
+			PRINTFORMW 지금은 훨씬 기분이 나아졌다.
+			PRINTFORMW 마법이 구원하는 또 다른 날이다.
+		ELSE
+			PRINTFORMW 아, 안 돼... 작동하지 않아!
+			PRINTFORMW 그리고 이제 뭘 할 수도 없어... 나오고 있어!
+			PRINTL
+			CALL BEDWETTING(HasPiss,HasScat,1,1)
+		ENDIF
+	CASEELSE
+		CALL BEDWETTING(HasPiss,HasScat,1,1)
+ENDSELECT
+
+@BEDWETTING(HasPiss=0,HasScat=0,IsAware=0,nBypass=0)
+#DIM HasPiss
+#DIM HasScat
+#DIM IsAware
+#DIM nBypass
+#DIM 変動値
+VARSET LOCAL
+SIF HasPiss && !GETBIT(nPee,1)
+	HasPiss = 0
+SIF HasScat && !GETBIT(nScat,2)
+	HasScat = 0
+;no piss or poo
+SIF !HasPiss && !HasScat
+	RETURN
+IF !IsAware && !nBypass
+	CALL BEDWETTING_ALARM(HasPiss,HasScat)
+	IF RESULT == 1
+		RETURN 1
+	ELSEIF RESULT == 2
+		IsAware = 1
+	ENDIF
+ELSEIF IsAware
+	CALL INTENTIONAL_ACCIDENT(MASTER,HasPiss, HasScat, 0, 1)
+ENDIF
+;diary
+VARSET LOCALS
+;piss
+IF HasPiss
+	LOCALS += "Bladder、"
+	LOCALS:1 += @"소변을 {BASE:MASTER:4}ml,"
+ENDIF
+IF HasScat
+	LOCALS += "Bowel、"
+	LOCALS:1 += @"대변을 {BASE:MASTER:17}g,"
+ENDIF
+IF IsAware
+	BladderDiary += @"%時刻表示(TIME)%밤 시간 사고%LIST_IN_STRING(LOCALS:1)%)\n"
+ELSE
+	BladderDiary += @"%時刻表示(TIME)%: 인지하지 못한 야간 사고 %LIST_IN_STRING(LOCALS:1)%\n"
+ENDIF
+IF HasPiss
+	CALL PEESOUNDS("loc")
+	IF IsPadded(MASTER)
+		PLAYSOUND "peestuffs/pee/おむつおねしょ1.m4a"
+	ELSE
+		PLAYSOUND "peestuffs/pee/おねしょ1.m4a"
+	ENDIF
+	IF TCVAR:MASTER:906
+		BASE:MASTER:尿意 = MAXBASE:MASTER:尿意*3/2
+	ENDIF
+	CALLF MessUndies(MASTER, "liquid", 0, BASE:MASTER:尿意, 1)
+	CALLF ChangeEndurance(MASTER,"peehold",-BASE:MASTER:尿意/100)
+	CALL COLORMESSAGE(@"소변 본 횟수 +1",C_PINK,1)
+	CALL EVENT_Get_EXP(MASTER, 13, BASE:MASTER:尿意/100)
+	CALL EVENT_Get_EXP(MASTER, 88, BASE:MASTER:尿意/100)
+	Qol_Info_Count_Array:MASTER:Qol_Count_Pee += BASE:MASTER:尿意
+	BASE:MASTER:尿意 = 0
+	Qol_Info_Count_Array:MASTER:Qol_Count_Wetting += 1
+	;potty chart
+	SETBIT PottyChartNightStatus:MASTER:(DAY % 7), 0
+	PottyChartAccident:MASTER:(DAY % 7) ++
+ENDIF
+IF HasScat
+	CALL POOSOUNDS("loc")
+	IF PantiesType:MASTER:0 != "Naked"
+		PLAYSOUND "peestuffs/poo/messy2.wav"
+	ELSE
+		PLAYSOUND "peestuffs/poo/messy1.wav"
+	ENDIF
+	IF TCVAR:MASTER:906
+		BASE:MASTER:Poo = MAXBASE:MASTER:Poo*3/2
+	ENDIF
+	CALLF MessUndies(MASTER, "solid", 0, BASE:MASTER:Poo, 1)
+	CALLF ChangeEndurance(MASTER,"poohold",-BASE:MASTER:Poo/100)
+	CALL COLORMESSAGE(@"스스로 변을 본 횟수 +1",C_PINK,1)
+	CALL EVENT_Get_EXP(MASTER, 48, BASE:MASTER:Poo/100)
+	CALL EVENT_Get_EXP(MASTER, 89, BASE:MASTER:Poo/100)
+	Qol_Info_Count_Array:MASTER:Qol_Count_Poo += BASE:MASTER:Poo
+	BASE:MASTER:Poo = 0
+	Qol_Info_Count_Array:MASTER:Qol_Count_Messing += 1
+	;potty chart
+	SETBIT PottyChartNightStatus:MASTER:(DAY % 7), 1
+	PottyChartAccident:MASTER:(DAY % 7) ++
+ENDIF
+IF IsPadded(MASTER)
+	IF !IsAware
+		PRINTFORMW 당신의 %PeeProtectType(MASTER)%가 밤새 나온 당신의 %PeeAndPoo(HasPiss,HasScat, "pee", "poo")%로 채워진다.
+		IF (ABL:MASTER:PeeAddict >= 5 && HasPiss) || (ABL:MASTER:PooAddict >= 5 && HasScat)
+			PRINTFORMW 당신은 \@ HasPiss ? %FSYN("pee:ing")% #  \@\@ HasPiss && HasScat ? %" "%and%" "% #  \@\@ HasScat ? %FSYN("poo:ing")% #  \@ 스스로 압도당하며 무의식적으로 절정에 이른다.
+			EXP:MASTER:絶頂経験 ++
+		ENDIF
+	ENDIF
+	IF HasPiss
+		Qol_Info_Count_Array:MASTER:Qol_Count_DiapeWetting += 1
+		Qol_Info_Count_Array:MASTER:Qol_Count_DiapeBedWetting += 1
+	ENDIF
+	IF HasScat
+		Qol_Info_Count_Array:MASTER:Qol_Count_DiapeMessing += 1
+		Qol_Info_Count_Array:MASTER:Qol_Count_DiapeBedMessing += 1
+	ENDIF
+	IF DiapeCharges:MASTER:0 >= 0 && DiapePooCharges:MASTER:0 >= 0
+		IF TCVAR:MASTER:906
+			PRINTFORMW 당신의 보호 장치가 의도대로 작동하여 깊이 잠든다.	
+			CALL COLORMESSAGE("최대 TSP와 에너지가 일시적으로 증가했다.",C_YELLOW,2,1)
+			変動値 = MIN(MAXBASE:MASTER:気力 / 10, 300)
+			CALL BUFF_BASE(MASTER,BASE_気力,変動値)
+			変動値 = MIN(MAXBASE:MASTER:TSP / 2, 500)
+			CALL BUFF_BASE(MASTER,BASE_TSP,変動値)
+		ELSE
+		ENDIF
+	ELSE
+		SIF (HasScat && GETBIT(nScat,5)) || hasPiss
+			PRINTFORMW 당신의 %PeeProtectType(MASTER,1)%은 그것이 %BED_FUTON()% 위에서 %FSYN("leak:ing")%되기 시작하면서 모든 %PeeAndPoo(HasPiss,HasScat && GETBIT(nScat,5))%를 참을 수 없다...
+		PRINTFORML
+		SIF nBypass == 2
+			RETURN
+		CALL BEDWETTING_AFTER(HasPiss,HasScat)
+	ENDIF
+ELSE
+	IF !IsAware
+		PRINTFORMW 잠든 사이에, 당신은 무의식적으로 \@ HasPiss ? %FSYN("pee")% #  \@\@ HasPiss && HasScat ? %" "%and%" "% #  \@\@ HasScat ? %FSYN("poo")% #  \@ \@ EQUIP:MASTER:下半身下着２ ? 당신의 %CLOTHES_TR(PANTSNAME(EQUIP:MASTER:下半身下着２, MASTER))% # %PARSE("yourself")% \@ 하고 %BED_FUTON()%에 상당한 얼룩을 만든다.
+		IF (ABL:MASTER:PeeAddict >= 5 && HasPiss) || (ABL:MASTER:PooAddict >= 5 && HasScat)
+			PRINTFORMW 당신은 \@ HasPiss ? %FSYN("pee:ing")% #  \@\@ HasPiss && HasScat ? %" "%and%" "% #  \@\@ HasScat ? %FSYN("poo:ing")% #  \@ 스스로가 압도한다.
+			EXP:MASTER:絶頂経験 ++
+		ENDIF
+	ENDIF
+	SIF nBypass == 2
+		RETURN
+	PRINTFORML
+	CALL BEDWETTING_AFTER(HasPiss,HasScat)
+ENDIF
+
+@BEDWETTING_AFTER(HasPiss=0,HasScat=0)
+#DIM HasPiss
+#DIM HasScat
+#DIM CHARA
+#DIM PeeAmount
+#DIM PooAmount
+PeeAmount = DiapeCharges:MASTER:0
+PooAmount = DiapePooCharges:MASTER:0
+IF BedProtectSettings:1
+	IF ITEM:(BedWetterPadID:(BedProtectSettings:1)) && CFLAG:MASTER:300 == CFLAG:MASTER:311
+		;play mat holds 650ml of pee and poop
+		CALLF BED_PAD_TYPES(BedWetterPadType:(BedProtectSettings:1))
+		PeeAmount += UNDERWEAR_PAD_TYPES_LIQUID
+		PooAmount += UNDERWEAR_PAD_TYPES_SOLID
+	ENDIF
+ENDIF
+IF SaveAchievementClaimed("wetBedPee5000")
+	GOTO BedWettingAdd
+ENDIF
+PRINTFORML %PARSE("You wake")% 위로 \@ TCVAR:MASTER:906 ? %"in the middle of the night "% #  \@즐거운 느낌으로부터
+PRINTFORMW %PARSE("Your",1)%의 사타구니가 꽤 따뜻하다.
+PRINTFORMW %PARSE("You",)%은 %PeeAndPoo(HasPiss,HasScat, "urine", "fecal matter")%의 냄새를 맡는다.
+PRINTFORML !!!! %PARSE("You",1)% %PeeAndPoo(HasPiss,HasScat, "wet", "messed")% \@ CFLAG:MASTER:300 == CFLAG:MASTER:311 ? 그 %BED_FUTON()% # 너의 잠자는 동안 \@!
+;PRINTFORMW %PARSE("You")% deeply %PARSE("regret")% not going to the bathroom beforehand...
+PRINTL 
+;qol custom code. the stats are already increased from the code above.
+$BedWettingAdd
+IF HasPiss
+	CALL COLORMESSAGE(@"소변 본 횟수 +1",C_PINK,1)
+	CALL COLORMESSAGE(@"야뇨증 +1",C_PINK,1)
+	CALL QoL_Info_Write(MASTER, Qol_Dates_Wetting)
+	Qol_Info_Count_Array:MASTER:Qol_Count_BedWetting += 1
+	SIF (PeeAmount < 0) && CFLAG:MASTER:300 == CFLAG:MASTER:311
+		WetBed += ABS(PeeAmount)
+	LastAccident:MASTER:0 = DAY
+	SIF !TCVAR:MASTER:906
+		SoiledSelf:MASTER:0 = 1
+	CALL CharacterSinned(MASTER,"Incontinence",@"침을 적셨다.", -3,-1)
+ENDIF
+IF HasScat
+	CALL COLORMESSAGE(@"배변한 횟수 +1",C_PINK,1)
+	IF GETBIT(nScat,5)
+		CALL COLORMESSAGE(@"침대 더럽히기 +1",C_PINK,1)
+		CALL QoL_Info_Write(MASTER, Qol_Dates_Messing)
+		Qol_Info_Count_Array:MASTER:Qol_Count_BedMessing += 1
+		SIF (PooAmount < 0) && CFLAG:MASTER:300 == CFLAG:MASTER:311
+			MessyBed += ABS(PooAmount)
+	ENDIF
+	LastPooAccident:MASTER:0 = DAY
+	SIF !TCVAR:MASTER:906
+		SoiledSelf:MASTER:1 = 1
+	CALL CharacterSinned(MASTER,"Incontinence",@"침대에서 대변을 봤다", -3,-1)
+ENDIF
+IF SaveAchievementClaimed("wetBedPee5000")
+	PRINTFORMW 따뜻하고 기분 좋은 느낌이다...
+	PRINTFORMW 당신은 눈을 감고 자신이 만든 따뜻한 난폭함 속에서 잠이 든다.
+	IF TCVAR:MASTER:906
+		CALL COLORMESSAGE("최대 TSP와 에너지가 일시적으로 증가했다.",C_YELLOW,2,1)
+		LOCAL = MIN(MAXBASE:MASTER:気力 / 10, 300)
+		CALL BUFF_BASE(MASTER,BASE_気力,LOCAL)
+		LOCAL = MIN(MAXBASE:MASTER:TSP / 2, 500)
+		CALL BUFF_BASE(MASTER,BASE_TSP,LOCAL)
+	ENDIF
+	RETURN
+ENDIF
+IF RAND:10 == 0 && ITEM:ミラダの石 == 0
+	PRINTFORML %BREAKENG(@"온도, 풍향, 습도, 기압, 요일, 월삭, 행성 배열 등의 경이로운 조합 때문에 불가능한 일이 일어났다.")%
+	FONTBOLD
+	PRINTFORM %PARSE("Your")% \@ HasPiss ? urine #  \@\@ HasPiss && HasScat ? %" "%and%" "% #  \@\@ HasScat ? fecal matter #  \@은 결정화되고, 형성된다. 
+	CALL COLORMESSAGE("욕망을 독점하는 미라다의 돌", C_D_PINK, 0, 1)
+	PRINTFORMW !
+	FONTREGULAR
+	CALL GET_ITEM("ミラダの石", 1, 1)
+	CALLF PANTY_REWORK_CHANGE(MASTER,EQUIP:MASTER:下半身下着２)
+	RETURN 1
+ELSEIF BedProtectSettings:1 && PeeAmount > 0 && PooAmount > 0 && CFLAG:MASTER:300 == CFLAG:MASTER:311
+	PRINTFORML 하지만... %BedWetterPadSyn:(BedProtectSettings:1)%이 당신의 %PeeAndPoo(HasPiss,HasScat && GETBIT(nScat,5), "pee", "poop")%를 막아냈다.
+	PRINTFORML 당신은 물티슈로 자신을 닦고 갈아입은 뒤 새로운 %BedWetterPadSyn:(BedProtectSettings:1)%을 집어 들었다.
+	SIF !UNDERWEAR_PAD_TYPES_REUSEABLE
+		CALL LOST_ITEM(ITEMNAME:(BedWetterPadID:(BedProtectSettings:1)), 1, 2)
+	CALLF PANTY_REWORK_CHANGE(MASTER,EQUIP:MASTER:下半身下着２)
+	RETURN 1
+	;PRINTFORMW You still have to take a bath however...
+ENDIF
+CALL FISHER_YATES_SHAFFLE(CHARANUM)
+VARSET LOCAL
+FOR LOCAL, 1, CHARANUM
+CHARA = SHAFFLE_ARRAY:LOCAL
+;対象があなた
+SIF CHARA == MASTER
+	CONTINUE
+;でてこない
+SIF CFLAG:CHARA:出禁
+	CONTINUE
+;拠点キャラではない
+SIF !CFLAG:CHARA:神社在住
+	CONTINUE
+;同じエリア内に住んでいない
+; SIF MAP_AREASELECT(MAIN_MAP, CFLAG:MASTER:初期位置) != MAP_AREASELECT(MAIN_MAP, CFLAG:CHARA:初期位置)
+; 	CONTINUE
+LOCAL:1 = CHARA
+BREAK
+NEXT
+SIF LOCAL:1 <= 0
+	RETURN
+TRYCCALLFORM DEFAULT_OWNER_{MAIN_MAP}
+LOCAL:2 = 拠点_大家
+CATCH
+ENDCATCH
+SELECTCASE MAX(Qol_Info_Count_Array:MASTER:Qol_Count_BedWetting,Qol_Info_Count_Array:MASTER:Qol_Count_BedMessing)
+	CASE 1
+		PRINTFORMW 이런, 어떻게 된 거지?
+		PRINTFORML 당신은 모두 젖었고, %BED_FUTON()%도 그래!
+		PRINTFORMW 비밀로 해두는 게 좋을 거야. 만약 \@ LOCAL:2 == MASTER ? 다른 사람이 # %CALLNAME:(LOCAL:2)% \@ 알아버리면, 지옥이 될 테니...
+	CASE 2
+		PRINTFORMW 또...
+		PRINTFORMW 두 번이나 일어났다는 게 놀랍니...
+	CASE 3
+		PRINTFORMW 첫 번째는 우연이고, 두 번째는 일치일 뿐이며, 세 번째부터는 습관이다...
+	CASE 4
+		PRINTFORMW 또 일어났어, 믿을 수 없을 거야! 
+		PRINTFORMW 네가 샤워하고 시트를 치우기 전에 \@ LOCAL:2 == MASTER ? 아무도 # %CALLNAME:(LOCAL:2)% \@ 눈치채지 못하게 해야 해.
+	CASE 5
+		PRINTFORMW %BED_FUTON()%이(가) 젖었어? 
+		PRINTFORMW 또?? 
+		PRINTFORMW 그것은 빨래와 한밤중의 또 다른 목욕을 의미해.
+		PRINTFORMW 들키지 않기를 바라네...	
+	CASE 6
+		PRINTFORMW 또 젖은 %BED_FUTON()%인가? 
+		PRINTFORMW 그리고 이번엔 그렇게 많이 마시지 않았어.
+		PRINTFORMW 정말 부끄럽네...	
+	CASE IS < 10
+		PRINTFORMW 기저귀를 입고 %BED_FUTON()%에 가는 상상이 머릿속을 스친다.
+		PRINTFORMW 기저귀라고?!? 
+		PRINTFORMW 기저귀는 필요 없어! 그건 불공평해!
+	CASE IS < 20
+		PRINTFORMW 기저귀가 잠에서 깨어 축축해진 %BED_FUTON()%s를 해결할 유일한 방법이라고 생각하기 시작한다...
+		PRINTFORMW 진심이겠군...
+		PRINTFORMW 기저귀!
+		FONTBOLD
+		PRINTFORMW 기저귀???
+		FONTREGULAR
+		PRINTFORMW 당신은 더 이상 아기가 아니야...
+	CASE IS < 30
+		PRINTFORMW 아기가 된 기분이 드네... 
+		PRINTFORMW 다시 기저귀를 차야 할 것 같아...
+	CASEELSE
+		IF GETBIT(TALENT:MASTER:OmoGuardian, 0)
+			PRINTFORMW 정말 기분 좋은 서프라이즈네! 네 %BED_FUTON()%이(가) 축축하게 젖었어!
+		ELSE
+			PRINTFORML 기분 좋은 느낌이야... 
+			PRINTFORMW 하지만 누군가 알아내기 전에 시트를 갈아야 해.	
+		ENDIF
+ENDSELECT
+; IF !TCVAR:MASTER:906
+; ELSE
+CALL KOJO_MESSAGE_SEND("DAILY", 901, LOCAL:1)
+;ENDIF
+
+@DAILY_MESSAGE_901(ARG, ARG:1, ARG:2, ARG:3, ARGS:1, ARGS:2, ARGS:3)
+#DIM 変動値
+PRINTFORML
+IF ITEM:WashingMachine
+	PRINTFORMW 당신은 %BED_FUTON()%에서 나와 더러운 옷과 %PeeProtectType(MASTER,2)%를 벗어 한 곳에 쌓는다.
+	SIF SoiledDiaper(MASTER,2)
+		PRINTFORMW 여러 개의 물티슈를 사용해 당신은 자신의 사타구니에서 모든 %SCAT(MASTER)%를 긁어내고 사용한 물티슈를 버린다.
+	PRINTFORMW 그리고는 %BED_FUTON()%에서 이불과 더러운 시트를 치우고 시트를 쌓인 곳에 놓는다.
+	PRINTFORMW 세탁기를 열어 더러워진 옷과 시트를 기계 안에 넣고, 세제를 넣은 뒤 전원을 켠다.
+	PRINTFORMW 젖은 %BED_FUTON()%를 수건으로 말린 후, 침구를 깨끗한 것으로 교체하고 이불을 원래 있던 자리에 놓는다.
+	IF BedProtectSettings:1
+		CALLF BED_PAD_TYPES(BedWetterPadType:(BedProtectSettings:1))
+		PRINTFORML 시트를 갈고 나서, 당신은 사타구니가 될 곳 주변에 마른 %BedWetterPadSyn:(BedProtectSettings:1)%를 %BED_FUTON()% 위에 놓는다.
+	ENDIF
+	PRINTFORMW 새로운 %PeeProtectType(MASTER,2)%로 갈아입고 다시 잠자리에 든다.
+	CALLF PANTY_REWORK_CHANGE(MASTER,EQUIP:MASTER:6)
+	SIF BedProtectSettings:1 && !UNDERWEAR_PAD_TYPES_REUSEABLE
+		CALL LOST_ITEM(ITEMNAME:(BedWetterPadID:(BedProtectSettings:1)), 1, 2)
+	RETURN 1
+ENDIF
+IF nPantyPunish && CharaDiaperChecker(ARG)
+	RESETCOLOR
+	PRINTFORMW 당신이 목욕하러 가려고 할 때, %CALLNAME:ARG%가 개입하여 무슨 일이 있었는지 묻는다.
+	IF SoiledDiaper(MASTER,2)
+		PRINTFORMDW 하지만 %FSYN("poo:n")%의 냄새가 즉시 너를 알아챈다.
+		GOTO BedwettingCheckStart
+	ELSE
+		CALL ASK_M( @"진실을 말해라",1, @"무지하게 행동한다", 1, @"거짓말", 1 )
+	ENDIF
+	SELECTCASE RESULT
+		CASE 0
+			PRINTFORMDW 당신은 자존심을 버리고 %HIM_HER(ARG)%에게 자신이 %PeeAndPoo(SoiledDiaper(MASTER,1),SoiledDiaper(MASTER,2),"wet","pooped")%했다고 말한다.
+			$BedwettingCheckStart
+			CALL RandomUnderwearCheck(ARG,1,MASTER)
+			PRINTFORMDW 새로운 것으로 바꾼 후 %PeeProtectType(MASTER,2)%, 당신은 잡고 %CALLNAME:ARG%의 손을 잡고 %HE_SHE(ARG)% 당신을 방으로 안내한다.
+			IF RAND(100) <= BEDWETTER_FIND_OUT_CHANCE()
+				PRINTFORMDW 당신과 %CALLNAME:ARG%이 방에 들어섰을 때, 냄새와 얼룩진 %BED_FUTON()%은(는) 당신이 사고를 쳤음을 나타낸다.
+				TRYCALL SET_REP(ARG,6,1,1)
+				PRINTFORMDW %CALLNAME:ARG%은(는) 당신의 %BED_FUTON()%에서 베개와 이불을 치워 깔끔하게 쌓아둔 후 시트들을 꺼낸다.
+				PRINTFORMDW %HE_SHE(ARG,1)%은(는) 그런 다음 탑과 식초 용액을 사용하여 얼룩을 청소하고 %BED_FUTON()%을 말린다.
+				PRINTFORMDW %HE_SHE(ARG,1)%은(는) 당신의 %BED_FUTON()%을 위해 새 깨끗한 시트를 가지러 방을 나간다.
+				PRINTFORMDW %HE_SHE(ARG)%이(가) 돌아오면, %HE_SHE(ARG)%은 시트, 이불, 베개들을 이전 위치로 다시 놓는다.
+				WetBed = 0
+				MessyBed = 0
+			ELSE
+				PRINTFORMDW 당신과 %CALLNAME:ARG%이 방에 들어갔을 때, %HE_SHE(ARG)%은 (그곳의) %BED_FUTON()%가 실제로 깨끗하다는 것에 놀란다. 
+			ENDIF
+			PRINTFORMDW %CALLNAME:ARG%은 방을 나서기 전 당신에게 좋은 밤이라고 말한다.
+			PRINTFORMDW 청소해야 했던 시간과 더러워지면서 생긴 부담은 \@ EQUIP:MASTER:下半身下着２ ? %PARSE("your",1)% %PeeProtectType(MASTER,1)% # %PARSE("yourself")% \@ 은 확실히 망칠 것이다 %PARSE("your")% 잠을 망칠 것...
+			RETURN 1
+		CASE 1
+			PRINTFORMDW 당신은 사고를 치지 않았다고 부인한다.
+			PRINTFORMDW 납득하지 못한 %CALLNAME:ARG%는 네가 바지를 %PeeAndPoo(SoiledDiaper(MASTER,1),SoiledDiaper(MASTER,2),"peed","pooped")% 한 것을 발견하기 전에 너의 속옷을 확인하기로 결정한다.
+			GOTO BedwettingCheckStart
+		CASE 2
+			TARGET = ARG
+			PRINTFORMDW 당신은 %CALLNAME:ARG%에게 거짓말을 하고 비가 튀었다고 말한다. 
+			IF RAND(100) < GET_SUCCESS_RATE()
+				PRINTFORMDW %HE_SHE(ARG,1)%그/그녀는 거짓말을 믿고 아무 일도 없었다는 듯 걸어갔다.
+			ELSE
+				PRINTFORMDW 거짓말에 납득하지 못한 %CALLNAME:ARG%는 그게 당신에게 튀긴 물이 아니라고 말한다.
+				GOTO BedwettingCheckStart
+			ENDIF
+	ENDSELECT
+ENDIF
+IF DiapeCharges:MASTER:0 > 0 && DiapePooCharges:MASTER:0 > 0
+	PRINTFORMDW 네가 오지 못하더라도, 안도의 한숨을 내쉰다.
+	PRINTFORMDW 네가 참으려 했던 모든 것이 이제 너의 %PeeProtectType(MASTER)% 안에 있다...
+	PRINTFORMDW 그리고 그것이 너를 행복하게 만든다.
+	PRINTFORML
+	PRINTFORMDL 방으로 돌아가기 전에 사용한 %PeeProtectType(MASTER,1)%를 버리고, 할 수 있는 한 깨끗하게 청소한 뒤 다른 %PeeProtectType(MASTER,1)%로 갈아입는다.
+	PRINTFORMDW 보호 장치가 없었다면 무슨 일이 일어났을지 상상하며 안도감에 잠이 든다.
+	CALL COLORMESSAGE("최대 TSP와 에너지가 일시적으로 증가했다.",C_YELLOW,2,1)
+	変動値 = MIN(MAXBASE:MASTER:気力 / 10, 300)
+	CALL BUFF_BASE(MASTER,BASE_気力,変動値)
+	変動値 = MIN(MAXBASE:MASTER:TSP / 2, 500)
+	CALL BUFF_BASE(MASTER,BASE_TSP,変動値)
+	CALLF PANTY_REWORK_CHANGE(MASTER,EQUIP:MASTER:下半身下着２)
+ELSE
+	PRINTFORMDL 이것이 그저 또 다른 사고였음에도 불구하고, 당신은 더 잘할 수 있었을 것 같다는 기분이 든다...
+	PRINTFORMDL 당신은 모든 것을 %PeeProtectType(MASTER,1)%에 배출했다. 이 일 후에 확실히 목욕이 필요하겠군...
+	PRINTFORMDW 당신의 배설물이 바닥으로 떨어지는 가운데 부끄러운 듯 욕실로 걸어간다...
+	PRINTFORML
+	PRINTFORMDL 당신은 망가진 %PeeProtectType(MASTER,1)%를 벗어 옆에 두고 물을 틀었다.
+	PRINTFORMDW 당신은 눈을 감고 목욕에서 긴장을 풀며 이 순간 더 잘할 수 있었던 일들을 생각했다...
+	PRINTFORML
+	IF EQUIP:MASTER:下半身下着２
+		PRINTFORMDL ~하는 동안 %PARSE("you are")% 목욕을 하는 동안 %CALLNAME:ARG%몰래 가져간다 %PARSE("your",1)% 더러운 %PeeProtectType(MASTER,1)%!
+		PRINTFORMDW 이것은 당신이 ~하려고 할 때만 알아차리지만 \@ IsPadded(MASTER) ? 버리다 # 세탁하다 \@ 당신의 %PeeProtectType(MASTER,2)%하지만 어디에도 보이지 않아...
+		PRINTFORMDW %HE_SHE(ARG,1)%은 그 안에 들어간 배설물을 냄새 맡으며 격렬하게 자위한다.
+		JUEL:ARG:11 += 5000
+		EXP:ARG:自慰経験 += ABL:ARG:自慰中毒 * 2 + 1
+		CALL COLORMESSAGE(@"%CALLNAME:ARG%욕정 보석 +{5000}",C_PINK,1)
+		CALL COLORMESSAGE(@"%CALLNAME:ARG%자위경험 +{(ABL:ARG:自慰中毒 * 2 + 1)}",C_PINK,1)
+		PRINTFORML
+	ENDIF
+	PRINTFORMDW 청소해야 하는 시간과 더럽힌 것에서 오는 부담은 \@ EQUIP:MASTER:下半身下着２ ? %PARSE("your",1)% %PeeProtectType(MASTER,1)% # %PARSE("yourself")% \@ 는 확실히 망칠 것이다 %PARSE("your")% 잠을 망칠 것...
+	PRINTL
+	CALLF PANTY_REWORK_CHANGE(MASTER,EQUIP:MASTER:下半身下着２)
+	CALL SET_REP(ARG,6,,1)
+ENDIF
+RETURN 1
+;Bedwetting alarms (requires the bedwetting alarm)
+;Automatically triggers when you start leaking
+
+@BEDWETTING_ALARM(HasPiss,HasScat)
+#DIM HasPiss
+#DIM HasScat
+#DIM BA_REASON
+SIF HasPiss
+	SETBIT BA_REASON,0
+SIF GETBIT(NAS_BEDWETALARM,0) && HasScat
+	SETBIT BA_REASON,1
+SIF !ITEM:BedwettingAlarm
+	RETURN
+SIF BedProtectSettings:3 == 1
+	RETURN
+SIF !BA_REASON && !NAS_BedWetAlarm_Timer
+	RETURN
+SIF !EQUIP:MASTER:下半身下着２
+	RETURN
+SIF nOmutsu >= 4
+	RETURN
+IF GETBIT(BA_REASON,1)
+	PRINTFORMW 당신의 몸은 %PeeProtectType(MASTER)% 안으로 대변을 보려고 시도했고, 경보가 울렸다.
+ELSEIF GETBIT(BA_REASON,0)
+	PRINTFORMW 당신이 자신의 %PeeProtectType(MASTER)%에 소변을 조금 새어 알람이 울린다.
+ELSE
+	PRINTFORMW 그것의 {NAS_BedWetAlarm_Timer}분 타이머로 스스로 알람이 울린다.
+ENDIF
+SELECTCASE RAND:4
+	CASE 0
+		SIF GETBIT(NAS_BEDWETALARM,2)
+			GOTO WAKE
+		PRINTFORML 당신은 알람을 자고 지나갔다.
+		PRINTFORMW
+		RETURN
+	CASEELSE
+		$WAKE
+		SELECTCASE MAX(PeeBarStage(MASTER),PooBarStage(MASTER))
+			CASE IS >= 7
+				PRINTFORMW 하지만 너무 늦었다...
+				PRINTFORMW 잠에서 깨어 있었지만 침대에서 당신의 %PeeProtectType(MASTER)%가 %PeeAndPoo(HasPiss,HasScat,"flood","fill")%되는 것을 막을 수 없다...
+				RETURN 2
+			CASE IS >= 5
+				PRINTFORML 잘못된 한 걸음이라도 내딛으면 스스로 %PeeAndPoo(HasPiss,HasScat,"bladder","colon")%가 터져 나올 것 같은 상태로 깨어나며, 곧 %PeeAndPoo(HasPiss,HasScat,FSYN("pee"),FSYN("poo"))%할 지경이다.
+				PRINTFORMW
+				IF TCVAR:MASTER:906
+					CALL DAILY_EV_901(HasPiss,HasScat)
+				ELSE
+					CALL MasterGoToilet(HasPiss,HasScat)
+				ENDIF
+				RETURN 1
+			CASE IS < 2
+				PRINTFORML 잠에서 깨어보니 갈 필요가 없다는 것을 깨달았다.
+				PRINTFORMW 알람을 무시하고 다시 잠이 들었다.
+				RETURN 1
+			CASEELSE
+				PRINTFORML 깨어나 보니 당신의 %PeeAndPoo(HasPiss,HasScat,"bladder","colon")%는 그렇게 가득 차지 않았다.
+				PRINTFORML 당신은 절박함의 작은 기색을 보이며 화장실로 향한다.
+				PRINTFORMW
+				CALL MasterGoToilet(HasPiss,HasScat)
+				RETURN 1
+		ENDSELECT
+ENDSELECT
+;Continent MCs won't wet the bed but instead get up
+
+@BEDWETTING_GETUP
+#DIM DYNAMIC HasPiss
+#DIM DYNAMIC HasScat
+#DIM DYNAMIC nChance
+#DIM DYNAMIC AutoUseDip
+#DIM DYNAMIC BiggestDesp
+SIF PeeBarStage(MASTER) >= 3
+	HasPiss = 1
+SIF PooBarStage(MASTER) >= 3
+	HasScat = 1
+nChance = GETUP_FORMULA(MASTER)
+SIF !nChance
+	RETURN
+AutoUseDip = nOmutsu >= 4 || (GET_INT(MASTER, "Religion", TALENT:MASTER:Religion, "Incontinence") >= 1 && IsPadded(MASTER)) || (GET_INT(MASTER, "Religion", TALENT:MASTER:Religion, "Incontinence") >= 2)
+BiggestDesp = MAX(HasPiss ? PeeBarStage(MASTER) # 0, HasScat ? PooBarStage(MASTER) # 0)
+IF (AutoUseDip || BiggestDesp >= 7) && InTrain == 1
+	IF HasPiss
+		EV901_BED_ACCIDENT:0 += BASE:MASTER:4
+		BASE:MASTER:4 = 0
+	ENDIF
+	IF HasScat
+		EV901_BED_ACCIDENT:1 += BASE:MASTER:Poo
+		BASE:MASTER:Poo = 0
+	ENDIF
+	RETURN 0
+ENDIF
+[IF_DEBUG]
+SETCOLOR C_GRAY
+PRINTFORML 기상 확률: {nChance}\%
+PRINTFORML 방광 상태: {PeeBarStage(MASTER)} ({BASE:MASTER:尿意}/{MAXBASE:MASTER:尿意})
+PRINTFORML 장 상태: {PooBarStage(MASTER)} ({BASE:MASTER:Poo}/{MAXBASE:MASTER:Poo})
+RESETCOLOR
+[ENDIF]
+IF RAND(100) <= nChance
+	PRINTFORML 잠든 동안 방광에서 \@ HasPiss ? 한 움찔거림을 느끼고 #  \@ \@ HasPiss && HasScat ? %" "%and%" "% #  \@ \@ HasScat ? 배에서 고통을 느꼈다 #  \@...
+	IF AutoUseDip
+		PRINTFORMW 당신은 자신의 %PeeProtectType(MASTER,2)%를 사용하기 시작한다.
+		CALL BEDWETTING(HasPiss,HasScat, 1)
+	ELSE
+		SELECTCASE BiggestDesp
+			CASE IS >= 7
+				PRINTFORMW 하지만 너무 늦었다...
+				PRINTFORMW 잠에서 깨어 있었음에도 침대에서 %PeeAndPoo(HasPiss,HasScat,"flood","fill")%하며 %PeeProtectType(MASTER)%을 막지 못한다...
+				CALL BEDWETTING(HasPiss,HasScat, 1)
+				RETURN 2
+			CASE IS >= 5
+				PRINTFORML 당신은 방광이 터질 듯한 채로 깨어나서 잘못된 발걸음을 내딛으면 %FSYN("pee")% 할 지경이다.
+				PRINTFORMW
+				CALL MasterGoToilet(HasPiss,HasScat)
+				RETURN 1
+			CASEELSE
+				PRINTFORML 당신은 절박함을 거의 보이지 않은 채 화장실로 향한다.
+				PRINTFORMW
+				CALL MasterGoToilet(HasPiss,HasScat)
+				RETURN 1
+		ENDSELECT
+	ENDIF
+	IF SoiledDiaper(MASTER)
+		PRINTFORMW 당신은 자신의 %PeeProtectType(MASTER,2)%가 더러워졌다고 생각하고, 자신의 %PeeProtectType(MASTER,2)%를 바꾼다.
+		CALLF PANTY_REWORK_CHANGE(MASTER,EQUIP:MASTER:6)
+	ENDIF
+ENDIF
+
+@GETUP_FORMULA(ARG)
+#FUNCTION
+#DIM DYNAMIC HasPiss
+#DIM DYNAMIC HasScat
+#DIM DYNAMIC nChance
+nChance = 40
+SIF PeeBarStage(ARG) >= 3
+	HasPiss = 1
+SIF PooBarStage(ARG) >= 3
+	HasScat = 1
+SIF !HasPiss && !HasScat
+	RETURNF 0
+SIF HasPiss
+	nChance = nChance - -(PeeHold:ARG:2*15)
+SIF HasScat
+	nChance = nChance - -(PooHold:ARG:2*15)
+RETURNF nChance
+;Threshold in 0 to 1000 to wet the bed
+
+@BedWetThreshold(ARG, nExcrete = 1, nUnaware = 1)
+#FUNCTION
+#DIM nExcrete
+#DIM nUnaware
+#DIM nThresh
+SELECTCASE nExcrete
+	CASE 1
+		SIF PeeHold:ARG:0 >= 6
+			RETURNF 100000
+		; SELECTCASE EffectivePottyLevel(MASTER,1, 1)
+		; CASE IS >= 0
+		; 	nThresh = 1667 + (200*PeeHold:ARG:2)
+		; CASE -1
+		; 	nThresh = 1000
+		; CASE -2
+		; 	nThresh = 500
+		; CASE -3
+		; 	nThresh = 250
+		; CASE -4
+		; 	nThresh = 100
+		; CASE IS <= -5
+		; 	nThresh = 0
+		; ENDSELECT
+		nThresh = 1667 + (EffectivePottyLevel(ARG,1, 1) > 0 ? 200*EffectivePottyLevel(ARG,1, 1) # 400*EffectivePottyLevel(ARG,1, 1))
+		SELECTCASE PeeBarStage(ARG)
+			CASE IS >= 5
+				;wetting
+				TIMES nThresh, 0.05
+			CASE 4
+				TIMES nThresh, 0.2
+			CASE 3
+				TIMES nThresh, 0.5
+			CASE 2
+				TIMES nThresh, 0.75
+			CASE 1
+				TIMES nThresh, 0.9
+		ENDSELECT
+	CASE 2
+		SIF PooHold:ARG:0 >= 6
+			RETURNF 100000
+		; SELECTCASE EffectivePottyLevel(MASTER,2, 1)
+		; CASE IS >= 0
+		; 	nThresh = 1667 + (200*PooHold:ARG:2)
+		; CASE -1
+		; 	nThresh = 1000
+		; CASE -2
+		; 	nThresh = 500
+		; CASE -3
+		; 	nThresh = 250
+		; CASE -4
+		; 	nThresh = 100
+		; CASE IS <= -5
+		; 	nThresh = 0
+		; ENDSELECT
+		nThresh = 1667 + (EffectivePottyLevel(ARG,2, 1) > 0 ? 200*EffectivePottyLevel(ARG,2, 1) # 400*EffectivePottyLevel(ARG,2, 1))
+		SELECTCASE PooBarStage(ARG)
+			CASE IS >= 5
+				;messing
+				TIMES nThresh, 0.05
+			CASE 4
+				TIMES nThresh, 0.2
+			CASE 3
+				TIMES nThresh, 0.5
+			CASE 2
+				TIMES nThresh, 0.75
+			CASE 1
+				TIMES nThresh, 0.9
+		ENDSELECT
+ENDSELECT
+SIF !nUnaware
+	TIMES nThresh, 0.6
+RETURNF MAX(nThresh,0)
+
+@BedWetDreamAddict(ARG, HasPiss, HasScat)
+#FUNCTION
+#DIM HasPiss
+#DIM HasScat
+#DIM nThresh
+#DIM nAdding
+nThresh = 1600
+IF HasPiss
+	nAdding = (200*ABL:ARG:PeeAddict)
+	SELECTCASE PeeBarStage(ARG)
+		CASE IS >= 5
+			;wetting
+			TIMES nAdding, 20
+		CASE 4
+			TIMES nAdding, 5
+		CASE 3
+			TIMES nAdding, 2
+		CASE 2
+			TIMES nAdding, 1.25
+		CASE 1
+			TIMES nAdding, 1.1
+	ENDSELECT
+	nThresh -= nAdding
+ENDIF
+IF HasScat
+	nAdding = (200*ABL:ARG:PooAddict)
+	SELECTCASE PooBarStage(ARG)
+		CASE IS >= 5
+			;messing
+			TIMES nAdding, 20
+		CASE 4
+			TIMES nAdding, 5
+		CASE 3
+			TIMES nAdding, 2
+		CASE 2
+			TIMES nAdding, 1.25
+		CASE 1
+			TIMES nAdding, 1.1
+	ENDSELECT
+	nThresh -= nAdding
+ENDIF
+RETURNF MAX(nThresh,0)

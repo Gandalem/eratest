@@ -1,0 +1,134 @@
+﻿; Modular ERB: COMF/日常系/COMF402 就寝.ERB
+;-------------------------------------------------
+;就寝
+;日常系コマンド、レベル1
+;-------------------------------------------------
+
+@COM402
+#DIM 労働量
+#DIM 収益
+PLAYSOUND "se/睡眠BGS1.m4a"
+IF FLAG:内職 && BASE:MASTER:気力 > 300 && BASE:MASTER:TSP > 0
+	PRINTFORML 잠자리에 들기 전에 남은 TSP로 부업을 한다.
+	労働量 = MIN(BASE:MASTER:気力, BASE:MASTER:TSP /2)
+	収益 = 労働量 * (5 + RAND:5) / 10
+	MONEY += 収益
+	PRINTFORMW %金額表示(収益)%을 얻었다.
+ENDIF
+IF FLAG:自動縁結び && !FLAG:願掛け内容 && !CFLAG:添い寝中
+	PRINTFORM 잠자리에 들기 전에 
+	IF MONEY >= 1000
+		CALL GANKAKE_0(FLAG:自動縁結び)
+		MONEY -= 1000
+		PRINTFORMW 당신은 %CALLNAME:(FLAG:自動縁結び)%에게 가까워지기 위해 기도한다 (%金額表示(1000)%로).
+		SIF FLAG:願掛け内容 < 0
+			PRINTFORMW ...하지만 소원은 미지의 힘에 잠긴다...
+	ELSE
+		PRINTFORMW 당신은 %CALLNAME:(FLAG:自動縁結び)%에 더 가까워지기 위해 신에게 기도하지만 바칠 돈이 없다.
+	ENDIF
+ENDIF
+CALL KIKENBIHOUMON
+IF AutoFap
+	PRINTFORML 잠자리에 들기 전, 너는 자위하기로 결정한다.
+	EXP:MASTER:自慰経験 += ABL:MASTER:自慰中毒 * 2 + 1
+	CALL COLORMESSAGE(@"자위경험+ {ABL:MASTER:自慰中毒 * 2 + 1}",C_PINK,1)
+	SELECTCASE ABL:MASTER:自慰中毒
+		CASE 0 TO 2
+			LOCAL = 5
+		CASE 3 TO 5
+			LOCAL = 3
+		CASEELSE
+			LOCAL = 1
+	ENDSELECT
+	CALL FUCK(MASTER, @" C는(는) \@ LOCAL:1 ? V, #  \@ desire, \@ HAS_PENIS(MASTER) ? cumlove, #  \@ ejac, \@ PeeHold:MASTER:0 <= -2 ? piss, #  \@ \@ PooHold:MASTER:0 <= -2 ? shit, #  \@ 노출벽", @"", 0, MASTER, MASTER, MASTER, @"", "ペニス", "膣", "口")
+	CFLAG:MASTER:溜まってる度 /= 4
+ENDIF
+;The day has ended.
+IF BedProtectSettings:0 > 0 || BedProtectSettings:1
+	PRINTFORML 잠자리에 들기 전에 당신은 %PeeAndPoo(BedProtectSettings:0 > 0, BedProtectSettings:1, "change into your nighttime underwear",@"place a clean %BedWetterPadSyn:(BedProtectSettings:1)%")%한다.
+ENDIF
+IF BedProtectSettings:5
+	PRINTFORML 잠자리에 들기 전에 취침제를 복용한다.
+	FOR LOCAL, 0, VARSIZE("BedProtectDrugID")
+	IF GETBIT(BedProtectSettings:5,LOCAL) && ITEM:(BedProtectDrugID:(LOCAL))
+		CALL DrugStuffNoFluff(MASTER,BedProtectDrugID:(LOCAL))
+		CALL LOST_ITEM(ITEMNAME:(BedProtectDrugID:(LOCAL)),1,1)
+	ELSEIF GETBIT(BedProtectSettings:5,LOCAL)
+		PRINTFORML 당신은 더 이상 %PLNOUN(ITEMNAME_TR(ITEM:(BedProtectDrugID:(LOCAL))))%가 없는 것 같다.
+	ENDIF
+	NEXT
+	PRINTW
+ENDIF
+IF nNASQOL
+	PRINTFORML 잠자리에 들기 전, 당신은 화장실로 가서 용무를 보고 몸을 청결하게 한다.
+	PRINTFORMW
+	SIF PeeBarStage(MASTER) >= 2 || PooBarStage(MASTER) >= 2
+		CALL MasterGoToilet(PeeBarStage(MASTER) >= 2,PooBarStage(MASTER) >= 2)
+	CALL ODEKAKE_OFURO(MASTER, 1)
+ENDIF
+LOCAL:10 = 0
+FOR LOCAL, 1, MAXCHILD + 1
+SIF CHILDNAME:TARGET:LOCAL == ""
+	CONTINUE
+SIF CHILD_INDEPENDENT:TARGET:LOCAL
+	CONTINUE
+SIF DAY - CHILD_BIRTHDAY:TARGET:LOCAL >= CHILD_よちよち
+	LOCAL:10 ++
+NEXT
+IF 子供の睡眠時間(TARGET) && LOCAL:10 && FLAG:子供描写 && !INRANGE(TIME, 540, 840)
+	PRINTFORMDL %NUM_COUNT(LOCAL:10 + 2)%명의 가족들이 나란히 잠이 든다...
+	CALL KOJO_MESSAGE_SEND("EVENT", 0, TARGET, 0, 0, "CHILD_RAISING_OYASUMI")
+	TFLAG:193 = 1
+	RESETCOLOR
+ENDIF
+CALL OYASUMI
+RETURN 1
+;就寝
+
+@COM_ABLE402
+;移動実行判定
+SIF !TFLAG:100
+	RETURN 0
+;一括管理
+SIF GLOBAL_COMABLE(402)
+	RETURN RESULT
+;停止中は不可
+SIF FLAG:70 == 1
+	RETURN 0
+;NAS: Lucid Dream
+SIF inTrain == 3
+	RETURN 0
+;私室設定
+IF !ITEM:Tent
+	SIF CFLAG:MASTER:現在位置 != CFLAG:MASTER:311 && CFLAG:MASTER:現在位置 != OMANEKIBEYA() && CFLAG:添い寝中 == 0
+		RETURN 0
+ENDIF
+;起床後12時間以上経過してないとダメ（デバッグ中）
+IF FLAG:1005 == 0
+	SIF NEMUKE() < 720
+		RETURN 0
+	SIF CFLAG:うふふ == 2
+		RETURN 0
+ENDIF
+RETURN 1
+
+@OYASUMI
+SIF benchMarkStart
+	CALL BENCHMARK_START_STAGE
+IF TARGET != MASTER
+	CFLAG:同行 = 0
+	CFLAG:添い寝中 = 0
+	CFLAG:MASTER:同行 = 0
+	CFLAG:MASTER:添い寝中 = 0
+ENDIF
+IF CFLAG:MASTER:現在位置 == CFLAG:MASTER:311
+	CALL SET_SLEEP(1,MASTER,0)
+ELSE
+	CALL SET_SLEEP(1,TARGET,1)
+	SIF CFLAG:TARGET:衰弱
+		CFLAG:TARGET:衰弱 = 0
+ENDIF
+CALL SET_SNEAK(0,TARGET,1)
+;CALL SET_TOGETHER(0,TARGET,1)
+CFLAG:MASTER:就寝時間 = DAY * 1440 + TIME
+BEGIN AFTERTRAIN

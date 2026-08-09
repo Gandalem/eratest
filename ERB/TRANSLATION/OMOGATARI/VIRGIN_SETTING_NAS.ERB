@@ -1,0 +1,888 @@
+﻿; Modular ERB: OMOGATARI/VIRGIN_SETTING_NAS.ERB
+;New virgin set menu that separates options into categories
+
+@VIRGIN_SET_NAS
+#DIM nLineCnt_Head
+VARSET LOCAL
+DEBUG_Target = TARGET
+DRAWLINE
+PRINTL 게임이 시작되기 전에 캐릭터에 대한 다양한 설정을 여기서 할 수 있다.
+PRINTL 
+nLineCnt_Head = LINECOUNT
+REDRAW 0
+DO
+SIF LINECOUNT - nLineCnt_Head > 0
+	CLEARLINE LINECOUNT - nLineCnt_Head
+CALL VIRGIN_SET_NAS_STATE
+SELECTCASE RESULT
+	CASE 0
+		PRINTW 설정이 완료되었다.
+		RETURN
+	CASEELSE
+ENDSELECT
+LOOP 1
+
+@VIRGIN_SET_NAS_STATE
+#DIM     PAGE       ;表示中のページ
+#DIMS CONST DISP_NAME = "Virginity", "Body", "Mind", "Other"
+#DIM CREDRAW
+#DIM FIRST_LINE
+FIRST_LINE = LINECOUNT
+$REPRINT
+CLEARLINE LINECOUNT - FIRST_LINE
+CREDRAW = CURRENTREDRAW()
+REDRAW 0
+;call command to get a name
+FOR LOCAL, 0, 100
+VARSET RESULTS
+RESULT:3 = 0
+TRYCALLFORM VIRGIN_SET_NAS_EFFECT_{PAGE}_{LOCAL}(MASTER,2)
+;we get a name of the command
+IF STRLENS(RESULTS)
+	RESULTS:1 '= RESULTS
+	SIF RESULT:3
+		RESULTS:1 += " (Selection Independent)"
+	PRINTFORML [{LOCAL,2}] - %RESULTS:1%
+ENDIF
+NEXT
+DRAWLINE
+FOR LOCAL, 0, VARSIZE("DISP_NAME")
+SIF !STRLENS(DISP_NAME:LOCAL)
+	CONTINUE
+SIF PAGE == LOCAL
+	SETCOLOR 0x00FFFF
+;exception for player character
+PRINTBUTTON DISP_NAME:LOCAL, LOCAL + 8002
+RESETCOLOR
+PRINTFORM 　　
+NEXT
+PRINTFORML 
+PRINTBUTTON "[0] 완료", 0
+PRINTBUTTON @" [-1] 캐릭터 설정 ({NAS_VIRGIN_SET_COUNT}명 선택됨)", -1
+PRINTBUTTON " [-2] 설정을 개별적으로 선택한다", -2
+DO
+INPUT
+SELECTCASE RESULT
+	CASE 0
+		RETURN 0
+	CASE -1
+		CALL VIRGIN_SET_NAS_CHARACTERS
+	CASE -2
+		CALL SET_VIRGINITY_MOD
+	CASE 8002 TO VARSIZE("DISP_NAME")+8002
+		PAGE = RESULT-8002
+	CASEELSE
+		$RETRY
+		A = RESULT
+		RESULT:3 = 0
+		TRYCALLFORM VIRGIN_SET_NAS_EFFECT_{PAGE}_{A}(MASTER,2)
+		IF !NAS_VIRGIN_SET_COUNT && !RESULT:3
+			PRINTFORML 영향을 줄 캐릭터에 대한 설정이 선택되지 않았습니다.
+			PRINTFORMW 다시 시도하기 전에 일부 캐릭터를 선택해 주세요.
+			GOTO REPRINT
+		ENDIF
+		TRYCALLFORM VIRGIN_SET_NAS_RESULT(PAGE,A)
+ENDSELECT
+BREAK
+LOOP 1
+GOTO REPRINT
+
+@VIRGIN_SET_NAS_RESULT(nTab,nInput)
+#DIM nTab
+#DIM nInput
+#DIM makeMessage
+VARSET makeMessage
+RESULT:3 = 0
+CALLFORM VIRGIN_SET_NAS_EFFECT_{nTab}_{nInput}(LOCAL,2)
+;bypass selection
+IF RESULT:3
+	CALLFORM VIRGIN_SET_NAS_EFFECT_{nTab}_{nInput}(MASTER,0)
+	CALLFORM VIRGIN_SET_NAS_EFFECT_{nTab}_{nInput}(MASTER,1)
+	RETURN
+ENDIF
+FOR LOCAL,0,CHARANUM
+IF !CFLAG:LOCAL:NAS_VIRGIN_SET_SELECTED
+	CONTINUE
+ENDIF
+SIF LOCAL >= CHARANUM
+	CONTINUE
+CALLFORM VIRGIN_SET_NAS_EFFECT_{nTab}_{nInput}(LOCAL,0)
+NEXT
+CALLFORM VIRGIN_SET_NAS_EFFECT_{nTab}_{nInput}(MASTER,1)
+;=================================================
+;Template
+;X is the page the effect is in
+;Y is the entry the command is
+;C_ID is the character ID
+;ARG determines what effects will be returned
+;0: Character edits
+;1: Message when the command is executed
+;2: Name of the command
+;=================================================
+
+@VIRGIN_SET_NAS_EFFECT_X_Y(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+	CASE 0
+		;How will this option affect characters
+	CASE 1
+		;Message when this command is executed
+		PRINTFORMW
+	CASE 2
+		;Name of the option
+		RESULTS '= @"옵션의 이름"
+ENDSELECT
+;=================================================
+;Sets everyone as a virgin
+;=================================================
+
+@VIRGIN_SET_NAS_EFFECT_0_1(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+	CASE 0
+		CALL SET_VIRGIN(C_ID)
+	CASE 1
+		PRINTW 무슨 처녀새 같군!
+		PRINTFORMW %NAS_VIRGIN_CHARA_STR()%은(는) 지금 경험치가 제로인 처녀가 되었다.
+	CASE 2
+		RESULTS '= @"%NAS_VIRGIN_CHARA_STR()%은(는) 처녀이다"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_0_2(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+	CASE 0
+		TALENT:C_ID:処女 = 0
+		SIF TALENT:C_ID:性別嗜好 >= 1
+			TALENT:C_ID:性別嗜好 = 0
+		EXP:C_ID:Ｖ経験 = MAX(EXP:C_ID:Ｖ経験, 50)
+		ABL:C_ID:Ｖ感覚 = MAX(ABL:C_ID:Ｖ感覚, 2)
+		ABL:C_ID:腰 = MAX(ABL:C_ID:腰, 2)
+		EXP:C_ID:Ｖ性交経験 = MAX(EXP:C_ID:Ｖ経験, 50)
+		EXP:C_ID:Ｖ拡張経験 = MAX(EXP:C_ID:Ｖ拡張経験, 3)
+		EXP:C_ID:精液経験 = MAX(EXP:C_ID:精液経験, 10)
+		CharaAge:C_ID:1 += (RAND(100,500))
+		CharaAge:C_ID:2 = ((StartingYear-1)*YearLength) - (CharaAge:C_ID:1*YearLength)
+	CASE 1
+		PRINTFORMW %NAS_VIRGIN_CHARA_STR()%는 처녀가 아니며, 모두 경험이 있다.
+	CASE 2
+		RESULTS '= @"그들의 긴 수명 때문에, %PRINT_MALE("Boys:Girls",1)%은 모두 어느 정도 경험이 있어야 한다."
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_0_3(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+	CASE 0
+		CALL SET_YARIMAN(C_ID)
+	CASE 1
+		PRINTFORMW %NAS_VIRGIN_CHARA_STR()%는 많은 경험을 가진 걸레이다.
+	CASE 2
+		RESULTS '= @"%NAS_VIRGIN_CHARA_STR()%은(는) 걸레이다"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_0_4(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+	CASE 0
+		TALENT:C_ID:処女 = 1
+		SIF TALENT:C_ID:性別嗜好 == 1
+			TALENT:C_ID:性別嗜好 = 0
+		EXP:C_ID:Ｖ経験 = 0
+		ABL:C_ID:Ｖ感覚 = 0
+		ABL:C_ID:欲望 = MAX(3,ABL:C_ID:欲望)
+		EXP:C_ID:Ｖ性交経験 = 0
+		EXP:C_ID:Ｖ拡張経験 = 0
+		EXP:C_ID:精液経験 = 0
+		TALENT:C_ID:ヤリマン = 1
+		TALENT:C_ID:貞操 = -1
+	CASE 1
+		PRINTW 문제를 일으키지 마라.
+		PRINTFORMW %NAS_VIRGIN_CHARA_STR()%은(는) 이제 걸레 처녀다.
+	CASE 2
+		RESULTS '= @"%NAS_VIRGIN_CHARA_STR()%은(는) 걸레 처녀이다"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_0_5(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+	CASE 0
+		;How will this option affect characters
+		TALENT:C_ID:処女 = 1
+		SIF TALENT:C_ID:性別嗜好 == 1
+			TALENT:C_ID:性別嗜好 = 0
+		EXP:C_ID:Ｖ経験 = MAX(EXP:C_ID:Ｖ経験, 50)
+		ABL:C_ID:Ｖ感覚 = MAX(ABL:C_ID:Ｖ感覚, 250)
+		EXP:C_ID:Ｃ経験 = MAX(EXP:C_ID:Ｃ経験, 50)
+		ABL:C_ID:Ｃ感覚 = MAX(ABL:C_ID:Ｃ感覚, 250)
+		EXP:C_ID:Ｂ経験 = MAX(EXP:C_ID:Ｂ経験, 50)
+		ABL:C_ID:Ｂ感覚 = MAX(ABL:C_ID:Ｂ感覚, 250)
+		EXP:C_ID:Ａ経験 = MAX(EXP:C_ID:Ａ経験, 50)
+		ABL:C_ID:Ａ感覚 = MAX(ABL:C_ID:Ａ感覚, 250)
+		EXP:C_ID:Ｍ経験 = MAX(EXP:C_ID:Ｍ経験, 50)
+		ABL:C_ID:Ｍ感覚 = MAX(ABL:C_ID:Ｍ感覚, 250)
+		EXP:C_ID:UExp = MAX(EXP:C_ID:UExp, 50)
+		ABL:C_ID:USens = MAX(ABL:C_ID:USens, 250)
+		ABL:C_ID:腰 = MAX(ABL:C_ID:腰, 50)
+		ABL:C_ID:指 = MAX(ABL:C_ID:指, 50)
+		ABL:C_ID:舌 = MAX(ABL:C_ID:舌, 50)
+		ABL:C_ID:胸 = MAX(ABL:C_ID:胸, 50)
+		ABL:C_ID:膣 = MAX(ABL:C_ID:膣, 50)
+		ABL:C_ID:アナル = MAX(ABL:C_ID:アナル, 50)
+		ABL:C_ID:Urethra = MAX(ABL:C_ID:Urethra, 50)
+		EXP:C_ID:Ｖ性交経験 = MAX(EXP:C_ID:Ｖ経験, 50)
+		EXP:C_ID:Ｖ拡張経験 = MAX(EXP:C_ID:Ｖ拡張経験, 3)
+		EXP:C_ID:精液経験 = MAX(EXP:C_ID:精液経験, 10)
+		ABL:C_ID:サドっ気 = MAX(ABL:C_ID:サドっ気, 250)
+		ABL:C_ID:ゲイ中毒 = MAX(ABL:C_ID:ゲイ中毒, 250)
+		ABL:C_ID:ホモっ気 = MAX(ABL:C_ID:ホモっ気, 250)
+		ABL:C_ID:レズ中毒 = MAX(ABL:C_ID:レズ中毒, 250)
+		ABL:C_ID:レズっ気 = MAX(ABL:C_ID:レズっ気, 250)
+		ABL:C_ID:露出癖 = MAX(ABL:C_ID:露出癖, 250)
+		;set lewd and pleasure marks to max
+		MARK:C_ID:不埒刻印 = MAX(MARK:C_ID:不埒刻印, 3)
+		MARK:C_ID:快楽刻印 = MAX(MARK:C_ID:快楽刻印, 3)
+		ABL:C_ID:欲望 = 250
+		TALENT:C_ID:ヤリマン = 1
+		TALENT:C_ID:サド = 1
+		TALENT:C_ID:貞操 = -1
+		;TALENT:C_ID:2 = 3
+		;TALENT:C_ID:形状 = 3
+		TALENT:C_ID:濡れやすさ = 1
+		TALENT:C_ID:羞恥心 = -1
+		TALENT:C_ID:性的興味 = 1
+		TALENT:C_ID:倒錯的 = 1
+		TALENT:C_ID:小悪魔 = 1
+		;set sexual orentation to bisexual
+		TALENT:C_ID:性別嗜好 = -1
+		TALENT:C_ID:動物耳 = 1
+		TALENT:C_ID:SexKnow  = 5
+		TALENT:C_ID:応答  = 1
+		TALENT:C_ID:自己愛  = 1
+		TALENT:C_ID:絶倫  = 1
+		;TALENT:C_ID:双槍  = 1
+		;almighty impregnation makes it so YOU are impregnated easier
+		;TALENT:C_ID:万能孕ませ  = 1
+		;TALENT:C_ID:濃厚精液  = 1
+		;MAXBASE:C_ID:5 = 1500
+		;MAXBASE:C_ID:精力 = 1000
+		;SIF TALENT:MASTER:2 == 1
+		;ESTRUS_CYCLE(MASTER) = 150
+		FLAG:甲斐性無 = 1
+		FLAG:LUSTMODE = 1
+		nRapeAnywhere = 1
+	CASE 1
+		;Message when this command is executed
+		PRINTFORMW 처녀로 지내길 행운을 빌어
+		PRINTFORMW 이것은 또한 욕망 모드와 어디서든 섹스를 가능하게 하므로 그것도 있다.	
+		PRINTW 모두가 이제 너를 원한다
+	CASE 2
+		;Name of the option
+		RESULTS '= @"%NAS_VIRGIN_CHARA_STR()%은(는) 당신을 강간하고 싶어한다."
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_0_6(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+	CASE 0
+		;How will this option affect characters
+		FOR LOCAL,1,CHARANUM
+		;Seiga, the Watatsuki sisters, and Junko all had husbands, and Sanae is Suwako's descendant
+		SIF !GROUPMATCH(CHARANUM, 33, 90, 98, 99, 112)
+			CALL SET_VIRGIN(LOCAL)
+		NEXT
+	CASE 1
+		;Message when this command is executed
+		PRINTFORMW %CALLNAME:33%, %CALLNAME:90%, %nameArray:90:na_LastName%, 그리고 %CALLNAME:112%를 제외한 모든 사람이 이제 처녀이다.
+	CASE 2
+		;Name of the option
+		RESULTS '= @"캐릭터는 아이를 낳았거나 남편이 없는 한 처녀여야 한다."
+		RESULT:3 = 1
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_1_1(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+	CASE 0
+		CALL SET_LOLI(C_ID)
+	CASE 1
+		IF TALENT:MASTER:形状 < 6
+			PRINTFORML 로리콘도 괜찮다!
+		ELSE
+			PRINTFORML 너 이 악마 같아!
+		ENDIF
+		PRINTFORML
+		PRINTFORMW %NAS_VIRGIN_CHARA_STR()%는 이제 로리가 되었다.
+	CASE 2
+		RESULTS '= @"%NAS_VIRGIN_CHARA_STR()%은(는) A 로리이다"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_1_2(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+	CASE 0
+		;How will this option affect characters
+		TALENT:C_ID:体型 = -5
+		TALENT:C_ID:143 = 1
+	CASE 1
+		;Message when this command is executed
+		IF TALENT:MASTER:形状 < 3
+			PRINTFORMW %NAS_VIRGIN_CHARA_STR()%은(는) 동물귀를 가진 어린아이(inchling)가 되었다.
+		ELSE
+			PRINTFORML 이 망할 자식아!
+			PRINTFORML 
+			PRINTFORMW %NAS_VIRGIN_CHARA_STR()%는 동물귀를 가진 아기(inchling)가 되었다.
+		ENDIF
+	CASE 2
+		;Name of the option
+		RESULTS '= "Everyone Is An Inchling With Animal Ears"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_1_3(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+	CASE 0
+		;How will this option affect characters
+		TALENT:C_ID:2 = 3
+		TALENT:C_ID:形状 = 3
+		MAXBASE:C_ID:射精 = 10000
+		MAXBASE:C_ID:5 = 1500
+		MAXBASE:C_ID:精力 = 1000
+		FOR LOCAL:3,0,100
+		CALLF ClearHediff(C_ID,63,LOCAL:3)
+		CALLF ClearHediff(C_ID,68,LOCAL:3)
+		NEXT
+		;NAS: Reset vig if LESS than 1000
+		SIF BASE:C_ID:精力 < 1000
+			BASE:C_ID:精力 = 1000
+		CALL newGenderSystemConvert(C_ID)
+	CASE 1
+		;Message when this command is executed
+		PRINTFORMW %NAS_VIRGIN_CHARA_STR()%은(는) 이제 후타나리가 되었다.
+	CASE 2
+		;Name of the option
+		RESULTS '= @"%NAS_VIRGIN_CHARA_STR()%은(는) A가 포타나리이다."
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_1_4(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+	CASE 0
+		;How will this option affect characters
+		PeeHold:C_ID:0 = -5
+		PooHold:C_ID:0 = -5
+		PeeHoldExp:C_ID:0 = EXP_DEMAND_20(0,91,C_ID)
+		PooHoldExp:C_ID:0 = EXP_DEMAND_21(0,92,C_ID)
+		CALLF SILENT_ENDURANCECHANGE(C_ID)
+		CALLF ResetBladders(C_ID)
+	CASE 1
+		;Message when this command is executed
+		PRINTFORMW 요실금은 재미없다!
+	CASE 2
+		;Name of the option
+		SIF nPee || nScat
+			RESULTS '= @"%NAS_VIRGIN_CHARA_STR()%은(는) 배변 훈련이 안 됐어"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_1_5(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+	CASE 0
+		;How will this option affect characters
+		PeeHold:C_ID:0 = 5
+		PooHold:C_ID:0 = 5
+		PeeHoldExp:C_ID:0 = EXP_DEMAND_20(0,91,C_ID)
+		PooHoldExp:C_ID:0 = EXP_DEMAND_21(0,92,C_ID)
+		CALLF SILENT_ENDURANCECHANGE(C_ID)
+		CALLF ResetBladders(C_ID)
+	CASE 1
+		;Message when this command is executed
+		PRINTFORMW 소변도 재미없잖아!	
+	CASE 2
+		;Name of the option
+		SIF nPee || nScat
+			RESULTS '= @"%NAS_VIRGIN_CHARA_STR()%은(는) 며칠 동안 스스로를 유지할 수 있다."
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_1_6(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+	CASE 0
+		;How will this option affect characters
+		TALENT:C_ID:処女 = 0
+		TALENT:C_ID:2 = 2
+		TALENT:C_ID:形状 = 3
+		MAXBASE:C_ID:5 = 1500
+		MAXBASE:C_ID:精力 = 1000
+		FOR LOCAL:3,0,100
+		CALLF ClearHediff(C_ID,63,LOCAL:3)
+		CALLF ClearHediff(C_ID,68,LOCAL:3)
+		NEXT
+		CALL NewGenderSystemConvert(C_ID)
+		IF GETBIT(nUnfair,1)
+			BloodlineName:C_ID:0 =
+			;Family Names
+			CALL RandomName(C_ID, 5)
+			IF BloodlineName:C_ID:0 == ""
+				BloodlineName:C_ID:0 = %nameArray:C_ID:na_LastName%
+				;CALLNAME:(C_ID) = %nameArray:(C_ID):na_FirstName%
+			ELSE
+				nameArray:C_ID:na_LastName = %BloodlineName:C_ID:0%
+				CALLNAME:(C_ID) = %nameArray:(C_ID):na_FirstName%
+			ENDIF
+			NAME:(C_ID) = %NameChecker(C_ID)%
+			FOR LOCAL:1, 0, CHARANUM
+			IF !CharaFamily:C_ID:(LOCAL:1)
+				CONTINUE
+			ELSE
+				SIF BloodlineName:(LOCAL:1):0 == ""
+					BloodlineName:(LOCAL:1):0 = %BloodlineName:C_ID:0%
+				nameArray:(LOCAL:1):na_LastName = %BloodlineName:(LOCAL:1):0%
+				CALLNAME:(LOCAL:1) = %nameArray:(LOCAL:1):na_FirstName%
+				NAME:(LOCAL:1) = %NameChecker(LOCAL:1)%
+			ENDIF
+			NEXT
+		ENDIF
+	CASE 1
+		;Message when this command is executed
+		PRINTW 너 같은 새끼에게 개나 줘라
+		PRINTW 네 여자(girl)를 여자답지 않게 만들어 버린다
+		PRINTFORMW %NAS_VIRGIN_CHARA_STR()%은 이제 펨보이가 되었다.
+	CASE 2
+		;Name of the option
+		RESULTS '= @"%NAS_VIRGIN_CHARA_STR()%은 남자다."
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_1_7(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+	CASE 0
+		;How will this option affect characters
+		;Don't modify guys
+		SIF !IS_MALE(C_ID)
+			TALENT:C_ID:母乳体質 = 2
+	CASE 1
+		;Message when this command is executed
+		PRINTFORMW 모두 이제 유즙을 분비한다.
+	CASE 2
+		;Name of the option
+		RESULTS '= @"%NAS_VIRGIN_CHARA_STR()%은(는) 젖산"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_1_8(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+	CASE 0
+		;How will this option affect characters
+		;Don't modify guys
+		SIF !IS_MALE(C_ID)
+			TALENT:C_ID:バストサイズ = 2
+	CASE 1
+		;Message when this command is executed
+		PRINTFORMW 모든 사람이 이제 거대한 가슴을 가지고 있다.
+	CASE 2
+		;Name of the option
+		RESULTS '= @"%NAS_VIRGIN_CHARA_STR()%은(는) 거대한 가슴을 가지고 있다."
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_1_9(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+	CASE 0
+		;How will this option affect characters
+		FOR LOCAL:3,0,100
+		CALLF ClearHediff(C_ID,74,LOCAL:3)
+		CALLF ClearHediff(C_ID,67,LOCAL:3)
+		NEXT
+		CALLF AddBionic(C_ID,74,103,0)
+		CALLF AddBionic(C_ID,67,112,0)
+		CALLF ResetBladders(C_ID)
+	CASE 1
+		;Message when this command is executed
+		PRINTFORMW 모든 사람이 이제 작은 방광을 가지고 있다.
+	CASE 2
+		;Name of the option
+		SIF nPee || nScat
+			RESULTS '= @"%NAS_VIRGIN_CHARA_STR()%은(는) 미세한 방광을 가지고 있다."
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_1_10(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+	CASE 0
+		;How will this option affect characters
+		CALL SET_VIRGIN(C_ID)
+		CALL SET_LOLI(C_ID)
+		TALENT:C_ID:処女 = 1
+		ABL:C_ID:欲望 = 99
+		TALENT:C_ID:SexKnow = -1
+		TALENT:C_ID:中毒しやすい = 1
+		CALLF GAMANME(C_ID,-5)
+	CASE 1
+		;Message when this command is executed
+		PRINTFORMW %NAS_VIRGIN_CHARA_STR()%이제 잠자리에서 오줌을 지리는, 그들의 %PRINT_MALE("daddy_:mommy",MASTER)%가 필요한 로리가 되었다.
+	CASE 2
+		;Name of the option
+		SIF nPee || nScat
+			RESULTS '= @"%NAS_VIRGIN_CHARA_STR()%는 애착이 강하고 절제가 안 되는 로리이다."
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_1_11(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+	CASE 0
+		;How will this option affect characters
+		CALL SET_VIRGIN(C_ID)
+		CharaAge:C_ID:0 = 0
+		TALENT:C_ID:SexKnow = -1
+	CASE 1
+		;Message when this command is executed
+		PRINTW 너 아기 페티시 가지고 있네, 그렇지?
+		PRINTFORMW 모두가 이제 그 %PRINT_MALE("daddy_:mommy",MASTER)%이 필요한 아기가 되었다.
+	CASE 2
+		;Name of the option
+		RESULTS '= @"%NAS_VIRGIN_CHARA_STR()%은(는) 아기다."
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_1_12(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+	CASE 0
+		TALENT:C_ID:体型 = MAX(TALENT:C_ID:100,0)
+		;sjws mad
+		IF CharaAge:C_ID:0 < 21
+			CharaAge:C_ID:0 = MAX(21,CharaAge:C_ID:0)
+			CharaAge:C_ID:1 = MAX(21,CharaAge:C_ID:1)
+		ENDIF
+	CASE 1
+		PRINTFORML 작은 캐릭터들이 당신에게 너무 많나요?
+		PRINTFORML
+		PRINTFORMW %NAS_VIRGIN_CHARA_STR()%은(는) 이제 성인이다.
+	CASE 2
+		RESULTS '= @"%NAS_VIRGIN_CHARA_STR()%은 성인이다."
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_1_13(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+	CASE 0
+		;How will this option affect characters
+		TALENT:C_ID:処女 = 1
+		TALENT:C_ID:2 = 1
+		TALENT:C_ID:形状 = 3
+		MAXBASE:C_ID:5 = 0
+		MAXBASE:C_ID:精力 = 0
+		FOR LOCAL:3,0,100
+		CALLF ClearHediff(C_ID,63,LOCAL:3)
+		CALLF ClearHediff(C_ID,68,LOCAL:3)
+		NEXT
+		CALL NewGenderSystemConvert(C_ID)
+		IF GETBIT(nUnfair,1)
+			BloodlineName:C_ID:0 =
+			;Family Names
+			CALL RandomName(C_ID, 5)
+			IF BloodlineName:C_ID:0 == ""
+				BloodlineName:C_ID:0 = %nameArray:C_ID:na_LastName%
+				;CALLNAME:(C_ID) = %nameArray:(C_ID):na_FirstName%
+			ELSE
+				nameArray:C_ID:na_LastName = %BloodlineName:C_ID:0%
+				CALLNAME:(C_ID) = %nameArray:(C_ID):na_FirstName%
+			ENDIF
+			NAME:(C_ID) = %NameChecker(C_ID)%
+			FOR LOCAL:1, 0, CHARANUM
+			IF !CharaFamily:C_ID:(LOCAL:1)
+				CONTINUE
+			ELSE
+				SIF BloodlineName:(LOCAL:1):0 == ""
+					BloodlineName:(LOCAL:1):0 = %BloodlineName:C_ID:0%
+				nameArray:(LOCAL:1):na_LastName = %BloodlineName:(LOCAL:1):0%
+				CALLNAME:(LOCAL:1) = %nameArray:(LOCAL:1):na_FirstName%
+				NAME:(LOCAL:1) = %NameChecker(LOCAL:1)%
+			ENDIF
+			NEXT
+		ENDIF
+	CASE 1
+		;Message when this command is executed
+		PRINTW 그리고 이제 모든 사람이 소녀가 되었다.
+		PRINTW 마치 /egg/이 의도했던 대로처럼.
+		PRINTFORMW %NAS_VIRGIN_CHARA_STR()%은(는) 이제 소녀다.
+	CASE 2
+		;Name of the option
+		RESULTS '= @"%NAS_VIRGIN_CHARA_STR()%은(는) 소녀다"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_2_1(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+	CASE 0
+		;How will this option affect characters
+		CALL SET_VIRGIN(C_ID)
+		TALENT:C_ID:SexKnow = -1
+	CASE 1
+		;Message when this command is executed
+		PRINTFORMW 무슨 %CALLNAME:145%일까.
+		PRINTFORMW %NAS_VIRGIN_CHARA_STR()%은(는) 무지한 처녀다.
+	CASE 2
+		;Name of the option
+		RESULTS '= @"%NAS_VIRGIN_CHARA_STR()%은(는) 어리숙하다"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_2_2(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+	CASE 0
+		;How will this option affect characters
+		FOR LOCAL, 0, VARSIZE("EXP")
+		EXP:C_ID:LOCAL = 0
+		NEXT
+		FOR LOCAL, 0, VARSIZE("ABL")
+		ABL:C_ID:LOCAL = 0
+		NEXT
+		IF TALENT:C_ID:処女 == 0
+			TALENT:C_ID:処女 = -1
+		ELSE
+			TALENT:C_ID:処女 = 1
+		ENDIF
+		TALENT:C_ID:SexKnow = -1
+		TALENT:C_ID:キス未経験 = 1
+	CASE 1
+		;Message when this command is executed
+		PRINTW 이런...
+		;PRINTW They even forgot how to potty train
+		PRINTW 모두가 모든 것을 잊었다
+	CASE 2
+		;Name of the option
+		RESULTS '= @"%NAS_VIRGIN_CHARA_STR()%은(는) 기억상실증을 가지고 있다."
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_2_3(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+	CASE 0
+		;How will this option affect characters
+		CALL GET_ANGRY(C_ID, MARK:C_ID:反発刻印 + 3)
+	CASE 1
+		;Message when this command is executed
+		SETCOLOR 247,171,166
+		PRINTFORML %NAS_VIRGIN_CHARA_STR()%의 얼굴이 분노로 일그러지며 저주를 중얼거린다...
+		PRINTFORMW %NAS_VIRGIN_CHARA_STR()%가 증오의 낙인 Lv3을 받았다
+		RESETCOLOR
+	CASE 2
+		;Name of the option
+		RESULTS '= @"%NAS_VIRGIN_CHARA_STR()%은(는) 너를 싫어한다."
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_2_4(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+	CASE 0
+		;How will this option affect characters
+		MAXBASE:C_ID:TSP = 64000
+		BASE:C_ID:TSP = MAXBASE:C_ID:TSP
+	CASE 1
+		;Message when this command is executed
+		PRINTFORML 세상은
+		PRINTFORMW 이제 더 많은 시간 정지 능력을 갖게 되었다.
+	CASE 2
+		;Name of the option
+		RESULTS '= @"%NAS_VIRGIN_CHARA_STR()%는 TSP를 가지고 있다."
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_2_5(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+	CASE 0
+		;How will this option affect characters
+		FOR LOCAL,1,CHARANUM
+		;MC has TSP since it's a game ability, and Sakuya has it confirmed in game.
+		SIF GROUPMATCH(C_ID,15,0,MASTER)
+			CONTINUE
+		MAXBASE:C_ID:TSP = 0
+		BASE:C_ID:TSP = MAXBASE:C_ID:TSP
+		NEXT
+	CASE 1
+		;Message when this command is executed
+		PRINTFORMW 시간 정지는 이제 %CALLNAME:0%와 %CALLNAME:15%에게만 주어진다.
+	CASE 2
+		;Name of the option
+		RESULTS '= @"오직 %CALLNAME:0%와 %CALLNAME:15%만이 TSP를 가지고 있다."
+		RESULT:3 = 1
+ENDSELECT
+;=======================================================
+;Other Settings
+;=======================================================
+
+@VIRGIN_SET_NAS_EFFECT_3_96(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+	CASE 0
+		;How will this option affect characters
+	CASE 1
+		;Message when this command is executed
+		CALL PREGNANCY_TYPE_OPTIONS
+	CASE 2
+		;Name of the option
+		RESULTS '= @"임신 유형 옵션"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_3_97(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+	CASE 0
+		;How will this option affect characters
+	CASE 1
+		;Message when this command is executed
+		CALL CCREATE_RANDOMIZE()
+	CASE 2
+		;Name of the option
+		RESULTS '= @"무작위 옵션 메뉴 mk.1로 이동한다"
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_3_98(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+	CASE 0
+		;How will this option affect characters
+	CASE 1
+		;Message when this command is executed
+		CALL CCREATE_RANDOMIZE2()
+	CASE 2
+		;Name of the option
+		RESULTS '= @"무작위 옵션 메뉴 Mk.2로 이동한다."
+ENDSELECT
+
+@VIRGIN_SET_NAS_EFFECT_3_99(C_ID,ARG)
+#DIM C_ID
+SELECTCASE ARG
+	CASE 0
+		;How will this option affect characters
+		CALL RESET_CHARA(C_ID)
+	CASE 1
+		;Message when this command is executed
+		PRINTFORMW %NAS_VIRGIN_CHARA_STR()%은(는) 기본 설정으로 돌아갔다.
+	CASE 2
+		;Name of the option
+		RESULTS '= @"%NAS_VIRGIN_CHARA_STR()%은(는) 기본값으로 초기화된다."
+ENDSELECT
+
+@VIRGIN_SET_NAS_CHARACTERS
+#DIM CREDRAW
+#DIM FIRST_LINE
+FIRST_LINE = LINECOUNT
+$REPRINT
+CLEARLINE LINECOUNT - FIRST_LINE
+CREDRAW = CURRENTREDRAW()
+REDRAW 0
+NAS_VIRGIN_SET_COUNT = 0
+PRINT 캐릭터들에서 
+SETCOLOR C_P_GREEN
+PRINT 초록색 
+RESETCOLOR
+PRINTFORML 설정할 때 포함될 것이다.
+DRAWLINE
+FOR LOCAL, 0, CHARANUM-1
+IF CFLAG:LOCAL:NAS_VIRGIN_SET_SELECTED
+	SETCOLOR C_P_GREEN
+	NAS_VIRGIN_SET_COUNT++
+ENDIF
+PRINTFORMLC [{LOCAL,3}] %CALLNAME:LOCAL%
+RESETCOLOR
+NEXT
+PRINTL
+DRAWLINE
+PRINTL [900] - 설정 저장 [901] - 설정 불러오기	
+PRINTL [910] - 전체 선택 [911] - 플레이어만 [912] - NPC만　　
+PRINTL [997] - 선택 반전 [998] - 초기화
+PRINTFORML [999] - 완료 (포함: %PRINT_PLUR("character",NAS_VIRGIN_SET_COUNT)%)
+INPUT
+IF INRANGE(RESULT, 0, CHARANUM-1)
+	CFLAG:RESULT:NAS_VIRGIN_SET_SELECTED = !CFLAG:RESULT:NAS_VIRGIN_SET_SELECTED
+	GOTO REPRINT
+ELSEIF RESULT == 910
+	FOR LOCAL, 0, CHARANUM-1
+	CFLAG:LOCAL:NAS_VIRGIN_SET_SELECTED = 1
+	NEXT
+	GOTO REPRINT
+ELSEIF RESULT == 911
+	FOR LOCAL, 0, CHARANUM-1
+	CFLAG:LOCAL:NAS_VIRGIN_SET_SELECTED = 0
+	NEXT
+	CFLAG:MASTER:NAS_VIRGIN_SET_SELECTED = 1
+	GOTO REPRINT
+ELSEIF RESULT == 912
+	FOR LOCAL, 0, CHARANUM-1
+	CFLAG:LOCAL:NAS_VIRGIN_SET_SELECTED = 1
+	NEXT
+	CFLAG:MASTER:NAS_VIRGIN_SET_SELECTED = 0
+	GOTO REPRINT
+ELSEIF RESULT == 900
+	LOADGLOBAL
+	FOR LOCAL,0,CHARANUM
+	NAS_VIRGIN_SET_GLOBAL_CHARA:LOCAL = CFLAG:RESULT:NAS_VIRGIN_SET_SELECTED
+	NEXT
+	PRINTFORMW 선택 사항을 전역적으로 저장했다.
+	GOTO REPRINT
+ELSEIF RESULT == 901
+	LOADGLOBAL
+	FOR LOCAL,0,CHARANUM
+	CFLAG:RESULT:NAS_VIRGIN_SET_SELECTED = NAS_VIRGIN_SET_GLOBAL_CHARA:LOCAL
+	NEXT
+	PRINTFORMW 선택 사항을 전역으로 불러왔다.
+	GOTO REPRINT
+ELSEIF RESULT == 997
+	FOR LOCAL, 0, CHARANUM-1
+	CFLAG:LOCAL:NAS_VIRGIN_SET_SELECTED = !CFLAG:LOCAL:NAS_VIRGIN_SET_SELECTED
+	NEXT
+	GOTO REPRINT
+ELSEIF RESULT == 998
+	FOR LOCAL, 0, CHARANUM-1
+	CFLAG:LOCAL:NAS_VIRGIN_SET_SELECTED = 0
+	NEXT
+	GOTO REPRINT
+ELSEIF RESULT == 999
+	PRINTW 포함 설정 완료.
+ENDIF
+;character count string
+
+@NAS_VIRGIN_CHARA_STR()
+#FUNCTIONS
+#DIM C_COUNT
+#DIM IN_COUNT
+#DIMS IN_STR, 2
+#DIMS OUT_STR
+VARSET IN_COUNT
+VARSET IN_STR
+VARSET OUT_STR
+FOR C_COUNT,0,CHARANUM
+SIF IS_MOB(C_COUNT)
+	CONTINUE
+IF CFLAG:C_COUNT:NAS_VIRGIN_SET_SELECTED
+	IN_COUNT ++
+	IN_STR += @"{C_COUNT+1}/"
+ELSE
+	IN_STR:1 += @"{C_COUNT+1}/"
+ENDIF
+NEXT
+SELECTCASE IN_COUNT
+	CASE IS >= CHARANUM-1
+		RETURNF "Everyone"
+	CASE IS >= CHARANUM-6
+		FOR LOCAL:1,0,5
+		LOCAL = TOINT(SPLIT_SINGLE(IN_STR:1, LOCAL:1, "/"))
+		SIF !LOCAL
+			BREAK
+		OUT_STR += @"%CALLNAME:(LOCAL-1)%、"
+		NEXT
+		RETURNF @"%LIST_IN_STRING(OUT_STR)%를 제외한 모두가"
+	CASE IS >= 5
+		RETURNF @"%CALLNAME:(TOINT(SPLIT_SINGLE(IN_STR, 0, "/"))-1)%과 다른 이들"
+	CASE 1 TO 4
+		FOR LOCAL:1,0,5
+		LOCAL = TOINT(SPLIT_SINGLE(IN_STR, LOCAL:1, "/"))
+		SIF !LOCAL
+			BREAK
+		OUT_STR += @"%CALLNAME:(LOCAL-1)%、"
+		NEXT
+		RETURNF @"%LIST_IN_STRING(OUT_STR)%"
+	CASE 0
+		RETURNF "No one"
+ENDSELECT

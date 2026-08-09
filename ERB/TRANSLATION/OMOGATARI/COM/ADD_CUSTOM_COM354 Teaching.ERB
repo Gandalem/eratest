@@ -1,0 +1,349 @@
+﻿; Modular ERB: OMOGATARI/COM/ADD_CUSTOM_COM354 Teaching.ERB
+
+@ADD_CUSTOM_COM354
+#DIM teachLineCount
+#DIM teachTeacher
+#DIM teachStudent
+#DIMS STATIC teachCategoryList = "Skills", "Youjutsu"
+#DIMS STATIC teachCategoryListLabel = "skills", "Youjutsu spells"
+#DIMS teachCategory
+#DIM teachEffectiveness
+#DIM teachEffectivenessMult
+#DIM teachEffectivenessPotential
+#DIM HasMenu
+#DIM PAGE
+#DIM teachHit
+#DIM teachLevelTeacher
+#DIM teachLevelStudent
+#DIM teachLessonTime = 15, 45, 120
+#DIM teachLessonStrength = 70, 100, 225
+#DIMS teachLessonLabel = "Gentle", "Normal", "Intense"
+#DIM DYNAMIC teachLessonPick = 1
+teachLineCount = LINECOUNT
+teachTeacher = TARGET
+teachStudent = MASTER
+PAGE = 0
+;no more time
+IF TCVAR:TARGET:TrainingTimeDone >= TrainingTimeCredits(TARGET) && MONEY:2 <= 0
+	PRINTFORML %조사처리(CALLNAME:TARGET,"는")%(는) 오늘 더 이상 훈련하고 싶지 않다.
+	PRINTFORMW 내일 다시 시도해라.
+	RETURN 0
+ENDIF
+REDRAW 0
+DO
+HasMenu = 0
+PRINTFORML 가르치기
+CALL COLOR_LINE
+PRINTFORML 선생님: %CALLNAME:teachTeacher%%COND_STR(" (You)", teachTeacher == MASTER)%
+PRINTFORML 학생: %CALLNAME:teachStudent%%COND_STR(" (You)", teachStudent == MASTER)%
+LOCALS:0 = 
+IF MONEY:2
+	LOCALS:0 = 그리고 %PALAM_NUM_NAS(MONEY:2,1)% 매력(추가 크레딧).
+ENDIF
+PRINTFORML 당신은 일일 훈련 크레딧 {TrainingTimeCredits(TARGET)-TCVAR:TARGET:TrainingTimeDone}를 보유하고 있습니다. %LOCALS:0%
+CALL COLOR_LINE
+SELECTCASE PAGE
+	CASE 0
+		;Skills
+		FOR LOCAL,0,VARSIZE("ABL")
+		SIF ABL_TO_EXP(LOCAL) == -1
+			CONTINUE
+		SELECTCASE LOCAL
+			CASE 46 TO 49
+				teachLevelTeacher = TALENT:teachTeacher:LOCAL
+				teachLevelStudent = TALENT:teachStudent:LOCAL
+			CASEELSE
+				teachLevelTeacher = ABL:teachTeacher:LOCAL
+				teachLevelStudent = ABL:teachStudent:LOCAL
+		ENDSELECT
+		SIF LEVEL_TO_RANK(teachLevelTeacher) < 3
+			CONTINUE
+		HasMenu = 1
+		;[ 0] - Fire
+		PRINTFORM [{LOCAL,2}] %ABL_TR(LOCAL), 15, LEFT% (
+		RESETCOLOR
+		PRINTFORM 「\@ teachStudent == MASTER ? 당신은 # %CALLNAME:teachStudent% 이다 \@」 
+		CALL PRINT_RANK(teachLevelStudent,"MAX_6")
+		PRINTFORM  {teachLevelStudent,2}
+		PRINT  | 
+		PRINTFORM \@ teachTeacher == MASTER ? 당신 # %CALLNAME:teachTeacher%가 \@ 
+		CALL PRINT_RANK(teachLevelTeacher,"MAX_6")
+		PRINTFORM  {teachLevelTeacher,2}
+		PRINTL )
+		NEXT
+		IF !HasMenu
+			PRINTFORML %PARSE("You do",,,teachTeacher)%가르치기에 충분한 어떤 기술도 알지 못한다.
+		ENDIF
+	CASE 1
+		;Youjutsu
+		FOR LOCAL, 0, 64
+		IF GETBIT(TALENT:teachTeacher:ESP, LOCAL) && STRLENS(EsperAbilitySTR(LOCAL))
+			SIF LEVEL_TO_RANK(YoujutsuLevel:teachTeacher:LOCAL) < 3
+				CONTINUE
+			SELECTCASE LOCAL
+				CASE 18
+					SIF !GETBIT(nPee,1) && !GETBIT(nScat,2)
+						CONTINUE
+				CASE 19
+					SIF !nHypno
+						CONTINUE
+				CASEELSE
+					SIF !EXISTFUNCTION(@"%TOUPPER("EsperMenuPage_")%{LOCAL}")
+						CONTINUE
+			ENDSELECT
+			HasMenu = 1
+			;[ 0] - Fire
+			TRYCALLFORMF NAS_ESP_{LOCAL}
+			PRINTFORM [{LOCAL,2}] %NAS_ESP_NAME, 15, LEFT% (
+			RESETCOLOR
+			PRINTFORM 「\@ teachStudent == MASTER ? 당신은 # %CALLNAME:teachStudent% 이다 \@」 
+			IF !GETBIT(TALENT:teachStudent:ESP,LOCAL)
+				PRINTFORM 배우지 않음
+			ELSE
+				CALL PRINT_RANK(YoujutsuLevel:teachStudent:LOCAL,"MAX_6")
+				PRINTFORM  {YoujutsuLevel:teachStudent:LOCAL,2}
+			ENDIF
+			PRINT  | 
+			PRINTFORM \@ teachTeacher == MASTER ? 당신 # %CALLNAME:teachTeacher%가 \@ 
+			IF !GETBIT(TALENT:teachTeacher:ESP,LOCAL)
+				PRINTFORM 배우지 않음
+			ELSE
+				CALL PRINT_RANK(YoujutsuLevel:teachTeacher:LOCAL,"MAX_6")
+				PRINTFORM  {YoujutsuLevel:teachTeacher:LOCAL,2}
+			ENDIF
+			PRINTL )
+		ENDIF
+		NEXT
+		IF !HasMenu
+			PRINTFORML %PARSE("You do",,,teachTeacher)%가르칠 만큼 유용한 주술을 하나도 알지 못한다.
+		ENDIF
+ENDSELECT
+CALL COLOR_LINE
+FOR LOCAL,0, VARSIZE("teachCategoryList")
+SIF PAGE == LOCAL
+	SETCOLOR 0x00FFFF
+PRINTBUTTON teachCategoryList:LOCAL, LOCAL + 8000
+RESETCOLOR
+PRINTFORM 　　
+NEXT
+PRINTL
+CALL COLOR_LINE
+PRINTFORML [-3] - 훈련 체계: %teachLessonLabel:teachLessonPick% ({teachLessonTime:teachLessonPick} 분)
+PRINTFORML [-2] - \@ teachTeacher == MASTER ? %CALLNAME:TARGET% # %조사처리(CALLNAME:MASTER,"로")% 전환한다 \@
+PRINTFORML [-1] - 뒤로가기
+INPUT
+teachHit = RESULT
+SELECTCASE teachHit
+	CASE -1
+		RETURN
+	CASE -2
+		IF teachStudent == MASTER
+			teachStudent = TARGET
+			teachTeacher = MASTER
+		ELSE
+			teachStudent = MASTER
+			teachTeacher = TARGET
+		ENDIF
+	CASE -3
+		PRINTFORML 훈련 체제를 선택한다.
+		PRINTFORML 당신은 {TrainingTimeCredits(TARGET)-TCVAR:TARGET:TrainingTimeDone} 개의 훈련 크레딧을 가지고 있다 (매일).
+		FOR LOCAL,0,VARSIZE("teachLessonLabel")
+		PRINTFORML [{LOCAL,2}] - %teachLessonLabel:LOCAL% ({teachLessonStrength:LOCAL}\% 효과성 {teachLessonTime:LOCAL} 최소
+		NEXT
+		PRINTL
+		PRINTFORML [-1] 뒤로가기
+		INPUT
+		SELECTCASE RESULT
+			CASE 0 TO VARSIZE("teachLessonLabel")
+				teachLessonPick = RESULT
+			CASEELSE
+				CONTINUE
+		ENDSELECT
+	CASE 0 TO VARSIZE("ABL")
+		SELECTCASE PAGE
+			CASE 0
+				SELECTCASE teachHit
+					CASE 46 TO 49
+						teachLevelTeacher = TALENT:teachTeacher:teachHit
+						teachLevelStudent = TALENT:teachStudent:teachHit
+					CASEELSE
+						teachLevelTeacher = ABL:teachTeacher:teachHit
+						teachLevelStudent = ABL:teachStudent:teachHit
+				ENDSELECT
+				IF LEVEL_TO_RANK(teachLevelTeacher) < 3
+					PRINTFORML 이 스킬은 %PARSE("you are",,,teachTeacher)%에 충분히 숙련되지 않았으므로 가르칠 수 없다
+					PRINTFORMW 해당 스킬에서 B 레벨 이상일 때 다시 시도해라.
+					CONTINUE
+				ENDIF
+			CASE 1
+				teachLevelTeacher = YoujutsuLevel:teachTeacher:teachHit
+				teachLevelStudent = YoujutsuLevel:teachStudent:teachHit
+				IF teachHit >= 64
+					PRINTFORMW 유효하지 않은 술법
+					CONTINUE
+				ELSEIF !STRLENS(EsperAbilitySTR(teachHit))
+					PRINTFORMW 유효하지 않은 육술
+					CONTINUE
+				ELSEIF !GETBIT(TALENT:teachTeacher:ESP, teachHit)
+					PRINTFORML 이 술법은 %PARSE("you do",,,teachTeacher)%가 모르기 때문에 가르칠 수 없다.
+					CONTINUE
+				ELSE
+					IF LEVEL_TO_RANK(YoujutsuLevel:teachTeacher:teachHit) < 3
+						PRINTFORML 이 요술은 그것에 대한 숙련도가 %PARSE("you are",,,teachTeacher)% 충분하지 않아 가르칠 수 없다.
+						PRINTFORMW B 등급 이상일 때 다시 시도해라.
+						CONTINUE
+					ENDIF
+				ENDIF
+		ENDSELECT
+		IF teachLessonTime:teachLessonPick > (TrainingTimeCredits(TARGET)+MONEY:2)-TCVAR:TARGET:TrainingTimeDone
+			PRINTFORML 이 체제에 필요한 훈련 크레딧이 부족하다.
+			PRINTFORMW 덜 강도 높은 훈련 체제를 선택하라.
+			CONTINUE
+		ENDIF
+		teachEffectivenessMult = 100
+		teachEffectivenessPotential = 1
+		SELECTCASE PAGE
+			CASE 0
+				teachEffectiveness = (LEVEL_TO_RANK(teachLevelTeacher)*150) + (LEVEL_TO_RANK(ABL:teachTeacher:41)*50) + (LEVEL_TO_RANK(ABL:teachTeacher:43)*50)
+				PRINTFORML 당신과 %CALLNAME:(teachTeacher == MASTER ? teachStudent # teachTeacher)%은/는 %ABL_TR(teachHit)% 기교를 가르치기 시작한다.
+			CASE 1
+				TRYCALLFORMF NAS_ESP_{teachHit}
+				teachEffectiveness = (LEVEL_TO_RANK(YoujutsuLevel:teachTeacher:teachHit)*150) + (LEVEL_TO_RANK(ABL:teachTeacher:41)*50) + (LEVEL_TO_RANK(ABL:teachTeacher:43)*50)
+				PRINTFORML 당신과 %CALLNAME:(teachTeacher == MASTER ? teachStudent # teachTeacher)%은(는) %NAS_ESP_NAME% 유술을 가르치기 시작한다.
+		ENDSELECT
+		teachEffectiveness = (teachEffectiveness*teachLessonStrength:teachLessonPick)/100
+		SELECTCASE TFLAG:192
+			;Normal
+			CASE 0
+				LOCAL = RAND:100
+				LOCAL:1 = MIN(90 + GET_SUCCESS_RATE() / 5, 99)
+				;相手が泥酔中だと大成功にも失敗にもならない
+				SIF TCVAR:泥酔
+					LOCAL = 50
+				PRINTFORML {LOCAL}
+				IF LOCAL < CriticalSpeakChance()
+					;7％で大成功
+					;NAS: determined by your speech skill
+					TFLAG:193 = 1
+					TFLAG:98 = 1
+					PRINTFORML 훈련은 매우 효과적이었다.
+					teachEffectivenessMult = 225
+					teachEffectivenessPotential = 2
+				ELSEIF LOCAL >= LOCAL:1
+					;10～1％で失敗
+					TFLAG:193 = -1
+					TFLAG:98 = -1
+					PRINTFORML 훈련이 그다지 잘되지 않았다.
+					teachEffectivenessMult = 60
+				ELSE
+					;残りは成功
+					TFLAG:193 = 0
+					TFLAG:98 = 0
+					PRINTFORML 훈련은 잘 진행되었다.
+				ENDIF
+				;Critical Success
+			CASE 1
+				IF RAND:100 <= 7
+					TFLAG:193 = 1
+					TFLAG:98 = 1
+					EXP:MASTER:会話経験 ++
+					PRINTFORML 훈련은 매우 효과적이었다.
+					teachEffectivenessMult = 225
+					teachEffectivenessPotential = 2
+				ELSE
+					TFLAG:193 = 0
+					TFLAG:98 = 0
+				ENDIF
+				;Critical Failure
+			CASE -1
+				TFLAG:193 = -1
+				TFLAG:98 = -1
+				PRINTFORML 훈련은 전혀 잘 되지 않았다.
+				;Canceled
+			CASE -2
+				TFLAG:193 = -1
+				RETURN 0
+				PRINTFORML TFLAG:192가 -2인 것을 확인했다.
+		ENDSELECT
+		SELECTCASE PAGE
+			CASE 0
+				VARSET LOCAL, -1
+				LOCAL = ABL_TO_EXP(teachHit)
+				LOCAL:1 = RESULT:1
+				LOCAL:2 = RESULT:2
+				FOR LOCAL:3, 0, 3
+				SIF LOCAL:(LOCAL:3) > -1
+					CALL AddEXP(EXPNAME:(LOCAL:(LOCAL:3)),teachStudent,(teachEffectiveness/50)*teachEffectivenessMult/100)
+				NEXT
+				FOR LOCAL:3, 0, 3
+				SIF LOCAL:(LOCAL:3) > -1
+					CALL EXPPotentialChangeMsg(teachStudent,LOCAL:(LOCAL:3),teachEffectivenessPotential)
+				NEXT
+			CASE 1
+				IF GETBIT(TALENT:teachTeacher:ESP, teachHit)
+					CALL AddYoujutsuEXP(teachStudent,teachHit,(teachEffectiveness/50)*teachEffectivenessMult/100)
+					CALL YoujutsuPotentialChangeMsg(teachStudent,teachHit,teachEffectivenessPotential)
+				ELSE
+					CALL YoujutsuLearningProgress(teachStudent,teachHit,teachEffectiveness*teachEffectivenessMult/100,"add","teacher")
+				ENDIF
+		ENDSELECT
+		TIME += teachLessonTime:teachLessonPick
+		IF TCVAR:TARGET:TrainingTimeDone+teachLessonTime:teachLessonPick > TrainingTimeCredits(TARGET)
+			LOCAL = (TCVAR:TARGET:TrainingTimeDone+teachLessonTime:teachLessonPick)-TrainingTimeCredits(TARGET)
+			TCVAR:TARGET:TrainingTimeDone = TrainingTimeCredits(TARGET)
+			CALL PAY_MONEY_CM(LOCAL, 2)
+		ELSE
+			TCVAR:TARGET:TrainingTimeDone += teachLessonTime:teachLessonPick
+		ENDIF
+		DOWNBASE:teachStudent:0 += 250
+		DOWNBASE:teachTeacher:0 += 250
+		DOWNBASE:teachStudent:1 += 350
+		DOWNBASE:teachTeacher:1 += 350
+		RETURN 1
+	CASE 8000 TO 8000+VARSIZE("teachCategoryList")
+		PAGE = RESULT-8000
+ENDSELECT
+LOOP 1
+
+@TrainingTimeCredits(ARG)
+#FUNCTION
+#DIM DYNAMIC pointsMax
+;15 minutes
+pointsMax = 15
+;tier 2
+IF TALENT:ARG:7
+	pointsMax = 240
+ELSEIF SignificantRelationship(ARG)
+	pointsMax = 120
+	;tier 1
+ELSEIF HasFallState(ARG)
+	pointsMax = 45
+ENDIF
+;Affinity.
+pointsMax += MAX(0,15*(RELATION:ARG:MASTER-100)/10)
+RETURNF pointsMax
+
+@ADD_CUSTOM_COM_PRINT354
+#DIM CONST COM_ID = 354
+IF TrainingTimeCredits(TARGET)-TCVAR:TARGET:TrainingTimeDone >=15
+	SETCOLOR C_GREEN
+	PRINTFORMC 가르치기 (TC {TrainingTimeCredits(TARGET)-TCVAR:TARGET:TrainingTimeDone})[{Add_Custom_COM_To_Number(COM_ID),3}]
+ELSEIF MONEY:2 >= 15
+	PRINTFORMC 가르치기 (CM %PALAM_NUM_NAS(MONEY:2,1)%)[{Add_Custom_COM_To_Number(COM_ID),3}]
+ELSE
+	SETCOLOR C_GRAY
+	PRINTFORMC 가르치기 이용 불가[{Add_Custom_COM_To_Number(COM_ID),3}]
+ENDIF
+RESETCOLOR
+RETURN 1
+
+@ADD_CUSTOM_COM_ABLE354
+SIF !TFLAG:100
+	RETURN 0
+SIF !SHIRAHU(TARGET)
+	RETURN 0
+SIF TARGET == MASTER
+	RETURN 0
+SIF CFLAG:MASTER:うふふ
+	RETURN 0
+RETURN 1

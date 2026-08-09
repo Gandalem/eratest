@@ -1,0 +1,828 @@
+﻿; Modular ERB: COMF/依頼/一般依頼15_あなたに抱かれたい.ERB
+;存否関数
+;F関数はTRYCALL系が使えないので通常関数で存否配列を作っちゃう
+
+@EXIST_一般依頼15
+#LOCALSIZE 1
+#LOCALSSIZE 1
+;オブジェクト本体
+;ここでARGで渡されるのはCLIENT_IDです
+
+@一般依頼15(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+SELECTCASE O_DATA
+	CASE "依頼名"
+		IF TALENT:ARG:SexKnow == -1
+			SELECTCASE RAND:2
+				CASE 0
+					CALLF MAKE_STR(V_NAME, "My heart is throbbing")
+				CASE 1
+					CALLF MAKE_STR(V_NAME, "My crotch feels funny")
+			ENDSELECT
+		ELSEIF TALENT:ARG:マゾ
+			SELECTCASE RAND:2
+				CASE 0
+					CALLF MAKE_STR(V_NAME, @"I want you to violate me")
+				CASE 1
+					CALLF MAKE_STR(V_NAME, @"I want you to mess me up")
+			ENDSELECT
+		ELSEIF TALENT:ARG:恋人 ;addition custom code
+			CALLF MAKE_STR(V_NAME, @"Let's make love")
+		ELSE
+			CALLF MAKE_STR(V_NAME, @"Have sex with me")
+		ENDIF
+	CASE "依頼内容表示"
+		IF TALENT:ARG:SexKnow == -1
+			CALLF MAKE_STR(V_NAME, "무언가를 한다")
+		ELSEIF TALENT:ARG:マゾ
+			CALLF MAKE_STR(V_NAME, "나를 마음껏 괴롭혀 봐")
+		ELSEIF TALENT:ARG:恋人 ;addition custom code
+			CALLF MAKE_STR(V_NAME, @"%CALLNAME:ARG%의 소원을 들어준다.")
+		ELSE
+			CALLF MAKE_STR(V_NAME, @"%CALLNAME:ARG%의 스트레스를 풀어준다")
+		ENDIF
+	CASE "依頼報酬表示"
+		IF TALENT:ARG:SexKnow == -1
+			CALLF MAKE_STR(V_NAME, "잔돈")
+		ELSEIF TALENT:ARG:恋人 ;addition custom code
+			CALLF MAKE_STR(V_NAME, "즐거운 시간")
+		ELSE
+			;性技術を売ると考えたら技巧*5000円とかのがいいのかも？
+			CALLF MAKE_STR(V_NAME, @"%金額表示(20000)% (호텔비 제외)")
+		ENDIF
+	CASE "依頼実行コマンド名"
+		IF TALENT:ARG:SexKnow == -1
+			CALLF MAKE_STR(V_NAME, "Help Out")
+		ELSEIF TALENT:ARG:マゾ
+			CALLF MAKE_STR(V_NAME, @"Violate %CALLNAME:ARG%")
+		ELSEIF TALENT:ARG:恋人 ;addition custom code
+			CALLF MAKE_STR(V_NAME, @"Have lovey-dovey sex with %CALLNAME:ARG%")
+		ELSE
+			CALLF MAKE_STR(V_NAME, @"Have Sex With %CALLNAME:ARG%")
+		ENDIF
+	CASE "依頼内容"
+		CALLF MAKE_INT(V_NAME, MAKE_IRAI_DATA(0, "作業"))
+	CASE "依頼サブ"
+	CASE "依頼期限"
+		;発生時ではなく受託時に確定します
+	CASE "依頼発生率"
+		;初期設定でヤリマン幻想郷にした場合は依頼発生頻度高すぎると阿鼻叫喚になりそうだからヤリマンの場合は確率低下
+		;かわりに溜まってる度に関わらず発生するようにしてバランスが取れるといいなぁ
+		IF TALENT:ARG:ヤリマン
+			CALLF MAKE_INT(V_NAME, 4)
+		ELSEIF TALENT:ARG:プライド == 1 || TALENT:ARG:羞恥心 == 1
+			;プライドが高かったり恥じらいを持ってるキャラは言い出しづらいだろうから確率低下
+			;CALLF MAKE_INT(V_NAME, 9)
+			CALLF MAKE_INT(V_NAME, 50)
+		ELSE
+			;それ以外は発生条件が厳しめなので基本の発生率はとりあえず高めに
+			;CALLF MAKE_INT(V_NAME, 15)
+			CALLF MAKE_INT(V_NAME, 70)
+		ENDIF
+	CASE "依頼発生条件"
+		;セフレor愛欲かつ溜まってる度500以上 or ヤリマン
+		;debug
+		;SIF TALENT:ARG:処女
+		;addition custom code, make it available for lovers and for girls in heat who don't mind dicking & futa/male PC and girls only (due to event text and mechanics, you're welcome to expand)
+		SIF HAS_PENIS(MASTER) && (CFLAG:TARGET:溜まってる度 > 500 || TALENT:ARG:ヤリマン)
+			CALLF MAKE_INT(V_NAME, 1)
+	CASE "依頼受託可能条件"
+		CALLF MAKE_INT(V_NAME, 1)
+	CASE "依頼実行可能条件"
+		CALLF MAKE_INT(V_NAME, 1)
+		;成功/失敗処理はCARRYOUTで直接書く
+		;SOURCEやITEM入手、消費が煩雑になるので
+	CASE "依頼消滅条件"
+		;依頼以外の要因で溜まってる度が解消された場合消えるべきなのかもしれないけど文法とかよくわかんないので雑にスルー
+		;addition custom code, erase for all characters who only qualified because of the pink wind (also check for current heat so first batch isn't immediately erased)
+		SIF (!TALENT:ARG:セフレ && !TALENT:ARG:愛欲 && !TALENT:ARG:ヤリマン && !TALENT:ARG:恋人 && !TCVAR:ARG:発情) || Add_Request_Should_Discard(ARG)
+			CALLF MAKE_INT(V_NAME, 1)
+	CASE "依頼人連れ出し可能"
+		CALLF MAKE_INT(V_NAME, 1)
+ENDSELECT
+
+@IRAI_一般15(CHARA, IRAI_ID, SCENE)
+#DIM  CHARA
+#DIM  IRAI_ID
+#DIMS SCENE
+#DIM  CLIENT_ID
+#DIM 場所
+#DIMS 日記記述
+;1=対象の自室 2=連れ込み宿・ラブホ 3=紫派生専用 4=その他 9=Player's room
+#DIM 好感度上昇量
+#DIM 回数
+#DIMS PLACE
+;Custom flag for if the player is lead instead
+#DIM DYNAMIC LEAD
+CLIENT_ID = IRAI_ID_TO_CLIENT(IRAI_ID)
+SELECTCASE SCENE
+	CASE "依頼条件表示"
+		;何か専用の表示情報を設けたい時用
+		;受託済みの依頼表示で使用されます
+		;
+		;PRINT系だけでSOURCEとかは入れちゃダメ、WAITも無しで
+		;ここ以外の表示項目は
+		;PRINTFORML 　　　　　：
+		;となっているのでスペースを揃えたほうが見栄えが良いです
+	CASE "依頼実行時"
+		;このCASEに限り、RESULTが意味を持ちます
+		;依頼実行時のRESULTにはIRAI_CONST_RESULT()を使用してください
+		;可能な引数は"キャンセル", "実行して成功", "実行して失敗", "実行して未解決"です
+		;独自処理を仕込みたい時は"実行して未解決"で先延ばしするなりしてください
+		;
+		;"依頼実行時"に限っていえば、CHARAはTARGETと同一であり、必ずしもCLIENT_IDと一致するとは限りません
+		;個々のケースで確認する必要があります
+		;この依頼は「作業」扱いであり、CLIENTがTARGETになっている時のみ実行できます
+		;
+		;
+		;以下デフォルト地の文
+		CALL SET_KOJO_COLOR(CLIENT_ID) ;custom code
+		;qol custom code, permit custom scenarios
+		RESULT:100 = 0
+		CALL KOJO_MESSAGE_SEND("IRAI", TARGET, IRAI_ID, 0, 0, "TARGET", "UNIQUE_SCENARIO_CHANCE")
+		IF RESULT:100 > RAND:100
+			CALL KOJO_MESSAGE_SEND("IRAI", TARGET, IRAI_ID, 0, 0, "TARGET", "UNIQUE_SCENARIO")
+			GOTO SEXEND
+		ENDIF
+		;first part is split into two instead of being a run-on sentence (1: you take her by the hand, 2: and lead her to ...)
+		;note - if text is updated anywhere in here, especially sex part - it's going to be fucked, so manual merging is required; the way sentences are built is completely changed (duh)
+		;even though we use pronouns in here, it's dumb because this is clearly meant for male PC and female client
+		IF TALENT:CLIENT_ID:SexKnow == -1
+			PRINTFORMDL 당신이 %SPLIT_G("lead:take")% %CALLNAME:CLIENT_ID% 손으로, \@ IS_MALE(CLIENT_ID) ? 소년 # 소녀 \@은(는) 왜 그런지 제대로 이해하지 못한 채 %HIM_HER(CLIENT_ID)%자신이 숨을 헐떡이는 것을 발견했다.
+		ELSEIF TALENT:CLIENT_ID:羞恥心 == 1
+			PRINTFORMDL 당신은 손으로, %SPLIT_G("lead:take")%과 %CALLNAME:CLIENT_ID%를 하며, %HIS_HER(CLIENT_ID)% 홍조가 얼굴에 번졌다.
+			;紫の場合は以下の派生に繋げるために紫主導限定で
+		ELSEIF RAND:2 == 0 || CLIENT_ID == 26
+			;Custom code
+			LEAD = 1
+			PRINTFORMDL %CALLNAME:CLIENT_ID%은(는) 욕망 어린 의도로 미소 지으며 %SPLIT_G("leads:takes")% 당신의 손을 잡았다.
+		ELSE
+			PRINTFORMDL 너는 %TEXTR(@"lead %CALLNAME:CLIENT_ID% by the hand/put your hand around %CALLNAME:CLIENT_ID%'s hips")%로서 %HE_SHE(CLIENT_ID)%가 당신에게 %HIS_HER(CLIENT_ID)%의 몸을 비비고 있는 것을 보았다.
+		ENDIF
+		;場所分岐
+		;そのキャラの自室があるMAPの場合33%で自室に連れ込む
+		IF GET_MAPID(CFLAG:MASTER:現在位置) == GET_MAPID(GET_CHARAHOME(CLIENT_ID)) && RAND:3 == 0
+			PRINTFORMDW 두 분은 매춘의 목적으로 %CALLNAME:CLIENT_ID%의 방으로 들어간다.
+			CALL 一般依頼15_PRIDECHECK(CLIENT_ID) ;custom code
+			場所 = 1
+		ELSEIF CFLAG:MASTER:現在位置 == GET_CHARAHOME(MASTER) && RAND:3 == 0 ;custom code
+			PRINTFORMDW 당신들 둘은 자기 방의 사적인 공간에서 곧바로 행동에 돌입한다.
+			CALL 一般依頼15_PRIDECHECK(CLIENT_ID)
+			場所 = 9
+			;紫限定。自室以外は場所問わずこうなる
+			;custom code, moved to KOJO
+		ELSE
+			SELECTCASE GET_MAPID(CFLAG:MASTER:現在位置)
+				;神社
+				CASE 0
+					;ちゆり限定
+					IF CLIENT_ID == [[ちゆり]] && RAND:2 == 0
+						PRINTFORMW \@ LEAD ? 당신은 안내된다 # 당신은 %HIM_HER(CLIENT_ID)%을(를) \@ 유적의 두 번째 데이터룸으로 데려가고, 뒤쪽의 에어록을 잠근다.
+						PLACE = the far end of shelves filled with a huge amount of materials
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE)
+						;夢美限定
+					ELSEIF CLIENT_ID == [[夢美]] && RAND:2 == 0
+						PRINTFORMW \@ LEAD ? 당신은 안내된다 # 당신은 %HIM_HER(CLIENT_ID)%을(를) \@ 폐허의 첫 번째 데이터 룸으로 데려가고, 뒤에서 에어록을 잠근다.
+						PLACE = the far end of shelves filled with a huge amount of materials
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE)
+					ELSE
+						PRINTFORMDW \@ LEAD ? 당신은 이끌린다 # 당신이 %HIM_HER(CLIENT_ID)% \@를 %TEXTR("상점 뒤쪽/부속 건물 뒤편/화장실/가까운 덤불/근처의 숲")%로 데려간다_.
+						CALL 一般依頼15_PRIDECHECK(CLIENT_ID) ;custom code after this, replaced pride line with a function, and the following function is also streamlined
+						PLACE = behind the corner of a sacred shrine
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE)
+					ENDIF
+					場所 = 4
+					;寺
+				CASE 1
+					PRINTFORMDW \@ LEAD ? 너는 안내받는다 # 너는 %HIM_HER(CLIENT_ID)% \@을 %TEXTR("경전 도서관/본당 뒤쪽/강당 뒤쪽/화장실/근처의 울창한 덤불/근처의 숲")%로 데려간다.
+					CALL 一般依頼15_PRIDECHECK(CLIENT_ID) ;custom code
+					PLACE = behind the corner of a serene Myouren Temple
+					CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE)
+					場所 = 4
+					;人里
+				CASE 2
+					;小鈴限定で50%で鈴奈庵の本棚の陰で。こういうの好き
+					IF CLIENT_ID == [[小鈴]] && RAND:2 == 0
+						PRINTFORMDW \@ LEAD ? 당신은 안내된다 # 당신이 책장 뒤에 숨으면서 %HIM_HER(CLIENT_ID)%를 스즈나안 깊숙한 곳으로 데려간다 \@.
+						PLACE = the back of the Village's book rental with a "Temporarily Closed" sign on the counter
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE)
+						場所 = 4
+						;人里限定で50%で連れ込み宿でしっぽりする。ホ別だからあなたの懐は痛まない
+					ELSEIF RAND:2 == 0
+						PRINTFORMDW \@ LEAD ? 당신은 안내된다 # 당신은 %HIM_HER(CLIENT_ID)%을(를) 연모 호텔로 데려간다 \@.
+						場所 = 2
+					ELSE
+						PRINTFORMDW \@ LEAD ? 당신은 안내된다 # 당신은 %HIM_HER(CLIENT_ID)%을 데려간다 \@ %TEXTR("집 뒤쪽으로/골목 안으로/사찰 학교 옆 그늘로")%.
+						CALL 一般依頼15_PRIDECHECK(CLIENT_ID) ;custom code
+						PLACE = are promptly lost in the hustle and bustle of the busy Village
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE, SPLIT_G("coming out:that can be heard:echoing through"))
+						場所 = 4
+					ENDIF
+					;紅魔館
+				CASE 3
+					;パチュリーと小悪魔は50%で図書館の本棚の陰で。
+					IF (CLIENT_ID == [[パチュリー]] && RAND:2 == 0) || (CLIENT_ID == 59 && RAND:2 == 0)
+						PRINTFORMDW \@ LEAD ? 당신은 안내된다 # 당신이 책장 뒤에 숨으면서 %HIM_HER(CLIENT_ID)%을 도서관 더 깊숙한 곳으로 데려간다. \@
+						PLACE = between the bookshelves of a dimly lit library
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE)
+						;咲夜限定。紅魔館に蒸留室(スティルルーム)とかあんのかね…？
+					ELSEIF CLIENT_ID == [[咲夜]] && RAND:2 == 0
+						PRINTFORMDW 사용하지 않던 접견실 중 한 곳에 도착해 문을 '딸깍' 소리를 내며 잠갔다.
+						PLACE = behind the locked reception room door
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE)
+					ELSEIF RAND:3 >= 1
+						PRINTFORMDW \@ LEAD ? 너는 안내된다 # 너는 %HIM_HER(CLIENT_ID)%을(를) 데리고 간다 \@ %TEXTR("복도 안의 커튼 뒤로/커다란 계단 뒤로/창고의 어둠 속으로/화장실로/지하로")%.
+						CALL 一般依頼15_PRIDECHECK(CLIENT_ID) ;custom code
+						PLACE = the halls of the Vampire Castle
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE, "are echoing through")
+					ELSE
+						PRINTFORMDW \@ LEAD ? 당신은 안내된다 # 당신이 %HIM_HER(CLIENT_ID)%을 데려간다 \@ %TEXTR("안개 낀 호숫가 쪽으로/안개 낀 호숫가 옆의 작은 덤불로")%.
+						CALL 一般依頼15_PRIDECHECK(CLIENT_ID) ;custom code
+						PLACE = the foggy dim lakeside
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE)
+					ENDIF
+					場所 = 4
+					;竹林
+				CASE 4
+					;夏季限定幽香派生(自室派生込みで条件かなりきついので発生は100%)
+					IF CLIENT_ID == [[幽香]] && DAY:2 == 2
+						PRINTFORMDW 두 사람은 영원히 빛나는 해바라기들 사이에서 부드럽게 아래로 밀려나며 태양의 정원에 도착한다.
+						CALL 一般依頼15_PRIDECHECK(CLIENT_ID) ;custom code
+						PLACE = among tall sunflowers as dazzling as the shining sun
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE)
+						;ミスティア限定
+					ELSEIF CLIENT_ID == [[ミスティア]] && RAND:2 == 0
+						PRINTFORMDW \@ LEAD ? 당신은 이끌린다 # 당신은 준비 중인 가운데 있는 %HIM_HER(CLIENT_ID)% \@ 음식 가판대 뒤에 %HIS_HER(CLIENT_ID)%를 데려온다.
+						PLACE = behind the food stall where the preparations for today are still in progress
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE)
+						;うどんげ限定
+					ELSEIF CLIENT_ID == [[鈴仙]] && RAND:2 == 0
+						PRINTFORMW 당신은 약방에 도착해 딸깍 소리를 내며 문을 잠갔다.
+						PLACE = the locked door with a quickly slapped-up note that reads, "Mixing Medicine!"
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE, SPLIT_G("can be heard behind:escape through"))
+						;えーりん限定
+					ELSEIF CLIENT_ID == [[永琳]] && RAND:2 == 0
+						PRINTFORMW 당신은 조사실에 도착하여 '딸깍' 소리를 내며 문을 잠근다.
+						PLACE = the locked waiting room door with a "Temporarily Closed" sign posted on it
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE, SPLIT_G("can be heard behind:escape through"))
+					ELSEIF RAND:3 >= 1
+						PRINTFORMDW \@ LEAD ? 너는 안내받는다 # 너는 %HIM_HER(CLIENT_ID)%를 데려간다 \@ %TEXTR("손님용 화장실로/창고 뒤쪽으로/에이에니의 지하실로")%.
+						CALL 一般依頼15_PRIDECHECK(CLIENT_ID) ;custom code
+						PLACE = the halls of Eientei
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE, "are echoing through")
+					ELSE
+						PRINTFORMDW \@ LEAD ? 당신은 이끌린다 # 당신이 %HIM_HER(CLIENT_ID)%을 대나무 숲 깊숙이 데려간다. \@
+						CALL 一般依頼15_PRIDECHECK(CLIENT_ID) ;custom code
+						PLACE = the restlessly rustling depths of Bamboo Forest of the Lost
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE, "are muffled by")
+					ENDIF
+					場所 = 4
+					;魔法の森 派生できそうなとこが思ったより少ないから加筆できそうならじゃんじゃん欲しい
+				CASE 5
+					;アリス限定
+					IF CLIENT_ID == [[アリス]] && RAND:2 == 0
+						PRINTFORMDW 당신은 %HIS_HER(CLIENT_ID)%의 실험실에 도착하여 '딸깍' 소리를 내며 문을 잠갔다.
+						PLACE = a place that was supposed to be sacred to %CALLNAME:(CLIENT_ID)%, used for %HIS_HER(CLIENT_ID)% daily research
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE)
+						;魔理沙限定
+					ELSEIF CLIENT_ID == [[魔理沙]] && RAND:2 == 0
+						PRINTFORMW 당신은 %HIS_HER(CLIENT_ID)%의 연구실에 도착하여 '딸깍' 소리와 함께 문을 잠근다.
+						PLACE = the room cluttered with all the items and materials %CALLNAME:(CLIENT_ID)% had collected
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE)
+					ELSE
+						PRINTFORMDW \@ LEAD ? 너는 이끌린다 # 너는 %HIM_HER(CLIENT_ID)%을 데려간다. \@ %TEXTR("into a thicket next to the Big Old Tree/to the back of Kourindou/deep into a bamboo grove")%.
+						CALL 一般依頼15_PRIDECHECK(CLIENT_ID) ;custom code
+						PLACE = the rustle of Forest of Magic
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE, "are muffled by")
+					ENDIF
+					場所 = 4
+					;冥界 白玉楼マヨヒガ是非曲直庁畜生界と大型拠点が多すぎて派生場所を下手に設定できない…
+					;他人のおうちテリトリーにわざわざ入り込んでスるのはなんか違う…(例 えーき様があなたを八雲邸につれこんでしっぽり)
+					;ということで加筆できるなら超欲しいやつ
+					;派生先があんまりなんでキャラ用の分岐増やして確率100%にしてどうにかごまかすやつ。
+				CASE 6
+					;えーきさま限定。法壇は裁判官(裁判長)が座るとこ。法廷正面のちょっと高くなってるアレ。インモラル裁判長…
+					IF CLIENT_ID == [[映姫]]
+						PRINTFORMDW 법정 안이 비고 문이 잠기자, 두 사람은 친밀해지기 시작하며 판사의 책상 뒤로 이동했다.
+						PRINTFORMDW %BREAKENG(@"비록 %CALLNAME:CLIENT_ID%이 %HIS_HER(CLIENT_ID)%의 M절정여운을 숨기려 엄한 눈빛으로 계속 잔소리를 하고 꾸짖지만, 그것은 훨씬 더 거칠고 얕은 숨결과 상기된 뺨들을 감추지 못한다...")%
+						PLACE = the sacred courtroom where sinners are judged
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE)
+						場所 = 4
+						;小町限定
+					ELSEIF CLIENT_ID == [[小町]]
+						PRINTFORMDW 두 사람은 만개한 붉은 거미꽃들 사이에서 부드럽게 밀려 들어가는 덤불에 도착했다.
+						PLACE = in the midst of the intoxicatingly fragrant red spider lilies
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE, SPLIT_G("coming out:that can be heard:echoing"))
+						場所 = 4
+						;妖夢、幽々子限定
+					ELSEIF GROUPMATCH(CLIENT_ID, [[妖夢]], [[幽々子]])
+						PRINTFORMDW \@ LEAD ? 당신은(는) 백옥루 내의 비어있는 %TEXTR("손님방/거실/부엌/화장실/")%로 이끌리거나 # 친밀해지기 시작하면서 %HIM_HER(CLIENT_ID)%을(를) 데려온다 \@.
+						PLACE = the room in the most magnificent mansion in the Netherworld
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE)
+						場所 = 4
+						;八雲家限定
+					ELSEIF GROUPMATCH(CLIENT_ID, [[橙]], [[藍]], [[紫]])
+						PRINTFORMDW \@ LEAD ? 당신은 이끌린다 # 당신은 마요히가 내 비어있는 %TEXTR("guest room/living room/kitchen/toilet/")%에서 친밀해지기 시작하면서 %HIM_HER(CLIENT_ID)%을(를) 데려간다. \@
+						PLACE = the room in Mayohiga which is said to bring good fortune to a lost traveler
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE)
+						場所 = 4
+						;畜生界住み限定…と思ったんだけど正直畜生界の設定とかよくわかってないのでここだけ全員自室行き。だれか書いて(切実)
+					ELSEIF GROUPMATCH(CLIENT_ID, [[八千慧]], [[早鬼]], [[尤魔]]) ;custom code, added Yuuma, separated animal hell's bosses
+						PRINTFORMDW 당신들 둘은 %CALLNAME:CLIENT_ID%의 파벌 본부에 도착하여 문을 걸어 잠그고 은밀한 시간을 갖기 시작한다.
+						PLACE = the penthouse of the Animal Realm's big shot, startling the underlings
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE)
+						場所 = 4
+					ELSEIF GROUPMATCH(CLIENT_ID, [[磨弓]], [[袿姫]]) ;custom code, separated Keiki
+						PRINTFORMDW 두 분은 매춘의 목적으로 %CALLNAME:CLIENT_ID%의 방으로 들어간다.
+						場所 = 1
+						;その他 あまりにも適当
+					ELSE
+						PRINTFORMDW \@ LEAD ? 너는 안내된다 # 당신은 가져온다 %HIM_HER(CLIENT_ID)% \@에서 %TEXTR("a nearby thicket/the woods nearby")%로 이동한다.
+						CALL 一般依頼15_PRIDECHECK(CLIENT_ID) ;custom code
+						PLACE = a quiet corner of the Netherworld without a single soul in sight
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE)
+						場所 = 4
+					ENDIF
+					;妖怪の山 山麓 景観ががっつり山というか山道だからどうにも派生先が…
+				CASE 7
+					;にとり限定
+					IF CLIENT_ID == [[にとり]] && RAND:2 == 0
+						PRINTFORMDW 두 사람은 카파의 은신처 안쪽 개인실에 도착하며 친밀해지기 시작한다.
+						PLACE = amidst the clamor of hard-working Kappa
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE, SPLIT_G("coming out:that can be heard:echoing"))
+						;場所 = 4
+					ELSE
+						PRINTFORMDW \@ LEAD ? 당신은 이끌린다 # 당신이 가져온다 %HIM_HER(CLIENT_ID)% \@ %TEXTR("by the Giant Toad's Pond/into bushes by the ravine/into bushes by the bathing spot/to a nearby thicket/to the woods nearby")%.
+						CALL 一般依頼15_PRIDECHECK(CLIENT_ID) ;custom code
+						PLACE = the rustle of mountain trees
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE, "are muffled by")
+						;場所 = 4
+					ENDIF
+					場所 = 4
+					;妖怪の山 山頂
+				CASE 8
+					;天子、衣玖限定
+					IF (CLIENT_ID == [[天子]] && RAND:2 == 0) || (CLIENT_ID == [[衣玖]] && RAND:2 == 0)
+						PRINTFORMDW \@ LEAD ? 당신은 이끌리거나 # 당신이 %HIM_HER(CLIENT_ID)% \@ %TEXTR("빈 복숭아 과수원의 그늘로/버려진 바바그라 거리의 뒷골목으로/")% 데려가며 친밀해지기 시작한다.
+						CALL 一般依頼15_PRIDECHECK(CLIENT_ID) ;custom code
+						PLACE = the languid realm of heaven, which doesn't usually see much exciting action like this
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE, "can be heard echoing through")
+						;場所 = 4
+						;もりやさんち限定
+					ELSEIF (CLIENT_ID == [[早苗]] && RAND:2 == 0) || (CLIENT_ID == [[神奈子]] && RAND:2 == 0) || (CLIENT_ID == [[諏訪子]] && RAND:2 == 0)
+						PRINTFORMDW \@ LEAD ? 안내받는다 # 주변에 아무도 없는 것을 확인한 후, %HIM_HER(CLIENT_ID)%을(를) %TEXTR("본전의 거실/본전의 화장실/")%로 데려가 친밀해지기 시작한다 \@.
+						PLACE = one of the rooms in the shrine where the gods literally reside
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE)
+						;場所 = 4
+					ELSE
+						PRINTFORMDW \@ LEAD ? 당신은 안내된다 # 당신이 가져온다 %HIM_HER(CLIENT_ID)% \@ %TEXTR("behind the Waterfall of Nine Heavens/behind the rocks by the lakeside of Mountain Lake/into bushes by the cableway station/to a nearby thicket/to the woods nearby")%.
+						CALL 一般依頼15_PRIDECHECK(CLIENT_ID) ;custom code
+						PLACE = the rustle of mountaintop trees
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE, "are muffled by")
+						;場所 = 4
+					ENDIF
+					場所 = 4
+					;地底
+				CASE 9
+					;パルスィ限定 限定にしないと嫉妬がヤバい
+					;手が滑って川の土手の下の前に「滅多に人が来ない」って入れそうになったよね…
+					IF CLIENT_ID == [[パルスィ]] && RAND:2 == 0
+						PRINTFORMDW \@ LEAD ? 당신은 이끌린다 # 당신이 %HIM_HER(CLIENT_ID)% \@을 버려진 지역 %TEXTR("다리 아래/강둑으로/")%로 데려가며 친밀해지기 시작한다.
+						PRINTFORMDW %BREAKENG(@"약간 어색함을 느끼는 듯이 %CALLNAME:CLIENT_ID% 계속 투덜거린다 \”질투하고 있는\” 그리고 평소처럼 질투하는 것에 대해 계속 투덜거리지만 더 뜨겁고 얕은 숨과 상기된 뺨을 가리지는 못한다...")%
+						PLACE = in the vicinity of the bridge that %CALLNAME:CLIENT_ID% was supposed to be protecting
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE)
+						場所 = 4
+						;さとり限定
+					ELSEIF CLIENT_ID == [[さとり]]
+						PRINTFORMDW 당신은 %HIS_HER(CLIENT_ID)%의 연구실에 도착하여 조용히 문을 잠갔다.
+						PLACE = %CALLNAME:CLIENT_ID%'s work desk, where %HE_SHE(CLIENT_ID)% performs %HIS_HER(CLIENT_ID)% daily duties
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE, "are echoing around")
+						場所 = 4
+						;こいし限定も作りたかった(過去形)だれかつくって
+						;ELSEIF CLIENT_ID == 38
+					ELSEIF CLIENT_ID == [[勇儀]] && RAND:2 == 0 ;custom code, added yuugi
+						PRINTFORMDW 너희 둘은 오니가 운영하는 여관에서 친밀해지기 시작하면서 유우기의 개인실에 쓰러진다.
+						PLACE = the room with the "occupied" sign amidst the drunken heckling of the Oni
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE)
+						場所 = 4
+						;地底にもラブホあったから50%でしっぽりする。ホ別だからあなたの懐は痛まない
+					ELSEIF RAND:2 == 0
+						PRINTFORMDW \@ LEAD ? 당신은 안내된다 # 당신은 %HIM_HER(CLIENT_ID)%을/를 언더그라운드의 연모 호텔로 데려온다. \@
+						場所 = 2
+					ELSE
+						PRINTFORMDW \@ LEAD ? 당신은 안내된다 # 당신은 %HIM_HER(CLIENT_ID)%을(를) 데려간다 \@ %TEXTR("오래된 지옥의 번화한 거리 뒷골목으로/오래된 지옥 외곽의 빈집 중 한 곳으로/지하 온천 근처의 그늘로/아무 데나 버려진 허름한 오두막으로/")%.
+						CALL 一般依頼15_PRIDECHECK(CLIENT_ID) ;custom code
+						PLACE = are promptly lost in the hustle and bustle of the youkai residents of the Underground
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE, SPLIT_G("coming out:that can be heard:echoing through"))
+						場所 = 4
+					ENDIF
+					;月 設備とかわかんねぇ！ので！適当！
+				CASE 10
+					IF CLIENT_ID == [[ドレミー]] ;custom code, added doremy
+						PRINTFORMDW 당신은 꿈이 이루어지는 드림 월드로 이동한다.
+						CALL 一般依頼15_PRIDECHECK(CLIENT_ID) ;custom code
+						PLACE = the vast space of the Dream World, blurring the line between fantasy and reality
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE, "are echoing around")
+						;場所 = 4
+					ELSEIF RAND:3 >= 1
+						PRINTFORMDW 「\@ LEAD ? 당신은 안내된다 # 당신은 %HIM_HER(CLIENT_ID)%을/%TEXTR("Lunar Capital의 뒷골목/달토끼 지구의 뒷골목/복숭아밭의 그늘")%/로 데려간다.」 \@
+						CALL 一般依頼15_PRIDECHECK(CLIENT_ID) ;custom code
+						PLACE = the surface of the moon, which was supposed to be a land of absolute purity
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE, "are echoing through")
+						;場所 = 4
+					ELSE
+						PRINTFORMDW \@ LEAD ? 당신은 이끌린다 # 당신이 %HIM_HER(CLIENT_ID)%을/를 달의 수도의 버려진 골목으로 데려간다. \@
+						CALL 一般依頼15_PRIDECHECK(CLIENT_ID) ;custom code
+						PLACE = the Lunar Capital, which was supposed to be a land of absolute purity
+						CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE, "are echoing through")
+						;場所 = 4
+					ENDIF
+					場所 = 4
+			ENDSELECT
+		ENDIF
+		PRINTFORML 
+		IF 場所 == 1 || 場所 == 2 || 場所 == 9 ;at client's house or love hotel or player's room (custom)
+			;各キャラの自室／人里内
+			IF 場所 == 1 ;house
+				PRINTFORMDW %BREAKENG(@"As soon as %CALLNAME:CLIENT_ID% pulls you into %HIS_HER(CLIENT_ID)% room, %HE_SHE(CLIENT_ID)% wraps %HIS_HER(CLIENT_ID)% arms around your neck and begs for a kiss, %SPLIT_G("impatiently awaiting your attention:seemingly anxious to get started")%.")%
+			ELSE
+				PRINTFORMDW %BREAKENG(@"As soon as %CALLNAME:CLIENT_ID% is done locking the door, %HE_SHE(CLIENT_ID)% wraps %HIS_HER(CLIENT_ID)% arms around your neck and begs for a kiss, %SPLIT_G("당신의 관심을 초조하게 기다리는 듯하다:빨리 시작하고 싶어 하는 것 같다")%.")%
+			ENDIF
+			LOCALS =
+			SIF TALENT:CLIENT_ID:キス未経験
+				LOCALS = %" "%right on her lips that have yet to touch anyone else's
+			PRINTFORMDL %BREAKENG(@"당신은 %HE_SHE(CLIENT_ID)% 바라던 대로 %HIM_HER(CLIENT_ID)% 깊이 %LOCALS% 키스하며 응답했고, %HIM_HER(CLIENT_ID)%은 욕망과 기쁨으로 몸을 떨게 했다.")%
+			CALL HPH_PRINT(@"당신에게 녹아내리며, %HE_SHE(CLIENT_ID)%는... HPH를 문지르고 비빈다... HPH %HIS_HER(CLIENT_ID)%의 가랑이를 당신의 %TINKO(MASTER)%에 비빈다.","DW")
+			;moved moans below
+			IF 場所 == 1
+				LOCALS = %CALLNAME:CLIENT_ID%'s room
+			ELSEIF 場所 == 9 ;custom code
+				LOCALS = your room
+			ELSEIF 場所 == 2 && GET_MAPID(CFLAG:MASTER:現在位置) == 2
+				LOCALS = one of the no-tell motel rooms, drowned out by the hustle and bustle of the busy Village
+			ELSE
+				;IF 場所 == 2 && GET_MAPID(CFLAG:MASTER:現在位置) == 9
+				LOCALS = a very dim, literally "underground" love hotel room
+			ENDIF
+			CALL 一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, LOCALS, , , 1) ;custom code, repeated
+			SIF TALENT:CLIENT_ID:無知
+				PRINTFORMDW %BREAKENG(@"%HE_SHE(CLIENT_ID)%이(가) 아직 그것을 %HIS_HER(CLIENT_ID)%의 정신으로 완전히 이해하지 못하더라도, 당신의 능숙한 조작은 이미 %CALLNAME:CLIENT_ID%의 여성적 본능을 깨웠고, 성인적인 쾌락으로 %HIS_HER(CLIENT_ID)%의 몸을 완전히 매혹시키고 있다.")%
+			PRINTFORML
+			SELECTCASE RAND:5
+				CASE 0
+					CALL COLORMESSAGE("도발 시나리오",C_YELLOW,1) ;custom code - added a little intro
+					PRINTFORML
+					PRINTFORM 당신은 %CALLNAME:CLIENT_ID%을 놀리고 장난치며, 골반과 관능적인 애무를 유혹적으로 사용해 그녀를 거의 절벽 끝에 몰아넣는다.<br>
+					PRINTFORM  <br>
+					PRINTFORM 클라이맥스 직전에 번번이 좌절된 후, %CALLNAME:CLIENT_ID%은 마침내 평정을 잃고 당신에게 여기서 바로 그녀의 몸 안에 사정하라고 직접 요구한다.<br>
+					PRINTFORM 그녀의 간절한 욕정에 감동하여, 당신은 이전에 착용했던 콘돔을 벗어버리고 보호받지 않은 자신의 남성성을 그녀의 따뜻한 깊숙한 곳에 다시 넣는다.<br>
+					PRINTFORM 당신이 기다리는 자궁 입구에 귀두가 단단히 눌리는 것을 느끼자, 끊임없이 몰아붙인 놀림으로 인해 그녀의 자궁 경부가 이 지점까지 내려간 것이다.<br>
+					PRINTFORM 더 이상 그녀의 인내심을 시험하지 않기로 결정한 당신은 즉시 정액을 내보내며, 성기에서 많은 양의 아기 배합액이 강하게 분출되어 그녀가 그것으로 질식하게 만든다.
+				CASE 1
+					CALL COLORMESSAGE("연꽃 자세 시나리오",C_YELLOW,1) ;custom code - added a little intro
+					PRINTFORML
+					PRINTFORMDW %CALLNAME:CLIENT_ID%의 요청에 따라, 당신은 그녀가 얼굴을 마주하고 당신의 무릎 위에 앉도록 하면서 육체적인 결합을 나눈다.
+					PRINTFORML 
+					CALL HPH_PRINT(@"「음... %CALLNAME:MASTER%... 당신을 연모해요... HPH 정말 많이 연모해요...! HPH」","L")
+					PRINTFORM 분위기를 돋우기 위해서든 \@ TALENT:恋慕 ? 그녀가 진심으로 의미하는 것이든 # 당신을 기분 좋게 해주기 위함이든 \@, 격렬하게 밀어붙이는 와중에 귀 가까이에서 들려오는 그녀의 뜨거운 속삭임을 들을 때마다, 그녀의 단단한 pussy 안쪽에서 다이아몬드보다 더 딱딱해지는 자신을 느낀다.<br>
+					PRINTFORM  <br>
+					PRINTFORM 둘 다 한계에 다다르고 움직임이 점점 더 열적으로 변하자, %CALLNAME:CLIENT_ID%는 그저 웅얼거리고 신음할 수밖에 없게 되었다.<br>
+					PRINTFORM 그래서 예전처럼 달콤한 말을 속삭이는 대신, 그녀는 즉각적인 사정을 유발하는 광란의 움켜쥠으로 당신에게 쾌감을 선사한다.
+				CASE 2
+					CALL COLORMESSAGE("옷을 입고 안는 시나리오",C_YELLOW,1) ;custom code - added a little intro
+					PRINTFORML
+					PRINTFORM 방에 들어온 이후로 계속 서로의 품에 안겨 있었고, 온몸이 땀으로 흠뻑 젖어 있었다.<br>
+					PRINTFORM  <br>
+					PRINTFORM 옷을 벗기 위해 단 한순간도 떨어지기를 거부하자, %CALLNAME:CLIENT_ID%의 옷들이 당신에게 달라붙으며 두 사람 사이의 연결고리처럼 그녀의 땀과 체액으로 완전히 흠뻑 젖었다.<br>
+					PRINTFORM  <br>
+					PRINTFORM 그녀의 축축한 안에서 지치지 않고 계속 움직이자, 당신은 옷이 너무 더러워 돌아가는 길에 문제가 생길지도 모른다고 중얼거렸다.<br>
+					PRINTFORM %CALLNAME:CLIENT_ID%는 얼굴을 홍조로 물었지만, 마치 당신을 절대 놓아줄 생각이 없는 듯 오직 %SPLIT_G("tightens her embrace:holds you tighter")%뿐이었다.
+				CASE 3
+					CALL COLORMESSAGE("카우걸 시나리오",C_YELLOW,1) ;custom code - added a little intro
+					PRINTFORML
+					PRINTFORM 머리카락이 헝클어진 채, %CALLNAME:CLIENT_ID%은 당신 위에서 격렬하게 골반을 흔든다.<br>
+					PRINTFORM  <br>
+					PRINTFORM %CALLNAME:CLIENT_ID%이 골반을 비비고 %PLEASURE(TARGET, @"indulge:pleasure", "ing")%에 몰두하는 동안, 당신은 그녀의 민감한 %SPLIT_G("nipples:clit")%를 움켜쥐며 허를 찌른다.<br>
+					PRINTFORM 그것은 그녀로 하여금 온몸을 떨게 하고 숨 막히는 신음과 함께 절정에 이르게 하며, 거의 큰 고통 속에 있는 것처럼 들리게 한다.<br>
+					PRINTFORM  <br>
+					PRINTFORM 두 사람은 키스하는 것을 계속했고, 방은 땀의 열기와 성적인 냄새로 금세 가득 차면서 그녀는 몸과 영혼 모두 완전히 사로잡힌 채 소원을 만족시켰다.
+				CASE 4
+					IF 場所 == 2 ;love hotel
+						CALL COLORMESSAGE("메이드 서비스 시나리오",C_YELLOW,1) ;custom code - added a little intro
+						PRINTFORML
+						PRINTFORM %CALLNAME:CLIENT_ID%은(는) 호텔에서 제공한 메이드복 차림으로 당신을 성적으로 봉사하고 있다.<br>
+						PRINTFORM  <br>
+						CALL HPH_PRINT(@"「마스터...!! 하프」","L")
+						PRINTFORM %CALLNAME:CLIENT_ID%의 병적으로 달콤한 속삭임이 공기를 가득 채우자, 당신의 성기는 오히려 더 단단해질 뿐 사그라들 기미를 보이지 않는다.<br>
+						PRINTFORM  <br>
+						PRINTFORM 이번 특별한 날 충실한 시종 역할을 했던 %CALLNAME:CLIENT_ID%과의 밀회는 정말 열정적이고 흥분되었다.<br>
+						PRINTFORM 떠나야 할 때쯤, 당신에게 제공되었던 의상은 당신이 끊임없이 쏟아낸 진득한 보물로 위에서 아래까지 완전히 젖어 있어야 했다.
+					ELSE
+						CALL COLORMESSAGE("란제리 서비스 시나리오",C_YELLOW,1) ;custom code - added a little intro
+						PRINTFORML
+						PRINTFORM %CALLNAME:CLIENT_ID%은(는) 란제리만 입은 채 당신을 성적으로 섬기고 있다.
+						PRINTFORM  <br>
+						PRINTFORM \@ 場所 == 9 ? 당신의 방 # %CALLNAME:CLIENT_ID%의 부두아르 \@은(는) 이미 음란한 패션쇼가 벌어진 장소로 변해 있었으며, 유일한 규칙은 당신이 사정할 때마다 그녀가 다른 속옷을 입어야 한다는 것이었다.<br>
+						PRINTFORM 사용된 옷가지들이 이미 방 안에 산더미처럼 쌓여 있었고, 모두 당신과 그녀의 체액으로 흥건했다.<br>
+						PRINTFORM  <br>
+						PRINTFORM %CALLNAME:CLIENT_ID%이(가) 당신의 위에서 움직일 때, 그녀는 자신이 가장 좋아하는 란제리를 입은 채 정신없이 골반을 흔들었다.<br>
+						PRINTFORM 그것을 본 당신은 손을 뻗어 속삭이며, 앞으로 이 옷을 입을 때마다 이 일을 떠올리라고 재촉한 뒤, 그녀의 깊숙한 곳에 뜨거운 정액을 듬뿍 쏟아내며 거래를 마무리했다.<br>
+						PRINTFORM 당황한 그녀는 동시에 오르가슴을 느끼기 시작하며 쾌락과 황홀감으로 몸을 떨었고, 당신의 말에는 수줍게 고개만 끄덕여 응답할 뿐이었다.
+					ENDIF
+			ENDSELECT
+		ELSEIF 場所 == 4 ;other
+			CALL COLORMESSAGE("현장 시나리오",C_YELLOW,1) ;custom code - added a little intro
+			IF TALENT:CLIENT_ID:無知
+				PRINTFORML
+				PRINTFORMDW %BREAKENG(@"%HE_SHE(CLIENT_ID)%이(가) 아직 그것을 %HIS_HER(CLIENT_ID)%의 정신으로 완전히 이해하지 못하더라도, 당신의 능숙한 조작은 이미 %CALLNAME:CLIENT_ID%의 여성적 본능을 깨웠고, 성인적인 쾌락으로 %HIS_HER(CLIENT_ID)%의 몸을 완전히 매혹시키고 있다.")%
+			ENDIF
+			PRINTFORML 
+			PRINTFORM 그녀가 필사적으로 하는 그 모습 자체가 
+			PRINTFORM %SPLIT_G("비명을 참는다: 신음을 억누른다: 자신의 입을 가린다: 키스하며 당신의 입술에 입맞춘다: 당신의 입에 매달리듯 빨아들인다: 그녀의 입술을 깨문다: 이를 악문다: 얼굴을 무언가에 밀어붙인다: 얼굴을 아래로 향하게 한다")% 
+			PRINTFORM %SPLIT_G(@"so that no one else would discover her %SPLIT_G("utterly debauched:explicitly immodest:completely unladylike")% appearance:because she's clearly way too embarrassed to let anyone else hear her enjoying the pleasure")% 
+			PRINTFORM 그것은 말 그대로 사랑스러웠다.<br>
+			PRINTFORM  <br>
+			PRINTFORM With %CALLNAME:CLIENT_ID% %SPLIT_G("bending over as you enter her from behind:sitting on your lap and positioned next to your face")%, 
+			SELECTCASE RAND:5
+				CASE 0
+					PRINTFORM 당신은 그녀의 머리를 쓰다듬으며 귀에 달콤한 말을 속삭였다.
+				CASE 1
+					PRINTFORM 너는 그녀의 클리토리스를 문지르고 자극한다.
+				CASE 2
+					PRINTFORM 너는 그녀를 문지르고 자극한다 %FSYN("anus")%
+				CASE 3
+					PRINTFORM 당신은 그녀를 문지르고 자극한다. 
+					IF !RAND:6 ;custom code
+						PRINTFORM %OPPAI_DESCRIPTION_TR(CLIENT_ID)%
+						GOTO SKIP
+					ELSEIF TALENT:CLIENT_ID:バストサイズ >= 1
+						PRINTFORM %SPLIT_G(@"sagging:juicy:%FSYN("voluptuous")%")% 
+					ELSEIF TALENT:CLIENT_ID:バストサイズ == -1
+						IF !RAND:3
+							PRINTFORM %FSYN("chest",,CLIENT_ID)% 당신의 손바닥에 완벽하게 들어맞았다
+							GOTO SKIP
+						ELSE
+							PRINTFORM %SPLIT_G("겸손함:작음:활기참")%
+						ENDIF
+					ELSEIF TALENT:CLIENT_ID:バストサイズ == -2
+						PRINTFORM %SPLIT_G("마른:얇은:날씬한:납작한:없는")%
+					ELSE
+						PRINTFORM %SPLIT_G("흔들림:흔들거림:떨림")%
+					ENDIF
+					PRINTFORM  %FSYN("chest",,CLIENT_ID)%
+					$SKIP
+				CASE 4
+					IF ABL:CLIENT_ID:マゾっ気 >= 3
+						PRINTFORM 당신은 그녀의 유두를 잡고 단단히 쥐며 거의 으스러뜨린다.
+					ELSE
+						PRINTFORM 당신은 그녀의 유두 위로 문지르듯이 손가락을 미끄러뜨린다.
+					ENDIF
+			ENDSELECT
+			PRINTFORM  네가 %SPLIT_G("pound her cervix:smash against her G-spot")% 끊임없이 몰아붙이자, %SPLIT_G("constantly knocking against it as if kneading it with your cockhead:grinding against it hard and forcefully")%.<br>
+			PRINTFORM %CALLNAME:CLIENT_ID% 온몸을 떨며, 절정에 달하면서 등골을 타고 전율이 흘렀다. 
+			PRINTFORM %SPLIT_G(@"그녀의 질벽은 모든 돌기와 주름에 극도의 기쁨으로 반응하며 당신의 %TINKO(MASTER)%를 조여왔고, 압도적인 쾌감에 입을 벌린 채 보기 흉한 모습으로 온몸에 침을 흘리며 애처로운 얼굴을 모두에게 드러냈으며, 통제할 수 없는 황홀함이 가득 담긴 강력한 신음을 내어 주변에 울리게 했다.")%.
+		ELSE
+		ENDIF
+		$SEXEND
+		CALL PRINT_BREAK,,"dc:wait"
+		RESETCOLOR ;custom code
+		;以上デフォルト地の文
+		回数 = MAX(MIN(ABL:CLIENT_ID:欲望 / 2, 5) + CFLAG:CLIENT_ID:溜まってる度 / 200,1)
+		CALL MAKELOVE(CLIENT_ID, "V", 回数, "逆援交/お金を払って", @"%CALLNAME:CLIENT_ID%에게 역보상 데이트를 통해 그녀와 관계를 갖는 것을 요청받았고, 그녀와 관계를 가졌다 %PRINT_PLUR("time", 回数)%.")
+		CALL TRIPLEDOT, "timed" ;custom code
+		EXP:MASTER:清掃経験 ++
+		RETURN IRAI_CONST_RESULT("実行して成功")
+	CASE "依頼成功時"
+		;成功報告時の報酬など
+		TALENT:TARGET:機嫌 = LIMIT(TALENT:機嫌 + 1, -1, 1)
+		CALL CHANGE_CFLAG(2, TARGET, 30)
+		CALL CHANGE_CFLAG(4, TARGET, 5)
+		IF TALENT:CLIENT_ID:SexKnow == -1
+			CALL GET_MONEY_YEN(2000, 2)
+		ELSE
+			CALL GET_MONEY_YEN(20000, 2)
+		ENDIF
+	CASE "依頼失敗時"
+		;失敗報告時の処理
+		CALL CHANGE_CFLAG(2, TARGET, -10)
+		CALL CHANGE_CFLAG(4, TARGET, -5)
+		CALL CHANGE_CFLAG(340, TARGET, 100)
+ENDSELECT
+
+@一般依頼15_AEGI_YUKARI
+PRINTFORMDL ・
+PRINTFORMDL ・
+PRINTFORMDW ・
+SELECTCASE RAND:6
+	CASE 0
+		CALL HPH_PRINT(@"「%MOAN("m")%!HPH %MOAN()%!HPH %SPLIT_G("Right there:There:That spot")%!HPH %SPLIT_G("Oh yes:Sooo good:Awesome:Yeeeesss")%!HPH」","W")
+	CASE 1
+		CALL HPH_PRINT(@"「%MOAN()%!HPH %SPLIT_G("Right there:There:That spot")%!HPH %MOAN()%!HPH %SPLIT_G("I'm cummiiing:Cummiiing")%!!!HPH」","W")
+	CASE 2
+		CALL HPH_PRINT(@"「%MOAN("m")%!HPH %SPLIT_G("Right there:There:That spot")%!HPH %SPLIT_G("I love it right there:I love ittt:Keep going:You're doing great:That's it")%!!!HPH %MOAN()%! 나…오고 있어!!!HPH」","W")
+	CASE 3
+		CALL HPH_PRINT(@"「%RANDKISS()%...HPH %FSYN("lips_muffle")%!HPH %FSYN("lips_muffle")%!HPH %SLUR(FSYN("lips_muffle"), -3)%～～～!!!HPHHPH」","W")
+	CASE 4
+		CALL HPH_PRINT(@"「%MOAN()%!HPH %MOAN("m")%!HPH %MOAN("m")%!HPH %MOAN("h")%～～～!!!HPH」","W")
+	CASE 5
+		CALL HPH_PRINT(@"「%MOAN()%!!HPH %SPLIT_G("That spot issss:Not theeeere:You bullyyyy:I can't take ittt:Not againnn")%!!HPH 나 갈 거야...!HPH 계속 해줘...!HPH 해줘... 응그으...!!!HPHHPH」","W")
+ENDSELECT
+
+@一般依頼15_AEGI_ROSYUTSU(CLIENT_ID, PLACE, PRE, POST, ARG)
+#DIMS PLACE
+#DIMS PRE
+#DIMS POST
+#DIM CLIENT_ID
+;function reformat: PRE is used to place a custom word for the verb part of the noun ("sound") being heard in some way, if empty we use set phrases
+;POST is used to conjugate the verb part, by default we use present continuous (plural, because sounds)
+SIF !STRLENS(PRE)
+	PRE '= SPLIT_G("keep escaping from:can be heard coming from:are echoing through")
+SIF STRLENS(POST)
+	PRE '= CONJUGATOR(PRE + ":" + POST, 1)
+;custom code, variation
+RESULT:100 = 0
+CALL KOJO_MESSAGE_SEND("IRAI", CLIENT_ID, 15, 0, 0, "CLIENT", "Moan") ;addition custom code, allow original moans
+IF RESULT:100 ;use RESULTS:100 as standard RESULT for IRAI KOJO call will always be set to 1
+ELSEIF ARG
+	CALL SET_KOJO_COLOR(CLIENT_ID) ;custom code
+	CALL 一般依頼15_AEGI_YUKARI
+	PRINTFORML
+	LOCALS = %TEXTR(@" %SPLIT_G("intense:wild:frantic:fierce")% %SPLIT_G("squelching:sloshing:splurching:splishing:slurching:twhapping")% %SPLIT_G("sounds:noises")%/ 무언가가 크게 부딪히는 소리 / %SPLIT_G("shlapping:smacking:whapping")% 서로 부딪히는 소리 / %SPLIT_G("labored:ragged:erratic")% 숨 쉬는 소리")%
+	LOCALS:1 = %TEXTR(@" %SPLIT_G("obscene:debauched:lewd:vulgar:sluttish:flirtatious")% %SPLIT_G("moaning:squeals")%%SPLIT_G(" of a bitch in heat::")%/ 태어난 암컷의 기쁨으로 가득 찬 날카로운 비명/ %SPLIT_G("sweet:passionate:rhythmic")% 황홀한 신음")%
+	PRINTFORM %REPLACE(LOCALS, "^ ", "")%와 함께 %REPLACE(LOCALS:1, "^ ", "")%가/이 %PRE% %PLACE%했다.
+ELSE
+	CALL SET_KOJO_COLOR(CLIENT_ID) ;custom code
+	PRINTFORMDL LOCALS:1 = %TEXTR(@" %SPLIT_G("obscene:debauched:lewd:vulgar:sluttish:flirtatious")% %SPLIT_G("moaning:squeals")%%SPLIT_G(" of a bitch in heat::")%/ 갓 태어난 암컷의 기쁨으로 가득한 날카로운 비명/ %SPLIT_G("sweet:passionate:rhythmic")% 황홀한 신음")%
+	PRINTFORMDL LOCALS:1 = %TEXTR(@" %SPLIT_G("obscene:debauched:lewd:vulgar:sluttish:flirtatious")% %SPLIT_G("moaning:squeals")%%SPLIT_G(" of a bitch in heat::")%/ 갓 태어난 암컷의 기쁨으로 가득한 날카로운 비명/ %SPLIT_G("sweet:passionate:rhythmic")% 황홀한 신음")%
+	PRINTFORMDW LOCALS:1 = %TEXTR(@" %SPLIT_G("obscene:debauched:lewd:vulgar:sluttish:flirtatious")% %SPLIT_G("moaning:squeals")%%SPLIT_G(" of a bitch in heat::")%/ 갓 태어난 암컷의 기쁨으로 가득한 날카로운 비명/ %SPLIT_G("sweet:passionate:rhythmic")% 황홀한 신음")%
+	SELECTCASE RAND:7
+		CASE 0
+			CALL HPH_PRINT(@"「...HPH ...%SPLIT_G("Urk:Ulp:Uhn:!!")%!HPH ...%MOAN()%!HPH」","W")
+		CASE 1
+			CALL HPH_PRINT(@"「...%MOAN()%!HPH ...%MOAN()%!HPH ...HPH」","W")
+		CASE 2
+			CALL HPH_PRINT(@"「...HPH ...%MOAN()%!HPH ...%MOAN("m")%!HPH」","W")
+		CASE 3
+			CALL HPH_PRINT(@"「...%MOAN()%!HPH ...%MOAN()%!HPH ...%MOAN("m")%!HPH」","W")
+		CASE 4
+			CALL HPH_PRINT(@"「...%MOAN()%이휴...%MOAN()%이휴 누우흐...!이휴 내 목소리가... 나오고 있어...!이휴」","W")
+		CASE 5
+			CALL HPH_PRINT(@"「..%MOAN("m")%!HPH ...구우 무어리...!HPH %SPLIT_G("They'll... hear ussss:I can't... hold back my voice")%...!HPH」","W")
+		CASE 6
+			CALL HPH_PRINT(@"「...HPHHPH ...%RANDKISS()%!HPH ...%SLUR(FSYN("lips_muffle"), -3)%～～～HPHHPHHPH」","W")
+	ENDSELECT
+	PRINTFORML 
+	;has to be this way because line break within curly bois adds a space character
+	LOCALS = %TEXTR(@" %SPLIT_G("intense:wild:frantic:fierce")% %SPLIT_G("squelching:sloshing:splurching:splishing:slurching:twhapping")% %SPLIT_G("sounds:noises")%/ %SPLIT_G("faint:soft:barely audible")% 찰랑거리는 액체의 소리/ 무언가가 크게 부딪히는 소리 %SPLIT_G("shlapping:smacking:whapping")% 서로 부딪히는")%
+	;note - no usage of muffled because it's already used for some scenarios
+	PRINTFORM %REPLACE(LOCALS, "^ ", "")%은(는) %SPLIT_G("unrestrained:barely suppressed:inaudible:stifled:shrill")%와 함께 %SPLIT_G("sweet:passionate:seductive:vulgar:suggestive:rhythmic:coy")% %SPLIT_G("moaning:squeals")% %PRE% %PLACE%했다.
+ENDIF
+CALL PRINT_BREAK,,"dc:wait"
+;ex: the wet smacking sounds can be heard coming from behind the corner of a sacred shrine
+;custom code, remove repetition
+
+@一般依頼15_PRIDECHECK(CLIENT_ID)
+#DIM CLIENT_ID
+IF TALENT:CLIENT_ID:プライド == 1
+	PRINTFORMDW %BREAKENG(@"%CALLNAME:CLIENT_ID%은(는) %HIS_HER(CLIENT_ID)%의 흥분을 숨기려 엄격한 표정을 짓지만, 훨씬 더 거칠고 얕은 호흡과 상기된 뺨은 감출 수 없다...")%
+ELSE
+ENDIF
+;抱かれたい依頼の経験などの処理を切り出し
+
+@MAKELOVE(C_ID, type, 回数, シチュエーション, 日記記述)
+#DIM  C_ID
+#DIM 注入量
+#DIM 基本注入量
+#DIM 好感度上昇量
+#DIM 回数
+#DIM 経験増加数,58
+#DIMS type
+#DIMS シチュエーション
+#DIMS 日記記述
+#DIM DYNAMIC nVirgLoss ;custom code
+VARSET 経験増加数
+SPLIT @"%シチュエーション%", "/", LOCALS
+注入量 = 0
+基本注入量 = BASE:MASTER:精力 / 25
+SELECTCASE type
+	CASE "A"
+		基本注入量 += (ABL:C_ID:アナル + ABL:C_ID:腰 + 1) * 10
+	CASE "V"
+		基本注入量 += (ABL:C_ID:膣 + ABL:C_ID:腰 + 1) * 10
+ENDSELECT
+FOR LOCAL,1,回数 + 1
+注入量 += 基本注入量 + RAND:(基本注入量)
+NEXT
+注入量 = MIN(注入量, BASE:MASTER:精力)
+;addition custom code, for correct display if pc has unmatched
+LOCAL:9 = 注入量
+SIF TALENT:MASTER:絶倫
+	LOCAL:9 *= 2
+;set vigor as the cum amount cap so you don't cum 2kml while having 1k of vigor
+SIF LOCAL:9 > BASE:MASTER:精力
+	LOCAL:9 = BASE:MASTER:精力
+PRINTFORML ・
+PRINTFORML ・
+PRINTFORMW ・
+PRINTFORM 결과적으로 당신은 
+IF TALENT:C_ID:処女 && type == "V"
+	PRINTFORM %CALLNAME:C_ID%의 처녀성을 빼앗았다. 
+	nVirgLoss = 1
+ELSE
+	PRINTFORM %TEXTR("fucked/ravished/violated")% %CALLNAME:C_ID% %PRINT_PLUR("time", 回数)%, 
+ENDIF
+;addition custom code
+PRINTFORMW 그리고 정액을 ${LOCAL:9}$ml만큼 %HIS_HER(C_ID)%(은/는) \@ type == "A" ? 항문에 # 질에 흘렸다 \@.
+SIF TALENT:MASTER:キス未経験
+	CALL SET_FIRSTKISS(MASTER, C_ID, 2, LOCALS:0) ;custom code
+SIF TALENT:C_ID:キス未経験
+	CALL SET_FIRSTKISS(C_ID, MASTER, 2, LOCALS:0) ;custom code
+;C
+経験増加数:0 += 1 + RAND:(回数 * 2)
+経験増加数:5 += 経験増加数:0 / 2
+;B
+経験増加数:3 += RAND:(回数 * 2)
+経験増加数:8 += 経験増加数:3 / 2
+;M
+経験増加数:4 += 3 + ABL:C_ID:Ｍ感覚 * 2
+;絶頂経験
+経験増加数:10 += 経験増加数:0 / 2
+;口淫経験
+経験増加数:25 = 経験増加数:4
+;キス経験
+経験増加数:27 = 経験増加数:4
+EXP:MASTER:Ｍ経験 += 経験増加数:4
+EXP:MASTER:キス経験 += 経験増加数:4
+EXP:MASTER:口淫経験 += 経験増加数:4
+IF type == "A"
+	IF !CFLAG:C_ID:アナル処女喪失記念日
+		SETCOLOR 247,171,166
+		PRINTFORMW 【항문 처녀성 상실】
+		CALL SET_HISTORY_LOST_A(C_ID, MASTER, "ペニス", @"%LOCALS:0%", @"%LOCALS:1%")
+	ENDIF
+	経験増加数:2 += 回数 * 2
+	経験増加数:7 += 回数
+	経験増加数:17 += 回数
+	経験増加数:21 += 回数 * 2
+	CALL ADD_SAMEN_A(C_ID, 注入量)
+ENDIF
+IF type == "V"
+	IF TALENT:C_ID:処女 == -1
+		SETCOLOR 247,171,166
+		PRINTFORMW 【인지하지 못한 처녀성 상실】
+		TALENT:C_ID:処女 = 0
+	ENDIF
+	IF TALENT:C_ID:処女 == 1
+		SETCOLOR 247,171,166
+		PRINTFORMW 【순결 상실】
+		CALL SET_HISTORY_LOST_V(C_ID, MASTER, "ペニス", @"%LOCALS:0%", @"%LOCALS:1%")
+	ENDIF
+	経験増加数:1 += 回数 * 2
+	経験増加数:6 += 回数
+	経験増加数:16 += 回数
+	経験増加数:20 += 回数 * 2
+	CALL ADD_SAMEN_V(C_ID, 注入量)
+ENDIF
+;custom code
+IF IS_DOUTEI(MASTER)
+	SETCOLOR 255,100,255
+	PRINTFORMW 【비동정 상실】(%CALLNAME:MASTER%)
+	CALL SET_HISTORY_LOST_DT(MASTER, C_ID, type == "V" ? "膣" # "アナル", "逆援交", "お金を払って")
+	TALENT:MASTER:非童貞 = 1
+ENDIF
+SETCOLOR C_YELLOW
+FOR LOCAL,0,58
+IF 経験増加数:LOCAL
+	PRINTFORML %EXP_TR(LOCAL)% ＋{経験増加数:LOCAL}
+	EXP:C_ID:LOCAL += 経験増加数:LOCAL
+ENDIF
+NEXT
+RESETCOLOR
+CALL JUEL_UP_SPECIAL(C_ID,"欲情","欲望",20,1)
+IF type == "V"
+	IF TCVAR:C_ID:破瓜
+		CALL JUEL_UP_SPECIAL(C_ID,"快Ｖ","Ｖ感覚",100,1)
+	ELSE
+		CALL JUEL_UP_SPECIAL(C_ID,"快Ｖ","Ｖ感覚",15,1)
+	ENDIF
+ELSEIF type == "A"
+	CALL JUEL_UP_SPECIAL(C_ID,"快Ａ","Ａ感覚",100,1)
+ENDIF
+CALL ADD_EXP_LESNIAN(回数 * 5, C_ID, "PRINT")
+TIME += 回数 * 20
+DOWNBASE:MASTER:体力 = 回数 * 100
+DOWNBASE:MASTER:気力 = 回数 * 150
+;custom code
+DOWNBASE:体力 = 回数 * 150 + (nVirgLoss * 100)
+DOWNBASE:気力 = 回数 * 200 + (nVirgLoss * 100)
+好感度上昇量 = 回数 * ABL:C_ID:親密 * 5
+CALL CHANGE_CFLAG(2,C_ID,好感度上昇量)
+CFLAG:C_ID:溜まってる度 = 0
+TCVAR:C_ID:破瓜 = 0
+SIF GETBIT(TALENT:MASTER:性別, 1)
+	DOWNBASE:MASTER:精力 = 注入量
+CALL ASK_DIARY(@"%日記記述%")

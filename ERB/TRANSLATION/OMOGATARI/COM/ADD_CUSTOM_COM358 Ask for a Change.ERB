@@ -1,0 +1,61 @@
+﻿; Modular ERB: OMOGATARI/COM/ADD_CUSTOM_COM358 Ask for a Change.ERB
+;-------------------------------------------------
+;Ask for a Change
+;You can ask for a change if your diaper's soiled.
+;-------------------------------------------------
+
+@ADD_CUSTOM_COM358
+#DIM AFAC_COND,6
+VARSET AFAC_COND
+AFAC_COND:0 = CAN_ACCIDENT(MASTER,1) || CAN_ACCIDENT(MASTER,2)
+AFAC_COND:1 = SoiledDiaper(MASTER,2,,15) || SoiledDiaper(MASTER,1,,33)
+AFAC_COND:2 = TCVAR:MASTER:空腹時刻 - TIME:1 < 0
+AFAC_COND:3 = PeeBarStage(MASTER) >= 2 || PooBarStage(MASTER) >= 2
+PRINTFORML %조사처리(CALLNAME:TARGET,"가")%(가) 당신에게 무슨 일이냐고 묻는다.
+CALL ASK_M( @"떠나기", 1, @"변경을 요청한다", AFAC_COND:1, @"간식 달라고 하다", AFAC_COND:2, @"\@ AFAC_COND:0 ? 화장실 가고 싶다고 물어보세요 # ????? \@", AFAC_COND:0 && AFAC_COND:3 )
+SIF RESULT == 0
+	RETURN -1
+TFLAG:144 = RESULT
+TIME += 5
+RETURN 1
+
+@ADD_CUSTOM_MESSAGE_COM358
+SELECTCASE TFLAG:144
+	CASE 1
+		PRINTFORMDW 당신은 %조사처리(CALLNAME:TARGET,"에게")% 변화를 요청한다.
+		CALL RandomUnderwearCheck(TARGET,2)
+	CASE 2
+		PRINTFORMDW %조사처리(CALLNAME:TARGET,"가")%(가) 당신에게 간식을 준다.
+		PRINTFORMDW 그것은 상당히 배부르다.
+		SOURCE:TARGET:歓楽 = (100 + ((ABL:TARGET:親密 + 好感度係数(TARGET)) * 50)) * 30
+		SOURCE:TARGET:受動 = (60 + ((ABL:TARGET:従順 + 好感度係数(TARGET)) * 30)) * 30
+		SOURCE:TARGET:征服 = (60 + (ABL:TARGET:サドっ気 * 10)) * 30
+		;TARGETは自由行動処理で食事する
+		TCVAR:MASTER:空腹時刻 = 1440 * DAY + TIME + 120
+		CALL RECOVER(MASTER, 3 * 30, "体力", "식사를 통해 회복한다.")
+		CALL RECOVER(MASTER, 3 * 30, "気力", "식사를 통해 회복한다.")
+		TCVAR:MASTER:FoodIntake += (600)
+		TFLAG:98 = 2
+	CASE 3
+		PRINTFORMDW 당신은 %조사처리(CALLNAME:TARGET,"에게")% 화장실에 데려가 달라고 부탁한다.
+		PRINTFORMDW %HE_SHE(TARGET,1)%는 당신을 사적인 장소로 데려간다. 왜냐하면 %HE_SHE(TARGET)%이 변기 의자를 내려놓고 당신의 %PeeProtectType(MASTER,1)%를 내리기 때문이다.
+		CALL GoToilet(MASTER,PeeBarStage(MASTER) >= 2, PooBarStage(MASTER) >= 2,,,3)
+ENDSELECT
+RETURN 1
+
+@ADD_CUSTOM_COM_ABLE358
+; Do not allow during ufufu or time stop
+SIF FLAG:70 == 1
+	RETURN 0
+SIF CFLAG:うふふ != 0
+	RETURN 0
+SIF !TFLAG:100
+	RETURN 0
+SIF CFLAG:睡眠
+	RETURN 0
+SIF TARGET == MASTER ; doesn't make sense to kick yourself out
+	RETURN 0
+;not cleaner nor carer
+SIF !(TALENT:TARGET:Carer || TALENT:TARGET:掃除係 || TALENT:TARGET:197 == 3)
+	RETURN 0
+RETURN 1

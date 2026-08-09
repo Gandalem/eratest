@@ -1,0 +1,679 @@
+﻿; Modular ERB: COMF/日常系/COMF498 調理の鉄人.ERB
+
+@COM498
+#DIMS 対戦相手
+#DIMS 相手の料理
+#DIM DISH_TYPE_NUM
+#DIM SCORE, 3
+#DIM JUDGE, 3
+#DIM TOTAL_PLAYER
+#DIM TOTAL_ENEMY
+#DIM ENEMY_LV
+#DIM C_ID
+#DIM PREV_REDRAW
+#DIMS THEME
+#DIMS TASTE_TREND_GOOD
+#DIMS TASTE_TREND_BAD
+#DIMS DISH_NAME_ENEMY
+#DIMS DISH_TASTE_ENEMY
+#DIM BASEPOINT_TEMP
+#DIMS WINNER
+#DIM DishEXP
+#DIM FirstWinBonus
+;translation use
+#DIMS strOppName
+#DIMS strTheme
+#DIMS strType
+PRINTFORML 상대방을 선택하라!
+CALL ASK_M("아마추어",1,"견습생",1,"전문가",1,"마스터",1,CALLNAME:TARGET + (CFLAG:TARGET:料理勝負勝利 == 1 ? " 　★Beaten" # ""),TARGET ? 1 # -1,"취소",1) ;custom code to show beaten opps
+;Custom code, split the contest from the command and expose the outcome.
+SIF RESULT == 5
+	RETURN -1
+SETBIT TFLAG:一日一回, 14 ;Moved.
+CALL IRON_CHEF_CONTEST(RESULT)
+RETURN RESULT
+
+@IRON_CHEF_CONTEST(EnemyType,PresetJudgeIndex:0,PresetJudgeIndex:1,PresetJudgeIndex:2,EnemyBonus,EnemyFloor=-1,EnemyCeiling=-1,MasterBonus,MasterFloor=-1,MasterCeiling=-1) ;Custom code, separate function.
+;A cooking contest between the player and one opponent.
+;Set TARGET to a character's index and use EnemyType 4 to start with a specific character.
+;OpponentIndex 0-3 are generic Amateur, Apprentice, Expert, and Master chefs.
+;Judges will be randomized if not given specific assignments.
+;EnemyBonus and MasterBonus add the given amount to every judge's score for the opponent or player.
+;EnemyFloor and EnemyCeiling, if passed, will raise or lower the opponent's score to be within those values.
+#DIMS DYNAMIC 対戦相手
+#DIMS DYNAMIC 相手の料理
+#DIM DYNAMIC DISH_TYPE_NUM
+#DIM DYNAMIC SCORE, 3
+#DIM DYNAMIC JUDGE, 3
+#DIM DYNAMIC TOTAL_PLAYER
+#DIM DYNAMIC TOTAL_ENEMY
+#DIM DYNAMIC ENEMY_LV
+#DIM DYNAMIC C_ID
+#DIM DYNAMIC PREV_REDRAW
+#DIMS DYNAMIC THEME
+#DIMS DYNAMIC TASTE_TREND_GOOD
+#DIMS DYNAMIC TASTE_TREND_BAD
+#DIMS DYNAMIC DISH_NAME_ENEMY
+#DIMS DYNAMIC DISH_TASTE_ENEMY
+#DIM DYNAMIC BASEPOINT_TEMP
+#DIMS DYNAMIC WINNER
+#DIM DYNAMIC DishEXP
+#DIM DYNAMIC FirstWinBonus
+#DIMS DYNAMIC strOppName
+#DIMS DYNAMIC strTheme
+#DIMS DYNAMIC strType
+#DIM DYNAMIC EnemyType
+#DIM DYNAMIC PresetJudgeIndex,3
+#DIM DYNAMIC EnemyBonus
+#DIM DYNAMIC EnemyFloor
+#DIM DYNAMIC EnemyCeiling
+#DIM DYNAMIC MasterBonus
+#DIM DYNAMIC MasterFloor
+#DIM DYNAMIC MasterCeiling
+#DIM DYNAMIC Disqualified
+SELECTCASE EnemyType ;Custom code, check argument instead of RESULT.
+	CASE 0
+		対戦相手 = 素人料理人
+		strOppName = 아마추어 요리사
+		ENEMY_LV = 1
+	CASE 1
+		対戦相手 = 駆け出し料理人
+		strOppName = 견습 요리사
+		ENEMY_LV = 3
+	CASE 2
+		対戦相手 = 腕利き料理人
+		strOppName = 전문가 요리사
+		ENEMY_LV = 4
+	CASE 3
+		対戦相手 = 熟練料理人
+		strOppName = 마스터 셰프
+		ENEMY_LV = 5
+	CASE 4
+		SIF TARGET == CFLAG:MASTER
+			RETURN -1
+		対戦相手 = %CALLNAME:TARGET%
+		strOppName = %CALLNAME:TARGET%
+		ENEMY_LV = ABL:TARGET:料理技能
+	CASEELSE
+		RETURN -1
+ENDSELECT
+DISH_TYPE_NUM = RAND:2 + 1
+;レベル不足の時は軽食のみ
+SIF ABL:MASTER:料理技能 < 2
+	DISH_TYPE_NUM = 1
+SELECTCASE DISH_TYPE_NUM
+	CASE 1
+		DISH_TYPE = 軽食
+	CASE 2
+		DISH_TYPE = 主食
+ENDSELECT
+$SELECTTHEME ;Custom code.
+IF DISH_TYPE == "軽食"
+	THEME = %TEXTR("和食/洋食/中華/肉料理/魚料理/汁物/揚げ物/煮物/おつまみ/家庭料理")%
+ELSEIF DISH_TYPE == "主食"
+	THEME = %TEXTR("和食/洋食/中華/肉料理/魚料理/麺類/鍋物/汁物/揚げ物/謎料理/家庭料理")%
+ENDIF
+strTheme '= CONTEST_DISH_THEME_TR(THEME)
+strType '= CAPITALIZE(TASTE_TR(DISH_TYPE))
+FOR LOCAL,0,3 ;Custom code, ensure themes are compatible with preset judges.
+SIF !PresetJudgeIndex:LOCAL
+	CONTINUE
+SIF STRCOUNT(GET_STR(, "キャラデータ", PresetJudgeIndex:LOCAL, "料理：嫌いな味"), THEME)
+	GOTO SELECTTHEME
+NEXT
+PRINTFORML 「그리고 이제 신사 숙녀 여러분, 오랫동안 기다려온, 아시다시피, 사랑해 주시는 그것이 다시 막을 올립니다. 아이언 셰프 콘테스트!!!」
+PRINTFORML 「오늘 부엌에서 타오르는 불꽃들이 승리의 의지를 만들어낼지, 아니면 패배의 눈물로 변할지?!」
+;custom code
+CALL PRINT_STRL, @"「오늘의 테마를 자랑스럽게 소개합니다... BOLDHEX{C_YELLOW}【%strTheme%】!」"
+;IF 対戦相手 == CALLNAME:TARGET
+;	PRINTFORML 「私の記憶が確かならば、%THEME%といえばこの女！」
+;ELSE
+;	PRINTFORML 「今回のテーマは【%THEME%】。私の記憶が確かならば、%THEME%といえばこの男！」
+;ENDIF
+;qol custom code
+CALL QOL_IRON_CHEF_JUDGE_SELECTION(THEME,PresetJudgeIndex:0,PresetJudgeIndex:1,PresetJudgeIndex:2)
+IF RESULT < 0
+	PRINTFORML 「...유감스럽게도, 오늘 심사위원으로 활동할 충분한 사람을 찾지 못했습니다.」
+	PRINTFORMW 「다음에 더 행운이 있기를 바랍니다!」
+	RETURN -1
+ELSE
+	ARRAYCOPY "RESULT" , "JUDGE"
+ENDIF
+;custom
+PRINTFORML 「내 기억이 맞다면, 이 \@ 対戦相手 == CALLNAME:TARGET ? %PRINT_MALE("man", TARGET)% # 남자 \@는 전적으로 %TOLOWER(strTheme)% 같은 것들에 관한 이야기야!」
+PRINTFORML 「모두 박수로 %strTheme% 아이언 셰프인 %strOppName%에게 환영을 부탁해!」
+SIF EnemyType == 4
+	CALL KOJO_MESSAGE_SEND("EVENT",0,TARGET,DISH_TYPE_NUM,0,"IRON_CHEF_INTRO",THEME) ;Custom code, KOJO call.
+SIF THEME == "家庭料理"
+	THEME = 家庭的
+PRINTFORML 「맞은편 구석에서 그들을 마주하고 있는 이가 바로 우리의 도전자인 %조사처리(CALLNAME:MASTER,"다")%!」
+PRINTFORML 「이번 요리 대회를 함께할 심사위원들은 다음과 같다.」
+$JUDGE_SELECT
+; qol custom code, disabled here
+; CALL FISHER_YATES_SHAFFLE(CHARANUM - 1)
+; ARRAYCOPY "SHAFFLE_ARRAY" , "JUDGE"
+; ;テーマの味が嫌いな審査員だった場合再抽選
+; ;対戦相手,なりきり時は自分だった場合も再抽選
+; FOR LOCAL, 0 , 3
+; 	C_ID = JUDGE:LOCAL + 1
+; 	SIF STRCOUNT(GET_STR(, "キャラデータ", C_ID, "料理：嫌いな味"), THEME)
+; 		GOTO JUDGE_SELECT
+; 	SIF C_ID == TARGET
+; 		GOTO JUDGE_SELECT
+; 	SIF C_ID == FLAG:なりきり
+; 		GOTO JUDGE_SELECT
+; NEXT
+FOR LOCAL, 0 , 3
+;JUDGE:LOCAL += 1 ;qol custom code
+C_ID = JUDGE:LOCAL
+CALL PRINT_FACE, C_ID, "通常", "服", "", ""
+PRINTFORML 
+PRINTFORML 【심사위원 #{LOCAL + 1} %CALLNAME:C_ID%】
+CALL KOJO_MESSAGE_SEND("EVENT",0,C_ID,DISH_TYPE_NUM,EnemyType == 4 ? TARGET # EnemyType*-1,"IRON_CHEF_JUDGE_INTRO",THEME) ;Custom code, KOJO calls.
+SIF EnemyType == 4
+	CALL KOJO_MESSAGE_SEND("EVENT",0,TARGET,C_ID,LOCAL,"IRON_CHEF_MEET_JUDGE",THEME)
+PRINTL 좋아하는 맛들: 
+CALL SHOW_TASTE(GET_STR(, "キャラデータ", C_ID, "料理：好きな味"), "POSITIVE", ABL:C_ID:親密 < 3)
+PRINTL 싫어하는 맛: 
+CALL SHOW_TASTE(GET_STR(, "キャラデータ", C_ID, "料理：嫌いな味"), "NEGATIVE", ABL:C_ID:親密 < 3)
+PRINTFORMW 
+CALL JUDGE_RESEARCH(C_ID,"GET")
+NEXT
+TASTE_TREND_GOOD =
+TASTE_TREND_BAD =
+;好きな味、嫌いな味の内気を付けるべきものを提示
+CALL JUDGE_RESEARCH(C_ID,"OUT")
+PRINTFORML 「그리고 이것으로 결론입니다! 이 아이언 셰프 대회에서의 승리의 열쇠는 다음 맛들인 것 같습니다:」
+FOR LOCAL, 0, 6
+IF LOCAL < 3
+	CALL COLORMESSAGE(@"[%TASTE_TR(RESULTS:LOCAL)%]",C_GREEN) ;custom code
+	TASTE_TREND_GOOD += RESULTS:LOCAL + "/"
+	IF LOCAL == 2 ;custom
+		PRINTFORML
+		PRINTFORML 「반대로, 우리는 심사위원들의 기분을 상하게 할 위험을 감수하고 이것들을 조심해야 한다.」
+	ENDIF
+ELSEIF LOCAL > 2
+	CALL COLORMESSAGE(@"[%TASTE_TR(RESULTS:LOCAL)%]",C_RED) ;custom code
+	TASTE_TREND_BAD += RESULTS:LOCAL + "/"
+	;SIF LOCAL == 5 ;custom
+	;	PRINTFORM 味には要注意！」
+ENDIF
+NEXT
+PRINTFORMW 
+;curly brakes works badly with english text, creating extra spaces before or after
+CALL PRINT_DIALOGUE, TEXTR(@"승리의 결과는 재료에 불어넣은 영혼과 그것을 다루는 타고난 재능에 있다! 도전자가 %HIS_HER(MASTER)%의 대담한 반격으로 어떤 기적적인 요리를 선보일지 보자!/곧 이 주방은 치열한 전장이 될 것이다. 두 셰프가 숨겨온 경지를 화려한 전투에서 서로 맞서기 위해 준비하는 광경을 마음껏 즐겨라!/이 눈부신 요리 실력의 교환 끝에 어느 쪽이 왕관을 차지하게 될 것인가?! 한정된 시간 안에 만들어낸 궁극의 요리를 목격하라 - 모두 증인자가 되자!")
+PRINTFORMW 「더 이상 지체하지 말고... 요리해라!!!」
+;相手の料理を生成する
+CALL ENEMY_DISH_MENU(対戦相手, DISH_TYPE_NUM, THEME, ENEMY_LV, TASTE_TREND_GOOD, TASTE_TREND_BAD)
+DISH_NAME_ENEMY = %RESULTS:0%
+DISH_TASTE_ENEMY = %RESULTS:1%
+SIF EnemyType == 4
+	CALL KOJO_MESSAGE_SEND("EVENT",0,TARGET,0,0,"IRON_CHEF_START",DISH_TASTE_ENEMY) ;Custom code, KOJO call.
+CALL COLORMESSAGE(@"【%strType%】【%strTheme%】(테마를 준수하지 않을 경우 실격 처리됩니다!)",C_YELLOW,1)
+DRAWLINE
+PREV_REDRAW = CURRENTREDRAW()
+REDRAW 0
+CALL COOKING_MATCH_SELECT(DISH_TYPE_NUM, THEME)
+REDRAW PREV_REDRAW
+IF RESULTS == "棄権"
+	PRINTFORML 와, 엄마! 우리의 도전자님이 기권하고 포기하신 것 같다!
+	WINNER = 棄権
+	SIF EnemyType == 4
+		CALL KOJO_MESSAGE_SEND("EVENT",0,TARGET,DISH_TYPE_NUM,0,"IRON_CHEF_MASTER_FORFEIT",DISH_TASTE_ENEMY) ;Custom code, KOJO call.
+	GOTO PLAYER_LOSE
+ENDIF
+BASEPOINT_TEMP = DISH_BASEPOINT
+CALL ENEMY_COOKING(DISH_NAME_ENEMY, DISH_TASTE_ENEMY, ENEMY_LV, 対戦相手)
+DISH_NAME_ENEMY = %RESULTS%
+SIF EnemyType == 4
+	CALL KOJO_MESSAGE_SEND("EVENT",0,TARGET,0,0,"IRON_CHEF_FINISH",DISH_TASTE_ENEMY) ;Custom code, KOJO call.
+PRINTFORML 우리 참가자들이 요리를 준비하는 것을 마쳤다!
+PRINTFORMW 이제 %strOppName%의 %DISH_NAME_ENEMY%부터 그들의 노고의 결실을 맛보자!
+TOTAL_ENEMY = 0
+FOR LOCAL, 0 , 3
+C_ID = JUDGE:LOCAL
+CALL PRINT_FACE, C_ID, "通常", "服", "", ""
+CALL REVIEW_DISH(C_ID, DISH_TASTE_ENEMY)
+SCORE:LOCAL = TCVAR:C_ID:料理評価値/10
+SCORE:LOCAL += EnemyBonus ;Custom code.
+SCORE:LOCAL = IRON_CHEF_SCORE_CLAMP(SCORE:LOCAL,EnemyFloor,EnemyCeiling)
+CALL KOJO_MESSAGE_SEND("EVENT",0,C_ID,SCORE:LOCAL,EnemyType == 4 ? TARGET # EnemyType*-1,"IRON_CHEF_JUDGING_ENEMY",DISH_TASTE_ENEMY) ;Custom code, KOJO call.
+PRINTFORMW 【심판 #{LOCAL + 1} %CALLNAME:C_ID%】 %PRINT_PLUR("Point", SCORE:LOCAL)%
+TOTAL_ENEMY += SCORE:LOCAL
+NEXT
+CALL COLORMESSAGE(@"총 점수: %PRINT_PLUR("Point", TOTAL_ENEMY)%",C_YELLOW,1)
+DISH_BASEPOINT = BASEPOINT_TEMP
+PRINTFORMW 심사위원들이 판결을 내렸다! 하지만 도전자의 %DISHNAME_TR(DISH_NAME)%는 어떻게 될 것인가?!
+IF STRFIND(DISH_TASTE, THEME) == -1
+	PRINTFORML 잠깐, 이게 뭐야?!
+	PRINTFORML 이 요리를 【%strTheme%}이라고 부를 수 없어! 실격 처리해야 해!!!
+	Disqualified = 1 ;Custom code.
+	SIF EnemyType == 4
+		CALL KOJO_MESSAGE_SEND("EVENT",0,TARGET,DISH_TYPE_NUM,0,"IRON_CHEF_MASTER_DISQUALIFIED",DISH_TASTE_ENEMY) ;Custom code, KOJO call.
+	GOTO PLAYER_LOSE
+ENDIF
+TOTAL_PLAYER = 0
+FOR LOCAL, 0 , 3
+C_ID = JUDGE:LOCAL
+CALL PRINT_FACE, C_ID, "通常", "服", "", ""
+CALL REVIEW_DISH(C_ID, DISH_TASTE)
+SCORE:LOCAL = TCVAR:C_ID:料理評価値 / 10
+SCORE:LOCAL += MasterBonus ;Custom code.
+SCORE:LOCAL = IRON_CHEF_SCORE_CLAMP(SCORE:LOCAL,MasterFloor,MasterCeiling)
+CALL KOJO_MESSAGE_SEND("EVENT",0,C_ID,SCORE:LOCAL,EnemyType == 4 ? TARGET # EnemyType*-1,"IRON_CHEF_JUDGING_MASTER",DISH_TASTE_ENEMY) ;Custom code, KOJO call.
+IF SCORE:LOCAL >= 80
+	SETCOLOR C_GREEN
+	FONTBOLD
+	PRINTFORML %CALLNAME:C_ID% 뒤의 풍경이 변하며, %TRIM_TEXT(TEXTR("the grand explosion of the Scarlet Devil Mansion /the cataclysmic eruption of Youkai Mountain /Suzunaan going up in flames /the Inverted Castle crashing down and the Hakurei Shrine getting blasted to bits /Animal Spirits and Haniwa dancing Samba together /the Moon bouncing off the surface and lodging itself inside Hecatia's head /the Moriya Shrine splitting in two, making way for Hisoutensoku's takeoff /Hell of Blood Pools turning cobalt blue, with palm trees growing around it /the appearance of a colossal head belonging to Hina Kagiyama /a Seven-Colored Cannonball being fired"))%를 생생하게 묘사한다!!!
+	RESETCOLOR
+	FONTREGULAR
+ENDIF
+PRINTFORMW 【심판 #{LOCAL + 1} %CALLNAME:C_ID%】 %PRINT_PLUR("Point", SCORE:LOCAL)%
+TOTAL_PLAYER += SCORE:LOCAL
+NEXT
+CALL COLORMESSAGE(@"총 점수: %PRINT_PLUR("Point", TOTAL_PLAYER)%",C_YELLOW,2)
+IF TOTAL_PLAYER > TOTAL_ENEMY
+	WINNER = 勝利
+	SETCOLOR C_GREEN ;custom
+	PRINTFORMW 축하한다, 너는 그 대회를 이겼다!
+	SIF EnemyType == 4
+		CALL KOJO_MESSAGE_SEND("EVENT",0,TARGET,TOTAL_PLAYER,EnemyType == 4 ? TARGET # EnemyType*-1,"IRON_CHEF_LOSE",DISH_TASTE_ENEMY) ;Custom code, KOJO call.
+ELSE
+	WINNER = 敗北
+	$PLAYER_LOSE
+	SETCOLOR C_YELLOW ;custom
+	PRINTFORMW 아아, %strOppName%이(가) 이번 라운드를 이겼다!
+	SIF EnemyType == 4 && WINNER == "敗北" && !Disqualified
+		CALL KOJO_MESSAGE_SEND("EVENT",0,TARGET,TOTAL_PLAYER,EnemyType == 4 ? TARGET # EnemyType*-1,"IRON_CHEF_WIN",DISH_TASTE_ENEMY) ;Custom code, KOJO call.
+ENDIF
+RESETCOLOR ;custom
+CALL RESET_DISH
+IF WINNER == "勝利" ;if we win (seems to be an identical repurposed section from danmaku)
+	IF !CFLAG:TARGET:料理勝負勝利 && 対戦相手 == CALLNAME:TARGET ;note: this check might be flawed
+		CALL COLORMESSAGE(@"【%조사처리(CALLNAME:TARGET,"를")% 상대로의 첫 승리】",C_YELLOW,1)
+		CFLAG:TARGET:料理勝負勝利 = 1
+		SELECTCASE ABL:TARGET:料理技能
+			CASE 0
+				FirstWinBonus = 1
+			CASE 1
+				FirstWinBonus = 3
+			CASE 2
+				FirstWinBonus = 5
+			CASE 3
+				FirstWinBonus = 10
+			CASE 4
+				FirstWinBonus = 20
+			CASE 5
+				FirstWinBonus = 30
+			CASEELSE
+				FirstWinBonus = 50
+		ENDSELECT
+		EXP:MASTER:料理経験 += FirstWinBonus
+	ENDIF
+	DishEXP = MAX(ENEMY_LV , 1)
+	SIF ABL:MASTER:料理技能 < ENEMY_LV
+		DishEXP *= 2
+	EXP:MASTER:料理経験 += DishEXP
+ELSEIF WINNER == "敗北" ;if we lose
+	EXP:MASTER:料理経験 += 1
+ENDIF
+RESULT:1 = TOTAL_PLAYER ;Custom code, expose more details of the contest's outcome.
+RESULT:2 = TOTAL_ENEMY
+RESULT:3 = EnemyType
+RESULT:4 = ENEMY_LV
+RESULTS '= DISH_NAME_ENEMY
+RESULTS:1 '= DISH_TASTE_ENEMY
+RESULTS:2 '= WINNER
+DOWNBASE:MASTER:体力 = 100
+DOWNBASE:MASTER:気力 = 100
+TIME += 90
+RETURN 1
+
+@IRON_CHEF_SCORE_CLAMP(Score,ScoreFloor,ScoreCeiling)
+;Ensures the given score is within the given range with some variation.
+#FUNCTION
+#DIM DYNAMIC Score
+#DIM DYNAMIC ScoreFloor
+#DIM DYNAMIC ScoreCeiling
+IF ScoreFloor > -1 && Score < ScoreFloor
+	Score = MIN(ScoreFloor+RAND:10,ScoreCeiling)
+ELSEIF ScoreCeiling > -1 && Score > ScoreCeiling
+	Score = MAX(ScoreCeiling-RAND:10,ScoreFloor)
+ENDIF
+RETURNF Score
+;-------------------------------------------------
+;料理の選択
+;-------------------------------------------------
+
+@COOKING_MATCH_SELECT(DISH_TYPE_NUM, THEME)
+#DIM DISH_TYPE_NUM
+#DIM MAXMENU
+#DIM MENUCOUNT
+#DIM SELECT_MENU
+#DIM SELECT_ING
+#DIM 料理結果
+#DIM REQUIRED_LV
+#DIMS THEME
+CALL COOKING_UI(DISH_TYPE_NUM, SELECT_MENU, SELECT_ING, 0, 0, 0, THEME)
+PRINTFORML [ 0] 항복
+INPUT
+;やめる
+RESULTS =
+IF RESULT == 0
+	RESULTS = 棄権
+ELSEIF RESULT == 9 && SELECT_MENU
+	CALL DISHDATA(SELECT_MENU, DISH_TYPE, 0)
+	IF RESULT != 10
+		CLEARLINE 13 + COOKING_LCOUNT
+		RESTART
+	ENDIF
+	CALL DISH_TASTE_ADD(SELECT_ING)
+	DISH_RANK = 食材レベル(SELECT_ING)
+	;DISHNAMEは口上でのみ使用してください
+	DISHNAME = %DISH_NAME%
+	FLAG:料理 = SELECT_MENU
+	SELECT_MENU = 0
+	;custom
+	;PRINTFORML 使用食材：%ITEMNAME:SELECT_ING%
+	CALL COLORMESSAGE(@"사용된 재료: %ITEMNAME_TR(SELECT_ING)% 총량: {ITEM:SELECT_ING} → {MAX(ITEM:SELECT_ING - 1, 0)}", C_YELLOW,1)
+	ITEM:SELECT_ING --
+	CALL DISH_COOKING(0)
+ELSE
+	;料理選択
+	IF INRANGE(RESULT, 101, 400 + CHARANUM)
+		SELECT_MENU = RESULT
+		CALL DISHDATA(RESULT, DISH_TYPE)
+		;表示外なら選択リセット
+		IF !RESULT
+			SELECT_MENU = 0
+			SELECT_ING = -1
+			;作れないなら材料だけリセットして表示する
+		ELSEIF RESULT < 10
+			SELECT_ING = -1
+			;作れるなら材料を設定
+		ELSEIF RESULT == 10
+			RESULT = 0
+			;選択中の材料があったら選択を保持する
+			FOR LOCAL, 1, 11
+			IF DISH_ING:LOCAL == SELECT_ING && SELECT_ING >= 0
+				RESULT = 1
+				BREAK
+			ENDIF
+			NEXT
+			;選択中の材料がなければ材料を再設定
+			IF !RESULT
+				FOR LOCAL, 1, 11
+				IF ITEM:(DISH_ING:LOCAL)
+					SELECT_ING = DISH_ING:LOCAL
+					BREAK
+				ENDIF
+				NEXT
+			ENDIF
+		ENDIF
+	ELSEIF INRANGE(RESULT, 11, 20) && DISH_ING:(RESULT - 10) >= 0 && ITEM:(DISH_ING:(RESULT - 10))
+		SELECT_ING = DISH_ING:(RESULT - 10)
+	ENDIF
+	CLEARLINE 14 + COOKING_LCOUNT
+	RESTART
+ENDIF
+;-------------------------------------------------
+;審査員の好みリサーチ
+;-------------------------------------------------
+
+@JUDGE_RESEARCH(C_ID, MODE)
+#DIM C_ID
+#DIMS TASTE_STR              	;表示対象の味データ
+#DIMS TASTE_LIST_PO, 100		;好きな味リスト
+#DIMS TASTE_LIST_NE, 100		;嫌いな味リスト
+#DIM  TASTE_CNT_PO,  100	;好きな味リスト各要素の重複個数
+#DIM  TASTE_CNT_NE,  100	;嫌いな味リスト各要素の重複個数
+#DIM  TASTE_NUM_PO			;好きな味の種類の総数
+#DIM  TASTE_NUM_NE			;嫌いな味の種類の総数
+#DIMS RESULTS_TASTE,6		;最終的な好みの傾向(3位まで)
+#DIM D_ID					;リピート用
+#DIMS MODE
+IF MODE == "GET"
+	;味リストの取得
+	TASTE_LIST_PO += GET_STR(, "キャラデータ", C_ID, "料理：好きな味")
+	TASTE_LIST_NE += GET_STR(, "キャラデータ", C_ID, "料理：嫌いな味")
+ELSEIF MODE == "OUT"
+	CALLF CNT_SPLIT(TASTE_LIST_PO, TASTE_LIST_PO, TASTE_CNT_PO, TASTE_NUM_PO)
+	CALLF CNT_SPLIT(TASTE_LIST_NE, TASTE_LIST_NE, TASTE_CNT_NE, TASTE_NUM_NE)
+	FOR LOCAL, 0 , TASTE_NUM_PO
+	FOR D_ID, 0, (TASTE_NUM_PO-1)
+	IF TASTE_CNT_PO:D_ID < TASTE_CNT_PO:(D_ID+1)
+		RESULT = TASTE_CNT_PO:D_ID
+		TASTE_CNT_PO:D_ID = TASTE_CNT_PO:(D_ID+1)
+		TASTE_CNT_PO:(D_ID+1) = RESULT
+		RESULTS = %TASTE_LIST_PO:D_ID%
+		TASTE_LIST_PO:D_ID = %TASTE_LIST_PO:(D_ID+1)%
+		TASTE_LIST_PO:(D_ID+1) = %RESULTS%
+	ENDIF
+	NEXT
+	NEXT
+	FOR LOCAL, 0, TASTE_NUM_NE
+	FOR D_ID, 0, (TASTE_NUM_NE-1)
+	IF TASTE_CNT_NE:D_ID < TASTE_CNT_NE:(D_ID+1)
+		RESULT = TASTE_CNT_NE:D_ID
+		TASTE_CNT_NE:D_ID = TASTE_CNT_NE:(D_ID+1)
+		TASTE_CNT_NE:(D_ID+1) = RESULT
+		RESULTS = %TASTE_LIST_NE:D_ID%
+		TASTE_LIST_NE:D_ID = %TASTE_LIST_NE:(D_ID+1)%
+		TASTE_LIST_NE:(D_ID+1) = %RESULTS%
+	ENDIF
+	NEXT
+	NEXT
+	FOR LOCAL, 0, 3
+	RESULTS_TASTE:LOCAL = %TASTE_LIST_PO:LOCAL%
+	RESULTS_TASTE:(LOCAL+3) = %TASTE_LIST_NE:LOCAL%
+	NEXT
+	;審査員味リストをリセット
+	VARSET TASTE_LIST_PO
+	VARSET TASTE_LIST_NE
+	ARRAYCOPY "RESULTS_TASTE" , "RESULTS"
+ENDIF
+;-------------------------------------------------
+;対戦相手の料理選択
+;-------------------------------------------------
+
+@ENEMY_DISH_MENU(対戦相手, DISH_TYPE_NUM, THEME, ENEMY_LV, DISH_GOOD, DISH_BAD)
+#DIMS 対戦相手
+#DIM DISH_NUM		;料理番号
+#DIM DISH_TYPE_NUM	;料理タイプ番号
+#DIMS THEME			;テーマの味
+#DIM ENEMY_LV
+#DIMS DISH_GOOD
+#DIMS DISH_BAD
+#DIMS DISH_NAME_ENEMY	;料理名リスト
+#DIM LOOP_CHECK
+DISH_NAME_ENEMY =
+;料理データを呼ぶ
+$LOOP
+FOR LOCAL, 1 + DISH_TYPE_NUM * 100, 100 + DISH_TYPE_NUM * 100
+CALL DISHDATA(LOCAL, DISH_TYPE, 0)
+IF RESULT
+	IF STRCOUNT(DISH_TASTE, THEME)
+		LOCALS = {LOCAL}/
+		DISH_NAME_ENEMY += LOCALS
+		;料理技能が4以上ならより有効な料理を選ぶ可能性が高くなる
+		IF ENEMY_LV >= 4
+			SIF STR_MULTI_COUNT(DISH_TASTE,DISH_GOOD)
+				DISH_NAME_ENEMY += LOCALS * (ENEMY_LV - 3) * 2
+			SIF STR_MULTI_COUNT(DISH_TASTE,DISH_BAD) && LOOP_CHECK == 0
+				DISH_NAME_ENEMY = %REPLACE(DISH_NAME_ENEMY, LOCALS, "")%
+		ENDIF
+		CONTINUE
+	ELSE
+		CONTINUE
+	ENDIF
+ENDIF
+NEXT
+IF DISH_NAME_ENEMY == ""
+	LOOP_CHECK = 1
+	GOTO LOOP
+ENDIF
+DISH_NAME_ENEMY = %TEXTR(DISH_NAME_ENEMY)%
+DISH_NUM = TOINT(DISH_NAME_ENEMY)
+CALL DISHDATA(DISH_NUM, DISH_TYPE, 0)
+IF 対戦相手 == CALLNAME:TARGET
+	CALL DISH_TASTE_FROM_CHARA(TARGET)
+ENDIF
+RESULTS:0 = %DISH_NAME%
+RESULTS:1 = %DISH_TASTE%
+RETURN 0
+;-------------------------------------------------
+;対戦相手の料理を生成する
+;-------------------------------------------------
+
+@ENEMY_COOKING(DISH_NAME_ENEMY, DISH_TASTE_ENEMY, ENEMY_LV, 対戦相手)
+#DIM ボーナス点
+#DIM 減点
+#DIMS DISH_NAME_ENEMY
+#DIMS DISH_TASTE_ENEMY
+#DIM ENEMY_LV
+#DIMS 対戦相手
+#DIM DISH_RANK_ENEMY
+;念の為最終チェック
+SIF DISH_NAME_ENEMY == ""
+	THROW
+SIF DISH_TYPE == ""
+	THROW
+DISH_TASTE_ENEMY += "できたて/"
+DISH_TASTE_ENEMY += DISH_NAME_ENEMY + "/"
+DISH_TASTE_ENEMY += DISH_TYPE + "/"
+;[中立温度]は夏だけ冷たい（そば,うどん等）
+IF STRCOUNT(DISH_TASTE_ENEMY, "中立温度/")
+	IF GET_MONTH() == "夏の月"
+		DISH_TASTE_ENEMY '= REPLACE(DISH_TASTE_ENEMY, "中立温度\/", "冷たい/")
+	ELSE
+		DISH_TASTE_ENEMY '= REPLACE(DISH_TASTE_ENEMY, "中立温度\/", "温かい/")
+	ENDIF
+ENDIF
+;鮮度設定,調理時間を追加しておく
+DISH_LIMIT = DISH_MAXLIMIT + DISH_TIME
+;表示用の料理名設定
+EX_DISH_NAME =
+IF STRCOUNT(DISH_TASTE_ENEMY, "メイド流/")
+	EX_DISH_NAME += "メイド流"
+ELSEIF STRCOUNT(DISH_TASTE_ENEMY, "天狗流/")
+	EX_DISH_NAME += "天狗流"
+ELSEIF STRCOUNT(DISH_TASTE_ENEMY, "冥界風/")
+	EX_DISH_NAME += "冥界風"
+ELSEIF STRCOUNT(DISH_TASTE_ENEMY, "天界風/")
+	EX_DISH_NAME += "天界風"
+ELSEIF STRCOUNT(DISH_TASTE_ENEMY, "地底風/")
+	EX_DISH_NAME += "地底風"
+ELSEIF STRCOUNT(DISH_TASTE_ENEMY, "地獄風/")
+	EX_DISH_NAME += "地獄風"
+ELSEIF STRCOUNT(DISH_TASTE_ENEMY, "畜生流/")
+	EX_DISH_NAME += "畜生流"
+ELSEIF STRCOUNT(DISH_TASTE_ENEMY, "月都風/")
+	EX_DISH_NAME += "月都風"
+ELSEIF STRCOUNT(DISH_TASTE_ENEMY, "玉兎流/")
+	EX_DISH_NAME += "玉兎流"
+ELSEIF STRCOUNT(DISH_TASTE_ENEMY, "魔界風/")
+	EX_DISH_NAME += "魔界風"
+ELSEIF STRCOUNT(DISH_TASTE_ENEMY, "夢幻風/")
+	EX_DISH_NAME += "夢幻風"
+ELSEIF STRCOUNT(DISH_TASTE_ENEMY, "外界風/")
+	EX_DISH_NAME += "外界風"
+ELSEIF STRCOUNT(DISH_TASTE_ENEMY, "化学的/")
+	EX_DISH_NAME += "化学的"
+ELSEIF STRCOUNT(DISH_TASTE_ENEMY, "小人族秘伝の味/")
+	EX_DISH_NAME += "小人族秘伝の"
+ELSEIF STRCOUNT(DISH_TASTE_ENEMY, "稗田家秘伝の味/")
+	EX_DISH_NAME += "稗田家秘伝の"
+ELSEIF STRCOUNT(DISH_TASTE_ENEMY, "純化した味/")
+	EX_DISH_NAME += "純化した"
+ELSEIF STRCOUNT(DISH_TASTE_ENEMY, "逆転/")
+	EX_DISH_NAME += "逆転した"
+ELSEIF STRCOUNT(DISH_TASTE_ENEMY, "大火力/")
+	EX_DISH_NAME += "大火力"
+ELSEIF STRCOUNT(DISH_TASTE_ENEMY, "氷結/")
+	EX_DISH_NAME += "氷結"
+ELSEIF STRCOUNT(DISH_TASTE_ENEMY, "ドッキリ味/")
+	EX_DISH_NAME += "ドッキリ"
+ELSEIF STRCOUNT(DISH_TASTE_ENEMY, "未知の味/")
+	EX_DISH_NAME += "不思議な"
+ELSEIF STRCOUNT(DISH_TASTE_ENEMY, "きらめき/")
+	EX_DISH_NAME += "きらめく"
+ELSEIF STRCOUNT(DISH_TASTE_ENEMY, "生命力/")
+	EX_DISH_NAME += "妖精の"
+ELSEIF STRCOUNT(DISH_TASTE_ENEMY, "仙術/")
+	EX_DISH_NAME += "仙人の"
+ELSEIF STRCOUNT(DISH_TASTE_ENEMY, "鬼の魔力/")
+	EX_DISH_NAME += "鬼の"
+ELSEIF STRCOUNT(DISH_TASTE_ENEMY, "血の魔力/")
+	EX_DISH_NAME += "吸血鬼の"
+ELSEIF STRCOUNT(DISH_TASTE_ENEMY, "魔力/")
+	EX_DISH_NAME += "魔法の"
+ELSEIF STRCOUNT(DISH_TASTE_ENEMY, "妖力/")
+	EX_DISH_NAME += "妖しい"
+ELSEIF STRCOUNT(DISH_TASTE_ENEMY, "霊障/")
+	EX_DISH_NAME += "霊的"
+ELSEIF STRCOUNT(DISH_TASTE_ENEMY, "秘術/")
+	EX_DISH_NAME += "ミスティックな"
+ENDIF
+;custom code
+;EX_DISH_NAME += DISH_NAME_ENEMY
+SIF STRLENS(EX_DISH_NAME)
+	EX_DISH_NAME '= TASTE_TR(EX_DISH_NAME) + " "
+EX_DISH_NAME = %EX_DISH_NAME%%DISHNAME_TR(DISH_NAME_ENEMY)%
+EX_DISH_NAME '= CAP_PROCESS(EX_DISH_NAME, 5) ;cap every word
+ボーナス点 = 0
+減点 = 0
+SIF STRCOUNT(DISH_TASTE_ENEMY, "旬/")
+	ボーナス点 += 2
+SIF STRCOUNT(DISH_TASTE_ENEMY, "玉兎流/") && STRCOUNT(DISH_TASTE_ENEMY, "ニンジン/")
+	ボーナス点 += 2
+SIF STRCOUNT(DISH_TASTE_ENEMY, "プロの味/")
+	ボーナス点 += 2
+SIF STRCOUNT(DISH_TASTE_ENEMY, "きらめき/")
+	ボーナス点 += 1
+;得意料理や切れ味は該当していない場合消去されているのでこれでOK,得意料理は"/"を外す
+SIF STRCOUNT(DISH_TASTE_ENEMY, "得意料理")
+	ボーナス点 += 2
+SIF STRCOUNT(DISH_TASTE_ENEMY, "切れ味/")
+	ボーナス点 += 1
+SIF STRCOUNT(DISH_TASTE_ENEMY, "おいしい水/")
+	ボーナス点 += 1
+;嫉妬,隠し味の効果は食べる時
+DISH_RANK_ENEMY = 1
+SIF ENEMY_LV >= 3
+	DISH_RANK_ENEMY = 3
+DISH_BASEPOINT = ENEMY_LV + ENEMY_LV + DISH_RANK_ENEMY + ボーナス点 - 減点
+DISH_BASEPOINT = MIN(300 + (DISH_BASEPOINT * 20), 700)
+RESULTS = %EX_DISH_NAME%
+;-------------------------------------------------
+;実行可能判定
+;-------------------------------------------------
+
+@COM_ABLE498
+;時間停止中
+SIF FLAG:時間停止
+	RETURN 0
+SIF !TFLAG:100
+	RETURN 0
+;一括管理
+SIF GLOBAL_COMABLE(498)
+	RETURN RESULT
+;厨房なのか
+SIF !KITCHEN(CFLAG:MASTER:現在位置)
+	RETURN 0
+;気力0
+SIF BASE:MASTER:気力 <= 0
+	RETURN 0
+SIF CFLAG:うふふ
+	RETURN 0
+;添い寝中
+SIF CFLAG:添い寝中
+	RETURN 0
+;イタズラ中
+SIF CFLAG:MASTER:イタズラ
+	RETURN 0
+;既に料理を作っている
+SIF DISH_NAME != ""
+	RETURN 0
+SIF GETBIT(TFLAG:一日一回, 14)
+	RETURN 0
+RETURN 1

@@ -1,0 +1,763 @@
+﻿; Modular ERB: EVENTCOMEND.ERB
+;FileName_EVENTCOMEND.ERB -------------------------- Rev1.00
+;ターン終了の処理
+;CALL		SYSTEM
+;ARG		VOID
+;RETURN		VOID
+;COMMENT
+;-----------------------------------------------------------
+
+@EVENTCOMEND
+#DIM 装備部位
+;仕事動作のエラーチェック
+;FOR LOCAL,0,CHARANUM
+;	SIF CFLAG:LOCAL:326 == 0 && CFLAG:LOCAL:行動 == 5
+;		PRINTFORMW ### COM_END 326ERROR %CALLNAME:LOCAL% ### CHARA_NO:{LOCAL}
+;	SIF CFLAG:LOCAL:現在位置 == 0
+;		PRINTFORMW ### COM_END LOCATION ERROR %CALLNAME:LOCAL% の現在位置が異常です ### CHARA_NO:{LOCAL}
+;NEXT
+;ターン終了共通処理
+CALL TURN_RESET
+;NAS:
+CALL TimeStopChupacabra
+;CALL AIA_ASSAIANS
+CALL FISHER_YATES_SHAFFLE(CHARANUM)
+FOR LOCAL,0,40
+CALL TSPRapeCondition(SHAFFLE_ARRAY:LOCAL)
+SIF RESULT
+	BREAK
+NEXT
+CALLF StopMusic()
+;unfuck buffs
+PeeHold:MASTER:1 = 0
+PooHold:MASTER:1 = 0
+CALL CrippleEffects(MASTER)
+;time end
+NAS_HOUR_CYCLE += TIME_PROGRESS(TIME:1)
+CALL PANTY_WASHING_TIMER()
+;cheats
+SIF NASCheat:4
+	CALL BSI_REMOVE
+;Raids
+PatrolingFaction = ChkGetMilitary(GET_MAPID(CFLAG:MASTER:現在位置))
+IF NAS_HOUR_CYCLE >= 60
+	VARSET NAS_HOUR_CYCLE
+	CALL FACTION_VISITORS_CONTROL
+	;Faction Stuff
+	FOR LOCAL,0,MaxFactions
+	SIF !nFactions
+		BREAK
+	SIF !FactionExist(LOCAL)
+		CONTINUE
+	;Wars
+	FOR LOCAL:1,0,MaxFactions
+	;lieutendent
+	SIF FactionRank:MASTER:(LOCAL) >= 5
+		BREAK
+	SIF !FactionExist(LOCAL:1)
+		CONTINUE
+	FOR LOCAL:2,0,20
+	SIF !GET_EXISTMAP(LOCAL:2)
+		CONTINUE
+	IF GETBIT(FactionWarringAreas:(LOCAL):(LOCAL:1), LOCAL:2)
+		SIF RAND(1000) < 2
+			CALL FACTION_WAR_FIGHT(LOCAL,LOCAL:1,LOCAL:2)
+	ENDIF
+	NEXT
+	NEXT
+	NEXT
+	FOR LOCAL, 0, CHARANUM
+	FOR LOCAL:10, 0, MaxFactions
+	SIF GET_MAPID(CFLAG:LOCAL:300) != GET_MAPID(CFLAG:MASTER:300) || CFLAG:LOCAL:300 == SUKIMA() ;raids must be in same location as yours
+		BREAK
+	SIF !STRLENS(FactionName(LOCAL:10))
+		CONTINUE
+	FOR LOCAL:12, 0, MaxFactions
+	SIF !STRLENS(FactionName(LOCAL:12))
+		CONTINUE
+	IF FactionRank:LOCAL:(LOCAL:12) && FactionTeamPermaHostile:(LOCAL:10):(LOCAL:12)
+		FactionFame:LOCAL:(LOCAL:10) = 0
+		FactionInfamy:LOCAL:(LOCAL:10) = 100000
+	ENDIF
+	NEXT
+	IF FactionPermaHostile:LOCAL:(LOCAL:10)
+		FactionFame:LOCAL:(LOCAL:10) = 0
+		FactionInfamy:LOCAL:(LOCAL:10) = 100000
+	ELSEIF FactionPermaFriendly:LOCAL:(LOCAL:10)
+		FactionFame:LOCAL:(LOCAL:10) = 100000
+		FactionInfamy:LOCAL:(LOCAL:10) = 0
+	ENDIF
+	CALL FACTION_ASSAIAN_CHECK(LOCAL,LOCAL:10)
+	SIF RESULT
+		BREAK
+	NEXT
+	$RaidEnd
+	;PATROLING factions
+	IF CFLAG:LOCAL:PatrolGroup && !PathEndingPlace(LOCAL) && SHIRAHU(LOCAL)
+		CALL OptimalPlace(LOCAL, -1)
+		LOCAL:11 = RESULT
+		CALL NAS_CALC_MOVE(LOCAL, LOCAL:11, 1)
+		FOR LOCAL:10,0,CHARANUM
+		SIF !SHIRAHU(LOCAL:10)
+			CONTINUE
+		SIF !IN_HOME(LOCAL:10)
+			CONTINUE
+		SIF !CFLAG:(LOCAL:10):PatrolGroup
+			CONTINUE
+		IF CFLAG:LOCAL:PatrolGroup == CFLAG:(LOCAL:10):PatrolGroup
+			CALL NAS_CALC_MOVE(LOCAL, PathEndingPlace(LOCAL), 1)
+		ENDIF
+		NEXT
+	ENDIF
+	NEXT
+ENDIF
+FOR LOCAL, 0, CHARANUM
+;-------------------------------------------------
+;Start Fights
+;-------------------------------------------------
+;Must be in the player's location
+;We can't have fights in the background so every fight will result in hijacking the player's control.
+SIF LOCAL != MASTER && CFLAG:LOCAL:300 == CFLAG:MASTER:300
+	CALL ReactSelfDefense(LOCAL)
+;marketeers auto recovery for diamond plan
+IF HealthInsuranceLevel >= 4
+	IF LOCAL != MASTER && HasFallState(LOCAL) && (BASE:LOCAL:0 <= 0 || CFLAG:LOCAL:衰弱 || IsDead:LOCAL:0) && CFLAG:LOCAL:現在位置 != SUKIMA()
+		CALL MarketeersRecoverChara(LOCAL,0)
+	ENDIF
+ENDIF
+NEXT
+;NAS: Lucid Dream
+SIF InTrain == 3
+	CALL LucidDreamTurnEnd
+;==========================================
+;addition custom code, new banquet system
+CALL ADD_BANQUET_ARRIVAL
+; SIF FLAG:宴会開催フラグ > 0
+; 	CALL ENKAI_SINKOU
+;custom code, modded to restore legacy KOJO EVENT 9 cases
+IF TFLAG:102 < 2 && TARGET && SHIRAHU(TARGET) && !FLAG:70 && !CFLAG:ディレイ ;addition custom code, delay affects confiscation
+	IF GROUPMATCH(SELECTCOM, 405, 604) ;triggers on Going out(405) and Explore(604)
+		CALL ボッシュート(2)
+	ELSE
+		CALL ボッシュート(1)
+	ENDIF
+ENDIF
+;NAS Diaper checkers
+CALL PatrolUnderwearChecking
+;=========================================================
+IF BASE:MASTER:酒気 >= MAXBASE:MASTER:酒気 && !TALENT:MASTER:NonSentient
+	;AT_HOMEみるだけでも良いかもしれない
+	IF !AT_HOME(MASTER) && GET_MAPID(CFLAG:MASTER:現在位置) != MAIN_MAP
+		CALL デート終了タイムアップ処理
+	ELSE
+		PRINTFORMW 한계치(%PARSE("your",1)%)를 넘어 음주하자, %PARSE("you")%는 갑자기 %PARSE("collapse")%한다.
+	ENDIF
+	GOTO OYASUMI
+ENDIF
+CALL LS_TIME() ;Custom code, time effects during Lunatic Survival.
+SIF RESULT
+	GOTO OYASUMI
+;NAS: Delusional Masturbation
+IF (BASE:MASTER:体力 <= 500 || IsDead:MASTER:0) && TFLAG:妄想中 == 1
+	PRINTL 힘이 다했다.
+	PRINTL
+	PRINTFORMW 당신은 망상의산물 동안 경험했던 모든 고통을 느끼며 현실로 돌아온다.
+	PRINTFORMW 제정신으로 돌아오자, 당신의 모든 고통과 상처가 가짜였음을 깨닫는다.
+	PRINTFORML ・
+	PRINTFORML ・・
+	PRINTFORMW ・・・		
+	PRINTFORML 당신은 그것이 존재한다고 믿고 있었을 뿐이다. 
+	PRINTFORMW 하지만 당신이 경험한 것이 모두 가짜였음에도 불구하고 영혼은 상처를 받는다.
+	PRINTFORMW 이 정신적 손상을 극복하지 못하고, 당신은 기절한다... 
+	;full heal even if you died
+	CALLF HESOYAM(MASTER)
+	CALL COM461
+	GOTO OYASUMI
+	;NAS: Temp Ufufu
+ELSEIF MASTER != TempUfufuBecome && BASE:MASTER:体力 <= 500
+	PRINTL (기력이 소진되었다)
+	PRINTFORMW %NAME:TempUfufuBecome%의 몸으로 돌아갔다.
+	;CALLF SimultaneousMasterSwap(TempUfufuBecome)
+ELSEIF MASTER != TempUfufuBecome && BASE:TempUfufuBecome:体力 <= 500
+	PRINTFORML (%NAME:TempUfufuBecome%가 기력을 소진했다)
+	PRINTFORMW %NAME:TempUfufuBecome%의 몸으로 돌아간다.
+	CALLF SimultaneousMasterSwap(TempUfufuBecome)
+	GOTO RANOUT
+ELSEIF (BASE:MASTER:体力 <= 500 || IsDead:MASTER:0) && (NASCheat:5)
+	FONTSTYLE 1
+	PRINTFORML (갓 모드가 당신이 \@ IsDead:MASTER:0 ? 죽는 것을 막았다 # 기절하는 것을 막았다 \@!)
+	FONTREGULAR
+	CALLF HESOYAM(MASTER)
+ELSEIF (BASE:MASTER:体力 <= 500 || IsDead:MASTER:0) && ITEM:リバースフェザー
+	FONTSTYLE 1
+	PRINTFORML 리버스 페더가 빛을 발하며 조용히 사라진다!
+	FONTREGULAR
+	BASE:MASTER:0 = 500
+	IsDead:MASTER:0 = 0
+	CALL RECOVER_PERMIL(MASTER, 300, "体力", 0, "Recover via Rebirth Feather")
+	CALL RECOVER_PERMIL(MASTER, 200, "気力", 0, "Recover via Rebirth Feather")
+	;CALLF HealAllHediffs(MASTER,100)
+	CALLF ClearAllHediffs(MASTER)
+	ITEM:リバースフェザー --
+ELSEIF IsDead:MASTER:0
+	SETCOLOR C_RED
+	PRINTL (터미널 신체 피해)	
+	RESETCOLOR
+	PRINTFORMW 힘이 다해 쓰러진다...
+	GOTO OYASUMI
+ELSEIF BASE:MASTER:体力 <= 500 && Item:MiniShinki && !IsDead:102:0 && GET_MAPID(CFLAG:MASTER:300) == MAIN_MAP && K102_NoMiniShinkiRecovery < 1
+	PRINTL 힘이 다했다.
+	PLAYSOUND "se/ジングル2.m4a"
+	CALL EV908_FaintGoHome
+	SIF RESULT == -1
+		GOTO RANOUT
+ELSEIF (BASE:MASTER:体力 <= 500 && !TCVAR:TARGET:好きにして) || BASE:MASTER:体力 <= 0
+	IF FLAG:223
+		PRINTL (자살 시도)
+	ELSEIF TCVAR:MASTER:Grievous_Harm
+		PRINTL 치명적인 신체 피해
+	ELSE
+		PRINTL 힘이 다했다.
+	ENDIF
+	$RANOUT
+	;発情なし崩しお部屋上がり込みorにゅーぷらんの場合は選択肢を出さない
+	IF CFLAG:MASTER:現在位置 == OMANEKIBEYA() && (!TALENT:TARGET:恋慕 || TFLAG:泡風呂)
+	ELSE
+		;押し倒され中なら分岐
+		IF TFLAG:102 == 3 && BASE:MASTER:体力 > 0 && !TCVAR:TARGET:好きにして
+			CALL ASK_YN(@"%HIM_HER(TARGET)%은(는) %HE_SHE(TARGET)%가 원하는 대로 한다.", @"%HIM_HER(TARGET)%은(는) 물러서라")
+			IF !RESULT
+				TCVAR:TARGET:好きにして = 1
+				BASE:MASTER:体力 -= 250
+				GOTO SUKINISITE
+			ENDIF
+		ELSE
+			CALL ENDUFUFU_ALL
+		ENDIF
+	ENDIF
+	PRINTW 　하루가 끝났다.
+	IF BASE:MASTER:体力 <= 0 && !CHK_DATENOW(CFLAG:MASTER:デート中)
+		PRINTFORMW 힘이 다해 쓰러진다...
+		FLAG:気絶中断 = 100 + CFLAG:MASTER:現在位置 / 100
+	ENDIF
+	;押し倒され中ならTARGETに嗜虐経験
+	IF TFLAG:102 == 3
+		IF BASE:MASTER:体力 <= 0
+			EXP:嗜虐快楽経験 += 10
+			PRINTL 
+			PRINTFORMW 가학쾌락경험 +10(%CALLNAME%)
+			PRINTL 
+		ELSE
+			EXP:嗜虐快楽経験 += 2
+			PRINTL 
+			PRINTFORMW 가학쾌락경험 +2(%CALLNAME%)
+			PRINTL 
+		ENDIF
+	ENDIF
+	$OYASUMI
+	PLAYSOUND "se/ジングル2.m4a"
+	CALL SET_SLEEP(1,MASTER,0)
+	CFLAG:MASTER:就寝時間 = DAY * 1440 + TIME
+	;外泊できる状態ならそのまま寝る（恋慕前提）
+	IF CFLAG:MASTER:現在位置 == OMANEKIBEYA() && !TCVAR:(CFLAG:MASTER:お招き):連泊禁止
+		IF CFLAG:(CFLAG:MASTER:お招き):デート中 && TALENT:TARGET:恋慕
+			PRINTFORMW %CALLNAME:(CFLAG:MASTER:お招き)%은(는) 하룻밤 머무르는 것 같다.
+			FLAG:気絶中断 = 0
+			;発情なし崩しお部屋上がり込みの場合
+		ELSE
+			PRINTFORML %CALLNAME:(CFLAG:MASTER:お招き)%은 천천히 %HIS_HER(CFLAG:MASTER:お招き)%의 감각으로도 다가온다, 일단 지금은 그것을 부를 시간이다...
+			IF TFLAG:102 >= 2
+				PRINTFORMW %TNAME(CFLAG:MASTER:お招き),1%이 당신에게 매달하지만 결국 당신은 %GET_MAPNAME(MAIN_MAP)%로 떠난다...
+			ELSE
+				PRINTFORMW 열에 달한 시선에서 벗어나기 위해, 당신은 %TNAME(CFLAG:MASTER:お招き,,,1)%을 뒤로하고 %GET_MAPNAME(MAIN_MAP)%으로 떠난다...
+			ENDIF
+			;部屋の汚れを保存しておく
+			IF YOGORE:(OMANEKIBEYA()) > 0
+				TCVAR:(CFLAG:MASTER:お招き):お招き部屋の汚れ = YOGORE:(OMANEKIBEYA())
+			ELSE
+				;０以下にした場合は識別するために１残す
+				TCVAR:(CFLAG:MASTER:お招き):お招き部屋の汚れ = 1
+			ENDIF
+			;お招きフラグに0を代入
+			CFLAG:TARGET:お招き = 0
+			CFLAG:MASTER:お招き = 0
+			FLAG:気絶中断 = 0
+			CFLAG:MASTER:現在位置 = ENTRANCE
+			PRINTW 
+		ENDIF
+	ELSEIF IsDead:MASTER:0
+		CFLAG:MASTER:現在位置 = CFLAG:MASTER:311
+		FLAG:気絶中断 = 0
+		CALL DeathEval
+	ELSEIF HealthInsuranceLevel >= 2
+		CFLAG:MASTER:現在位置 = CFLAG:MASTER:311
+		FLAG:気絶中断 = 0
+		CALL MarketeersRecoverChara(MASTER,0)
+	ELSEIF FLAG:223 || TCVAR:MASTER:Grievous_Harm
+		PRINTFORMW 정체불명의 인물이 %PARSE("your",1)%의 의식을 잃은 시신을 발견한다. 여전히 숨은 쉬고 있다.
+		PRINTFORMW 그들은 당신을 방으로 데려간다.
+		CFLAG:MASTER:現在位置 = CFLAG:MASTER:311
+		FLAG:気絶中断 = 0
+		SIF FLAG:223
+			FLAG:223 = !FLAG:223
+		SIF TCVAR:MASTER:Grievous_Harm
+			TCVAR:MASTER:Grievous_Harm = !TCVAR:MASTER:Grievous_Harm
+	ELSEIF TFLAG:泡風呂 && CFLAG:うふふ
+		PRINTFORMW 
+		CALL 泡風呂終了判定("あなた限界")
+		IF MAIN_MAP != 9
+			PRINTFORMW 당신은 마지막 남은 힘으로 %GET_MAPNAME(MAIN_MAP)%에 돌아오는 데 성공한다.
+			FLAG:気絶中断 = 100 + CFLAG:MASTER:現在位置 / 100
+			CFLAG:MASTER:現在位置 = ENTRANCE
+		ELSE
+			PRINTFORMW 당신은 비틀거리는 걸음으로 방으로 되돌아간다.
+			CFLAG:MASTER:現在位置 = CFLAG:MASTER:311
+			FLAG:気絶中断 = 0
+		ENDIF
+		;custom code, added favor check since there are many instances of dialogue for this event without the lover talent
+	ELSEIF TARGET != MASTER && (TALENT:TARGET:恋慕 || CFLAG:好感度 >= 1500) && BASE:TARGET:体力 >= 500 && !CFLAG:TARGET:睡眠 && !CFLAG:MASTER:添い寝中 && ((CFLAG:TARGET:同行 && CHK_DATENOW(CFLAG:MASTER:デート中)) || !CHK_DATENOW(CFLAG:MASTER:デート中))
+		IF CHK_DATENOW(CFLAG:MASTER:デート中)
+			PRINTFORMW %조사처리(CALLNAME:TARGET,"의")% 도움으로, 당신은 %GET_MAPNAME(MAIN_MAP)%로 돌아간다.
+		ENDIF
+		IF CFLAG:MASTER:現在位置 != CFLAG:MASTER:初期位置
+			PRINTFORMW %조사처리(CALLNAME:TARGET,"가")% 당신을 방으로 데려간다...
+			CFLAG:MASTER:現在位置 = CFLAG:MASTER:311
+			;おやすみ口上,6-0,MASTERがダウン（部屋に運ばれる）
+			CALL KOJO_MESSAGE_SEND("EVENT", 3, TARGET, 6, 0)
+		ELSE
+			PRINTFORMW %조사처리(CALLNAME:TARGET,"가")% 당신을 %BED_FUTON(CFLAG:MASTER:初期位置)%까지 안아간다...
+			;おやすみ口上,6-1,MASTERがダウン（自室）
+			CALL KOJO_MESSAGE_SEND("EVENT", 3, TARGET, 6, 1)
+		ENDIF
+		CFLAG:MASTER:デート中 = MAIN_MAP
+		FLAG:気絶中断 = 0
+	ELSEIF CFLAG:MASTER:現在位置 == P54小人の虫かご
+		CFLAG:MASTER:現在位置 = P10縁側
+		PRINTFORMW 당신은 잠든 사이에 베란다로 굴러 나왔다...
+	ELSEIF CHK_DATENOW(CFLAG:MASTER:デート中)
+		PRINTFORMW 남은 힘을 다해, 당신은 %GET_MAPNAME(MAIN_MAP)%로 돌아간다.
+		FLAG:気絶中断 = 100 + CFLAG:MASTER:現在位置 / 100
+		CFLAG:MASTER:現在位置 = ENTRANCE
+		PRINTFORMW 
+	ELSEIF BASE:MASTER:0 > 0
+		PRINTFORMW 비틀거리며 방으로 돌아온다.
+		CFLAG:MASTER:現在位置 = CFLAG:MASTER:311
+		FLAG:気絶中断 = 0
+	ENDIF
+	FOR LOCAL,0,CHARANUM
+	SIF CFLAG:LOCAL:出禁
+		CONTINUE
+	CALL ENDUFUFU(LOCAL)
+	CALL SET_PRANK(0,LOCAL)
+	CFLAG:LOCAL:デート中 = MAIN_MAP
+	CFLAG:LOCAL:同行 = 0
+	FLAG:デート相手 = MASTER
+	TFLAG:デート前好感度 = 0
+	SIF !BATHCHECK(CFLAG:LOCAL:現在位置) && TEQUIP:LOCAL:お風呂場プレイ
+		TEQUIP:LOCAL:お風呂場プレイ = 0
+	NEXT
+	SIF MOREDATE
+		CALL CLEAN_GROUP_DATES
+	;MC faints during lucid dream, end dream so they don't get stuck in the fantasy realm
+	IF InTrain == 3
+		CALL LucidDreamAfter
+	ENDIF
+	;	数値変数が小数点以下を切り捨てる特性を悪用したものがこちら、他の変数を使わない分こちらのほうがいいのかも？
+	CFLAG:MASTER:デート中 = CFLAG:MASTER:現在位置 / 100
+	TFLAG:106 = 0
+	BEGIN AFTERTRAIN
+ENDIF
+IF TARGET && TFLAG:キスマーク == TARGET && BodyPartStatus:MASTER:11:19 && !RAND:2
+	PRINTFORMW %조사처리(CALLNAME:TARGET,"는")%(는) 당신의 목에 무언가를 알아차리고 붕대를 떼어낸다.
+	TFLAG:包帯 = 0
+	BASE:怒り += 500
+ENDIF
+$SUKINISITE
+IF TARGET != MASTER
+	IF GET_EMOTION(TARGET) != TCVAR:TARGET:LastMood
+		PRINTFORMW %조사처리(CALLNAME:TARGET,"는")% %HTML_PRINT_SHORT_EMOTION(TARGET,1)%한 상태이다.
+		TCVAR:TARGET:LastMood = GET_EMOTION(TARGET)
+	ENDIF
+ENDIF
+IF TARGET != MASTER && CFLAG:不機嫌 && !FLAG:70 && !TCVAR:無理矢理 && !CFLAG:負け犬 && !CFLAG:睡眠
+	;PRINTFORMW %CALLNAME:TARGET% is %HTML_PRINT_SHORT_EMOTION(TARGET,1)%...
+	IF TALENT:TARGET:度胸 < 0 || GROUPMATCH(GET_EMOTION(TARGET), 0, 11,12,19)
+		CALL KOJO_MESSAGE_SEND("EVENT",29,TARGET,2,0)
+	ELSEIF GROUPMATCH(GET_EMOTION(TARGET), 30,31,39)
+		CALL KOJO_MESSAGE_SEND("EVENT",29,TARGET,3,0)
+	ELSE
+		CALL KOJO_MESSAGE_SEND("EVENT",29,TARGET,1,0)
+	ENDIF
+	RESETCOLOR
+	IF FLAG:守矢くじデート相手 != TARGET
+		;FOR LOCAL,0,CHARANUM
+		;	CALL ENDUFUFU(LOCAL)
+		;NEXT
+		;CALL ENDUFUFU(TARGET)
+		TFLAG:106 = 0
+	ELSEIF CFLAG:うふふ && TFLAG:泡風呂
+		CALL 泡風呂終了判定("女の子フキゲン")
+	ENDIF
+ENDIF
+IF FLAG:70 == 1
+	IF BASE:MASTER:TSP <= 0
+		PRINTFORML (TSP가 소진되었다)
+		;NAS: Rape expansion stuffs
+		;Initializes an option to start conscious rape if you run out of TSP
+		SIF !RAPE_CONDITION()
+			GOTO NoTSP_PLACE_ISNT_ROOM
+		IF CFLAG:MASTER:うふふ
+			CALL ASK_M( "의식적인 강간 시작", 1, @"\@ IN_HOME(CFLAG:MASTER:300) ? % NAME_FROM_PLACE(CFLAG:MASTER:311) % # %GET_MAPNAME(MAIN_MAP)%로 돌아간다 \@", 1 )
+			SELECTCASE RESULT
+				CASE 0
+					CALL FISHER_YATES_SHAFFLE(CHARANUM - 1)
+					FOR LOCAL:10, 0, CHARANUM - 1
+					LOCAL = SHAFFLE_ARRAY:(LOCAL:10) + 1
+					IF CFLAG:LOCAL:現在位置 == CFLAG:MASTER:現在位置
+						IF EX:LOCAL:Ｃ絶頂 + EX:LOCAL:Ｖ絶頂 + EX:LOCAL:Ａ絶頂 + EX:LOCAL:Ｂ絶頂 + EX:LOCAL:Ｍ絶頂 > 30
+							PRINTFORMW 갑자기 격렬한 오르가즘에 몸을 떨며, %CALLNAME:LOCAL%은/는 황홀함 속에서 비명을 지르고 %HE_SHE(LOCAL)%는 쓰러진다.
+							CFLAG:LOCAL:333 += 20
+						ELSEIF EX:LOCAL:Ｃ絶頂 + EX:LOCAL:Ｖ絶頂 + EX:LOCAL:Ａ絶頂 + EX:LOCAL:Ｂ絶頂 + EX:LOCAL:Ｍ絶頂 > 0
+							PRINTFORMW %CALLNAME:LOCAL%의 몸이 기분 좋지만 미스터리한 느낌에 갑자기 굳는다.
+						ELSEIF CFLAG:LOCAL:291 == 1
+							PRINTFORMW %CALLNAME:LOCAL%은(는) %HIS_HER(LOCAL)%의 속옷이 갑자기 사라진 것을 알아차린다.
+						ENDIF
+						SIF EX:LOCAL:処女喪失チェック == 1
+							PRINTFORMW %CALLNAME:LOCAL%은(는) %HIS_HER(LOCAL)%의 다리 사이에서 느껴지는 둔한 고통에 얼굴을 찌푸린다...
+						;custom code, unified post-timespot cleanup
+						SIF !CFLAG:LOCAL:うふふ
+							CALL TIMESTOP_RESET(LOCAL)
+						;we'll have to initalize sex with every touhou in the same area.
+						PRINTFORML 너는 %CALLNAME:LOCAL%을/를 밧줄로 감싸고 %HIM_HER(LOCAL)%을/를 침범하기 시작한다...
+						CALL NAS_StartRape(LOCAL)
+						CALL RE_HOSTILE_CHECK(LOCAL)
+					ENDIF
+					NEXT
+				CASE 1
+					GOTO NoTSP_PLACE_ISNT_ROOM
+			ENDSELECT
+			;=====================================================
+		ELSEIF CFLAG:MASTER:現在位置 != OMANEKIBEYA()
+			$NoTSP_PLACE_ISNT_ROOM
+			PRINTFORMW 당신은 서둘러 그 장소를 떠난다.
+			TFLAG:運搬 = MASTER
+			CALL FISHER_YATES_SHAFFLE(CHARANUM - 1)
+			FOR LOCAL:10, 0, CHARANUM - 1
+			LOCAL = SHAFFLE_ARRAY:(LOCAL:10) + 1
+			SIF CFLAG:LOCAL:現在位置 != CFLAG:MASTER:現在位置
+				CONTINUE
+			IF EX:LOCAL:Ｃ絶頂 + EX:LOCAL:Ｖ絶頂 + EX:LOCAL:Ａ絶頂 + EX:LOCAL:Ｂ絶頂 + EX:LOCAL:Ｍ絶頂 > 30
+				PRINTFORMW 갑자기 격렬한 오르가슴에 몸을 떨며, %CALLNAME:LOCAL%은/는 황홀경 속에서 외치고 %HE_SHE(LOCAL)%이 쓰러진다.
+				CFLAG:LOCAL:333 += 20
+			ELSEIF EX:LOCAL:Ｃ絶頂 + EX:LOCAL:Ｖ絶頂 + EX:LOCAL:Ａ絶頂 + EX:LOCAL:Ｂ絶頂 + EX:LOCAL:Ｍ絶頂 > 0
+				PRINTFORMW %CALLNAME:LOCAL%의 몸이 기분 좋은 듯 하지만 미스터리한 느낌에 갑자기 굳는다.
+			ELSEIF CFLAG:LOCAL:291 == 1
+				PRINTFORMW %CALLNAME:LOCAL%은(는) %HIS_HER(LOCAL)%의 속옷이 갑자기 사라진 것을 알아차린다.
+			ENDIF
+			SIF EX:LOCAL:処女喪失チェック == 1
+				PRINTFORMW %CALLNAME:LOCAL%은(는) %HIS_HER(LOCAL)%의 다리 사이에서 느껴지는 둔한 고통에 얼굴을 찡그린다.
+			;custom code, unified post-timespot cleanup
+			CALL TIMESTOP_RESET(LOCAL)
+			CFLAG:LOCAL:時間停止バレ = 1
+			CALL SET_REP(LOCAL,0,,1)
+			NEXT
+			IF !AT_HOME(MASTER)
+				PRINTFORML 당신은 전속력으로 %GET_MAPNAME(MAIN_MAP)%로 되돌아간다...
+				BASE:MASTER:体力 -= TIME_REQUIRED(CFLAG:MASTER:デート中, MAIN_MAP) * 5 ;bugfix custom code, corrected order of arguments
+				BASE:MASTER:気力 -= TIME_REQUIRED(CFLAG:MASTER:デート中, MAIN_MAP) * 5 ;bugfix custom code, corrected order of arguments
+				BASE:MASTER:体力 = MAX(BASE:MASTER:体力,0)
+				BASE:MASTER:気力 = MAX(BASE:MASTER:気力,0)
+				TIME += TIME_REQUIRED(CFLAG:MASTER:デート中, MAIN_MAP) / 5 ;bugfix custom code, corrected order of arguments
+			ENDIF
+			IF CFLAG:MASTER:現在位置 != CFLAG:MASTER:初期位置
+				CFLAG:MASTER:現在位置 = CFLAG:MASTER:初期位置
+			ELSE
+				CFLAG:MASTER:現在位置 = 避難先
+			ENDIF
+			BASE:MASTER:TSP = 0
+			CALL AFTER_AFFAIR
+			FOR LOCAL,0,CHARANUM
+			;MASTERがいなくなったあとなのに表示されるのがおかしいし、時間停止解除時にそぐわない口上が呼び出される危険性が高いし、口上ギミックを破壊する可能性が高いのでコメントアウト
+			CALL ENDUFUFU(LOCAL)
+			CFLAG:LOCAL:デート中 = MAIN_MAP
+			NEXT
+			FLAG:デート相手 = MASTER
+			TFLAG:デート前好感度 = 0
+			SIF MOREDATE
+				CALL CLEAN_GROUP_DATES
+			TFLAG:106 = 0
+		ELSE
+			CALL FISHER_YATES_SHAFFLE(CHARANUM - 1)
+			FOR LOCAL:10, 0, CHARANUM - 1
+			LOCAL = SHAFFLE_ARRAY:(LOCAL:10) + 1
+			IF CFLAG:LOCAL:現在位置 == CFLAG:MASTER:現在位置
+				IF EX:LOCAL:Ｃ絶頂 + EX:LOCAL:Ｖ絶頂 + EX:LOCAL:Ａ絶頂 + EX:LOCAL:Ｂ絶頂 + EX:LOCAL:Ｍ絶頂 > 30
+					PRINTFORMW 갑작스럽게 격렬한 오르가즘에 몸을 떨며, %CALLNAME:LOCAL%은/는 절정에 도달하며 소리를 지른다 / 비명을 지르고 %HE_SHE(LOCAL)%은/는 쓰러진다.
+					CFLAG:LOCAL:333 += 20
+				ELSEIF EX:LOCAL:Ｃ絶頂 + EX:LOCAL:Ｖ絶頂 + EX:LOCAL:Ａ絶頂 + EX:LOCAL:Ｂ絶頂 + EX:LOCAL:Ｍ絶頂 > 0
+					PRINTFORMW %CALLNAME:LOCAL%의 몸이 즐겁지만 미스터리한 느낌에 갑자기 굳는다.
+				ELSEIF CFLAG:LOCAL:291 == 1
+					PRINTFORMW %CALLNAME:LOCAL%은(는) %HIS_HER(LOCAL)%의 속옷이 갑자기 사라진 것을 알아차린다.
+				ENDIF
+				SIF EX:LOCAL:処女喪失チェック == 1
+					PRINTFORMW %CALLNAME:LOCAL%는 %HIS_HER(LOCAL)%의 다리 사이에서 느껴지는 둔한 고통에 얼굴을 찡그린다...
+				;custom code, unified post-timespot cleanup
+				CALL TIMESTOP_RESET(LOCAL)
+				IF !CFLAG:LOCAL:313 && BASE:LOCAL:0 > 500
+					CFLAG:LOCAL:時間停止バレ = 1
+					CALL SET_REP(LOCAL,0,,1)
+				ENDIF
+			ENDIF
+			CALL ENDUFUFU(LOCAL)
+			NEXT
+			CFLAG:MASTER:うふふ = 0
+		ENDIF
+		FLAG:70 = 0
+		RESETBGCOLOR
+		;(天候パッチ)時刻・天候に応じて背景色を変更
+		CALL SET_MAP_WEATHER_BGCOLOR
+		RESETBGCOLOR ;bug fix custom code - failsafe because you're out of TSP anyway
+		BASE:MASTER:TSP = 0
+	ENDIF
+	SIF CFLAG:MASTER:うふふ && BASE:MASTER:勃起 <= 900 && BASE:MASTER:精力 >= 500
+		BASE:MASTER:勃起 += 10
+ENDIF
+IF BASE:体力 <= -(MAXBASE:体力) && TARGET; deaths
+	IF CFLAG:うふふ
+		CALL SET_HISTORY_DEATH(TARGET,MASTER,"BigSegs")
+	ELSE
+	ENDIF
+	;CALL ENDUFUFU(TARGET)
+	;CALL SET_PRANK(0,TARGET,1)
+ENDIF
+IF TARGET && BASE:体力 < 500 && !TCVAR:TARGET:休憩中 && !CFLAG:TARGET:衰弱;overhauled because fainting
+	IF BASE:体力 <= 0 ; fainting
+		IF !CFLAG:衰弱
+			PRINTFORMW %조사처리(CALLNAME:TARGET,"의")% 힘이 한계를 초과했다.
+			CALL CHARA_ACTION_FAINT(TARGET)
+			CFLAG:衰弱 = 360
+			;FLAG:70 = 0
+			RESETBGCOLOR ;bug fix custom code
+			SIF MOREDATE
+				CALL CLEAN_GROUP_DATES
+			;(天候パッチ)時刻・天候に応じて背景色を変更
+			CALL SET_MAP_WEATHER_BGCOLOR
+		ENDIF
+		;CALL ENDUFUFU(TARGET)
+		;CALL SET_PRANK(0,TARGET,1)
+		SIF TARGET
+			CFLAG:TARGET:デート中 = MAIN_MAP
+		CFLAG:TARGET:同行 = 0
+		;FLAG:デート相手 = MASTER
+		;TFLAG:デート前好感度 = 0
+		TFLAG:106 = 0
+	ELSEIF TFLAG:泡風呂
+		CALL 泡風呂終了判定("体力限界")
+		;rape expansion note: ignore stamina
+	ELSEIF TCVAR:TARGET:無理矢理
+	ELSE
+		IF !FLAG:70 && !TCVAR:無理矢理
+			IF CFLAG:TARGET:うふふ
+				SIF CFLAG:うふふ == 1 && (CFLAG:イタズラ < 1 || CFLAG:眠姦口上有)
+					CALL KOJO_MESSAGE_SEND("EVENT",15,TARGET,2,0)
+				PRINTFORML %조사처리(CALLNAME:TARGET,"는")%/는 %HES_SHES(TARGET)% 피곤하다고 당신에게 성관계를 그만두라고 애원한다.
+				CALL ASK_YN("계속한다", "그만둬 우후후")
+				IF RESULT == 1
+					;addition custom code
+					IF CFLAG:うふふ ;add after sex dialogue for tired characters
+						CALL AFTER_AFFAIR
+					ENDIF
+					FOR LOCAL,0,CHARANUM
+					;MASTERがいなくなったあとなのに表示されるのがおかしいし、時間停止解除時にそぐわない口上が呼び出される危険性が高いし、口上ギミックを破壊する可能性が高いのでコメントアウト
+					IF CFLAG:LOCAL:うふふ ;addition custom code, add after sex dialogue for leaving characters
+						SIF CFLAG:LOCAL:うふふ == 1 && (CFLAG:LOCAL:イタズラ < 1 || CFLAG:LOCAL:眠姦口上有)
+							CALL KOJO_MESSAGE_SEND("EVENT",15,LOCAL,2,0)
+					ENDIF
+					NEXT
+					SIF MOREDATE
+						CALL CLEAN_GROUP_DATES
+					IF !CFLAG:衰弱
+						PRINTFORMW %조사처리(CALLNAME:TARGET,"의")% 힘이 한계에 다다랐다.
+						CFLAG:衰弱 = 360
+						FLAG:70 = 0
+						RESETBGCOLOR ;bug fix custom code
+						;(天候パッチ)時刻・天候に応じて背景色を変更
+						CALL SET_MAP_WEATHER_BGCOLOR
+					ENDIF
+					CALL CHARA_SLEEP, TARGET, 1
+					CALL ENDUFUFU(TARGET)
+					CALL SET_PRANK(0,TARGET,1)
+				ENDIF
+			ELSE
+				IF !CFLAG:衰弱
+					PRINTFORMW %조사처리(CALLNAME:TARGET,"의")% 강함이 한계에 다다랐다.
+					CFLAG:衰弱 = 360
+				ENDIF
+				CALL CHARA_SLEEP, TARGET, 1
+			ENDIF
+		ENDIF
+		CFLAG:TARGET:デート中 = MAIN_MAP
+		CFLAG:TARGET:同行 = 0
+		FLAG:デート相手 = MASTER
+		; 	CALL ENDUFUFU(LOCAL)
+		; 	CALL SET_PRANK(0,LOCAL,1)
+		; 	SIF LOCAL
+		; 		CFLAG:LOCAL:デート中 = MAIN_MAP
+		; 	CFLAG:LOCAL:同行 = 0
+		; NEXT
+		TFLAG:デート前好感度 = 0
+		SIF MOREDATE
+			CALL CLEAN_GROUP_DATES
+		TFLAG:106 = 0
+	ENDIF
+ENDIF
+;NAS: warning for -75% stamina
+IF TARGET != MASTER && BASE:体力 < (-MAXBASE:体力*75/100) && nNecro && !IsDead:TARGET:0 && CFLAG:TARGET:うふふ
+	SETCOLOR C_RED
+	PRINTFORML 경고!!
+	RESETCOLOR
+	PRINTFORML %CALLNAME:TARGET%현재 {GETPERCENT(BASE:0,MAXBASE:0)}\% stamina ({BASE:0}). If %HE_SHE(TARGET)% hits -100\%의 체력({-MAXBASE:0})을 가지고 있는 %HE_SHE(TARGET)%은 즉시 죽을 것이다!
+	PRINTFORML %조사처리(CALLNAME:TARGET,"는")%(는) 현재 {GETPERCENT(BASE:0,MAXBASE:0)}\% stamina ({BASE:0}). If %HE_SHE(TARGET)% hits -100\%의 체력({-MAXBASE:0})에 도달하면, %HE_SHE(TARGET)%은(는) 즉사합니다!
+	CALL ASK_YN("계속한다", "스톱 우후후")
+	IF RESULT == 1
+		IF !CFLAG:衰弱
+			PRINTFORMW %조사처리(CALLNAME:TARGET,"의")% 힘이 한계를 초과했다.
+			CFLAG:衰弱 = 360
+			FLAG:70 = 0
+			RESETBGCOLOR ;bug fix custom code
+			;(天候パッチ)時刻・天候に応じて背景色を変更
+			CALL SET_MAP_WEATHER_BGCOLOR
+		ENDIF
+		CALL CHARA_SLEEP, TARGET, 1
+		CALL ENDUFUFU(TARGET)
+		CALL SET_PRANK(0,TARGET,1)
+	ENDIF
+ENDIF
+CALL Add_TiredBitchesGotoSleep ;addition custom code, check if any other character is tired and needs to go back
+IF GET_EXISTMOB(MAIN_MAP)
+	FOR LOCAL, MINROOM(), MAXROOM
+	IF ROOMDATA:(LOCAL % 100) & 場所_モブ
+		YOGORE:LOCAL += TIME_PROGRESS(TIME:1) * MOB_YOGORE(MAIN_MAP)
+		SIF CFLAG:MASTER:現在位置 == LOCAL
+			TRYCALLFORM MOB_TURNENDEVENT_{MAIN_MAP}
+	ENDIF
+	NEXT
+ENDIF
+;toilets
+FOR LOCAL, MINROOM(), MAXROOM
+IF IS_TOILET(LOCAL,MASTER)
+	CALL AdvancePottyLine(LOCAL)
+ENDIF
+NEXT
+IF !FLAG:70 && TARGET
+	IF TALENT:TARGET:動物耳 && CFLAG:TARGET:900 == 7 && !TCVAR:TARGET:発情 && PALAM:TARGET:欲情 >= PALAMLV:5 && !TALENT:TARGET:妊娠
+		;custom code
+		SETCOLOR C_PINK
+		PRINTFORML %조사처리(CALLNAME:TARGET,"는")% 홍조를 띠며 헐떡인다...
+		PRINTFORML %HE_SHE(TARGET,1)%는 위험한 하루를 보내고 극도로 흥분했으며 지금 [발정 중]이다.
+		RESETCOLOR
+		TCVAR:TARGET:発情 = 1
+	ENDIF
+ENDIF
+FOR LOCAL,0, CHARANUM
+SIF TIME > TCVAR:LOCAL:追い出され時刻 + 30
+	TCVAR:LOCAL:追い出され地点 = 0
+;IF !CFLAG:LOCAL:うふふ
+FOR LOCAL:2,101,109
+SIF TEQUIP:LOCAL:(LOCAL:2) != TEQUIP:LOCAL:(LOCAL:2 + 10)
+	TEQUIP:LOCAL:(LOCAL:2) = 0
+NEXT
+;ENDIF
+;日記の書き込み判定
+CALL KOJO_MESSAGE_SEND("DIARY", 0, LOCAL, 0, 0, "BEFORE_CHECK")
+SIF CFLAG:LOCAL:現在位置 == SUKIMA()
+	CONTINUE
+;衣装の着替え直しは@SHOW_STATUSに移動
+;いちおうCLOTHES_SETTING_TRAINはやって損はなかろう
+SIF !睡眠時間(LOCAL) && CFLAG:LOCAL:眠姦発覚
+	CFLAG:LOCAL:眠姦発覚 = 0
+CALL CLOTHES_SETTING_TRAIN(LOCAL)
+NEXT
+;強制的にWAITが追加されるのを回避するためにTWAITを仕込む
+;これで入力回数が１回減る
+IF CFLAG:MASTER:現在位置 == 99
+	SETCOLOR C_RED
+	PRINTFORMW ### COM_END 위치 오류! %조사처리(CALLNAME:MASTER,"는")% 존재해서는 안 되는 장소에 있다! ###
+	PRINTW 하루가 강제로 끝났다. 이 오류를 스레드/디스코드에 보고해 주십시오.
+	RESETCOLOR
+	CFLAG:MASTER:現在位置 = CFLAG:MASTER:311
+	CALL SET_SLEEP(1,MASTER,0)
+	TFLAG:106 = 0
+	BEGIN AFTERTRAIN
+ENDIF
+;CFLAG:MASTER:就寝時間 = DAY * 1440 + TIME
+SIF SELECTCOM == 400
+	TWAIT 100,0
+
+@ENKAI_SINKOU
+SIF FLAG:宴会開催フラグ == 0 || TFLAG:宴会状態 == 101
+	RETURN
+;宴会の参加人数をセット
+CALL 宴会参加人数再計算()
+;天気が悪いと中止になる宴会もある
+;addition custom code, disabled
+; IF TIME:5 >= 4 && FLAG:36 > 0 && GROUPMATCH(CFLAG:[[天子]]:宴会参加, 1, 2)
+; 	PRINTFORMW It seemed the banquet was about to be canceled due to bad weather, but then Tenshi's power cleared it up.
+; 	TIME:5 = 0
+; 	;(天候パッチ)風速を0にする
+; 	WIND_VELOCITY = 0
+; 	;(天候パッチ)1日が終わるまで天候変更を禁止する
+; 	FORBIDDEN_CHANGE_WEATHER = 1
+; ENDIF
+; IF TIME:5 >= 4 && FLAG:36 > 0 && DAY >= FLAG:開始日 && TIME >= FLAG:33
+; 	PRINTL
+; 	PRINTFORMW Unfortunately, the banquet has been canceled due to bad weather.
+; 	CALL ENKAI_STOP
+; ;宴会の途中で降り始めた場合
+; ELSEIF TFLAG:宴会状態 >= 98 && TIME:5 >= 4 && FLAG:36 > 0
+; 	PRINTL
+; 	PRINTFORMW Unfortunately, the banquet has been canceled due to bad weather.
+; 	CALL ENKAI_STOP
+; ;宴会開始
+; ELSEIF 宴会開始日判定() && TIME >= FLAG:33
+; 	IF CFLAG:MASTER:現在位置 == TFLAG:宴会場
+; 		PRINTFORML
+; 		IF FLAG:参加人数 < 2
+; 			PRINTW The banquet starts with a chill atmosphere...
+; 		ELSEIF FLAG:参加人数 >= 8
+; 			PRINTW The banquet starts with a lively atmosphere...
+; 		ELSE
+; 			PRINTW The banquet starts with a cheerful atmosphere...
+; 		ENDIF
+; 		PRINTFORML
+; 		TFLAG:宴会状態 = 99
+; 	ELSE
+; 		TFLAG:宴会状態 = 98
+; 	ENDIF
+; ELSEIF TFLAG:宴会状態 == 98 && DAY >= FLAG:開始日 && TIME >= FLAG:33
+; 	IF CFLAG:MASTER:現在位置 == TFLAG:宴会場
+; 		PRINTL
+; 		PRINTW The banquet seems to have already started...
+; 		PRINTL
+; 		TFLAG:宴会状態 = 99
+; 	ENDIF
+; 	;主催者側はまだ宴会準備フラグのままのため、フラグを無理やり進める
+; 	FOR LOCAL,0,CHARANUM
+; 		SIF CFLAG:LOCAL:20 == 2
+; 			CALL ENKAI_WORK(LOCAL)
+; 	NEXT
+; ELSEIF 宴会開催中判定() && FLAG:参加人数 == 0
+; 	IF CFLAG:MASTER:現在位置 == TFLAG:宴会場
+; 		PRINTL
+; 		PRINTW The banquet seems to be wrapping up...
+; 		PRINTL
+; 		TFLAG:宴会状態 = 101
+; 	ELSE
+; 		TFLAG:宴会状態 = 100
+; 	ENDIF
+; ELSEIF TFLAG:宴会状態 == 100 && CFLAG:MASTER:現在位置 == TFLAG:宴会場
+; 	PRINTL
+; 	PRINTW The banquet seems to be already over...
+; 	PRINTL
+; 	TFLAG:宴会状態 = 101
+; ENDIF

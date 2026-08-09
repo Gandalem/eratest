@@ -1,0 +1,603 @@
+﻿; Modular ERB: OMOGATARI/COM/ADD_CUSTOM_COM988 Doctoring.ERB
+;tend wounds with this command instead of using items.
+
+@ADD_CUSTOM_COM988
+#DIM TendQuality
+#DIM SurgerySucc
+#DIM TendType = 0
+#DIM nPart
+#DIM nItem
+#DIM nLineCnt_Head ;custom code for correct clearline
+#DIM nPartPick
+#DIM DYNAMIC PartChoices,100
+#DIM DYNAMIC nHasBionicParts
+#DIM TendItems = -1, 607, 1106, 608, 520, 613, 523, 526
+#DIM TendItemMult = 30, 60, 85, 90, 100, 110, 130, 170
+#DIMS TendItemLabel = "None", "Herbal", "Fake Bandage", "High Herb", "Bandage", "Special Herb", "Medkit", "GC Meds"
+#DIM DYNAMIC gotHediffs,300
+#DIM DYNAMIC hediffCount
+#DIM DYNAMIC gotHediffs2,300
+#DIM DYNAMIC hediffCount2
+nLineCnt_Head = LINECOUNT
+TFLAG:194 = 0
+REDRAW 0
+DO
+IF SHIRAHU(TARGET) && TARGET != MASTER && TendType == -5
+	TendType = 0
+ENDIF
+SIF LINECOUNT - nLineCnt_Head > 0
+	CLEARLINE LINECOUNT - nLineCnt_Head
+; IF nLevelRework
+; TendQuality = 20 + LIMIT(ABL:MASTER:Medical*10,0,80) + LIMIT((ABL:MASTER:Medical-8)*5,0,50) + MAX((ABL:MASTER:Medical-18)*3,0)
+; SurgerySucc = LIMIT(20 + LIMIT(ABL:MASTER:Medical*10,0,60) + LIMIT((ABL:MASTER:Medical-6)*5,0,10) + MAX((ABL:MASTER:Medical-18),0),0,100)
+; ELSE
+SELECTCASE ABL:MASTER:Medical
+	CASE 0
+		TendQuality = 20
+	CASE 1
+		TendQuality = 50
+	CASE 2
+		TendQuality = 70
+	CASE 3
+		TendQuality = 100
+	CASE 4
+		TendQuality = 115
+	CASE 5
+		TendQuality = 130
+	CASE 6
+		TendQuality = 150
+	CASE 7
+		TendQuality = 155
+	CASE 8
+		TendQuality = 185
+	CASE 9
+		TendQuality = 215
+	CASE IS >= 10
+		TendQuality = 245
+ENDSELECT
+SurgerySucc = TendQuality
+; ENDIF
+CUSTOMDRAWLINE ━
+IF IsDead:TARGET:0
+	SETCOLOR C_GRAY
+	CUSTOMDRAWLINE ━
+	RESETCOLOR
+	IF ITEM:Defibrillator
+		IF CharWillDieAfterCheck(TARGET) == 1
+			PRINTFORML %조사처리(CALLNAME:TARGET,"의")% 부상은 생명과 양립할 수 없다.
+			PRINTFORML 소생을 위해 파괴된 신체 부위를 모두 대체하라.
+		ELSEIF BASE:TARGET:Blood <= 0
+			PRINTFORML %조사처리(CALLNAME:TARGET,"는")%(는) 소생하기 위해 피가 필요하다.
+		ELSE
+			PRINTFORML %조사처리(CALLNAME:TARGET,"는")%(는) 소생시킬 준비가 되었다!
+			PRINTFORML 아이템 메뉴에서 제세동기를 사용한다.
+		ENDIF
+	ELSE
+		PRINTFORML %조사처리(CALLNAME:TARGET,"는")% 너무 멀리 가 버렸다...
+		PRINTFORML 이 기술을 %조사처리(CALLNAME:TARGET,"에게")% 사용해도 아무 일도 일어나지 않을 것이다...
+	ENDIF
+	PRINTFORML
+	SETCOLOR C_GRAY
+	CUSTOMDRAWLINE ━
+	RESETCOLOR
+ELSEIF BASE:TARGET:0 <= 500
+	SETCOLOR C_GRAY
+	CUSTOMDRAWLINE ━
+	RESETCOLOR
+	PRINTFORML %조사처리(CALLNAME:TARGET,"가")%(가) 소생할 준비가 되었다!
+	PRINTFORML 아이템 메뉴에서 제세동기를 사용한다.
+	PRINTFORML
+	SETCOLOR C_GRAY
+	CUSTOMDRAWLINE ━
+	RESETCOLOR
+ENDIF
+;PRINTFORML Select a body part to tend
+PRINTFORML 현재 목표는 %PARSE("you",,,TARGET)%이다.
+PRINTFORML 기본 치료 품질: {TendQuality}\%
+SETCOLOR C_GRAY
+CUSTOMDRAWLINE ━
+RESETCOLOR
+IF TendType == -5
+	FOR LOCAL,0,100
+	VARSET LOCALS
+	SIF BDY_PART_NAME(LOCAL) == ""
+		CONTINUE
+	SIF !HasBodyPart(TARGET,LOCAL)
+		CONTINUE
+	SIF IsPartDestroyed(TARGET,LOCAL)
+		CONTINUE
+	SIF LOCAL == 0
+		CONTINUE
+	;SIF LOCAL == nPartPick
+	;	SETCOLOR C_AQUA
+	hediffCount = DT_SELECT(@"Hediff", @"chara = {TARGET} and part = {LOCAL}", , gotHediffs)
+	IF !LogicalHarvestPart(LOCAL) && !hediffCount
+	ELSEIF BodyPartHealth:TARGET:LOCAL:0 == BodyPartHealth:TARGET:LOCAL:1
+		PRINTFORML [{LOCAL,2}] - %BDY_PART_NAME(LOCAL)%
+	ELSE
+		SETCOLOR C_GRAY
+		PRINTPLAINFORM [{LOCAL,2}] - %BDY_PART_NAME(LOCAL)% (파츠가 손상됨)
+		PRINTL
+	ENDIF
+	RESETCOLOR
+	FOR LOCAL:3,0,hediffCount
+	IF DT_CELL_GET(@"Hediff", gotHediffs:(LOCAL:3), "type", 1) > 100
+		;find hediffs that aren't bionics (bionics are ID 100+)
+		LOCALS += @"       %HediffName(TARGET,LOCAL,LOCAL:3,1, 1)%"
+	ENDIF
+	NEXT
+	HTML_PRINT LOCALS	
+	NEXT
+	PRINTL
+	PRINTFORML [300] - 바이오닉 설치
+	PRINTFORML [301] - 자연 대체품 설치
+	SIF TARGET != MASTER
+		PRINTFORML [302] - 대량 수확
+ELSE
+	FOR LOCAL,0,100
+	IF DT_SELECT(@"Hediff", @"chara = {TARGET} and part = {LOCAL} and tended = 0 and type < 100")
+		;find hediffs that aren't bionics (bionics are ID 100+)
+		PRINTFORML [{LOCAL,2}] - %BDY_PART_NAME(LOCAL)% ({BodyPartHealth:TARGET:LOCAL:0,5}/{BodyPartHealth:TARGET:LOCAL:1,5})
+	ENDIF
+	NEXT
+ENDIF
+PRINTFORML
+CUSTOMDRAWLINE ━
+PRINTPLAIN 유형: 
+FONTSTYLE 1
+FOR LOCAL, 1000, VARSIZE("TendItems")+1000
+LOCALS '= TendItemLabel:(LOCAL-1000)
+SIF LOCALS == ""
+	CONTINUE
+IF TendType == LOCAL-1000
+	SETCOLOR C_AQUA
+ELSEIF TendItems:(LOCAL-1000) != -1
+	SIF ITEM:(TendItems:(LOCAL-1000)) <= 0
+		CONTINUE
+	;SETCOLOR C_GRAY
+ENDIF
+LOCALS:1 = \@ TendItems:(LOCAL-1000) != -1 ? %"("+TOSTR(ITEM:(TendItems:(LOCAL-1000)))+")"% # \@
+PRINTBUTTON @"[%LOCALS+COND_STR(@" %LOCALS:1%",STRLENS(LOCALS:1))%] ", LOCAL
+RESETCOLOR
+NEXT
+;Surgery
+IF ITEM:532
+	IF TendType == -5
+		SETCOLOR C_AQUA
+	ENDIF
+	PRINTBUTTON @"[수술] ", -5
+	RESETCOLOR
+ENDIF
+FONTREGULAR
+PRINTL 
+IF HealthInsuranceLevel
+	PRINTL
+	PRINTFORML [-87] 응급 의료 지원 요청
+	PRINTL
+ENDIF
+PRINTFORML [-98] - 대상 변경
+PRINTFORML [-99] - Cancel
+INPUT
+SELECTCASE RESULT
+	CASE -87
+		IF !HealthInsuranceLevel
+			CONTINUE
+		ENDIF
+		IF IsDead:TARGET:0
+			IF PermaDeath == 2 || HealthInsuranceLevel == 1
+				LOCAL = 81
+			ELSE
+				LOCAL = 80
+			ENDIF
+		ELSEIF !SHIRAHU(TARGET)
+			LOCAL = 80
+		ELSEIF GETBIT(HealthFlags:TARGET:0,HealthFlags_UnwellHediff)
+			LOCAL = 2
+		ELSE
+			LOCAL = 3
+		ENDIF
+		CALL MarketeersRecoverChara(TARGET,LOCAL)
+	CASE -98
+		PRINTFORML 현재 대상은 %조사처리(CALLNAME:TARGET,"다")%.
+		PRINTL [-1] - 반환
+		FOR LOCAL,0,CHARANUM
+		SIF CFLAG:LOCAL:現在位置 == CFLAG:MASTER:現在位置
+			PRINTFORML [{LOCAL}] - %CALLNAME:LOCAL% (호의: {CFLAG:LOCAL:2})
+		NEXT
+		INPUT
+		IF !INRANGE(RESULT,0,CHARANUM)
+			CONTINUE
+		ELSEIF CFLAG:RESULT:現在位置 == CFLAG:MASTER:現在位置
+			TFLAG:104 = RESULT
+		ENDIF
+		TARGET = TFLAG:104
+	CASE -99
+		RETURN 1
+	CASE -5
+		IF !ITEM:SurgeryKit
+			PRINTFORML 당신은 수술 키를 가지고 있지 않으며, 따라서 수술을 할 수 없습니다.
+			PRINTFORMW %CALLNAME:72%에게서 하나 사거나 인터넷에서 구입하십시오. 
+			TendType = 0
+			CONTINUE
+		ELSEIF SHIRAHU(TARGET) && TARGET != MASTER
+			PRINTFORMW %조사처리(CALLNAME:TARGET,"는")% 수술을 하려면 의식이 없어야 한다.
+			TendType = 0
+			CONTINUE
+		ENDIF
+		TendType = -5
+	CASE IS >= 1000
+		IF RESULT == 1006 && (ABL:102:親密 < 5 && TALENT:MASTER:234 < 7)
+			PRINTFORML 당신은 이 약을 어떻게 사용하는지 모른다.
+			PRINTFORMW %AllTechLevels(7)% 기술 전문가와 상담해 보라.
+			CONTINUE
+		ENDIF
+		TendType = RESULT-1000
+	CASE 300
+		IF TendType == -5
+			PRINTFORML 가지고 있는 생체 부품을 선택한다
+			LOCAL:5 = 0
+			FOR LOCAL, 100, VAR_TEMP_MAX
+			IF HasBionic:LOCAL && GET_STR(MASTER, "Hediff", (LOCAL), "名前") != ""
+				PRINTFORM %@"[{LOCAL,3}] %GET_STR(MASTER, "Hediff", (LOCAL), "名前")%({HasBionic:LOCAL})", 32, LEFT%
+				LOCAL:5 ++
+				SIF LOCAL:5 % 4 == 0
+					PRINTL 
+			ENDIF
+			NEXT
+			SIF LOCAL:5 % 4 != 0
+				PRINTL 
+			PRINTFORML [999] - 나가기
+			INPUT
+			nPart = RESULT
+			SELECTCASE RESULT
+				CASE 999
+				CASEELSE
+					CALL BionicConflictMenu(TARGET,nPart)
+					IF RESULT
+						HasBionic:nPart --
+						EXP:MASTER:Medical ++
+						SIF ITEM:109
+							EXP:MASTER:Medical ++
+						SETBIT TFLAG:194, 1
+					ENDIF
+			ENDSELECT
+		ENDIF
+	CASE 301
+		IF TendType == -5
+			PRINTFORML 자연스러운 부분을 선택하세요.
+			LOCAL:5 = 0
+			FOR LOCAL, 1, 100
+			IF HasNaturalPart:LOCAL && BDY_PART_NAME(LOCAL) != ""
+				PRINTFORM %@"[{LOCAL,3}] %BDY_PART_NAME(LOCAL)%({HasNaturalPart:LOCAL})", 32, LEFT%
+				LOCAL:5 ++
+				SIF LOCAL:5 % 4 == 0
+					PRINTL 
+			ENDIF
+			NEXT
+			SIF LOCAL:5 % 4 != 0
+				PRINTL 
+			PRINTFORML [999] - 나가기
+			INPUT
+			nPart = RESULT
+			SELECTCASE RESULT
+				CASE 999
+				CASEELSE
+					nPartPick = nPart
+					CALLF ConflictingParts(nPartPick)
+					IF ConflictingPartChoices:1
+						PRINTFORML 이 %BDY_PART_NAME(nPartPick)%을 넣을 수 있는 곳이 여러 군데 있다.
+						FOR LOCAL,0, 100
+						SIF ConflictingPartChoices:LOCAL && BDY_PART_NAME(ConflictingPartChoices:LOCAL) != ""
+							PRINTFORML [{ConflictingPartChoices:LOCAL}] - %BDY_PART_NAME(ConflictingPartChoices:LOCAL)%
+						NEXT
+						PRINTFORML [-1] 취소
+						INPUT
+						IF RESULT != -1
+							nPartPick = RESULT
+						ELSE
+							RETURN 0
+						ENDIF
+					ENDIF
+					LOCALS =
+					PRINTFORM 자연스러운 부분을 추가하면 %조사처리(CALLNAME:TARGET,"의")% 모든 것을 제거한다. 
+					CALLF BodyPartParent(nPart)
+					FOR LOCAL:1,0,20
+					SIF !BodyPartChildren:(LOCAL:1)
+						CONTINUE
+					LOCALS += @"%BDY_PART_NAME(BodyPartChildren:(LOCAL:1))%、"
+					NEXT
+					PRINTFORML %LIST_IN_STRING(LOCALS)%
+					PRINTL
+					hediffCount = DT_SELECT(@"Hediff", @"chara = {TARGET} and part = {nPartPick}", , gotHediffs)
+					FOR LOCAL:3,0,hediffCount
+					IF DT_CELL_GET(@"Hediff", gotHediffs:(LOCAL:3), "type", 1) > 100
+						IF !nHasBionicParts
+							PRINTFORML 다음 생체 부품들이 당신의 인벤토리로 회수됩니다:
+							FOR LOCAL:1,0,20
+							SIF !BodyPartChildren:(LOCAL:1)
+								BREAK
+							hediffCount2 = DT_SELECT(@"Hediff", @"chara = {TARGET} and part = {BodyPartChildren:(LOCAL:1)}", , gotHediffs2)
+							FOR LOCAL:4,0,hediffCount2
+							SIF !IsBionicPart(TARGET,(BodyPartChildren:(LOCAL:1)),(LOCAL:4))
+								CONTINUE
+							PRINTFORML ・%GET_STR(MASTER, "Hediff", DT_CELL_GET(@"Hediff", gotHediffs2:(LOCAL:4), "type", 1), "名前")%
+							HasBionic:(DT_CELL_GET(@"Hediff", gotHediffs2:(LOCAL:4), "type", 1)-100) ++
+							NEXT
+							NEXT
+							nHasBionicParts = 1
+						ENDIF
+					ENDIF
+					NEXT
+					FOR LOCAL:1,0,20
+					SIF !BodyPartChildren:(LOCAL:1)
+						BREAK
+					CALLF ClearPartHediff(TARGET,BodyPartChildren:(LOCAL:1),1)
+					NEXT
+					HasNaturalPart:nPart --
+					EXP:MASTER:Medical ++
+					SIF ITEM:109
+						EXP:MASTER:Medical ++
+					SETBIT TFLAG:194, 2
+					IF FLAG:70
+						CALL RECOVER(MASTER, -80, "TSP", "수술")
+					ELSE
+						TIME += 15
+					ENDIF
+					WAIT
+			ENDSELECT
+		ENDIF
+	CASE 302
+		IF TendType != -5 || TARGET == MASTER
+			CONTINUE
+		ENDIF
+		PRINTFORML 가능한 모든 부위를 수확하고 싶습니까?
+		PRINTFORML 다음 중 하나를 얻게 됩니다:
+		LOCAL:18 = 0
+		LOCAL:19 = 0
+		FOR LOCAL,0,100
+		IF BodyPartHealth:TARGET:LOCAL:0 == BodyPartHealth:TARGET:LOCAL:1 && LogicalHarvestPart(LOCAL) && !BodyPartRemoved:TARGET:LOCAL && STRLENS(BDY_PART_NAME(LOCAL))
+			PRINTFORML ・%BDY_PART_NAME(LOCAL)%
+			LOCAL:18++
+		ENDIF
+		NEXT
+		IF !LOCAL:18
+			CLEARLINE 2
+			PRINTFORMW %조사처리(CALLNAME:TARGET,"는")% 이미 부품을 완전히 벗겨졌다.
+			CONTINUE
+		ENDIF
+		IF nNecro
+			SETCOLOR C_RED
+			PRINTFORML 이것은 %조사처리(CALLNAME:TARGET,"를")% 죽일 것이다!
+			RESETCOLOR
+		ENDIF
+		IF FLAG:70
+			PRINTFORML 이것은 {80*(LOCAL:18)} TSP를 소모한다.
+			IF BASE:MASTER:TSP < 80*(LOCAL:18)
+				PRINTFORMW 불행하게도 당신은 충분한 TSP를 가지고 있지 않습니다.
+				CONTINUE
+			ENDIF
+		ELSE
+			PRINTFORML 이것은 {15*(LOCAL:18)}분 걸린다.
+		ENDIF
+		CALL ASK_YN()
+		SELECTCASE RESULT
+			CASE 0
+				IF FLAG:70
+					CALL RECOVER(MASTER, -80*(LOCAL:18), "TSP", "수술")
+				ELSE
+					TIME += (15*(LOCAL:18))
+				ENDIF
+				REPEAT 100
+				SIF BodyPartHealth:TARGET:COUNT:0 != BodyPartHealth:TARGET:COUNT:1 || !LogicalHarvestPart(COUNT) || BodyPartRemoved:TARGET:COUNT
+					CONTINUE
+				SIF !STRLENS(BDY_PART_NAME(COUNT))
+					CONTINUE
+				REUSELASTLINE  Removing %BDY_PART_NAME(COUNT)% \@ TARGET != MASTER ? from %CALLNAME:TARGET% # from yourself \@.%"." * LOCAL:19%
+				TWAIT 150, 1
+				CALL HarvestBodyPart(TARGET,COUNT,SurgerySucc,1)
+				CLEARLINE 1
+				LOCAL:19++
+				REND
+				IF !IsDead:TARGET:0
+					KilledBy:TARGET:0 = MASTER
+					KilledWith:TARGET:0 '= "Surgery"
+					CALL CrippleEffects(TARGET)
+					IF IsDead:TARGET:0
+						CALL AL_NOTIFY_ACHIEVEMENT_COMPLETION("killSurgery")
+					ENDIF
+				ENDIF
+				SETBIT TFLAG:194, 3
+		ENDSELECT
+	CASEELSE
+		nPart = RESULT
+		IF !STRLENS(BDY_PART_NAME(nPart))
+			CONTINUE
+		ENDIF
+		IF TendType == -5
+			PRINTFORML 너는 이 %BDY_PART_NAME(nPart)%으로 무엇을 할 작정이냐?
+			PRINTFORML 수술 성공 변화: {SurgerySucc}\%
+			PRINTL
+			SIF LogicalHarvestPart(nPart)
+				PRINTFORML [100] - 수확
+			hediffCount = DT_SELECT(@"Hediff", @"chara = {TARGET} and part = {nPart}", , gotHediffs)
+			FOR LOCAL:3,0,hediffCount
+			IF DT_CELL_GET(@"Hediff", gotHediffs:(LOCAL:3), "type", 1) > 100
+				SIF GET_INT(MASTER, "Hediff", DT_CELL_GET(@"Hediff", gotHediffs:(LOCAL:3), "type", 1), "Replaces Other Bionics")
+					CONTINUE
+				PRINTFORML [{LOCAL:3,3}] - %HediffName(TARGET,nPart,LOCAL:3,1)% 제거
+			ENDIF
+			NEXT
+			PRINTL
+			PRINTFORML [200] - 파트 설치
+			PRINTL
+			PRINTFORML [999] - 나가기
+			INPUT
+			SELECTCASE RESULT
+				CASE 100
+					IF !LogicalHarvestPart(nPart)
+						PRINTFORML 이 파트는 수확할 수 없습니다.
+						PRINTFORMW 메인 치료 화면으로 돌아갑니다...
+						CONTINUE
+					ENDIF
+					CALL HarvestBodyPart(TARGET,nPart,SurgerySucc,0)
+				CASE 0 TO 99
+					nPartPick = RESULT
+					IF FLAG:70
+						CALL RECOVER(MASTER, -80, "TSP", "수술")
+					ELSE
+						TIME += 15
+					ENDIF
+					REPEAT 5
+					hediffCount = DT_SELECT(@"Hediff", @"chara = {TARGET} and part = {nPart}", , gotHediffs)
+					REUSELASTLINE  Removing %GET_STR(TARGET, "Hediff", (DT_CELL_GET(@"Hediff", gotHediffs:nPartPick, "type", 1)), "名前")% \@ TARGET != MASTER ? from %CALLNAME:TARGET% # from yourself \@.%"." * COUNT%
+					TWAIT 150, 1
+					REND
+					LOCAL:6 = RAND:100
+					IF LOCAL:6 < SurgerySucc
+						PRINTFORMW %GET_STR(TARGET, "Hediff", (DT_CELL_GET(@"Hediff", gotHediffs:nPartPick, "type", 1)), "名前")%가 %CALLNAME:TARGET%로부터 성공적으로 제거되었다!
+						CALL GET_BIONIC((DT_CELL_GET(@"Hediff", gotHediffs:nPartPick, "type", 1)), 1, 1)
+						CALLF ClearHediff(TARGET,nPart,nPartPick)
+						PRINTL
+						EXP:MASTER:Medical ++
+						SIF ITEM:109
+							EXP:MASTER:Medical ++
+						SETBIT TFLAG:194, 3
+					ELSE
+						CALL SurgeryFailure(TARGET,nPart)
+					ENDIF
+			ENDSELECT
+		ELSE
+			IF TendItems:TendType != -1
+				IF !ITEM:(TendItems:TendType)
+					PRINTFORML 당신은 이 작업을 수행하기에 충분한 %ITEMNAME_TR(TendItems:TendType)%를 가지고 있지 않습니다.
+					PRINTFORML 가지고 있는 다른 아이템을 선택해 주십시오.
+					CONTINUE
+				ENDIF
+				ITEM:(TendItems:TendType) --
+			ELSE
+			ENDIF
+			;PRINTFORML %PARSE("You wrap")% %ITEMNAME_TR(使用アイテム)% around the %BDY_PART_NAME(LOCAL)% to stop the bleeding.
+			;fake bandages
+			IF TendItems:TendType == 1106
+				IF RAND(100) < 30
+					PRINTDATAL
+						DATAFORM 사용하자 붕대가 찢긴다.
+						DATAFORM 상처를 돌보는 동안, 붕대가 찢긴다.
+						DATAFORM 붕대를 실제로 적용하기 전에, 그것은 갈라진다.
+						DATAFORM 감싼 후에 붕대는 찢어진다.
+						DATAFORM 드레싱이 부착되지 않는다.
+					ENDDATA
+					PRINTFORMW 이 가짜 붕대는 별로 쓸모가 없다.
+					CONTINUE
+				ENDIF
+			ENDIF
+			CALLF BodyPartGroup(nPart)
+			FOR LOCAL,0,20
+			SIF !BodyPartChildren:LOCAL
+				CONTINUE
+			hediffCount = DT_SELECT(@"Hediff", @"chara = {TARGET} and part = {BodyPartChildren:LOCAL}", , gotHediffs)
+			FOR LOCAL:3,0,hediffCount
+			SIF IsBionicPart(TARGET,BodyPartChildren:LOCAL,LOCAL:3)
+				CONTINUE
+			LOCAL:4 = RAND(TendQuality-20,TendQuality+20)
+			;apply treatment multiplier
+			LOCAL:4 = LOCAL:4*(TendItemMult:TendType)/100
+			DT_CELL_SET @"Hediff", gotHediffs:(LOCAL:3), "tended", MAX(1,LOCAL:4), 1
+			PRINTFORML %HediffName(TARGET,BodyPartChildren:LOCAL,LOCAL:3)%은 %BDY_PART_NAME(BodyPartChildren:LOCAL)%에게 경향이 있었다. 품질: {LOCAL:4}\%
+			EXP:MASTER:Medical ++
+			SIF ITEM:109
+				EXP:MASTER:Medical ++
+			SETBIT TFLAG:194, 0
+			NEXT
+			NEXT
+			SIF ITEM:109
+				PRINTFORML %ITEMNAME_TR(109)%를 가지고 상처 치료 시 추가 경험치를 얻었다.
+			IF FLAG:70
+				CALL RECOVER(MASTER, -5, "TSP", "수술")
+			ELSE
+				TIME += 3
+			ENDIF
+			CALL INTERACTIVE_TUTORIAL_GET(102,203,"Tending",1)
+			WAIT
+			LOCAL:1 ++
+		ENDIF
+ENDSELECT
+LOOP 1
+
+@HarvestBodyPart(ARG,nPart,SurgerySucc,MassHarvest = 0)
+#DIM SurgerySucc
+#DIM MassHarvest
+#DIM nPart
+#DIM hediffCount
+#DIM DYNAMIC gotHediffs,300
+IF !MassHarvest
+	IF FLAG:70
+		CALL RECOVER(MASTER, -80, "TSP", "수술")
+	ELSE
+		TIME += 15
+	ENDIF
+	REPEAT 5
+	REUSELASTLINE  Removing %BDY_PART_NAME(nPart)% \@ ARG != MASTER ? from %CALLNAME:ARG% # from yourself \@.%"." * COUNT%
+	TWAIT 150, 1
+	REND
+ENDIF
+LOCAL:6 = RAND:100
+hediffCount = DT_SELECT(@"Hediff", @"chara = {ARG} and part = {nPart}", , gotHediffs)
+IF LOCAL:6 < SurgerySucc
+	SIF !IsBionicPart(ARG,(nPart),0)
+		CALL GET_BDY_PART(nPart, 1, 1)
+	FOR LOCAL:3,0,hediffCount
+	IF DT_CELL_GET(@"Hediff", gotHediffs:(LOCAL:3), "type", 1) > 100
+		CALL GET_BIONIC((DT_CELL_GET(@"Hediff", gotHediffs:(LOCAL:3), "type", 1)), 1, 1)
+	ENDIF
+	CALLF ClearHediff(ARG,nPart,LOCAL:3)
+	NEXT
+	SELECTCASE nPart
+		CASE 67
+			BASE:ARG:Poo = 0
+		CASE 74
+			BASE:ARG:4 = 0
+	ENDSELECT
+	CALLF BodyPartParent(nPart)
+	FOR LOCAL,0,20
+	SIF !BodyPartChildren:LOCAL
+		CONTINUE
+	BodyPartRemoved:ARG:(BodyPartChildren:LOCAL) = 1
+	NEXT
+	IF !MassHarvest
+		PRINTL
+		PRINTFORMW %BDY_PART_NAME(nPart)%이(가) %CALLNAME:ARG%에서 성공적으로 수확되었다!
+	ENDIF
+	IF !MassHarvest
+		IF !IsDead:ARG:0
+			KilledBy:ARG:0 = MASTER
+			KilledWith:ARG:0 '= "Surgery"
+			CALL CrippleEffects(ARG)
+			IF IsDead:ARG:0
+				CALL AL_NOTIFY_ACHIEVEMENT_COMPLETION("killSurgery")
+			ENDIF
+		ENDIF
+		SETBIT TFLAG:194, 3
+	ENDIF
+ELSE
+	CALL SurgeryFailure(ARG,nPart)
+ENDIF
+
+@SurgeryFailure(ARG,nPart)
+#DIM nPart
+$SurgeryFail
+EXP:MASTER:Medical += 2
+SIF ITEM:109
+	EXP:MASTER:Medical += 2
+SELECTCASE RAND:10
+	CASE 0 TO 5
+		PRINTFORMW 당신은 경미한 방식으로 %BDY_PART_NAME(nPart)%'를 수확하는 데 실패했다... 
+		CALLF DamageBodyPart(ARG,nPart,200,2,MASTER,"Surgical incompetence")
+	CASE 6 TO 8
+		PRINTFORMW 당신은 치명적인 방식으로 %BDY_PART_NAME(nPart)%를 수확하는 데 실패했다... 
+		CALLF DamageBodyPart(ARG,nPart,500,2,MASTER,"Surgical incompetence")
+	CASE 9
+		PRINTFORMW 당신은 터무니없는 방식으로 %BDY_PART_NAME(nPart)%을 수확하는 데 실패했다... 
+		CALLF DamageBodyPart(ARG,nPart,1000,2,MASTER,"Surgical incompetence")
+ENDSELECT
+SETBIT TFLAG:194, 4

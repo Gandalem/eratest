@@ -1,0 +1,206 @@
+﻿; Modular ERB: OMOGATARI/COM/ADD_CUSTOM_COM359 Laundry.ERB
+;-------------------------------------------------
+;Laundry
+;Wash your panties. Takes some time.
+;Using the washing machine makes it take four time as fast (from 4 hours to 1)
+;-------------------------------------------------
+
+@ADD_CUSTOM_COM359
+#DIM C_ID
+#DIM PANTY
+#DIM P_ID
+#DIM P_ID_LIST, MAXPANTS
+#DIM PR_LINECOUNT
+IF !NAS_PAIL_DIRTY
+	PRINTFORMDL 현재 당신의 소장품 중에 빨지 않은 팬티는 없습니다.
+	PRINTFORMDW 몇 개가 생기면 다시 오세요.
+	RETURN
+ENDIF
+PR_LINECOUNT = LINECOUNT
+CALL PANTY_REWORK_DISPLAY_ALL_INIT
+DO
+CLEARLINE LINECOUNT - PR_LINECOUNT
+PRINTL 세탁할 팬티를 선택해 주세요.
+SIF nOmutsu
+	PRINTFORML 기저귀는 세탁할 수 없다%COND_STR(" but solid waste can be scraped off them", UndiesCanSoil("solid"))%.
+PRINTFORML 선택된 팬티 수: {STRCOUNT(PANTY_REWORK_WASHING,"/")}/{29}
+DRAWLINE
+CALL PANTY_REWORK_DISPLAY_ALL_COLLECTION(0,1,2)
+DRAWLINE
+SIF STRLENS(PANTY_REWORK_WASHING)
+	PRINTFORM [0] \@ LAUNDRY_ROOM(CFLAG:MASTER:300) == 2 ? 세탁기를 사용한다 # 수동으로 빨래한다 \@　　
+PRINTFORM [7] - 모두 선택　　
+PRINTFORM [8] - 모두 지우기　　
+PRINTFORM [9] - 취소　　
+$INPUT_LOOP
+INPUT
+LOCAL = RESULT
+SELECTCASE RESULT
+	CASE 0
+		IF STRLENS(PANTY_REWORK_WASHING)
+			;remove
+			FOR LOCAL, 0, STRCOUNT(PANTY_REWORK_WASHING,"/")+1
+			P_ID  = TOINT(SPLIT_SINGLE(PANTY_REWORK_WASHING, LOCAL, "/"))
+			SIF !P_ID
+				BREAK
+			PANTY = DT_CELL_GET("PantyCollection", P_ID, "panty", 1)
+			C_ID  = DT_CELL_GET("PantyCollection", P_ID, "chara", 1)
+			;scraping off solids
+			IF DT_CELL_GET("PantyCollection", P_ID, "solidSoilBit", 1) && DT_CELL_GET("PantyCollection", P_ID,  @"isWashed", 1) == 0
+				PRINTFORML 당신은 %CALLNAME:C_ID%의 %PANTSNAME(PANTY,C_ID)%에서 고형 폐기물을 긁어낸다.
+				SIF PANTY_REWORK_IS_SOIL(C_ID,"solid",0,"PantyCollection",P_ID)
+					CALL GET_ITEM(ITEMNAME:636, 1, 1)
+				DT_CELL_SET "PantyCollection", P_ID, "isWashed", -1, 1
+				DT_CELL_SET "PantyCollection", P_ID, "washingTimer", 1, 1
+			ENDIF
+			IF !IsPadded(DT_CELL_GET("PantyCollection", P_ID, "chara", 1), "", PANTY) || GET_INT(C_ID, "下半身下着_ずらし可能", PANTY, "Can Wash")
+			ELSE
+				;restart
+				DT_CELL_SET "PantyCollection", P_ID, "washingTimer", 0, 1
+				PANTY_REWORK_WASHING '= REPLACE(PANTY_REWORK_WASHING, @"{P_ID}/", "")
+				LOCAL = -1
+			ENDIF
+			NEXT
+			PRINTL
+			IF LAUNDRY_ROOM(CFLAG:MASTER:300) == 2
+				PRINTFORMW 빨래통을 열고 팬티를 넣은 뒤 작동시킨다.
+				PANTY_REWORK_WASHING_ON = 2
+			ELSE
+				PRINTFORMW 당신은 팬티를 빨아서 건조대에 걸어 말린다.
+				PANTY_REWORK_WASHING_ON = 1
+			ENDIF
+			BREAK
+		ENDIF
+	CASE 7
+		VARSET PANTY_REWORK_WASHING
+		VARSET P_ID_LIST
+		X = DT_SELECT("PantyCollection", @"(isWashed = 0 or (isWashed = -1 and washingTimer > 0) or CONVERT(ISNULL(isWashed,0),'System.Boolean') = false) and (liquidSoilBit > 0 or solidSoilBit > 0 or corpseTaint > 0)", "Panty ASC, liquidSoilBit ASC, solidSoilBit ASC, corpseTaint ASC",P_ID_LIST)
+		FOR LOCAL,0,X
+		P_ID = P_ID_LIST:LOCAL
+		PANTY = DT_CELL_GET("PantyCollection", P_ID, "panty", 1)
+		C_ID  = DT_CELL_GET("PantyCollection", P_ID, "chara", 1)
+		SIF !P_ID
+			BREAK
+		SIF !INRANGE(C_ID,0,CHARANUM-1)
+			C_ID = MASTER
+		;SIF DT_CELL_GET("PantyCollection", P_ID, "isWashed", 1) == -1 && DT_CELL_GET("PantyCollection", P_ID, "washingTimer", 1) <= 0
+		;	CONTINUE
+		;don't allow diapers for laundry
+		SIF IsPadded(C_ID, , PANTY) && !DT_CELL_GET("PantyCollection", P_ID, "solidSoilBit",1) && !GET_INT(C_ID, "下半身下着_ずらし可能", PANTY, "Can Wash")
+			CONTINUE
+		SIF STRFIND(PANTY_REWORK_WASHING,@"{P_ID}/") == -1
+			PANTY_REWORK_WASHING += @"{P_ID}/"
+		SIF STRCOUNT(PANTY_REWORK_WASHING,"/") >= 29
+			BREAK
+		NEXT
+	CASE 8
+		VARSET PANTY_REWORK_WASHING
+	CASE 9
+		SIF !PANTY_REWORK_WASHING_ON
+			VARSET PANTY_REWORK_WASHING
+		RETURN
+	CASE 888
+		nGlobalPage--
+		CONTINUE
+	CASE 222
+		nGlobalPage++
+		CONTINUE
+	CASEELSE
+		IF DT_CELL_GET("PantyCollection", LOCAL, "id", 1)
+			IF STRFIND(PANTY_REWORK_WASHING,TOSTR(LOCAL)) > -1
+				PANTY_REWORK_WASHING '= REPLACE(PANTY_REWORK_WASHING, @"{LOCAL}/", "")
+			ELSE
+				IF STRCOUNT(PANTY_REWORK_WASHING,"/") >= 29
+					PRINTFORML 최대 속옷 개수({29}) 선택됨.
+					PRINTFORMW 더 많은 속옷을 추가하기 전에 한 사이클을 실행해 주세요.
+					CONTINUE
+				ENDIF
+				PANTY_REWORK_WASHING += @"{LOCAL}/"
+			ENDIF
+		ENDIF
+ENDSELECT
+LOOP 1
+;Diapers are currently in this collection
+IF !FLAG:時間停止
+	TIME += 3
+ELSE
+	BASE:MASTER:TSP -= 5
+ENDIF
+RETURN 1
+
+@ADD_CUSTOM_COM_ABLE359
+SIF !TFLAG:100
+	RETURN 0
+SIF !LAUNDRY_ROOM(CFLAG:MASTER:現在位置)
+	RETURN 0
+SIF CFLAG:MASTER:うふふ
+	RETURN 0
+; SIF !NAS_PAIL_DIRTY
+; 	RETURN 0
+RETURN 1
+
+@LAUNDRY_ROOM(ARG)
+#FUNCTION
+SIF 物干し可(ARG)
+	RETURNF ITEM:WashingMachine ? 2 # 1
+SIF BATHROOM(ARG)
+	RETURNF ITEM:WashingMachine ? 2 # 1
+IF ITEM:WashingMachine
+	SIF ARG == CFLAG:MASTER:311
+		RETURNF 2
+ENDIF
+
+@PANTY_WASHING_TIMER()
+#DIM PWT_Lapse
+#DIM P_ID
+#DIM PANTY
+#DIM C_ID
+SIF !PANTY_REWORK_WASHING_ON
+	RETURN
+PWT_Lapse = TIME_PROGRESS(TIME:1)
+SIF PANTY_REWORK_WASHING_ON == 2
+	TIMES PWT_Lapse, 4
+;remove
+FOR LOCAL, 0, STRCOUNT(PANTY_REWORK_WASHING,"/")+1
+P_ID  = TOINT(SPLIT_SINGLE(PANTY_REWORK_WASHING, LOCAL, "/"))
+SIF !P_ID
+	BREAK
+PANTY = DT_CELL_GET("PantyCollection", P_ID, "panty", 1)
+C_ID  = DT_CELL_GET("PantyCollection", P_ID, "chara", 1)
+DT_CELL_SET "PantyCollection", P_ID, "washingTimer", DT_CELL_GET("PantyCollection", P_ID, "washingTimer", 1)+PWT_Lapse, 1
+;done
+IF DT_CELL_GET("PantyCollection", P_ID, "washingTimer", 1) > PANTY_REWORK_DRYING_COST(PANTY)
+	;restart
+	CALL PANTY_WASHING_TIMER_DONE(P_ID,!CFLAG:MASTER:313)
+	LOCAL = -1
+ENDIF
+NEXT
+SIF !STRLENS(PANTY_REWORK_WASHING)
+	PANTY_REWORK_WASHING_ON = 0
+
+@PANTY_WASHING_TIMER_DONE(P_ID,ARG:1)
+#DIM PANTY
+#DIM C_ID
+#DIM P_ID
+PANTY = DT_CELL_GET("PantyCollection", P_ID, "panty", 1)
+C_ID  = DT_CELL_GET("PantyCollection", P_ID, "chara", 1)
+SIF !INRANGE(C_ID,0,CHARANUM-1)
+	C_ID = MASTER
+SIF ARG:1
+	CALL COLORMESSAGE(@"%CALLNAME:C_ID%의 %PANTSNAME(PANTY,C_ID)%가 세탁을 마쳤다!", C_GREEN, 1)
+DT_CELL_SET "PantyCollection", P_ID, "isWashed", 1, 1
+PANTY_REWORK_WASHING '= REPLACE(PANTY_REWORK_WASHING, @"{P_ID}/", "")
+NAS_PAIL_DIRTY:0 = PANTY_REWORK_DIRTY()
+NAS_PAIL_DIRTY:1 = PANTY_REWORK_MAX_DIRTY()
+FLAG:700 = PANTY_REWORK_UNIQUE_TOTAL()
+
+@ADD_CUSTOM_COM_PRINT359
+#DIM CONST COM_ID = 359
+IF !NAS_PAIL_DIRTY
+	SETCOLOR C_GRAY
+ELSEIF LAUNDRY_ROOM(CFLAG:MASTER:300) == 2
+	SETCOLOR C_GREEN
+ENDIF
+PRINTFORMC 빨래를 추가한다.[{Add_Custom_COM_To_Number(COM_ID),3}]
+RESETCOLOR
+RETURN 1

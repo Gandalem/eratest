@@ -1,0 +1,137 @@
+﻿; Modular ERB: QOL/Qol_DishTaste.ERB
+
+@Qol_DishTaste
+PRINTL
+DRAWLINE
+DO
+PRINTL 요리 맛을 입력하시오:
+INPUTS
+CALL Qol_DishTaste_Search(RESULTS)
+SIF RESULT
+	RETURN
+LOOP 1
+;search through every dish through translated taste_dish, add any matches to the list, show every matching entry with translated dish/its taste/comment, about 10 per page
+
+@Qol_DishTaste_Search(ARGS)
+#DIMS DYNAMIC TASTE_LIST, 100
+#DIM  DYNAMIC TASTE_CNT,  100
+#DIM  DYNAMIC TASTE_NUM
+#DIM DYNAMIC nPage = 1
+#DIM DYNAMIC nPageLength
+#DIM nPageSize
+#DIM DYNAMIC nPrintCount
+#DIM DYNAMIC nCurLoop
+#DIMS DYNAMIC strPrintRange
+PRINTFORML 검색 중: "%ARGS%"
+LOCAL:1 = 0
+strPrintRange =
+;create a list
+FOR LOCAL, 101, 401 + CHARANUM
+CALL DISHDATA(LOCAL)
+;add taste from ingredients
+FOR LOCAL:2, 0, VARSIZE("DISH_ING")
+SIF DISH_ING:(LOCAL:2) > 0
+	CALL DISH_TASTE_ADD(DISH_ING:(LOCAL:2))
+NEXT
+;separate into a searchable array
+CALLF CNT_SPLIT(DISH_TASTE, TASTE_LIST, TASTE_CNT, TASTE_NUM)
+FOR LOCAL:2, 0, TASTE_NUM
+IF STRCOUNT( TOLOWER(TASTE_TR(TASTE_LIST:(LOCAL:2))), ESCAPE(TOLOWER(ARGS)) )
+	strPrintRange += TOSTR(LOCAL) + ":"
+	LOCAL:1 ++
+	BREAK
+ENDIF
+NEXT
+CALL RESET_DISH
+NEXT
+nPageSize = 10
+gLineCount = LINECOUNT
+REDRAW 0
+;print list
+DO
+;add await
+SIF LINECOUNT - gLineCount > 0
+	CLEARLINE LINECOUNT - gLineCount
+;total amount of items
+nPageLength = LOCAL:1 / nPageSize + ((LOCAL:1 % nPageSize) == 0 ? 0 # 1)
+;reset current page in case it gets overflowed
+SIF nPage > nPageLength
+	nPage = 1
+IF LOCAL:1 == 0
+	DRAWLINE
+	PRINTFORML
+	PRINTFORML 아이템을 찾지 못했습니다!!!
+	PRINTFORML
+	DRAWLINE
+	nPageLength = 0
+	nPage = 0
+ELSE
+	PRINTFORML {LOCAL:1} 결과가 발견되었다! 참고로 이것은 수정자 없이 기본 요리 맛만 보여준다; 사용 가능한 모든 재료의 맛이 포함될 수 있다.
+	DRAWLINE
+	nPrintCount = 0
+	FOR LOCAL, 101, 401 + CHARANUM
+	SIF !SPLIT_CHECK(strPrintRange, LOCAL) ;show only those who are in the list
+		CONTINUE
+	IF (nPrintCount >= (nPage-1) * nPageSize) && (nPrintCount < (nPage) * nPageSize)
+		CALL DISHDATA(LOCAL)
+		LOCALS = 【%DISHNAME_TR(DISH_NAME)%】%DISHCOMMENT_TR(DISH_COMMENT)%
+		PRINTFORML %BREAKENG(LOCALS, 0, "\n" + BL(STRLENS(@"【%DISHNAME_TR(DISH_NAME)%】")))%
+		PRINT 　
+		FOR LOCAL:2, 0, VARSIZE("DISH_ING")
+		SIF DISH_ING:(LOCAL:2) > 0
+			CALL DISH_TASTE_ADD(DISH_ING:(LOCAL:2))
+		NEXT
+		PRINTBUTTON @"[No: {LOCAL,3}]", ""
+		IF INRANGE(LOCAL, 101, 200)
+			PRINTBUTTON "[간식]", ""
+		ELSEIF INRANGE(LOCAL, 201, 300)
+			PRINTBUTTON "[식사]", ""
+		ELSEIF INRANGE(LOCAL, 301, 400)
+			PRINTBUTTON "[디저트]", ""
+		ENDIF
+		CALL SHOW_TASTE(DISH_TASTE, "DISH_DATA",,1)
+		CALL RESET_DISH
+		PRINTL
+	ENDIF
+	nPrintCount ++
+	NEXT
+	PRINTFORML
+ENDIF
+CALL EQUATE_LINE, (gLineCount + 10 + nPageSize*3)
+;controls
+DRAWLINE
+IF nPageLength == 1
+	SETCOLOR 0x606060
+	PRINTFORM %"Prev page",15,LEFT%
+	RESETCOLOR
+ELSE
+	PRINTBUTTON @"%"Prev page",15,LEFT%", 888
+ENDIF
+PRINTFORM ({nPage}/{nPageLength})%BL(6)%
+PRINTFORM 
+IF nPageLength == 1
+	SETCOLOR 0x606060
+	PRINTFORM %"Next page",15,LEFT%
+	RESETCOLOR
+ELSE
+	PRINTBUTTON @"%"Next page",15,LEFT%", 777
+ENDIF
+PRINTFORML 
+PRINTFORML 
+PRINTBUTTON "[998] 더 검색하기　", 998
+PRINTFORML 
+PRINTBUTTON "[999] 리턴　", 999
+PRINTFORM  
+INPUT
+SELECTCASE RESULT
+	CASE 998
+		RETURN
+	CASE 999
+		CALL RESET_DISH
+		RETURN 1
+	CASE 777, 888
+		SIF nPageLength == 1
+			CONTINUE
+		nPage = PAGE_HANDLE(RESULT, 888, nPage, 1, nPageLength)
+ENDSELECT
+LOOP 1

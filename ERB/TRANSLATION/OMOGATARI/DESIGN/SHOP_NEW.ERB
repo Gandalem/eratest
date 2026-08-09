@@ -1,0 +1,1313 @@
+﻿; Modular ERB: OMOGATARI/DESIGN/SHOP_NEW.ERB
+;FileName_SHOP.ERB -------------------------------- Rev1.00
+;起床前メニュー画面表示
+;CALL		SYSTEM
+;ARG		VOID
+;RETURN		VOID
+;COMMENT
+;----------------------------------------------------------
+
+@SHOP_NAS
+#DIMS DYNAMIC html ; NAS custom code, html printing for tooltips
+;NAS custom code
+;we should not call shop if we are in custom character menu
+IF inSaveTransfer
+	;transfer
+	CALL SaveTransferMenu()
+ELSEIF inCharaCreator
+	PRINTFORMW 에라메이커의 제약 사항으로 인해, 당신은 커스텀 캐릭터 임포트 화면으로 다시 부팅될 것이다.
+	PRINTFORMW 그런 다음 당신은 동방 섹션으로 가서 캐릭터를 임포트할 수 있게 된다.
+	inCharaCreator = 2
+	CLEARLINE 99999
+	BEGIN TITLE
+ELSEIF inTrain == 1 || inTrain == 3 || benchMarkStart
+	BEGIN TRAIN
+ELSEIF inTrain == 2
+	;character ID swap
+	CALL UPDATE_TR
+	inTrain = 0
+ENDIF
+;NAS: Save transfer
+IF GetSaveType() != SAVE_TRANSFER_CURRENT_BRANCH()
+	SETCOLOR C_RED
+	PRINTFORML 경고: 이 세이브는 %SaveTypeSTR(GetSaveType())%에서 비롯되었으며 %SaveTypeSTR(SAVE_TRANSFER_CURRENT_BRANCH())%!에서는 제대로 작동하지 않을 수 있습니다!
+	PRINTFORML 계속하기 전에 【세이브 데이터 전송】 도구를 사용하는 것을 권장합니다.
+	RESETCOLOR
+	FORCEWAIT
+	CALL SaveTransferMenu()
+ENDIF
+;mod custom code - turn off
+THIRD_PERSON = 0
+;起床前画面表示中フラグ
+TFLAG:100 = 0
+;---------------------
+;モブ店員画像を一度だけ作成。スマートなやり方ではない。もっといい場所はないだろうか
+;SIF !SPRITECREATED("顔絵_服_通常_MOB_0")
+;	CALL モブ店員画像作成
+;SPTALKで呼ばれたとき、画像がなければ作成にしました
+;---------------------
+;起床時間自動補正、最低睡眠時間は4時間
+;LOCAL:1 = CFLAG:MASTER:就寝時間 - DAY * 1440
+IF 睡眠時間予測(TIME:3) < 240 ;(TIME:3 >= LOCAL:1 && (TIME:3 - LOCAL:1) < 240) || (TIME:3 < 240 && (1440 + TIME:3 - LOCAL:1) < 240) ;bug fix - attempt to fix faulty sleeping time clock
+	PRINTL 수면 시간이 너무 짧다. 최소 4시간의 잠이 필요하다.
+	CALL 最低睡眠時間設定()
+	PRINTFORMW 기상 시간은 (%時刻表示(TIME:3)% )으로 설정되었다.
+ENDIF
+;---------------------
+CUSTOMDRAWLINE ━
+;qol custom code, playthrough count + current year
+LOCAL:15 = (DAY:0 / 125) + 1
+html '= @"\@ FLAG:周回数 ? NG:{FLAG:周回数}, %" "% #  \@일 {DAY}, %PRINT_DATE_F(DAY,1)% (연도 {LOCAL:15}) (%GET_DAY_TR()%)"
+html += @"　자금: %MONEYSTR_HTML(MONEY)%\@ MONEY:2 ? %" "%(카리스마: %CHARISMA_HTML(MONEY:2)%) #  \@"
+html += @"<br>B.A.D. Name: %EZB_BAD_NAME()%"
+HTML_PRINT html
+CALL Add_STAMINA_BAR(MASTER, 28, 1) ;custom code: replaced bars with one that shows true stamina
+PRINTFORM 　　
+CALL BASE_BAR(MASTER, "気力", 28, "青")
+SIF HAS_PENIS(MASTER)
+	CALL BASE_BAR(MASTER, "精力", 28, "黄")
+PRINTFORML
+IF HasAnyYoujutsu(MASTER)
+	CALL BASE_BAR(MASTER, "法力", 28, "オレンジ")
+	PRINTFORM 　　
+ENDIF
+SIF MAXBASE:MASTER:TSP
+	CALL BASE_BAR(MASTER, "TSP", 28, "水色")
+PRINTFORM 　　
+PRINTL
+;poo bar
+;moved to a new function since multiple scripts need it now
+IF GETBIT(nPee,1)
+	CALL PeeBar(MASTER,21)
+ENDIF
+PRINTFORM 　　
+IF GETBIT(nScat,2)
+	CALL PooBar(MASTER,21)
+ENDIF
+PRINTFORML 
+IF NOTICE_LUST(MASTER)
+	;記述が整理できるという理由で微妙に閾値変更
+	SELECTCASE CFLAG:MASTER:溜まってる度
+		CASE IS >= 900
+			SETCOLOR C_RED
+		CASE IS >= 750
+			SETCOLOR C_ORANGE
+		CASE IS >= 500
+			SETCOLOR C_YELLOW
+	ENDSELECT
+	PRINTFORMD %"Sexual Frustration:",20% 
+	CALL PRINT_COLORBAR(CFLAG:MASTER:溜まってる度, 1000, 28, UNICODE(0x2585), UNICODE(0x2585), C_PINK, 0x4f414e)
+	PRINTFORM %" "%{CFLAG:MASTER:溜まってる度 / 10}
+	PRINTFORMD ％
+	RESETCOLOR
+	PRINTFORML
+ENDIF
+;PRINT 体力
+;CALL PRINT_COLORBAR, BASE:MASTER:0,MAXBASE:MASTER:0,28, UNICODE(0x2585), UNICODE(0x2585), BARCOLORSET("赤"), RESULT:1
+;PRINTFORML  ({BASE:MASTER:体力,5}/{MAXBASE:MASTER:体力,5})
+;PRINT 気力
+;CALL PRINT_COLORBAR, BASE:MASTER:1,MAXBASE:MASTER:1,28, UNICODE(0x2585), UNICODE(0x2585), BARCOLORSET("緑"), RESULT:1
+;PRINTFORML  ({BASE:MASTER:1,5}/{MAXBASE:MASTER:1,5})
+;custom code QoL
+PRINTBUTTON "[캐릭터]", 121
+PRINTFORM : %NAME:MASTER% ({CharaAge:MASTER:0}%ShortGender(MASTER)%) 
+IF !SaveIsEZB
+	PRINTBUTTON "[홈]", 120
+	PRINTFORM %STR_TR(8000 + CFLAG:MASTER:初期位置)%에서 %GET_MAPNAME(MAIN_MAP)%에 있다.
+	IF inTrain
+		PRINTFORML  (낮)	
+	ELSEIF FLAG:気絶中断
+		PRINTFORML  (기절한 채로)	
+	ELSE
+		PRINTFORML 
+	ENDIF
+ENDIF
+;custom code QoL
+IF CFLAG:MASTER:初期位置 != CFLAG:MASTER:現在位置
+	IF inTrain == 4
+		PRINTFORM 현재 위치: %NAME_FROM_PLACE(CFLAG:MASTER:現在位置)%・
+	ELSE
+		PRINTFORM 현재 수면 중인 장소: %NAME_FROM_PLACE(CFLAG:MASTER:現在位置)%・
+	ENDIF
+ENDIF
+;end custom code QoL
+;PRINTFORML Waking Time: %時刻表示(TIME:3)%
+PRINTBUTTON "[기상 시간]", 2400
+;qol custom code
+PRINTFORM : %時刻表示(TIME:3)%・
+PRINTBUTTON "[달력]", 3333
+SIF FLAG:PottyChart
+	PRINTBUTTON "・[응가 차트]", 3334
+PRINTFORML
+SETCOLOR C_GRAY
+CUSTOMDRAWLINE ━
+RESETCOLOR
+;---------------------------
+;CALL INFO_CLOCK_IMAGE(TIME:3, 500, "left")
+CALL TIPS_DISPLAY
+PRINTFORML 
+SETCOLOR 103,228,126
+PRINTL 【메인 메뉴】
+RESETCOLOR
+SIF LoG_TutorialProgress < 10 && SaveIsEZB
+	SETCOLOR C_GRAY
+PRINTLC [100] - 기상
+RESETCOLOR
+SIF FLAG:気絶中断
+	SETCOLOR C_GRAY
+PRINTLC [102] - 홈 설정
+RESETCOLOR
+;IF CFLAG:MASTER:現在位置 != OMANEKIBEYA() && (nStartingBackstory > 20 || DAY > YearLength || MASTER)
+IF CFLAG:MASTER:現在位置 != OMANEKIBEYA() && !SaveIsEZB
+	SIF FLAG:気絶中断
+		SETCOLOR C_GRAY
+	PRINTLC [120] - 홈 변경
+ENDIF
+RESETCOLOR
+PRINTLC [121] 캐릭터 변경
+PRINTL
+PRINTL
+PRINTLC [101] - 능력
+SIF FLAG:気絶中断
+	SETCOLOR C_GRAY
+IF (nMaxTech >= 5 && GET_YEAR() >= 2010) || SaveIsEZB
+	IF ITEM:Computer || SaveIsEZB
+		PRINTLC [103] - 인터넷
+	ELSE
+		SETCOLOR C_GRAY
+		PRINTLC [103] - 인터넷(컴퓨터 없음)
+		RESETCOLOR
+	ENDIF
+ENDIF
+RESETCOLOR
+PRINTLC [104] - 목록 항목
+PRINTLC [113] - 스침 목록
+PRINTL
+IF SaveIsEZB
+	PRINTL
+	CALL EZB_BEFOREDAY
+	PRINTL
+ENDIF
+IF FLAG:700
+	SIF FLAG:気絶中断
+		SETCOLOR C_GRAY
+	PRINTLC [105] - 팬티 컬렉션
+	RESETCOLOR
+ENDIF
+PRINTLC [106] - 음악 컬렉션
+PRINTLC [107] - 선물 컬렉션
+PRINTLC [108] - 물고기 컬렉션
+PRINTL
+PRINTLC [109] - 동물 목록
+PRINTLC [110] - 사냥한 벌레 목록
+PRINTLC [111] - 특별 요리 목록
+PRINTLC [112] - 주문 카드 목록
+PRINTL 
+PRINTLC [130] - 루시드 드림 회상
+SIF nFactions
+	PRINTLC [131] - 세력 목록
+;PRINTLC [132] - List of religions
+PRINTL
+PRINTL
+SIF FLAG:気絶中断
+	SETCOLOR C_GRAY
+PRINTLC [150] - 업적
+PRINTLC [151] - 농장 설정
+PRINTLC [152] - 통계
+SIF CFLAG:MASTER:子供人数
+	PRINTLC [153] - 아동 목록
+RESETCOLOR
+PRINTL
+PRINTL
+SETCOLOR 103,228,126
+PRINTL 【시스템 메뉴】
+RESETCOLOR
+SIF FLAG:気絶中断
+	SETCOLOR C_GRAY
+;addition custom code
+PRINTLC [160] - 설정 요청
+RESETCOLOR
+PRINTLC [161] - 의복 초기화
+PRINTL
+PRINTLC [400] - 옵션
+;NAS: Dev Quicktest
+;#; PRINTLC [999] - Debug
+PRINTL
+; This line break is needed for parity with NAS' version
+;=========================
+PRINTLC [410] 채집 장소
+;qol custom code
+PRINTLC [411] - 낚시터
+;NAS: This line was removed to make space for the debug option
+;PRINTL
+;=========================
+PRINTLC [412] - 장소 테이블
+;NAS: Line break due to debug menu option
+;=========================
+PRINTLC [420] - 튜토리얼
+[IF_DEBUG]
+PRINTL
+PRINTLC [430] - 타임라인
+[ENDIF]
+RESETCOLOR
+PRINTL
+PRINTL
+PRINTLC [200] - 저장
+PRINTLC [300] - 불러오기
+SIF SAVESTR:本体バージョン != eraTW_Version || SAVESTR:NAS_SAVE_VER != NAS_VERSION
+	SETCOLOR C_RED
+PRINTLC [500] - 업데이트
+RESETCOLOR
+PRINTL
+SIF MONEY:2 && FLAG:会員ランク ;custom code, added membership req
+	PRINTFORML [600] - 카리스마 판매
+CUSTOMDRAWLINE ━
+CALL LoG_AdvanceTutorial(1)
+SIF RESULT
+	RESTART
+;FileName_SHOP.ERB -------------------------------- Rev1.00
+;起床前メニューRESULT処理
+;CALL		SYSTEM
+;ARG		VOID
+;RETURN		VOID
+;COMMENT
+;----------------------------------------------------------
+
+@USERSHOP_NAS
+PLAYSOUND "se/キー音.m4a"
+;起床
+IF RESULT == 100
+	IF SaveIsEZB
+		IF LoG_TutorialProgress >= 30
+			CALL SET_MAINHOME
+			SIF RESULT == -1;
+				RETURN
+		ELSE
+			RETURN
+		ENDIF
+	ENDIF
+	BEGIN TRAIN
+	RETURN 1
+	;住環境設定
+ELSEIF RESULT == 102 && !FLAG:気絶中断
+	CALL SCHEDULE
+	;自宅引っ越し
+ELSEIF RESULT == 120 && CFLAG:MASTER:現在位置 != OMANEKIBEYA()&& !FLAG:気絶中断
+	CALL SET_MAINHOME
+	;能力表示
+ELSEIF RESULT == 101
+	DEBUGCLEAR
+	CALL SHOW_CHARA_LIST("存在するキャラリスト", "体力気力", "「情報表示」「条件変更」")
+	;	CALL SHOW_CHARADATA
+	;通信販売
+ELSEIF RESULT == 103 && !FLAG:気絶中断
+	IF ITEM:Computer || SaveIsEZB
+		CurrentSite = 0
+		CALL Internet_Home
+	ELSE
+		PRINTFORMW 컴퓨터를 얻기 위해 요괴 산 입구에 있는 %CALLNAME:51%로 간다.
+	ENDIF
+	;所持アイテム一覧
+ELSEIF RESULT == 104
+	CALL SHOW_ALLITEM
+	;コレクション
+ELSEIF RESULT == 105 && FLAG:700 && !FLAG:気絶中断
+	CALL SHOW_COLLECTION
+	;手に入れた楽譜
+ELSEIF RESULT == 106
+	CALL SHOW_COLLECTION_SCORE
+	;貰った贈り物
+ELSEIF RESULT == 107
+	CALL SHOW_COLLECTION_GIFT
+	;釣った魚リスト
+ELSEIF RESULT == 108
+	CALL SHOW_COLLECTION_FISH
+	;狩った鳥獣リスト
+ELSEIF RESULT == 109
+	CALL SHOW_COLLECTION_HUNTED
+	;捕った虫リスト
+ELSEIF RESULT == 110
+	CALL SHOW_COLLECTION_MUSHI
+ELSEIF RESULT == 111
+	CALL SHOW_SP_DISH_LIST
+ELSEIF RESULT == 112
+	CALL SHOW_COLLECTION_SPELLCARD
+ELSEIF RESULT == 113 ;added, check mob list
+	CALL PRINT_SAVED_GIRL_STATS
+ELSEIF RESULT == 130
+	CALL LucidDreamRecollection
+ELSEIF RESULT == 131
+	CALL AllFactionList(MASTER,,,"「Change Conditions」「Display Info」「Faction Status」")
+	;実績解除
+ELSEIF RESULT == 150 && !FLAG:気絶中断
+	CALL AL_LIST
+	;農家設定
+ELSEIF RESULT == 151 && !FLAG:気絶中断
+	CALL RESTART_NOUMIN
+ELSEIF RESULT == 152
+	CALL FullStatistics
+	;子供一覧
+ELSEIF RESULT == 153 && CFLAG:MASTER:子供人数 ;qol custom code, replaced with our version
+	;CALL SHOW_ALLCHILDLIST
+	CALL Qol_MC_CHILD_LIST
+	IF INRANGE(RESULT, 10000, 11000)
+		RESULT -= 10000
+		SIF EXISTCSV(RESULT)
+			CALL SINGLE_CHARA_STATE_TR(RESULT)
+	ENDIF
+	;依頼リセット
+ELSEIF RESULT == 160 && !FLAG:気絶中断
+	;addition custom code
+	CALL Add_RequestTweaks
+	;衣装リセット
+ELSEIF RESULT == 161
+	CALL RESET_ALL_CLOTHES
+	;LoG Danmaku World
+ELSEIF RESULT == 256 && SaveIsEZB
+	CurrentSite = 19
+	WebSitesKnown:19 = 1
+	SiteSubpage = 1000
+	CALL Internet_Home
+	;LoG Weapon Shop
+ELSEIF RESULT == 257 && SaveIsEZB
+	SIF LoG_TutorialProgress >= 10
+		CALL LoG_WeaponShop
+ELSEIF RESULT == 258 && SaveIsEZB
+	SIF LoG_TutorialProgress >= 90
+		CALL ADD_CUSTOM_COM635
+ELSEIF RESULT == 259 && SaveIsEZB
+	SIF LoG_TutorialProgress >= 90
+		CALL ITEM_BUY
+	;OPTION
+ELSEIF RESULT == 400
+	CALL NAS_SETTINGS
+	;CALL OPTION
+	;採集リスト
+ELSEIF RESULT == 410
+	CALL SHOW_GATHERING_LIST
+ELSEIF RESULT == 411 ;qol custom code
+	CALL SHOW_FISHING_LIST
+	;出現場所リスト
+ELSEIF RESULT == 412 ;qol custom code
+	CALL SHOW_APPEAR_LIST
+	;UPDATE
+ELSEIF RESULT == 500
+	CALL Update_Menu
+	;チュートリアル
+ELSEIF RESULT == 420
+	CALL TUTORIAL_MAIN
+	;SAVE
+ELSEIF RESULT == 200
+	;Custom code for load-save menu
+	CALL LOAD_SAVE(1)
+	;LOAD
+ELSEIF RESULT == 300
+	;Custom code for load-save menu
+	CALL LOAD_SAVE(0)
+	;カリスマ売却
+ELSEIF RESULT == 600
+	;custom code
+	CALL TODAYS_CHARISMA(1)
+	PRINTFORML %"Current ￥", 36 + 3 + STRLENS(三桁区切(CM_LIMIT)), LEFT%%金額表示(MONEY), 13, RIGHT%
+	PRINTFORML %"Current Charisma", 36, LEFT%%三桁区切(MONEY:2), 13, RIGHT% / %三桁区切(CM_LIMIT)%
+	PRINTFORML %"Current ￥/Charisma exchange rate", 36 + 3 + STRLENS(三桁区切(CM_LIMIT)), LEFT%%金額表示(CHARISMA_NOW()), 13, RIGHT%
+	DRAWLINE
+	CALL CM_BALANCE
+	;custom shop button use
+ELSEIF RESULT == 797
+	CALL choiceButtonTarget()
+ELSEIF RESULT == 798
+	IF ShopButtonTargetId > 0
+		ShopButtonTargetId --
+		ShopButtonTarget = ShopButtonTargetList:ShopButtonTargetId
+	ENDIF
+ELSEIF RESULT == 799
+	IF ShopButtonTargetId + 1 < ShopButtonTargetNum
+		ShopButtonTargetId ++
+		ShopButtonTarget = ShopButtonTargetList:ShopButtonTargetId
+	ENDIF
+ELSEIF INRANGE(RESULT, 800, 800 + MAX_CUSTOM_SHOP)
+	CALL useKojoShopButton(RESULT - 800)
+	;起床時間設定
+ELSEIF RESULT == 2400
+	CALL 起床時間設定()
+ELSEIF RESULT == 3333 ;qol custom code
+	CALL CALENDAR()
+ELSEIF RESULT == 3334 ;qol custom code
+	CALL PottyChart()
+ELSEIF RESULT == 121
+	CALL IdentityCrsis()
+	[IF_DEBUG]
+ELSEIF RESULT == 999
+	CALL DEBUG_MENU
+ELSEIF RESULT == 430
+	CALL NAS_TIMELINE
+	[ENDIF]
+ENDIF
+
+@NAS_TIPS
+#DIMS theTips, 10000
+#DIM tipPick,3
+SETCOLOR C_YELLOW
+IF !STRLENS(theTips)
+	FOR LOCAL, 0, 1000
+	SELECTCASE LOCAL
+		CASE 0
+			theTips:LOCAL '= @"자리가 아니면 실행할 수 없는 명령들이 있다."
+		CASE 1
+			theTips:LOCAL '= @"누군가의 이름 옆에 있는 【★】을 클릭하면 【팔로우】명령어가 그 사람에게 이동한다."
+		CASE 2
+			theTips:LOCAL '= @"일부 지도는 정원 및 훈련 시설이 부족하다. 필요하면 이동하라."
+		CASE 3
+			theTips:LOCAL '= @"시간을 멈추는 것을 더 잘하려면 많이 연습해라."
+		CASE 4
+			theTips:LOCAL '= @"분실된 아이템을 찾으려면 그것에 능한 사람에게 물어라."
+		CASE 5
+			theTips:LOCAL '= @"술은 주점에서 살 수 있다."
+		CASE 6
+			theTips:LOCAL '= @"점괘나 오미쿠지의 결과에 따라 일부 것들이 바뀐다. 복권, 카지노, 그리고 채집 같은 스킬들은 어느 정도 영향을 받는다."
+		CASE 7
+			theTips:LOCAL '= @"눈은 작물의 성장을 더 느리게 만든다."
+		CASE 8
+			theTips:LOCAL '= @"카리스마는 스칼렛 데빌 저택의 카지노에서 사용할 수 있는 화폐이다."
+		CASE 9
+			theTips:LOCAL '= @"돈으로 지불하는 것이 카리스마로 지불하는 것보다 일반적으로 더 현명하다."
+		CASE 10
+			theTips:LOCAL '= @"일부 캐릭터는 고유한 명령을 가지고 있다."
+		CASE 11
+			theTips:LOCAL '= @"전투와 지식이 낮으면 호의를 높이는 것이 어려울 것이다."
+		CASE 12
+			theTips:LOCAL '= @"신에게 기도하면 결국 모든 것이 괜찮아질 것이다."
+		CASE 13
+			theTips:LOCAL '= @"인간 마을의 네모난 곳에서 무작위 문자를 찾을 수 있다."
+		CASE 14
+			theTips:LOCAL '= @"랜덤 캐릭터의 능력치는 빠르게 상승하지만 첫째 날에만 그렇다."
+		CASE 15
+			theTips:LOCAL '= @"잊혀진 랜덤 캐릭터는 다시 돌아오지 않는다."
+		CASE 16
+			theTips:LOCAL '= @"임의의 캐릭터가 돌아오면 더 이상 빠르게 성장하지 않으며 임신도 하지 못한다."
+		CASE 17
+			theTips:LOCAL '= @"최대 %NUM_COUNT(MAX_MOBS)%의 무작위 캐릭터만이 한 번에 존재할 수 있다."
+		CASE 18
+			theTips:LOCAL '= @"무작위 캐릭터에 대한 정보는 dat 폴더에 저장되어 있다."
+		CASE 19
+			theTips:LOCAL '= @"무작위 캐릭터는 지난번과 같은 장소일 경우에만 다시 나타난다."
+		CASE 20
+			SIF nSex
+				theTips:LOCAL '= @"금욕이 너무 힘들어질 때, 모든 것을 해방하고 평화를 찾으라."
+		CASE 21
+			theTips:LOCAL '= @"일부 캐릭터들이 야행성이라 알람 시계를 바꾸는 것이 그들을 만나기 위해 중요하다."
+		CASE 22
+			theTips:LOCAL '= @"명령어가 표시되지 않나요? 필터링되었을 수 있습니다."
+		CASE 23
+			SIF nSex
+				theTips:LOCAL '= @"무능력 모드는 일부 행동을 막지만, 아래로 밀려나는 것이 훨씬 쉽다."
+		CASE 24
+			theTips:LOCAL '= @"일부 캐릭터가 작업 중에 도움을 받으려면 특정 조건이 충족되어야 한다. 하지만 어떤 경우에는 불가능할 수도 있다."
+		CASE 25
+			theTips:LOCAL '= @"요리하려면 재료가 필요하다."
+		CASE 26
+			theTips:LOCAL '= @"사케 벌레가 있는 병에 물을 넣어서 사케를 만든다."
+		CASE 27
+			theTips:LOCAL '= @"로터는 정원에서 자랄 수 있다."
+		CASE 28
+			theTips:LOCAL '= @"악취내성이 너무 높으면 청소하기 어려워진다."
+		CASE 29
+			theTips:LOCAL '= @"회원 등급은 카지노에서 많이 플레이하고 지냄으로써 상승한다."
+		CASE 30
+			SIF GETBIT(nRape,0)
+				theTips:LOCAL '= @"TIME이나 FORCE 마크가 쾌락 및 음란 마크와 같은 수준에 있을 때, 특수한 효과를 발휘한다. 얻기 힘든 캐릭터조차 녹아버린다."
+		CASE 31
+			theTips:LOCAL '= @"수집가의 공백은 시간이 지남에 따라 채워지지만, 한 번에 가지고 있을 수 있는 최대치가 있다. 그것들을 사용하도록 주의하라."
+		CASE 32
+			theTips:LOCAL '= @"특정 조건들, 예를 들어 능력이나 관계를 충족하지 않으면 입장할 수 없는 장소들이 있다."
+		CASE 33
+			theTips:LOCAL '= @"다른 사람들과 함께 훈련하고 공부하는 것이 더 효과적이다."
+		CASE 34
+			SIF nSex
+				theTips:LOCAL '= @"부정 모드는 절정을 억제하며, 이는 더 강하고 여러 개의 절정을 유발하도록 돕기 위함이다."
+		CASE 35
+			theTips:LOCAL '= @"스즈나안에서 책을 빌리면 책에 따라 경험치가 더 빠르게 증가한다. "
+		CASE 36
+			SIF nSex
+				theTips:LOCAL '= @"미라다의 돌은 욕망을 얻고 사람들을 아래로 누르기 쉽게 만든다. 하지만 친밀감이나 의존도를 높이기는 어려워진다."
+		CASE 37
+			theTips:LOCAL '= @"만약 당신이 일 년 이상 플레이한다면, 일부 것을 유지한 채 다시 시작하기 위해 「먼지를 깨물기」가 가능하다."
+		CASE 38
+			SIF nSex
+				theTips:LOCAL '= @"동시에 클라이맥스에 도달하면 사정의 강도만큼 쾌락이 배가된다."
+		CASE 39
+			SIF nSex
+				theTips:LOCAL '= @"3일간의 금욕은 【농후정액】을 주지만, 사정 다음 날에는 【농후정액】이 사라진다."
+		CASE 40
+			SIF nSex
+				theTips:LOCAL '= @"금욕은 당신을 스트레스 받게 하고 몽정을 유발한다."
+		CASE 41
+			theTips:LOCAL '= @"요리 시 점수가 80점보다 높으면 기분이 상승하고, 35점보다 낮으면 하락한다."
+		CASE 42
+			SIF nSex
+				theTips:LOCAL '= @"츠쿠모가미에 대한 욕망을 높이는 것은 어렵지만, 도구를 사용할수록 임신 확률이 증가한다."
+		CASE 43
+			theTips:LOCAL '= @"신뢰도가 낮을 때는 호의를 높이기가 어렵다. 이 제한은 데이트 중에는 적용되지 않는다."
+		CASE 44
+			SIF nSex
+				theTips:LOCAL '= @"육아중에 성적 불만은 상한선이 정해져 있다. 하지만 아이가 학교에 가거나 잠을 자고 있다면…"
+		CASE 45
+			theTips:LOCAL '= @"혼합 재료 없이도 몇 군데에서는 여전히 할 수 있다."
+		CASE 46
+			theTips:LOCAL '= @"제작 레벨과 지식은 혼합 성공률을 증가시킨다."
+		CASE 47
+			theTips:LOCAL '= @"사람들이 일할 때는 악기 연주를 멈춰 주세요."
+		CASE 48
+			theTips:LOCAL '= @"일부 재료는 특정 계절에만 채집할 수 있다."
+		CASE 49
+			theTips:LOCAL '= @"더 높은 채집 레벨로 채집하면 더 좋은 재료를 얻는다."
+		CASE 50
+			theTips:LOCAL '= @"만찬에서 공연하는 것은 상당히 보람 있을 수 있지만, 만약 공연이 부진하다면... "
+		CASE 51
+			theTips:LOCAL '= @"캐릭터들을 기도하면 다음 날 방문할 것이다."
+		CASE 52
+			theTips:LOCAL '= @"작업 일정은 능력 화면과 달력에서 확인할 수 있다."
+		CASE 53
+			theTips:LOCAL '= @"일부 캐릭터는 능력 화면이나 이미지 설정에서 이미지를 변경할 수 있다."
+		CASE 54
+			theTips:LOCAL '= @"타겟으로 지정한 인물을 클릭하면 얼굴과 몸의 그림이 전환된다."
+		CASE 55
+			theTips:LOCAL '= @"특정 캐릭터에게서 일부 재료를 구매할 수 있다."
+		CASE 56
+			theTips:LOCAL '= @"【요정들】은 「자연」선물을 좋아한다."
+		CASE 57
+			theTips:LOCAL '= @"「이름을 기리는 선물」 같은 【아이 같은】것들을 좋아하는 사람들은."
+		CASE 58
+			theTips:LOCAL '= @"전투 능력이 없는 것들을 제외한 「스펠 카드」 선물들 중 가장 흡사한 것."
+		CASE 59
+			theTips:LOCAL '= @"요괴와 귀신은 일반적으로 「점술」과 「불교적」선물을 싫어한다."
+		CASE 60
+			theTips:LOCAL '= @"아무도 「열등한」선물을 좋아하지 않는다."
+		CASE 61
+			theTips:LOCAL '= @"「블랙 매직」, 「뼈」, 「피」, 그리고 「독」 선물은 요괴가 아닌 사람들에게는 보통 기피된다."
+		CASE 62
+			theTips:LOCAL '= @"휴일 동안 길거리 상인들의 매출과 이익률이 올라간다."
+		CASE 63
+			theTips:LOCAL '= @"채소는 지하 세계에서 잘 팔린다."
+		CASE 64
+			theTips:LOCAL '= @"요괴 산 정상에서는 물고기가 잘 팔린다."
+		CASE 65
+			theTips:LOCAL '= @"【풍성한】요리는 더 오래 배부르게 해주는 반면, 【가벼운】요리는 정반대의 효과를 준다."
+			;The following are added by the omogatari mod.
+		CASE 66
+			theTips:LOCAL '= @"인내 스킬은 12개의 등급을 가지고 있다: 환상(6) > 에크스트라(5) > SS(4) > S(3) > A(2) > B(1) > C(0) > D(-1) > E(-2) > F(-3) > G(-4) > H(-5). 환상 등급은 해당 속성들의 영향을 받지 않는다는 의미이다."
+		CASE 67
+			SIF GETBIT(NASFeature,10)
+				theTips:LOCAL '= @"다른 사람들 근처에서 무엇을 하든 조심해야 한다. 그렇지 않으면 나쁜 【명성】을 얻을 수도 있다.	"
+			;If nPee
+		CASE 68
+			SIF nPee
+				theTips:LOCAL '= @"매우 강한 오르가즘은 「오줌싸개버릇」이 없거나 심지어 「강화된 방광」을 가진 캐릭터들도 뚫을 수 있다."
+		CASE 69
+			theTips:LOCAL '= @"잠자리에 들기 전에 소변을 보는 것을 확인해라, 그렇지 않으면 오줌이 새거나 침대에서 젖게 될 것이다."
+		CASE 70
+			SIF nPee
+				theTips:LOCAL '= @"소변, 대변, 그리고 피는 장소를 매우 빠르게 더럽힌다."
+		CASE 71
+			SIF nPee
+				theTips:LOCAL '= @"낮은【소변 참기】능력은 당신을 사고에 더 취약하게 만든다."
+		CASE 72
+			SIF nPee
+				theTips:LOCAL '= @"소변과 대변은 저절로 차오른다. 화장실에 가지 않으면 디버프가 걸리고 결국 사고가 난다..."
+		CASE 73
+			SIF nPee
+				theTips:LOCAL '= @"사고를 치면 호의도가 낮아지고 목욕을 하기 전까지 발진이 생길 것이다."
+		CASE 74
+			SIF nPee
+				theTips:LOCAL '= @"물을 마시면 스태미나와 에너지가 회복되지만 소변이 차는 속도가 빨라지고 소변 색깔이 덜 노랗게 변한다."
+		CASE 75
+			SIF nPee
+				theTips:LOCAL '= @"화장실에 가지 않고 마지막까지 참으며 소변 참는 능력을 단련하세요."
+		CASE 76
+			SIF nPee
+				theTips:LOCAL '= @"화장실에서 캠핑을 하면 다른 캐릭터들이 더 부적절한 방식으로 화장실에 가야 할 수도 있다..."
+		CASE 77
+			SIF nPee
+				theTips:LOCAL '= @"당신이 「실금」 상태라면 언제 소변을 봐야 하는지 볼 수 없다."
+		CASE 78
+			SIF nPee
+				theTips:LOCAL '= @"{UniversalRank("B")} 이상의 지능을 가지면 당신과 다른 이들의 방광이 얼마나 가득 찼는지 볼 수 있다."
+		CASE 79
+			SIF nPee
+				theTips:LOCAL '= @"【소변 참기】 능력이 낮을수록, 소변이 새거나 축축해지기 전에 경고 신호를 적게 받는다..."
+		CASE 80
+			SIF nPee
+				theTips:LOCAL '= @"만약 사고를 치면, 신에게 방문당할지도 모른다..."
+		CASE 81
+			SIF nPee
+				theTips:LOCAL '= @"잠자는 동안 성욕이 생기고 소변이 마려우면 자각몽을 꾸게 된다..."
+		CASE 82
+			SIF nPee
+				theTips:LOCAL '= @"방광이 가득 차면 성관계 중에 실수를 하게 된다."
+		CASE 83
+			SIF nPee
+				theTips:LOCAL '= @"당신의 몸은 한 시간에 최대 1000ml/1000g까지 소화할 수 있다. 이보다 더 많이 섭취하면 끊임없이 차오르는 방광의 대가를 치르게 될 것이다..."
+		CASE 84
+			SIF nPee
+				theTips:LOCAL '= @"높은 습윤 중독은 당신이 축축한 속옷을 입고 있다면 흥분하게 만든다."
+		CASE 85
+			SIF nPee
+				theTips:LOCAL '= @"배변 훈련 수준이 낮고 사고 중독이 높으면 변기에 가는 가장 중요한 단계를 그냥 잊어버릴 수도 있다."
+		CASE 86
+			SIF nPee
+				theTips:LOCAL '= @"【플레이 매트】는 침대에서 소변을 볼 때 소변 흡수에도 탁월하다. "
+		CASE 87
+			SIF nPee
+				theTips:LOCAL '= @"그것을 너무 오래 들고 있으면 원치 않게 소변을 보게 되고, 이것이 너무 여러 번 발생하면 배뇨 조절 능력을 잃어 언제 소변을 볼지 스스로 통제하지 못하게 된다. 그러니 전반적으로 가장 좋은 소변 보는 방법은 물가나 화장실이 있는 방을 찾는 것이다 - 이렇게 하면 상실된 배뇨 조절 능력도 점차 회복된다.		"
+			;ENDIF
+			;IF nScat
+		CASE 88
+			SIF nScat
+				theTips:LOCAL '= @"너무 많이 먹는 것은 비효율적일 뿐만 아니라 화장실을 더 가고 싶게 만든다."
+		CASE 89
+			SIF nScat
+				theTips:LOCAL '= @"상한 음식을 먹으면 설사를 할 수 있다."
+			;ENDIF
+			;IF nOmutsu
+		CASE 90
+			SIF nOmutsu
+				theTips:LOCAL '= @"「오줌싸개버릇」이 있는 캐릭터들은 누출을 막기 위해 기저귀를 차기 시작한다."
+		CASE 91
+			SIF nOmutsu
+				theTips:LOCAL '= @"기저귀는 몇 번의 소변을 담을 수 있다. 갈아주기를 잊으면 기저귀가 새게 될 수 있다..."
+		CASE 92
+			SIF nOmutsu
+				theTips:LOCAL '= @"사고로부터 자신을 보호하는 방법은 네 가지가 있다: 패드, 카테터, 풀업 기저귀, 그리고 테이프형 기저귀이다."
+		CASE 93
+			SIF nOmutsu
+				theTips:LOCAL '= @"기저귀를 자주 확인해서 교체 시점을 파악하도록 하라."
+			;CASE
+			;theTips:LOCAL '= @"This game is sponsored by Gensou-chan! \@ (PeeHold:MASTER:0 <= -3 || PooHold:MASTER:0 <= -3 || TALENT:MASTER:幼児／幼児退行) && nOmutsu ?Unfortunately for you- and fortunately for Gensou-chan- you're going to be a lifelong customer for the diaper company.# Who are they again? \@ \@ PeeHold:MASTER:0 >= 3 || PooHold:MASTER:0 >= 3 ? Wait, but you don't need their underwear. # \@ \@ ABL:72:親密 >= 5 ? (Don't tell Eirin. Please!) #\@"
+			;ENDIF
+		CASE 94
+			SIF nRapeAnywhere
+				theTips:LOCAL '= @"절박하다면 어디에서든 %PeeAndPoo(nPee, nSex, "pee", "have sex")% 할 수 있다."
+			;The following are added by the omogatari mod.
+			; CASE 95
+			; theTips:LOCAL '= @"Low【Orgasm Denial】can snowball into constant orgasm loops, and shortly after, a【Broken Soul】"
+			;literal title
+			; CASE 96
+			; theTips:LOCAL '= @"This work of fiction contains content of a sexual \@ nSJW < 4 ? (and violent)#\@ nature and is inappropriate for snowflakes. "
+			; theTips:LOCAL += @"All characters depicted are at least \@ nSJW < 2 ? who gives a fuck# 21\@ years of age. "
+			; theTips:LOCAL += @"\@ nSJW < 4 ? Nothing # Everything \@ is consensual role play, "
+			; theTips:LOCAL += @"any animals are \@ nSJW < 2 ? simply data # actually people in fursuits\@, "
+			; theTips:LOCAL += @"and any excretions are fake (they're just numbers)."
+			;Hypnosis
+		CASE 97
+			SIF nHypno
+				theTips:LOCAL '= @"높은 지식과 말은 최면을 더 효과적으로 만든다."
+		CASE 98
+			SIF nHypno
+				theTips:LOCAL '= @"낮은 최면 중독은 높은 반감 획득을 의미한다."
+		CASE 99
+			SIF nHypno
+				theTips:LOCAL '= @"현재 문구에 질렸을 경우, 【홈 설정】에서 당신의 만트라를 변경하세요."
+		CASE 100
+			SIF nHypno
+				theTips:LOCAL '= @"최면은 시간이 지남에 따라 사라지니, 연속된 행동을 하거나 코인을 사용하여 계속 유지하도록 해라."
+		CASE 101
+			SIF nHypno
+				theTips:LOCAL '= @"약물이나 술에 취해 있거나 최면 상태에서 하는 성관계는 동의가 되지 않는다."
+		CASE 102
+			SIF nHypno
+				theTips:LOCAL '= @"더 높은 최면 수치는 반감 증가를 거의 존재하지 않을 정도로 감소시킬 수 있다."
+			;E-Stim
+		CASE 103
+			theTips:LOCAL '= @"【E-Stim 제어 박스】 없이는 전극으로 아무것도 할 수 없다."
+		CASE 104
+			theTips:LOCAL '= @"한 번에 더 많은 전극을 사용하고 싶다면 컨트롤 박스를 업그레이드해야 한다."
+		CASE 105
+			theTips:LOCAL '= @"진동기, 스트랩온, 항문 비즈, 플러그, 그리고 전극은 캐릭터의 처녀성을 빼앗을 것이다."
+			;Death
+		CASE 106
+			SIF nNecro
+				theTips:LOCAL '= @"당신은 【엘릭서】를 사용하거나 에이린에게 가서 어떤 죽은 시신이라도 되살릴 수 있다. "
+		CASE 107
+			SIF nNecro
+				theTips:LOCAL '= @"살인, 강간 및 범죄를 저지르면 인들의 편집증 정도에 영향을 주는 『근접경보 상태』가 상향된다."
+		CASE 108
+			SIF nNecro
+				theTips:LOCAL '= @"시신을 숨기면 당국이 그것들을 찾는 것을 더 어렵게 만든다. 또한 발견되었을 때보다 편집증의 정도를 다섯 번째로만 준다."
+		CASE 109
+			SIF nNecro
+				theTips:LOCAL '= @"시체는 오린이나 코마치에게 주어 태워지거나 버려질 수 있으며, 이로 인해 찾기가 매우 어려워진다."
+		CASE 110
+			theTips:LOCAL '= @"당신이 인연쿄에게 위협으로 간주된다면 사냥개들이 올 수 있다는 것을 명심하세요..."
+		CASE 111
+			SIF nFactions
+				theTips:LOCAL '= @"만약 파벌과 높은 「악명」을 가지고 있다면, 암살자들이 와서 싸움을 걸 수도 있다..."
+		CASE 112
+			theTips:LOCAL '= @"캐릭터가 「증오의 표식」을 2 또는 3 가지고 있다면, 그들의 팬티를 반복해서 훔쳐 【기도하며】 제공하면 증오의 표식을 항상 한 단계 제거한다."
+		CASE 113
+			locals '= ""
+			SIF nNecro
+				LOCALS += "kill、"
+			SIF nRape
+				LOCALS += "enslave、"
+			LOCALS += "mentally break、"
+			theTips:LOCAL '= @"「증오의 낙인」4를 가진 캐릭터는 영구적으로 반감한다. 반감을 없애려면 그들을 %LIST_IN_STRING(LOCALS,," or",)% 해야 한다."
+		CASE 114
+			SIF nRaids
+				theTips:LOCAL '= @"『증오의 낙인』을 가진 캐릭터는 더 나은 장비와 갑옷을 착용하며 레이드에 기여한다."
+		CASE 115
+			SIF nRape
+				theTips:LOCAL '= @"노예화는 모든 반감 및 증오 표시 획득을 제거하지만 연모 루트 진입을 막는다."
+			;CASE 116
+			;theTips:LOCAL '= @"Urethral sex requires one urination module to be enabled and【Forbidden Knowledge】."
+		CASE 117
+			theTips:LOCAL '= @"보고 싶은 콘텐츠와 원하지 않는 콘텐츠를 활성화하거나 비활성화하려면 【페티시 설정】 메뉴로 가라."
+		CASE 118
+			SIF nRyona
+				theTips:LOCAL '= @"엄폐물을 사용해라! 그것은 권총과 중급 소총 구경의 단막(탄막)도 막아줄 수 있다."
+		CASE 119
+			theTips:LOCAL '= @"TW는 연애 시뮬레이터가 아닌 스킬 테스트이다. 증오의 표식은 실패의 징조이며, 너는 극적인 비극이다."
+		CASE 120
+			theTips:LOCAL '= @"방어구는 옷 가게에서 살 수 있다."
+		CASE 121
+			theTips:LOCAL '= @"당신의 의상 선택은 제한되어 있습니다. 다른 사람에게 소매치기를 해서 옷을 훔치거나 의류 상점에서 구매하세요."
+		CASE 122
+			theTips:LOCAL '= @"【단막】을 사용하려면 단막 경험치 200이 필요하다. 혹은 어머니 같은 악마와 \@ nSJW > 1 ? 대학생 # 고등학생 \@에게 대가를 치르고 마법을 배울 수 있다."
+		CASE 123
+			theTips:LOCAL '= @"자주 바꾸세요! 갑옷과 속옷을 최상의 상태로 유지해 줍니다!"
+		CASE 124
+			theTips:LOCAL '= @"마카이 신은 많은 무료 아이템을 줄 수 있지만, 실험 대상이 되는 대가는 그만한 가치가 있을까?"
+		CASE 125
+			theTips:LOCAL '= @"당신의 진행 상황은 게임 내 3시간마다 자동으로 저장됩니다."
+		CASE 126
+			theTips:LOCAL '= @"낮 동안 게임을 저장하려면 『미드 데이 세이브』 명령을 누르면 된다. 이 동일한 명령은 문제가 생겼을 때 저장된 것을 불러오는 것도 가능하게 해준다."
+		CASE 127
+			theTips:LOCAL '= @"자동 저장에는 두 가지 유형이 있다: 낮 동안 저장되는 '낮 시간 저장'과 하루가 끝날 때 게임을 저장하는 '일 종료 저장'. 슬롯 300은 일 종료 저장을 위한 것이고, 슬롯 301은 낮 시간 저장을 위한 것이다."
+		CASE 128
+			theTips:LOCAL '= @"QuadUltra (QU/50) > TriUltra (TU/40) > OverDrive (OD/30) > Phantasm (Ph/20) > Extra (Ex/17) > SS (16) > S (14) > A (11) > B (8) > C (5) > D (3)"
+			;The following are original ones
+		CASE 129
+			theTips:LOCAL '= @"좋은 데이트는 증오의 흔적을 치워줄 수 있다."
+		CASE 130
+			theTips:LOCAL '= @"낚시나 채집에 어려움을 겪고 있나요? 당신의 개인 행운 점수가 너무 낮을 수 있습니다. 어쩌면 어떤 누군가가 당신의 불행을 모으는 데 도움을 줄지도 모릅니다..."
+		CASE 131
+			theTips:LOCAL '= @"몸이 좋지 않다면 에이테이니의 에이린에게 도움을 청하거나 심지어 안정을 취할 수도 있다. 하지만 가끔 그녀의 서비스가 너무 과해질 때도 있지만..."
+		CASE 132
+			theTips:LOCAL '= @"당신의 스킬은 누군가의 일을 도와주기로 결정한다면 큰 차이를 만들 수 있다."
+		CASE 133
+			theTips:LOCAL '= @"실력이 부족한 채 누군가 앞에서 악기를 연주하고 싶다면 두 번 생각하라."
+		CASE 134
+			theTips:LOCAL '= @"더 빠르고 잘 요리하는 방법을 배우고 싶다면 인간 마을의 게이돈테이에서 미요이를 돕거나 그녀의 음식 가판대에서 미스티아를 고려해 보라."
+		CASE 135
+			theTips:LOCAL '= @"행운에는 두 종류가 있다 - 일일 운세와 개인의 행운이다. 둘 다 이점을 제공하지만, 어떤 파멸을 예고할 수도 있다."
+		CASE 136
+			theTips:LOCAL '= @"매일은 다른 개인적인 행운의 터치로 시작된다. 어쩌면 운을 좋아하는 토끼가 그것을 감지하는 데 도움이 될 아이템을 가지고 있을지도 모르겠다..."
+		CASE 137
+			theTips:LOCAL '= @"당신이 하는 모든 일에 대한 약간의 특별한 무언가가 아니라 운이란 무엇인가? 그것을 과소평해서는 안 된다..."
+		CASE 138
+			theTips:LOCAL '= @"운명은 당신이 더 파고들려고 시도할 때까지 중립을 유지한다. 그것은 좋을 수도 있지만, 동시에 파괴적일 수도 있다..."
+		CASE 139
+			theTips:LOCAL '= @"여자들이 고백할 때 거절하는 것은 가슴 아플 수 있다. 어쩌면 그들이 졸릴 때 보내주는 것이 더 나은 방법일지도 모른다...?"
+		CASE 140
+			theTips:LOCAL '= @"특정 캐릭터와 친한 친구가 되는 것은 온갖 유용한 특전을 가져올 수 있다."
+		CASE 141
+			theTips:LOCAL '= @"소문에 따르면 그곳의 주인과 잘 지내면 스즈나안에서 특별한 특권을 얻을 수 있다고 한다... 그녀는 심지어 당신에게 특별한 책을 빌려줄지도 모른다."
+		CASE 142
+			theTips:LOCAL '= @"재료를 채집하고 에이텐이에서 파는 것은 돈을 벌기 좋은 방법이다."
+		CASE 143
+			theTips:LOCAL '= @"축제나 공휴일에 가게를 여는 것은 상당히 수익성이 좋을 수 있다."
+		CASE 144
+			theTips:LOCAL '= @"가끔 카리스마 시장을 추적하도록 하라. 비싸게 사고 싸게 팔아라!"
+		CASE 145
+			theTips:LOCAL '= @"다른 캐릭터를 도울 때, 일부 작업은 시간 정지 중에 완료할 수 있다. 자신의 기술을 연습하기 위해 그것을 유리하게 사용해라!"
+		CASE 146
+			theTips:LOCAL '= @"가이드를 많이 읽을수록 만약 당신이 [달콤한 잠 베개]를 가지고 있다면 수면의 질이 더 좋아질 것이다... 대부분의 시간 동안은 말이다."
+		CASE 147
+			theTips:LOCAL '= @"소문에 따르면 산속 숲 어딘가에 고액이 걸린 승자 독식 도박장이 있다는 것이다..."
+			;Title tips
+		CASE 148
+			theTips:LOCAL '= @"사소한 것들을 위해서라도 시간 정지 능력을 훈련하는 것을 기억해라."
+		CASE 149
+			theTips:LOCAL '= @"소녀들의 일터에서 도움을 주는 것은 좋은 수입원이 된다."
+		CASE 150
+			theTips:LOCAL '= @"완전히 사적인 곳은 없다."
+		CASE 151
+			theTips:LOCAL '= @"항상 작물에 물을 주는 것을 기억하라."
+		CASE 152
+			theTips:LOCAL '= @"소녀들의 근무 시간과 일반적인 위치는 달력을 확인하면 알 수 있다. 이름들을 클릭할 수도 있다!"
+		CASE 153
+			theTips:LOCAL '= @"좋은 데이트는 증오의 흔적을 지우는 데 도움이 될 수 있다."
+		CASE 154
+			theTips:LOCAL '= @"소녀들에게 팬티를 훔쳤다고 알리지 마라, 그러면 그들은 그것들을 되찾을 것이다."
+		CASE 155
+			SIF nSex
+				theTips:LOCAL '= @"삽입하려면 발기를 해야 한다."
+		CASE 156
+			SIF nSex
+				theTips:LOCAL '= @"활력은 당신이 아직 가지고 있는 정액과 생명력이다."
+		CASE 157
+			SIF !GROUPMATCH(nSJW,2,4)
+				theTips:LOCAL '= @"어린 소녀들의 세상에서는 크다고 항상 좋은 것은 아니다."
+		CASE 158
+			SIF nSex
+				theTips:LOCAL '= @"항상 로션을 좀 가지고 다녀라."
+		CASE 159
+			SIF nSex
+				theTips:LOCAL '= @"동의 하에 이루어지는 안전하지 않은 성관계는 생각보다 어렵다."
+		CASE 160
+			theTips:LOCAL '= @"당신이 들고 있는 음식은 식거나 소녀들에게 도둑맞을 수 있다."
+		CASE 161
+			SIF nSex
+				theTips:LOCAL '= @"임신은 그녀에게 한 통의 정액을 넣지 않는 이상 거의 신화에 가깝다."
+		CASE 162
+			theTips:LOCAL '= @"인터넷으로 물건을 사는 것은 비싸다. 할인을 받으려면 적절한 가게를 검색하라."
+		CASE 163
+			SIF nRaids
+				theTips:LOCAL '= @"시간이 멈췄을 때 조심해야 한다. 습격 파티가 나타나 너를 죽이려 할 수 있다."
+		CASE 164
+			theTips:LOCAL '= @"농부로 경작물을 돌보기 전에 물을 길러야 한다는 것을 기억하라."
+		CASE 165
+			SIF GETBIT(NASFeature,10)
+				theTips:LOCAL '= @"조심하지 않으면 그들이 당신의 힘에 대해 알게 될 작은 가능성이 있다."
+		CASE 166
+			theTips:LOCAL '= @"두 사람이 정식으로 사귀게 되면 연인과 같은 방에서 살 수 있다 (그들에게 자기 집이 있을 경우에 한함)."
+		CASE 167
+			SIF !GROUPMATCH(nSJW,2,4)
+				theTips:LOCAL '= @"성적인 활동은 아이가 생리를 시작하게 만들 수 있다."
+		CASE 168
+			SIF nSex
+				theTips:LOCAL '= @"오르가슴 부재는 파트너가 더 적극적인 역할을 맡게 할 수 있다."
+		CASE 169
+			SIF nSex
+				theTips:LOCAL '= @"주도권을 잡는 소녀들은 당신의 생기 없는 몸과 끝없는 밤을 이끌 수 있다."
+		CASE 170
+			SIF nSex
+				theTips:LOCAL '= @"파트너가 당신을 아래로 밀면 빠져나갈 수 있다."
+		CASE 171
+			SIF GETBIT(nRape,1)
+				theTips:LOCAL '= @"잠복 강간 전에 항상 수면제를 사용한다."
+		CASE 172
+			SIF GETBIT(nRape,1)
+				theTips:LOCAL '= @"취한 상태나 수면 중 강간에 조심해야 한다, 그들은 깨어나고 절대로 잊지 않을 것이다."
+		CASE 173
+			theTips:LOCAL '= @"각 홈 존에는 정원이 단 하나씩만 있다. 현명하게 행동하라. 일부는 아예 없을 수도 있다."
+		CASE 174
+			SIF nRape
+				theTips:LOCAL '= @"유우카를 강간할 때는 조심해라!"
+		CASE 175
+			SIF nRape
+				theTips:LOCAL '= @"그들이 얼마나 좌절했는지에 따라 강간에 더 몰두할 수 있다."
+		CASE 176
+			theTips:LOCAL '= @"아우♡완 완♡"
+		CASE 177
+			theTips:LOCAL '= @"타격 불가 구역."
+		CASE 178
+			theTips:LOCAL '= @"사람이 가진 특성에 따라 정복하기 쉬울 수도 있고, 더 적극적일 수도 있다."
+		CASE 179
+			theTips:LOCAL '= @"마지막으로 말하는데, 위글은 소년이 아니다."
+		CASE 180
+			theTips:LOCAL '= @"음식은 사람의 마음을 얻는 좋은 방법이다."
+		CASE 181
+			theTips:LOCAL '= @"음악은 친구를 사귀고 연인을 얻는 좋은 취미가 될 수 있다."
+		CASE 182
+			theTips:LOCAL '= @"완드 마인드, 완드 월드."
+		CASE 183
+			theTips:LOCAL '= @"버그를 제출할 때 오류 텍스트를 제출하세요. 오류 스크린샷은 소용이 없습니다."
+		CASE 184
+			theTips:LOCAL '= @"네 빌어먹을 가이드가 여기 있다. 만족하나?"
+		CASE 185
+			theTips:LOCAL '= @"ABDL 및 기타 기능을 활성화하려면 Wishmaster.exe를 EE와 함께 실행해야 합니다!"
+		CASE 186
+			theTips:LOCAL '= @"아이들은 생물학적 연령으로 18세 또는 {YearLength}일이 되면 독립한다."
+		CASE 187
+			theTips:LOCAL '= @"임신은 100일이 걸린다. 그들이 임신했다는 것을 알 수 있는 건 20일째가 될 때까지이다."
+		CASE 188
+			theTips:LOCAL '= @"당신이 자식에게 하는 행동이 그 아이가 어떻게 성장할지를 결정한다."
+		CASE 189
+			theTips:LOCAL '= @"최대 ESP가 1500에 도달하면 최면을 얻는다."
+		CASE 190
+			theTips:LOCAL '= "Parsee gets mad easily, but she'll calm down on her own if you avoid her for long enough. Or you could lose to her in Danmaku..."
+		CASE 191
+			theTips:LOCAL '= "Wriggle goes into heat every Spring. Maybe she'll ask you to help satisfy her if she likes you enough..."
+		CASE 192
+			SIF nRape && !GROUPMATCH(nSJW,2,4)
+				theTips:LOCAL '= "Try raping Suwako when time is stopped. It's not like she can do anything about it... right?"
+		CASE 193
+			theTips:LOCAL '= "Marisa has a complex about her small breasts. Maybe something special will happen if you stimulate them enough?"
+		CASE 194
+			theTips:LOCAL '= "Daiyousei becomes a force to be reckoned with when she's horny."
+		CASE 195
+			theTips:LOCAL '= "Kaguya gets jealous when she sees you with other women. Very jealous..."
+		CASE 196
+			theTips:LOCAL '= "If you're having a streak of bad luck, try asking Hina to take your misfortune away."
+		CASE 197
+			theTips:LOCAL '= "Byakuren? Who's that? You mean Boob Lady, right?"
+		CASE 198
+			theTips:LOCAL '= "A few residents go in heat at winter, have fun getting your end of day masturbation scene filled by them"
+		CASE 199
+			theTips:LOCAL '= "Shinki will occasionally meet you once you start her questline."
+		CASE 200
+			theTips:LOCAL '= "Hourai Doll can't get hate marks... Mostly because she always acts like she has 3"
+		CASE 201
+			theTips:LOCAL '= "Don't ask me why Cirno's ID isn't 9."
+		CASE 202
+			theTips:LOCAL '= "If you defeat Yuuka in Danmaku, you can get special rewards."
+		CASE 203
+			theTips:LOCAL '= "Aunn is a good girl. Make sure to give her a headpat whenever you see her."
+		CASE 204
+			theTips:LOCAL '= "Wakasagihime always had dialogue. Anyone who tells you otherwise is lying. Lying!"
+		CASE 205
+			theTips:LOCAL '= "No, Rinnosuke isn't going to NTR you. He's a bro."
+		CASE 206
+			theTips:LOCAL '= "Junko is always calm... Until you say you like the moon people"
+		CASE 207
+			SIF nOmutsu
+				theTips:LOCAL '= "Shinki loves to see Touhous in \"alternative\" underwear. Don't ask her why."
+		CASE 208
+			theTips:LOCAL '= "Sometimes Parsee forgets to take her contraceptive pill. Especially if she's in heat..."
+		CASE 209
+			theTips:LOCAL '= "Even if you can't push Parsee down, she can still push you down."
+		CASE 210
+			theTips:LOCAL '= "Wriggle goes into heat every Spring. Maybe she'll ask you to help satisfy her if she likes you enough..."
+		CASE 213
+			theTips:LOCAL '= "Feeling pity for Wakasagihime? Try gaining her affection, and maybe she won't even care if it's another one of her kind!"
+		CASE 214
+			theTips:LOCAL '= "You can pay your way through Shinki's questline if you aren't into what she's into"
+		CASE 215
+			theTips:LOCAL '= "Eiki has a stick up her ass at first, but maybe she'd like something else in there?"
+		CASE 216
+			SIF nSex
+				theTips:LOCAL '= "Yuuma is struggling to get pregnant because of her Ability."
+		CASE 217
+			theTips:LOCAL '= "What would happen if you repeatedly pour semen into Yuuma during Time Stop...?"
+		CASE 218
+			theTips:LOCAL '= "There is hardly any food that Yuuma doesn't like."
+		CASE 219
+			theTips:LOCAL '= "Yuuma likes evil stuff like chaos and blood-related things, as well as sheep-related motifs."
+		CASE 220
+			theTips:LOCAL '= "Yuuma controls the oil in Old Hell."
+		CASE 221
+			theTips:LOCAL '= "Yuuma doesn't mind crowds, she just prefers to work alone."
+		CASE 222
+			theTips:LOCAL '= "Right click to skip all lines that can be skipped."
+		CASE 223
+			theTips:LOCAL '= "Nitori sells upgrades to your tools."
+		CASE 224
+			theTips:LOCAL '= "Don't forget to check the Mod Options."
+		CASE 225
+			theTips:LOCAL '= "If you can't find a lost item, or a lost item's owner, try asking Nazrin."
+		CASE 226
+			theTips:LOCAL '= "Don't try to grope a girl unless she's at least at Yearning. Skinshipping is fine if you have a couple hundred Favorability."
+		CASE 227
+			theTips:LOCAL '= "If you get high enough Intimacy with a girl, she might teach you a new drug recipe."
+		CASE 228
+			theTips:LOCAL '= "You can only earn Pleasure Marks through strong and/or simultaneous orgasms."
+		CASE 229
+			theTips:LOCAL '= "You can learn a girl's special dish by cooking it with her enough times. Collect them all!"
+		CASE 230
+			SIF nSex
+				theTips:LOCAL '= "Using an Ovulation Drug on a Dangerous Day will actually LOWER your odds of impregnating a girl."
+		CASE 231
+			theTips:LOCAL '= "Girls can give you their first kiss or confess to you after a date, but only if you end the date manually."
+		CASE 232
+			theTips:LOCAL '= "The game becomes less grindy if you train your skills while leading your waifu around."
+		CASE 233
+			theTips:LOCAL '= "The Grocer in the Human Village sells gardening plots."
+		CASE 234
+			theTips:LOCAL '= "Iä! Iä! YuugenMagan fhtagn!"
+		CASE 235
+			theTips:LOCAL '= "A day in eratohoTW is just a really big training session."
+		CASE 236
+			theTips:LOCAL '= "New features mean new bugs. Report bugs to the bug tracker, or making an issue in the Git page."
+		CASE 237
+			theTips:LOCAL '= @"당신은 페티시를 비활성화할 수 있다. 만약 그것들을 좋아하지 않는다면."
+		CASE 238
+			theTips:LOCAL '= @"한 장소에서 다른 장소로의 이동은 게임 내에서 2분 걸린다."
+		CASE 239
+			theTips:LOCAL '= @"일부 팁은 실제로 도움이 된다"
+		CASE 240
+			SIF nSex
+				theTips:LOCAL '= @"당신은 그 토우후가 C {UniversalRank("C")} 지식을 가지고 있고 당신이 그들보다 더 똑똑하다면 성적으로 무지한 사람에게 섹스를 가르칠 수 있다."
+		CASE 241
+			theTips:LOCAL '= @"인간 마을 근처에 구매하고 꾸밀 수 있는 땅이 있다."
+		CASE 242
+			SIF nPee
+				theTips:LOCAL '= @"명료한 꿈에는 두 가지 주요 유형이 있다: 소변 꿈과 성욕 꿈.\n소변 꿈은 꿈속에서 배뇨해야 하는 경우이며, 종종 현실에서도 소변을 보게 만든다.\n성욕 꿈은 소변 꿈과 비슷하지만, 더 진정으로 성적인 경우가 많고 종종 바지 안에서 사정으로 끝난다."
+		CASE 243
+			theTips:LOCAL '= @"잠자리에 들기 전에 보호받아라. 언제 자각몽이 나타날지 알 수 없을 테니."
+		CASE 244
+			SIF nSex
+				theTips:LOCAL '= @"너무 조인 질로 토우후를 손가락으로 만지는 것은 윤활이 레벨 5 이상일 경우 처녀성을 유지하지 못한다."
+		CASE 245
+			SIF nSex
+				theTips:LOCAL '= @"질을 늘리는 것을 더 쉽게 만들 수 있는 것이 확장기 세트이다. 삽입을 위해 동방 캐릭터를 훈련시키고 싶다면 필수적이다."
+		CASE 246
+			theTips:LOCAL '= @"윤활제는 섹스에 있어서 당신의 친구다."
+		CASE 247
+			theTips:LOCAL '= @"음악은 마스터하는 데 오랜 시간이 걸리지만 보상이 크다."
+		CASE 248
+			theTips:LOCAL '= @"채집, 언어, 지식은 모두 갖추어야 할 중요한 기술이다."
+		CASE 249
+			theTips:LOCAL '= @"몇몇 주민들은 겨울에도 발정기를 겪는다. 매일 그들의 자위 텍스트를 건너뛰며 즐겨라."
+		CASE 250
+			theTips:LOCAL '= @"만약 와카사기히메가 당신을 충분히 좋아한다면, 그녀는 당신이 안개 호수에서 낚시할 때 눈감아줄 것이다."
+		CASE 251
+			theTips:LOCAL '= @"에이키는 정말 대단한 것을 가지고 있네, 응? 어쩌면 그녀는 거기에 다른 것이 들어가는 걸 좋아할지도 모르지?"
+		CASE 252
+			SIF nRaids
+				theTips:LOCAL '= @"NAS는 레이드에 대해 31일의 유예 기간을 가진다. 이는 준비되지 않은 신규 캐릭터들이 레이드 파티들에 의해 죽는 것을 방지하기 위함이다."
+		CASE 253
+			theTips:LOCAL '= @"누군가 사기만을 기다리는 부지가 있다. 땅이 네 것이 되면 집을 지을 수 있을지도 모른다?"
+		CASE 254
+			SIF nSex
+				theTips:LOCAL '= @"순결을 소중히 여기는 현명한 여성이기에 에이키는 처녀성을 포기하는 것을 망설인다. 어쩌면 다른 구멍이 그녀에게 더 받아들여질지도 모른다."
+		CASE 255
+			SIF nSex
+				theTips:LOCAL '= @"위글은 매년 봄에 발정한다. 만약 그녀가 너를 충분히 좋아한다면, 만족시켜 줄 도움을 청할지도 모른다..."
+		CASE 256
+			theTips:LOCAL '= @"스와코는 보통 명랑하고 외향적이지만, 그녀가 저를 해치려는 누구에게도 주저 없이 자신의 힘을 사용할 수 있는 저주의 여신이라는 것을 기억해야 한다."
+		CASE 257
+			SIF nSex
+				theTips:LOCAL '= @"마리사는 자신의 작은 가슴에 대해 복잡한 감정을 가지고 있다. 충분히 자극하면 특별한 일이 일어날지도 모른다?"
+		CASE 258
+			theTips:LOCAL '= @"강한 욕정에 시달리는 거대한 요정과 싸울 때 전력을 다하는 것은 꽤 잔인할 것이다."
+		CASE 259
+			theTips:LOCAL '= @"오랫동안 보호받는 삶을 살아왔기에, 카구야는 자신이 좋아하는 사람들에게 조금 너무 집착하는 경향이 있다. 그녀가 지나치게 걱정해서 극단적인 행동을 하게 만들지 않도록 조심해야 한다."
+		CASE 261
+			theTips:LOCAL '= @"음악을 마스터하는 데는 오랜 시간이 걸리지만 보상이 크다."
+		CASE 262
+			theTips:LOCAL '= @"시작은 어려울 수 있지만, 거기서 빠르게 눈덩이처럼 불어난다."
+		CASE 263
+			theTips:LOCAL '= @"다양한 음식과 약물은 단막에 보너스를 줄 수 있다."
+		CASE 264
+			theTips:LOCAL '= @"악천후로 인해 연회 및 기타 이벤트가 취소될 수 있다. 예정대로 진행되기를 원한다면 변경할 방법을 찾아보라."
+		CASE 265
+			theTips:LOCAL '= @"사람들은 종종 연회 용품 조달에 도움이 필요하다."
+		CASE 266
+			theTips:LOCAL '= @"행복한 아내가 있으면 삶도 행복하다."
+		CASE 267
+			theTips:LOCAL '= @"약물 합성 및 기타 특수 제작 기교는 많은 유용한 아이템을 만들 수 있게 해주지만, 일부 금지된 레시피는 요구되는 지식을 가진 자만이 만들 수 있다."
+		CASE 268
+			theTips:LOCAL '= @"과음은 연회에서 인기 있는 여가 활동이지만, 당신의 책임 하에 참여하세요..."
+		CASE 269
+			theTips:LOCAL '= @"만찬이나 다른 이벤트들은 당신이 알지 못할 때도 일어날 수 있다."
+		CASE 270
+			theTips:LOCAL '= @"음악 앨범을 완성하면 연회에서 공연할 때 도움이 된다."
+		CASE 271
+			theTips:LOCAL '= @"인간 마을에는 찾기 어려운 사람에게 무언가를 전달해야 할 때를 위한 중앙 하차 지점이 있다."
+		CASE 272
+			theTips:LOCAL '= @"동굴의 팬티를 합의하에 얻으려면, 그들은 6개의 %ABL_TR(9)%와 %ABL_TR(10)%을 가지고 있어야 한다."
+		CASE 273
+			theTips:LOCAL '= @"당신이 %ITEMNAME_TR(130)%를 더 많이 살수록, 그것은 더 비싸진다. 어쩌면 신성한 개입으로 가격을 초기화할 수 있을지도 모른다?"
+		CASE 274
+			theTips:LOCAL '= @"더 많은 오염된 %PLURALIZER(TOLOWER(ITEMNAME_TR(915)),3)%를 은밀하게 보관하려면 그것을 사야 한다 \@ nOmutsu ? 기저귀 # 팬티_. \@"
+		CASE 275
+			theTips:LOCAL '= @"비록 시간이 좀 걸리지만, 팬티를 빨면 더럽지 않게 가치를 유지할 수 있다."
+		CASE 276
+			theTips:LOCAL '= @"그냥 쓰레기통만 더 사지 말고 업그레이드해! 그것들이 당신이 더 많은 \@ nOmutsu ? 기저귀 # 팬티를 보관하기 쉽게 만들어 줄 거야 \@."
+		CASE 277
+			SIF nScat
+				theTips:LOCAL '= @"팬티, 트렁크, 브리프 또는 다른 기본 속옷을 입고 있다면 경고한다. 그것들은 아주 지저분한 사고를 위해 설계되지 않았기 때문에 모두 오줌 한 번 분량만 담을 수 있으며, 종류에 관계없이 같은 양이다."
+		CASE 278
+			SIF nScat
+				theTips:LOCAL '= @"대부분의 속옷은 지저분한 사고를 막아주지만, 발진의 위험 때문에 즉시 갈아야 한다."
+		CASE 279
+			SIF nScat && nOmutsu
+				theTips:LOCAL '= "Diapers, be it pull-ons or tabbed, can handle varying capacities of messy accidents, due to their structure and leak guards."
+		CASE 280
+			SIF nScat && nOmutsu
+				theTips:LOCAL '= "Bulkier diapers have more room for solid messes, as there's more priority on containment than discretion."
+		CASE 281
+			SIF nScat && nOmutsu
+				theTips:LOCAL '= "A common misconception is that leak guards are just for pee, but they also help against messy accidents as well."
+		CASE 282
+			SIF nScat && nOmutsu
+				theTips:LOCAL '= "Tall leak guards are better than normal leak guards, and any leak guards is better than no leak guards."
+		CASE 283
+			SIF nFactions
+				theTips:LOCAL '= "Doing some dirty work for factions is a good way gain【Fame】and【Money】."
+		CASE 284
+			SIF nFactions
+				theTips:LOCAL '= "Be aware that being associated with some factions will make you hostile to other factions. Resign if you need to."
+		CASE 285
+			SIF nFactions
+				theTips:LOCAL '= "Resigning from a faction will not wipe the progress you have made with them. You will still keep your rank if you join back."
+		CASE 286
+			SIF nFactions
+				theTips:LOCAL '= "Infamy with a faction is lost with time."
+		CASE 287
+			SIF nFactions
+				theTips:LOCAL '= "A dating truce prevents other factions from attacking the character in question, but this makes them unable to fight against other factions as well."
+		CASE 288
+			SIF nFactions
+				theTips:LOCAL '= "Truces stops factions from fighting other factions. Alliances ensures that the two factions help each-other in battle."
+		CASE 289
+			SIF nFactions
+				theTips:LOCAL '= "Factions are destroyed once all officers are lost and they don't control any territory"
+		CASE 290
+			SIF nFactions
+				theTips:LOCAL '= "Most faction has a recruiter which you can talk to get recruited. For factions without a recruiter, you can go to the entrance of your home area and use the recruitment board."
+		CASE 291
+			SIF nFactions
+				theTips:LOCAL '= "Factions have a limited amount of units. Running out of units means they cannot deploy for raids or missions."
+		CASE 292
+			theTips:LOCAL '= "Danmaku and Youjutsu weapons use MP. Run out of MP and you'll instantly lose the battle."
+		CASE 293
+			SIF nFactions
+				theTips:LOCAL '= "Faction recruiters will have occasional missions that you have to do. These give you fame and promotion points in said faction."
+		CASE 294
+			SIF nFactions
+				theTips:LOCAL '= "Factions with low relations or very high control on a territory can cause a war to happen."
+		CASE 295
+			SIF nResearchSystem
+				theTips:LOCAL '= "Use your technical and general knowledge to contribute to researching."
+		CASE 296
+			SIF nResearchSystem
+				theTips:LOCAL '= "Research allows you to make better units and armor. Keep in mind that you can only research in areas you can study in."
+		CASE 297
+			SIF nFactions && nResearchSystem
+				theTips:LOCAL '= "Completing 50% of all research of that tier will bump the faction into that tech level."
+		CASE 298
+			SIF nFactions
+				theTips:LOCAL '= @"산적 캠프를 파괴하거나 지역을 순찰하는 것과 같은 전투 업무는 낮은 전투 기술을 가진 이들에게 사형 선고나 다름없다."
+		CASE 299
+			SIF nSex
+				theTips:LOCAL '= @"거시기만 가진 유일한 사람이 되는 것에 지쳤나요? 제작하세요 \"후타 약\" 다른 캐릭터들에게 페니스를 주기 위해. 나중에 마음에 들지 않으면 언제든지 그들의 페니스를 제거할 수 있다."
+		CASE 300
+			theTips:LOCAL '= @"전반적인 요술 레벨은 배울수록, 그리고 그 스킬의 레벨이 높을수록 증가한다."
+		CASE 301
+			theTips:LOCAL '= @"약점을 이용하는 것은 %COND_STR(@"and killing your enemies",nNecro)%『One-Mores』를 얻게 되는데, 이는 당신이 턴에 더 많은 행동을 할 수 있게 해준다. 하지만 적들도 『One-Mores』를 얻을 수 있으니 조심해야 한다."
+		CASE 302
+			theTips:LOCAL '= "Increase your Youjutsu levels to get more powerful spells."
+		CASE 303
+			theTips:LOCAL '= "【Tetrakarn】 creates a barrier on all allies that lasts for a single turn, which protects them from physical attacks, subsequently reflects them back to the attacker."
+		CASE 304
+			theTips:LOCAL '= @"전투에서 버프와 디버프가 왕이다! 낮은 레벨의 전투원이라도 적절한 버프를 받으면 효과적일 수 있다!"
+		CASE 305
+			theTips:LOCAL '= @"패시브는 특정 유형의 피해에 저항하게 해주므로 매우 중요하다."
+		CASE 306
+			theTips:LOCAL '= @"캐릭터의 고유한 주문은 그들을 친구로 사귀어 배울 수 있다. 해당 주문이 어떤 유형의 유쥬츠에 속하는지 알아야 한다는 점을 명심하라."
+		CASE 307
+			theTips:LOCAL '= @"자력으로 습득하는 유술은 해당 유술과 관련된 퍼즐을 풀 것을 요구한다."
+		CASE 308
+			theTips:LOCAL '= @"일부는 유술의 트레이너이며 특정 유술 유형을 너에게 가르칠 수 있다. 다만 그들이 너를 위해 기꺼이 훈련시켜 주려면 너에게 빠지게 만들어야 할지도 모른다."
+		CASE 309
+			SIF nNecro
+				theTips:LOCAL '= "Not even Eirin can resurrect a Touhou when Permadeath is on."
+		CASE 310
+			theTips:LOCAL '= "An aggressive Touhou is more inclined on attacking over a Passive touhou"
+		CASE 311
+			SIF nPee
+				theTips:LOCAL '= "Loud sounds and a full bladder don't mix."
+		CASE 312
+			SIF nHypno
+				theTips:LOCAL '= "Getting a Critical Success when hypnotizing someone guarantees that the hypnosis will succeed."
+		CASE 313
+			SIF nHypno
+				theTips:LOCAL '= "Leveling up your Hypnosis Youjutsu increases the odds of you getting a Critical Success."
+		CASE 314
+			SIF nHypno
+				theTips:LOCAL '= "You can raise a character's Hypno Addiction by trying to hypnotize them. The higher it is, the lower their resistance to hypnosis will be."
+		CASE 315
+			SIF nHypno
+				theTips:LOCAL '= "If you're having trouble hypnotizing someone, wait a day and try again."
+		CASE 316
+			SIF nHypno
+				theTips:LOCAL '= "You can't hypnotize people if other people can see you do it. Unless you hypnotize them first..."
+		CASE 317
+			SIF nHypno
+				theTips:LOCAL '= "Having Fake Consent active on a character when the day ends will ensure one of their morning events will trigger, if they have them."
+		CASE 317
+			SIF nHypno
+				theTips:LOCAL '= "The power of Targeted Common Sense Alteration depends on your hypnosis power vs. the target's resistance. The more powerful it is, the more things you can get away with."
+		CASE 317
+			SIF nHypno
+				theTips:LOCAL '= "If you alter a character's common sense enough, it enables Free Use mode. This lets you have sex with them anytime, anywhere (as long as nobody else can see you)."
+		CASE 317
+			SIF nHypno
+				theTips:LOCAL '= "You can hypnotize characters into going on a date with you even if they're working."
+		CASE 318
+			SIF nHypno
+				theTips:LOCAL '= "Hypno-Orgasm Denial doesn't wear off until you dispel it."
+		CASE 319
+			SIF nHypno
+				theTips:LOCAL '= "Seija has the power to reverse anything... including your hypnosis."
+		CASE 320
+			SIF nHypno
+				theTips:LOCAL '= "Characters with the Hypnosis Youjutsu hypnotize people. Try matching your powers against theirs."
+		CASE 321
+			SIF nHypno
+				theTips:LOCAL '= "Hypnotizing characters into being nudists and/or exhibitionists will increase the odds of them forgetting to put clothes on at the beginning of the day."
+		CASE 322
+			SIF nRyona && nWeapons
+				theTips:LOCAL '= "Having certain attachments on may rename your gun to a different model."
+		CASE 323
+			SIF nRyona && nWeapons
+				theTips:LOCAL '= "Damage and Loudness is determined by ammo, barrel, and barrel extension."
+		CASE 324
+			SIF nRyona && nWeapons
+				theTips:LOCAL '= "Penetration is determined by ammo and barrel."
+		CASE 325
+			SIF nRyona && nWeapons
+				theTips:LOCAL '= "Accuracy is determined by all attachments except for magazine."
+		CASE 326
+			SIF nRyona && nWeapons
+				theTips:LOCAL '= "After picking up a character's weapon, you will gain all attachments that they had on their gun."
+		CASE 327
+			SIF nRyona && nWeapons
+				theTips:LOCAL '= "Attachments affect your weapon's rank, which determines raid strength and intimidation power! The highest level a weapon can be is QU 63."
+		CASE 328
+			SIF nRyona && nWeapons
+				theTips:LOCAL '= "Every weapon is a platform for different attachments."
+		CASE 329
+			SIF nRyona && nWeapons
+				theTips:LOCAL '= "Commands are sorted into different risk categories.\nWhite: Safe to execute\nYellow: May cause physical or relationship harm.\nOrange: Will cause physical or relationship harm.\nRed: Will cause severe physical or relationship harm, can be fatal\nDark Red: Will either kill the Touhou or cause her to become hostile."
+		CASE 330
+			theTips:LOCAL '= @"속옷 한 벌을 구매하면 해당 속옷의 무한 복사본을 만들 수 있는 간격이 생길 것이다."
+		CASE 331
+			SIF nPee
+				TheTips:LOCAL '= "Onesho (おねしょ) is an abbreviated and honorific form of Neshouen (寝小便), which means bedwetting. Now you know"
+		CASE 332
+			SIF nPee || nScat
+				TheTips:LOCAL '= "Omaru (おまる) means potty chair. Not to be confused with Maru (丸) which means circle and the kanji for it can be used to mean potty chair. Now you know"
+		CASE 333
+			SIF nPee || nScat
+				TheTips:LOCAL '= "Benki (便器) means toilet. The loan word Toire (トイレ) is also taken from the word Toilet and means Toilet. Now you know"
+		CASE 334
+			SIF nOmutsu
+				TheTips:LOCAL '= "Omutsu (お襁褓) means diaper. Tsukaisute Omutsu (使い捨ておむつ) is a disposable diaper and Nuno Omutsu (布おむつ) are cloth diapers. Notably this word is most often used honorifically in it's hiragana (おむつ) or katakana (オムツ) form; because diapers are for babies according to them. They were wrong."
+		CASE 335
+			SIF nOmutsu
+				TheTips:LOCAL '= "Oshime (お襁褓) is another way to read this kanji and due to this, means diaper as well."
+		CASE 336
+			SIF GETBIT(nWeapons,2)
+				TheTips:LOCAL '= "Most ballistic firearms will shoot the same ammo with the same damage. The only ways that damage can be changed is with a different ammunition type and barrel length."
+			;theTips:LOCAL '= "Kohotime is a cosplay fanatic. Try showing off a police officer uniform to her."
+			;CASE 189
+			;theTips:LOCAL '= @"You. Can. Disable. The. Diapers. If. You. Don't. Like. Them."
+			;4chan
+	ENDSELECT
+	NEXT
+ENDIF
+tipPick:2 = 0
+FOR tipPick:1,0,1000
+IF !STRLENS(theTips:(tipPick:1))
+	;check size of the array
+	CONTINUE
+ENDIF
+tipPick:2 ++
+NEXT
+CALL FISHER_YATES_SHAFFLE(tipPick:1)
+;randomize and verify message
+FOR tipPick, 0, tipPick:1
+IF STRFIND(theTips:(SHAFFLE_ARRAY:tipPick),"This tip is hidden because") == -1 && STRLENS(theTips:(SHAFFLE_ARRAY:tipPick))
+	PRINTFORM %@"【TIP #{SHAFFLE_ARRAY:tipPick,3}/{tipPick:2,3}】"%
+	PRINTFORM %theTips:(SHAFFLE_ARRAY:tipPick)%
+	BREAK
+ELSE
+	CONTINUE
+ENDIF
+NEXT
+;custom code, tips are getting too long
+CALL PRINT_BREAK
+;PRINTFORML

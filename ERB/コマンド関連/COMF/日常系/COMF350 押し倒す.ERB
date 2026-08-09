@@ -1,0 +1,316 @@
+﻿; Modular ERB: COMF/日常系/COMF350 押し倒す.ERB
+;-------------------------------------------------
+;押し倒す
+;日常系コマンド、レベル1
+;-------------------------------------------------
+
+@COM350
+#DIM NUM_TARGET
+#DIM C_ID
+;押し倒す
+NUM_TARGET = GET_TARGETNUM()
+IF TFLAG:パール期限
+	IF FLAG:70 ;bug fix
+		PRINTFORML 당신은 지금 몸 안에 이물질이 박힌 채로 이것을 하는 것이 편하지 않다.
+		RETURN -1
+	ENDIF
+	IF TARGET == TFLAG:パール入れた人
+		PRINTFORML %조사처리(CALLNAME:TARGET,"는")%(는) 기다려야 한다고 말하며 당신을 차단한다.
+	ELSE
+		PRINTFORML 지금은 그럴 수가 없다.
+	ENDIF
+	RETURN -1
+ENDIF
+IF (FLAG:70 && !MAXBASE:TARGET:TSP) || IsDead:TARGET:0
+	;時間停止は無条件突破
+	FOR LOCAL,1, NUM_TARGET + 1
+	CFLAG:(TARGET:LOCAL):うふふ = 1
+	NEXT
+ELSE
+	;NAS: Cheat
+	SIF NASCheat:1
+		GOTO BYPASSPublic
+	;qol custom code, lewd/hypnotized characters accept sex while visible to others
+	;qol custom code, exhibitionists/nudists do too
+	LOCAL:10 = 1
+	FOR LOCAL,1, NUM_TARGET + 1
+	IF !(TALENT:(TARGET:LOCAL):ヤリマン || TALENT:(TARGET:LOCAL):淫乱 || TCVAR:(TARGET:LOCAL):Common_Sense_Alteration_Status >= 75 || TCVAR:Exhibitionist_Nudist_Sense || FLAG:催眠強度 >= 75)
+		LOCAL:10 = 0
+		BREAK
+	ENDIF
+	NEXT
+	;視線による中断判定
+	IF EYEWITNESS() == 1 && !LOCAL:10 ;qol custom code, lewd/hypnotized accepts onlookers
+		TFLAG:194 = 1
+		IF !nRapeAnywhere || nRapeAnywhere && (ABL:TARGET:露出癖 + TALENT:TARGET:羞恥心 < 6) ;custom code for sex anywhere
+			TFLAG:押し倒せない ++
+		ELSE
+			;CALL 潜伏描写
+		ENDIF
+	ENDIF
+	;MASTER的に多人数は無理だった
+	IF NUM_TARGET > 1 && TCVAR:MASTER:馴れ合い < 2
+		TFLAG:194 = 3
+		TFLAG:押し倒せない ++
+	ENDIF
+	IF LS_LUNATIC_TIME() ;Custom code, always succeed during lunatic time in Lunatic Survival.
+		TFLAG:194 = 0
+		TFLAG:押し倒せない = 0
+	ENDIF
+	$BYPASSPublic
+	FOR LOCAL,1, NUM_TARGET + 1
+	C_ID = TARGET:LOCAL
+	;NAS: Cheat
+	IF NASCheat:1
+		;assume it's consensual
+		TCVAR:C_ID:抱き寄せ初回 = 1
+		GOTO OK
+	ENDIF
+	;-------------------------------
+	;泥酔
+	IF TCVAR:C_ID:泥酔 == 1
+		CFLAG:C_ID:うふふ = 1
+		IF CFLAG:C_ID:泥酔姦 < 2
+			CFLAG:C_ID:泥酔姦 = 1
+			;NAS: Religion
+			CALL CheckSinsForSex(MASTER, C_ID, 1)
+		ENDIF
+		IF INROOM(CFLAG:MASTER:現在位置) == 2
+			CALL DATUI_SHOES(LOCAL,0)
+			CALL DATUI_SHOES(MASTER,0)
+		ENDIF
+		;NAS: Religion
+	ELSEIF charReligionStatus:C_ID:(TALENT:C_ID:Religion) < GET_INT(C_ID, "Religion", TALENT:C_ID:Religion, "Max Rank For Sex") && GET_INT(C_ID, "Religion", TALENT:C_ID:Religion, "Max Rank For Sex") && charReligionStatus:C_ID:(TALENT:C_ID:Religion)
+		TFLAG:194 = 6
+		TFLAG:押し倒せない ++
+	ELSEIF ReligionBlocksSex(C_ID, MASTER)
+		TFLAG:194 = 7
+		TFLAG:押し倒せない ++
+		;ATW Rape Expansion
+	ELSEIF TEQUIP:拘束
+		TFLAG:194 = 0
+		TCVAR:抱き寄せ初回 = 20
+		CALL COM_KOJO_CALL(TARGET, 350)
+		IF !GETBIT(CFLAG:C_ID:既成事実 , 1)
+			TCVAR:無理矢理 = 1
+		ENDIF
+		CFLAG:うふふ = 1
+		TEQUIP:拘束 = 1
+		TEQUIP:縄 = 1
+		;(addition) custom code, for outside flag
+	ELSEIF OUTROOF(CFLAG:C_ID:現在位置) && ABL:C_ID:露出癖 - TALENT:C_ID:羞恥心 < 3 && !TCVAR:Exhibitionist_Nudist_Sense && TCVAR:Common_Sense_Alteration_Status < 75 && FLAG:催眠強度 < 75 & !LS_LUNATIC_TIME() ;custom code
+		TFLAG:194 = 2
+		TFLAG:押し倒せない ++
+	ELSEIF NUM_TARGET > 1 && !QOL_MULTI_PUSHDOWN_ALLOWED() && !LS_LUNATIC_TIME() ;qol custom code
+		TFLAG:194 = 3
+		TFLAG:押し倒せない ++
+		BREAK
+		;合意未取得
+	ELSEIF !GETBIT(CFLAG:C_ID:既成事実 , 1) && !TALENT:C_ID:合意誤認 && TCVAR:Common_Sense_Alteration_Status < 75 && FLAG:催眠強度 < 75 ;hypnosis patch
+		;未取得だと多人数は駄目
+		;qol custom code, moved check up
+		IF 0; NUM_TARGET > 1 && !QOL_MULTI_PUSHDOWN_ALLOWED()
+			TFLAG:194 = 3
+			TFLAG:押し倒せない ++
+			BREAK
+			;口上側による制御
+		ELSEIF CFLAG:C_ID:口上内抱き寄せ判定_初回
+			CALL KOJO_MESSAGE_SEND("PERMISSION", 1, C_ID)
+			SELECTCASE RESULT
+				CASE -1
+					TCVAR:C_ID:抱き寄せ初回 = 98
+					TFLAG:押し倒せない ++
+					BREAK
+				CASE 0
+					CALL 抱き寄せ(C_ID)
+				CASE 1
+					TCVAR:C_ID:抱き寄せ初回 = 99
+					SETBIT CFLAG:C_ID:既成事実 , 1
+					CALL COLORMESSAGE(@"당신은 %CALLNAME:C_ID%의 동의를 받는다.",C_YELLOW,2)
+			ENDSELECT
+		ELSE
+			CALL 抱き寄せ(C_ID)
+		ENDIF
+		;合意取得済み
+	ELSE
+		IF FLAG:守矢くじデート相手 == C_ID || TALENT:C_ID:ヤリマン || CFLAG:C_ID:うふふ ;hypnosis patch
+			GOTO OK
+		ELSEIF (BASE:C_ID:ムード < 300 || TCVAR:MASTER:馴れ合い < 2) && TCVAR:Common_Sense_Alteration_Status < 75 && FLAG:催眠強度 < 75 && !LS_LUNATIC_TIME() ;custom code, ignore mood checks with high enough common sense alteration
+			TFLAG:194 = 4
+			TFLAG:押し倒せない ++
+			;口上側による制御
+		ELSEIF CFLAG:C_ID:口上内抱き寄せ判定_通常
+			CALL KOJO_MESSAGE_SEND("PERMISSION", 2, C_ID)
+			IF RESULT == -1
+				TFLAG:194 = 100
+				TFLAG:押し倒せない ++
+			ELSE
+				GOTO OK
+			ENDIF
+		ELSE
+			$OK
+			SIF BASE:C_ID:ムード < 300
+				BASE:C_ID:ムード = 300
+			CFLAG:C_ID:うふふ = 1
+			;NAS: Religion
+			CALL CheckSinsForSex(MASTER, C_ID, 0)
+			IF INROOM(CFLAG:MASTER:現在位置) == 2
+				CALL DATUI_SHOES(LOCAL,0)
+				CALL DATUI_SHOES(MASTER,0)
+			ENDIF
+		ENDIF
+	ENDIF
+	NEXT
+ENDIF
+IF TFLAG:押し倒せない
+	FOR LOCAL,1, NUM_TARGET + 1
+	CALL ENDUFUFU(TARGET:LOCAL)
+	;debug shits
+	[IF_DEBUG]
+	PRINTFORML 우후후 강제로 끝났다. 플래그 194: %TOSTR(TFLAG:194)%, 플래그 70: %TOSTR(TFLAG:70)%, 안기 처음: %TOSTR(TCVAR:抱き寄せ初回)%
+	[ENDIF]
+	NEXT
+	DOWNBASE:MASTER:気力 = 50
+	BASE:TARGET:ムード /= 2
+	TFLAG:102 = 0
+ELSE
+	;攻守交代
+	;ELSEIF CFLAG:MASTER:うふふ == 1 && !FLAG:70
+	;	FOR LOCAL,0,CHARANUM
+	;		CFLAG:(TARGET:LOCAL):うふふ == 2
+	;	NEXT
+	;	TIME += 1
+	;	RETURN 1
+	IF (!FLAG:70 || MAXBASE:TARGET:TSP) && !IsDead:TARGET:0
+		FOR LOCAL,1, NUM_TARGET + 1
+		CALL UWAKI_RECORD(TARGET:LOCAL, 1)
+		NEXT
+	ENDIF
+	CFLAG:MASTER:うふふ = 1
+ENDIF
+SIF !FLAG:70 ;bug fix, to trigger the action description
+	TIME += 5
+;経過時間表示用に開始時間を取っておく
+IF !UFUFU_START_TIME
+	UFUFU_START_TIME = TIME
+	UFUFU_START_DAY = DAY
+ENDIF
+SIF TFLAG:194 == 0 && TFLAG:押し倒せない == 0 && CHK_DATENOW(CFLAG:MASTER:デート中) && GROUPMATCH(CFLAG:TARGET:現在位置, 連れ込み宿, ラブホ)
+	addDateActionsDone:TARGET:date_Sex ++ ;addition custom code, successful sex attempt during the date at the hotel
+;qol custom code
+FOR LOCAL,1, NUM_TARGET + 1
+CFLAG:(TARGET:LOCAL):LAST_SEX_DAY = DAY
+NEXT
+SIF GROUPMATCH(TCVAR:抱き寄せ初回, 6, 7, 8) ;com custom code, in case of rejection, send the appropriate flag so it shows first no matter if it's in public etc
+	TFLAG:194 = 0
+RETURN !GROUPMATCH(TCVAR:抱き寄せ初回, 6, 7, 8) && TFLAG:押し倒せない ? 0 # 1 ;bug fix, cancel favor gain when unsuccessful
+;連れ込み宿ラブホ以外の出かけ先でうふふするための特殊条件
+
+@特殊うふふ条件(ARG)
+#FUNCTION
+SIF (TCVAR:ARG:Common_Sense_Alteration_Status >= 75 || FLAG:催眠強度 >= 75) && CFLAG:行動 == 5 ;custom code
+	RETURNF 1
+SELECTCASE ARG
+	CASE 67
+		SIF TCVAR:ARG:特殊イベント >= 4 && CFLAG:ARG:行動 != 5 && (GETBIT(CFLAG:ARG:既成事実 , 1) || TALENT:ARG:合意誤認) && TCVAR:ARG:馴れ合い >= 2 && CFLAG:ARG:現在位置 == 寺子屋 && GET_TARGETNUM() < 2 ;hypnosis patch
+			RETURNF 1
+ENDSELECT
+;-------------------------------------------------
+;実行判定
+;-------------------------------------------------
+
+@COM_ABLE350
+#DIM NUM_TARGET
+;妄想なので全通し
+SIF TFLAG:妄想中 == 1 && CFLAG:うふふ != 1
+	RETURN 1
+;押し倒す実行判定
+SIF !TFLAG:100
+	RETURN 0
+;一括管理
+SIF GLOBAL_COMABLE(350)
+	RETURN RESULT
+;NAS: Cheat
+SIF NASCheat:1
+	RETURN 1
+;時間停止中はスキップ
+IF !FLAG:70
+	;多人数
+	$NoTSP
+	NUM_TARGET = GET_TARGETNUM()
+	SELECTCASE NUM_TARGET
+		CASE 0
+			RETURN 0
+		CASE 1
+		CASEELSE
+			FOR LOCAL, 1, NUM_TARGET + 1
+			SIF IsDead:(TARGET:LOCAL):0
+				CONTINUE
+			;全キャラに合意がないとダメ
+			;qol custom code, disabled, check handled in main function
+			; SIF !GETBIT(CFLAG:(TARGET:LOCAL):既成事実 , 1) && !TALENT:(TARGET:LOCAL):合意誤認 && (TCVAR:(TARGET:LOCAL):Common_Sense_Alteration_Status < 75 || CFLAG:TARGET:行動 != 5) ;hypnosis patch
+			; 	RETURN 0
+			;寝てるキャラが居るとダメ
+			SIF CFLAG:(TARGET:LOCAL):睡眠
+				RETURN 0
+			;酔ってるキャラがいると駄目
+			SIF TCVAR:(TARGET:LOCAL):泥酔
+				RETURN 0
+			SIF TooYoungForSex(TARGET:LOCAL) ; no infantcon please
+				RETURN 0
+			NEXT
+	ENDSELECT
+	; ;always return 1 if dead
+	; this is bugged, just use molest :shrug:
+	; SIF IsDead:TARGET:0
+	; 	RETURN 1
+	SIF TFLAG:キスマーク != TARGET && TFLAG:キスマーク
+		RETURN 0
+	;睡眠中
+	SIF CFLAG:睡眠
+		RETURN 0
+	;添い寝中
+	SIF CFLAG:添い寝中
+		RETURN 0
+	;仕事中
+	SIF CFLAG:行動 == 5 && !(TCVAR:TARGET:泥酔 || TCVAR:Common_Sense_Alteration_Status >= 75 || FLAG:催眠強度 >= 75) ;custom code
+		RETURN 0
+	SIF TCVAR:好きにして
+		RETURN 0
+	;デート中
+	SIF (CHK_DATENOW(CFLAG:MASTER:デート中) && CFLAG:現在位置 != 連れ込み宿 && CFLAG:現在位置 != ラブホ && CFLAG:現在位置 != OMANEKIBEYA()) && !特殊うふふ条件(TARGET)
+		RETURN 0
+	SIF !nSex
+		RETURN 0
+	;SIF MONEY < 3000 && (CFLAG:現在位置 == 連れ込み宿 || CFLAG:現在位置 == ラブホ)
+	;RETURN 0
+ELSE
+	SIF MAXBASE:TARGET:TSP
+		GOTO NoTSP
+	SIF !nRape
+		RETURN 0
+ENDIF
+;気力0
+SIF BASE:MASTER:気力 <= 0
+	RETURN 0
+;甲斐性無しにそんな度胸はない
+;Lust mode custom code
+SIF FLAG:甲斐性無 && !FLAG:LUSTMODE
+	RETURN 0
+RETURN 1
+;人目があるかどうか返す式中関数
+;見てるキャラがいると1､モブだと2
+
+@EYEWITNESS()
+#FUNCTION
+FOR LOCAL, 1, CHARANUM
+SIF CFLAG:LOCAL:現在位置 == CFLAG:MASTER:現在位置
+	CONTINUE
+SIF CAN_MOVE(CFLAG:LOCAL:現在位置, CFLAG:MASTER:現在位置) & 2
+	RETURNF 1
+NEXT
+SIF WITH_MOB()
+	RETURNF 2
+SIF DATE_HITOGOMI()
+	RETURNF 2
+RETURNF 0

@@ -1,0 +1,380 @@
+﻿; Modular ERB: OMOGATARI/TOGGLES/TooManyToggles.ERB
+
+@SetMaxLevel
+#FUNCTION
+IF GETBIT(NASFeature,0)
+	MaxNonHLevel = universalRank("QuadUltra")
+ELSE
+	MaxNonHLevel = universalRank("Extra")
+ENDIF
+
+@YesOrNo(ARG)
+#FUNCTIONS
+IF ARG
+	RETURNF "Yes"
+ELSE
+	RETURNF "No"
+ENDIF
+;-------------------------------
+;Custom fetishes section
+;-------------------------------
+;mod options but for fetishes
+
+@OPTION_MOD_FETISH
+#DIM nLineCnt_Head
+LOADGLOBAL
+FOR LOCAL, 0, 100
+PRINTL
+NEXT
+CUSTOMDRAWLINE ＊
+PRINTFORML 페티시 옵션
+CUSTOMDRAWLINE ＊
+SETCOLOR C_RED
+PRINTFORML 이 옵션들은 전역적이며 모든 저장 파일에 영향을 미친다.
+RESETCOLOR
+PRINTFORML
+nLineCnt_Head = LINECOUNT
+CALLF SetMaxLevel
+SIF !DAY
+	CALL ADD_ALL_CHARACTERS()
+REDRAW 0
+DO
+SIF LINECOUNT - nLineCnt_Head > 0
+	CLEARLINE LINECOUNT - nLineCnt_Head
+CALL CUSTOM_FETISH_STATE
+SELECTCASE RESULT
+	CASE 0
+		IF !DAY
+			DELALLCHARA
+		ENDIF
+		inCharaCreator = 0
+		SAVEGLOBAL
+		RETURN
+	CASEELSE
+ENDSELECT
+LOOP 1
+
+@PRINT_CUSTOM_FETISH(ARG, ARGS, ARGS:1, ARGS:2)
+IF ARGS != "" || ARGS:1 != ""
+	SELECTCASE ARGS:1
+		CASE "Scatology"
+			IF GROUPMATCH(nSJW, 1, 5)
+				GOTO FetishDisabled
+			ELSEIF GROUPMATCH(nSJW, 1, 3, 4, 5)
+				PRINTFORML
+				SETCOLOR C_YELLOW
+				PRINTFORML %ARGS:1%
+				PRINTFORML 소프트코어 플레이에 한정됨 (예: 지저분하게 구는 것들)
+				PRINTFORML
+				RESETCOLOR
+				GOTO BYPASS
+			ENDIF
+		CASE "Necrophilia"
+			IF GROUPMATCH(nSJW, 1, 3, 4, 5)
+				$FetishDisabled
+				PRINTFORML
+				RESETCOLOR
+				RETURN
+			ENDIF
+		CASE "Adult Baby, Diaper Lover"
+			IF GROUPMATCH(nSJW, 1, 5)
+				GOTO FetishDisabled
+			ENDIF
+		CASE "General Sexual Content", "Urine", "Ryona", "Factions"
+			IF GROUPMATCH(nSJW, 5)
+				GOTO FetishDisabled
+			ENDIF
+		CASE "Rape"
+			IF GROUPMATCH(nSJW, 4, 5)
+				GOTO FetishDisabled
+			ENDIF
+	ENDSELECT
+	IF ARGS:1 != ""
+		PRINTFORML
+		SETCOLOR C_YELLOW
+		PRINTFORML %ARGS:1%
+		PRINTFORML
+		RESETCOLOR
+		; CALL COLUMNDIVPRINTL, 0, @"%ARGS:1%"
+		; CALL COLUMNDIVPRINTL, 0, @""
+	ENDIF
+	$BYPASS
+	;CALL COLUMNDIVPRINTL, 0, @"[{ARG}] - %ARGS%"
+	SIF ARGS != ""
+		PRINTFORML [{ARG}] - %ARGS%
+	IF ARGS:2 != ""
+		;CALL COLUMNDIVPRINTL, 0, @"     %ARGS:2%"
+		SETCOLOR C_GRAY
+		PRINTFORML %ARGS:2%
+		RESETCOLOR
+	ENDIF
+ENDIF
+
+@CUSTOM_FETISH_STATE(C_ID,OP)
+#DIMS    OP         ;実行オプション
+#DIM     C_ID       ;登録番号
+#DIM     PAGE       ;表示中のページ
+#DIMS CONST DISP_NAME = "General", "Excretion", "Physical Harm", "Non-consent", "Pregnancy", "Additions", "Vanilla", "Other", "Debug"
+#DIM CREDRAW
+#DIM FIRST_LINE
+FIRST_LINE = LINECOUNT
+$REPRINT
+CLEARLINE LINECOUNT - FIRST_LINE
+CREDRAW = CURRENTREDRAW()
+REDRAW 0
+;TRYCALLFORM CUSTOM_FETISH_PAGE_{PAGE}
+FOR LOCAL, 0, 1200
+CFM_STR:0 '= CUSTOM_FETISH_NAME(PAGE,LOCAL,"name")
+CFM_STR:1 '= CUSTOM_FETISH_NAME(PAGE,LOCAL,"header")
+CFM_STR:2 '= CUSTOM_FETISH_NAME(PAGE,LOCAL,"description")
+CFM_STR:3 '= CUSTOM_FETISH_NAME(PAGE,LOCAL,"enabled")
+CFM_STR:4 '= @"%CFM_STR:0%%COND_STR("： ",CFM_STR:0 != "" && CFM_STR:3 != "")%%CFM_STR:3%"
+TRYCCALLFORM CUSTOM_FETISH_{PAGE}_{LOCAL}
+CATCH
+CALL PRINT_CUSTOM_FETISH(LOCAL, CFM_STR:4, CFM_STR:1, CFM_STR:2)
+ENDCATCH
+NEXT
+DRAWLINE
+FOR LOCAL, 0, VARSIZE("DISP_NAME")
+[IF_NDEBUG]
+SIF LOCAL == VARSIZE("DISP_NAME")
+	CONTINUE
+[ENDIF]
+SIF PAGE == LOCAL
+	SETCOLOR 0x00FFFF
+;exception for player character
+PRINTBUTTON DISP_NAME:LOCAL, LOCAL + 2
+RESETCOLOR
+PRINTFORM 　　
+NEXT
+PRINTFORML 
+PRINTBUTTON "[0] 반환한다", 0
+PRINTBUTTON " [-1] 프리셋 ", -1
+DO
+INPUT
+SELECTCASE RESULT
+	CASE 0
+		RETURN 0
+	CASE -1
+		CALL CUSTOM_FETISH_PRESETS
+	CASE 2 TO VARSIZE("DISP_NAME")+2
+		PAGE = RESULT-2
+	CASE 9997 ;custom code
+	CASE 9998 ;custom code
+		BREAK
+	CASE 9999 ;custom code
+		qol_Relation_AscendingOrder = !qol_Relation_AscendingOrder
+	CASE -1
+	CASE IS >= 100
+		TRYCALLFORM CUSTOM_FETISH_RESULT_{PAGE}_{RESULT}
+	CASEELSE
+		$RETRY
+		REUSELASTLINE Invalid Input
+		CONTINUE
+ENDSELECT
+BREAK
+LOOP 1
+GOTO REPRINT
+
+@CUSTOM_FETISH_PRESETS
+#DIMS nSet
+#DIM FIRST_LINE
+DRAWLINE
+CALL PRINT_RAINBOWL("Fetish Presets")
+DRAWLINE
+PRINTFORML 활성화하거나 비활성화하고 싶은 페티시를 일괄 선택한다.
+FIRST_LINE = LINECOUNT
+DO
+CLEARLINE LINECOUNT - FIRST_LINE
+nSet '= "Excretion: "
+nSet += @"<button value='100' title='Turns off all Excretion settings'>[Off] </button>"
+nSet += @"<button value='101' title='소변:\n・이뇨제 놀이\n・사고\n・소변 마시기'>[소변만] </button>"
+nSet += @"<button value='102' title='똥:\n・관장\n・완하제 놀이\n・사고\n・똥 놀이\n・실제 배설물'>[똥만] </button>"
+nSet += @"<button value='103' title='기저귀 연인:\n・유치함, 실금, 욕망\n・퇴행 표시\n・랜덤 기저귀 확인'>[기저귀만] </button>"
+nSet += @"<button value='104' title='오줌:\n・이뇨제 플레이\n똥:\n・관장'>[eraK-like] </button>"
+nSet += @"<button value='105' title='오줌:\n・이뇨제 놀이\n・사고\n・오줌 마시기\n똥:\n・관장\n・설사약 놀이\n・사고\n・똥 놀이\n・진짜 스캣'>[오줌 + 똥] </button>"
+nSet += @"<button value='106' title='소변:\n・이뇨제 놀이\n・사고\n・소변 마시기\n기저귀 애호가:\n・유치, 실금, 욕망\n・퇴행 표시\n・랜덤 기저귀 확인'>[소변 + 기저귀] </button>"
+nSet += @"<button value='107' title='똥:\n・관장\n・완하제 놀이\n・사고\n・똥 놀이\n・실제 배설물\n기저귀 연인:\n・유치, 실금, 욕망\n・퇴행 표식\n・랜덤 기저귀 확인'>[똥 + 기저귀] </button>"
+nSet += @"<button value='108' title='소변:\n・이뇨제 놀이\n・실수\n・오줌 마시기\n대변:\n・관장\n・완하제 놀이\n・실수\n・똥 놀이\n・진짜 변기놀이\n기저귀 연인:\n・유치, 실금, 욕망\n・퇴행 표시\n・무작위 기저귀 확인'>[전체 노블아웃] </button>"
+nSet += @"<button value='109' title='오줌:\n・이뇨제 놀이\n・사고\n・소변 마시기\n똥:\n・관장\n・완하제 놀이\n・사고\n・똥 놀이\n・실제 배설물\n・폭발\n기저귀 연인:\n・유치, 실금, 욕망\n・퇴행의 표시\n・임의 기저귀 확인'>[전체] </button>"
+HTML_PRINT nSet
+nSet '= "Sex Fluid Soiling: "
+nSet += @"<button value='400' title='Turns off all Sex Fluid Soiling settings'>[Off] </button>"
+nSet += @"<button value='401' title='・정액\n・질 분비물'>[성액만] </button>"
+nSet += @"<button value='402' title='・Menstrual Blood'>[Periods] </button>"
+nSet += @"<button value='403' title='・정액\n・여성분 분비물\n・월경혈'>[전체] </button>"
+HTML_PRINT nSet
+nSet '= "Fights: "
+nSet += @"<button value='200' title='Turns off all War settings'>[Off] </button>"
+nSet += @"<button value='201' title='Ryona: Yes'>[Ryona Only] </button>"
+nSet += @"<button value='202' title='리요나: 예\n사회적 싸움: 예'>[사회적 싸움] </button>"
+nSet += @"<button value='203' title='레이온: 예\n파벌: 예\n레이드: 3일마다'>[파벌 레이드] </button>"
+nSet += @"<button value='204' title='Ryona: 예\n사회적 전투: 예\n세력: 예\n레이드: 3일마다'>[소셜 + 세력] </button>"
+nSet += @"<button value='205' title='리요나: 예\n사회적 전투: 예\n네크로필리아: 켜짐'>[사회 + 죽음] </button>"
+nSet += @"<button value='206' title='Ryona: 예시 \n파벌: 예시 \n레이드: 3일마다\n네크로필리아: 켜짐'>[파벌 + 죽음] </button>"
+nSet += @"<button value='208' title='리요나: 예\n사회적 전투: 예\n파벌: 예\n레이드: 3일마다\n네크로필리아: 켜짐'>[전체] </button>"
+HTML_PRINT nSet
+nSet '= "Rape: "
+nSet += @"<button value='300' title='모든 강간 설정을 끔'>[끄기] </button>"
+nSet += @"<button value='301' title='Rape:\n・TSP\n・Sleep\n・Reverse\n・Conscious'>[On] </button>"
+nSet += @"<button value='302' title='강간:\n・TSP\n・잠\n・역행\n・의식\n최면: 예\n'>전체 </button>"
+HTML_PRINT nSet
+PRINTL
+PRINTFORML [-1] 리턴한다
+INPUT
+SELECTCASE RESULT
+	CASE -1
+		RETURN
+		;excretion
+	CASE 100
+		nPee = 0
+		nScat = 0
+		nOmutsu = 0
+		nPantyPunish = 0
+		nAdultBaby = nPantyPunish
+	CASE 101
+		nPee = 7
+		nScat = 0
+		nOmutsu = 0
+		nPantyPunish = 0
+		nAdultBaby = nPantyPunish
+	CASE 102
+		nPee = 0
+		nScat = 31
+		nOmutsu = 0
+		nPantyPunish = 0
+		nAdultBaby = nPantyPunish
+	CASE 103
+		nPee = 0
+		nScat = 0
+		nOmutsu = 2
+		nPantyPunish = 1
+		nAdultBaby = nPantyPunish
+	CASE 104
+		nPee = 1
+		nScat = 17
+		nOmutsu = 0
+		nPantyPunish = 0
+		nAdultBaby = nPantyPunish
+	CASE 105
+		nPee = 7
+		nScat = 31
+		nOmutsu = 0
+		nPantyPunish = 0
+		nAdultBaby = nPantyPunish
+	CASE 106
+		nPee = 7
+		nScat = 0
+		nOmutsu = 2
+		nPantyPunish = 1
+		nAdultBaby = nPantyPunish
+	CASE 107
+		nPee = 0
+		nScat = 31
+		nOmutsu = 2
+		nPantyPunish = 1
+		nAdultBaby = nPantyPunish
+	CASE 108
+		nPee = 7
+		nScat = 31
+		nOmutsu = 2
+		nPantyPunish = 1
+		nAdultBaby = nPantyPunish
+	CASE 109
+		nPee = 7
+		nScat = 63
+		nOmutsu = 2
+		nPantyPunish = 1
+		nAdultBaby = nPantyPunish
+		;factions
+	CASE 200
+		nRyona = 0
+		nFactions = 0
+		nSocialFighting = 0
+		nRaids = 0
+		nNecro = 0
+	CASE 201
+		nRyona = 1
+		nFactions = 0
+		nSocialFighting = 0
+		nRaids = 0
+		nNecro = 0
+	CASE 202
+		nRyona = 1
+		nFactions = 0
+		nSocialFighting = 1
+		nRaids = 0
+		nNecro = 0
+	CASE 203
+		nRyona = 1
+		nFactions = 1
+		nSocialFighting = 0
+		nRaids = 3
+		nNecro = 0
+	CASE 204
+		nRyona = 1
+		nFactions = 1
+		nSocialFighting = 1
+		nRaids = 3
+		nNecro = 1
+	CASE 205
+		nRyona = 1
+		nFactions = 0
+		nSocialFighting = 1
+		nRaids = 1
+		nNecro = 1
+	CASE 206
+		nRyona = 1
+		nFactions = 0
+		nSocialFighting = 1
+		nRaids = 0
+		nNecro = 1
+	CASE 207
+		nRyona = 1
+		nFactions = 1
+		nSocialFighting = 0
+		nRaids = 3
+		nNecro = 1
+	CASE 208
+		nRyona = 1
+		nFactions = 1
+		nSocialFighting = 1
+		nRaids = 3
+		nNecro = 1
+	CASE 300
+		nRape = 0
+		nHypno = 0
+	CASE 301
+		nRape = 15
+		nHypno = 1
+	CASE 302
+		nRape = 15
+		nHypno = 1
+	CASE 400
+		nSexExcrete = 0
+	CASE 401
+		nSexExcrete = 3
+	CASE 402
+		nSexExcrete = 4
+	CASE 403
+		nSexExcrete = 7
+ENDSELECT
+LOOP 1
+;external
+;=================
+;template
+;=================
+;=================
+;Regex Used
+;=================
+;=================
+
+@CUSTOM_FETISH_NAME(CF_PAGE="",CF_OPTIONS=0,CF_STRING="name")
+#FUNCTIONS
+#DIMS CF_PAGE
+#DIM CF_OPTIONS
+#DIMS CF_STRING
+VARSET CFM_RETURN
+VARSET LOCALS
+TRYCALLFORMF CUSTOM_FETISH_NAME_%CF_PAGE%_{CF_OPTIONS}(CF_STRING)
+RETURNF CFM_RETURN

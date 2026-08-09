@@ -1,0 +1,1315 @@
+﻿; Modular ERB: Addition/Add_Item.ERB
+;easy way to add custom usable item
+
+@Add_UseItem(nItem, nTarget, nGiver = -1)
+#DIM nItem
+#DIM nTarget
+#DIM nGiver; nas custom
+SIF nGiver == -1
+	nGiver = MASTER
+;/////////////////////
+;return values: 3 - item use is canceled, 1 - item is used, 2 - item is used and end of the day is triggered.
+SELECTCASE nItem
+	CASE 36 ;umbrella
+		SIF nTarget != MASTER ;player only
+			RETURN 3
+		IF CFLAG:MASTER:うふふ
+			PRINTFORMW 지금 그걸 써봤자 소용없다...
+			RETURN 3
+		ENDIF
+		IF !GROUPMATCH(TIME:5, 4, 5, 6, 8, 9, 10, 12, 13, 14, 15)
+			PRINTFORMW 날씨가 그것을 하기에는 충분하지 않지만...
+			RETURN 3
+		ENDIF
+		IF nDontUseUmbrella
+			PRINTFORMW 당신은 우산을 펼친다.
+			nDontUseUmbrella = 0
+		ELSE
+			PRINTFORMW 당신은 우산을 접는다.
+			nDontUseUmbrella = 1
+			;sharing an umbrella disable
+			TEQUIP:MASTER:201 = 0
+			SIF TARGET
+				TEQUIP:TARGET:201 = 0
+		ENDIF
+		ITEM:折り畳み傘 ++ ;add a copy because it'll be consumed
+		RETURN 1
+	CASE 252 ;sleep pill
+		SIF nTarget != MASTER ;player only
+			RETURN 3
+		IF FLAG:70
+			PRINTFORMW 타임 스톱 밖에서 사용하자.
+			RETURN 3
+		ENDIF
+		IF CFLAG:MASTER:うふふ
+			PRINTFORMW 지금 이걸 쓰는 건 꽤 나쁠 것 같다...
+			RETURN 3
+		ENDIF
+		IF CFLAG:MASTER:現在位置 != CFLAG:MASTER:初期位置
+			IF (CFLAG:MASTER:お招き || CFLAG:MASTER:添い寝中) ;allow usage when invited/sleeping together
+			ELSE
+				PRINTFORMW 집에 가져가는 게 좋겠어.
+				RETURN 3
+			ENDIF
+		ENDIF
+		IF DrugAddict:MASTER:0 > 0 && ITEM:睡眠薬 < DrugAddict:MASTER:0
+			PRINTFORMW 너에게 영향을 주기 위해서는 이것보다 더 많은 용량이 필요하다... ({DrugAddict:MASTER:0} 알 최소)
+			RETURN 3
+		ENDIF
+		PRINTFORMW 당신은 \@ DrugAddict:MASTER:0 >= 2 ? 수면제 한 알을 벌컥벌컥 삼킨다. # 수면제를 좀 먹는다. \@ 그리고 깊은 잠에 빠져들다...
+		nSleepingPill_Taken = 1
+		SIF DrugAddict:MASTER:0 > 0 ;one extra item is used when function ends
+			ITEM:睡眠薬 -= DrugAddict:MASTER:0
+		RETURN 2
+	CASE 923
+		;Girl's Egg.
+		PRINTFORMDL 당신은 달걀을 깨고 노른자를 생으로 삼킨다.
+		;Recovers half as much as a prepared snack.
+		CALL RECOVER(MASTER,250,"体力", "생날 암탉의 알로 회복한다.")
+		CALL RECOVER(MASTER,750,"気力", "원시 소녀의 알로 회복한다.")
+		CALL RECOVER(MASTER,50,"精力", "생날 계란으로 회복한다.")
+		WAIT
+		RETURN 1
+	CASE 924
+		;Hyper Ovulation Drug.
+		SIF nTarget == MASTER
+			RETURN 3
+		IF TALENT:nTarget:HYPERFERTILE
+			PRINTFORMDW %CALLNAME:nTarget%는 이미 %GET_TALENTNAME_TR(GETNUM(TALENT, "HYPERFERTILE"), 1)%이다.
+			RETURN 3
+		ENDIF
+		IF IS_MALE(nTarget)
+			PRINTFORMDW 남성에게는 사용할 수 없다.
+			;Can't use on male characters.
+			RETURN 3
+		ENDIF
+		SELECTCASE TALENT:nTarget:PREGNANCY_TYPE
+			CASE PREGNANCY_NORMAL, PREGNANCY_LITTERS
+				TALENT:nTarget:HYPERFERTILE = 1
+				PRINTFORMDW %CALLNAME:nTarget%는 이제 %GET_TALENTNAME_TR(GETNUM(TALENT, "HYPERFERTILE"), 1)%이다.
+			CASEELSE
+				PRINTFORMDW 그것은 %CALLNAME:nTarget%에게는 효과가 없을 것이다.
+				RETURN 3
+		ENDSELECT
+		RETURN 1
+	CASE 991 ;milk bottle
+		SIF nTarget != MASTER ;player only (for now?)
+			RETURN 3
+		PRINTFORML 당신은 병을 열고 상쾌한 한 모금을 마신다.
+		PRINTFORMW 너무 맛있어서 알아차리지 못하고 전부 다 마셔버린다!
+		;300 units in the bottle, though it's busted af that way
+		IF TIME:1 - EX:MASTER:前回の入浴時刻 < 90
+			CALL RECOVER(MASTER,180 * 8,"体力", "막 목욕을 마치고")
+			CALL RECOVER(MASTER,150 * 12,"気力", "방금 목욕을 마치고")
+			CALL RECOVER(MASTER,500,"精力", "방금 목욕하고 나온")
+		ELSE
+			CALL RECOVER(MASTER,90 * 5,"体力", " ")
+			CALL RECOVER(MASTER,120 * 8,"気力", " ")
+			CALL RECOVER(MASTER,200,"精力", " ")
+		ENDIF
+		CALL 満腹度上昇(MASTER,"軽食")
+		Qol_Info_Count_Array:MASTER:Qol_Count_MilkDrankBottle += 300
+		;return a bottle
+		SIF ITEM:瓶 < 99
+			CALL GET_ITEM("瓶", 1, 1)
+		RETURN 1
+	CASE 995 ;Weather Report
+		IF FLAG:異常気象
+			PRINTFORMDW 이 이상 기후는 바꿀 수 없다.
+			RETURN 3
+		ELSEIF FORBIDDEN_CHANGE_WEATHER
+			PRINTFORMDW 누군가의 힘이 이미 날씨에 영향을 미치고 있다.
+			RETURN 3
+		ENDIF
+		PRINTFORMDL 어떤 종류의 날씨를 만들고 싶습니까?
+		;from GET_WEATHER_TR
+		SPLIT "Sunny/Fair/Overcast/Cloudy/Rain/Downpour/Drizzle/Foggy/Snowy/Snowstorm/Light Snowfall/Snow Grains/Sleet/Hail/Rainstorm/Hailstorm/Panties", "/", LOCALS
+		LOCAL:11 = RESULT
+		;modeled after ASK_M
+		LOCAL:10 = CURRENTREDRAW()
+		REDRAW 0
+		FOR LOCAL, 0, LOCAL:11
+		PRINTBUTTON @"{LOCAL, 2, RIGHT}[%LOCALS:LOCAL%]", LOCAL
+		PRINTL
+		NEXT
+		PRINTBUTTON @"{-1}[Cancel]", -1
+		PRINTL
+		$WEATHER_INPUT_LOOP
+		INPUT
+		IF RESULT < 0 || RESULT >= LOCAL:11
+			CLEARLINE 1
+			GOTO WEATHER_INPUT_LOOP
+		ENDIF
+		REDRAW LOCAL:10
+		SIF TIME:5 <= 15 ;normal weather types
+			TIME:5 = RESULT
+		PRINTFORMDL 「날씨 보고」다!
+		SELECTCASE RESULT
+			CASE 0, 1 ;sunny/fair
+				PRINTFORMDL 하늘이 맑아졌고, \@ TIME:2 >= 5 && TIME:2 <= 7 ? 별들이 선명하게 보인다 # 태양이 밝게 빛난다 \@.
+				;chance for rainbow
+				IF INRANGE(TIME:5,4,7) && !RAND:7
+					TIME:7 = 1
+					PRINTFORMD 갑자기 \@ TIME:2 >= 5 && TIME:2 <= 7 ? 달 # 비 \@가 나타난다!
+					;chance for diamond dust
+				ELSEIF INRANGE(TIME:5,8,13) && !RAND:7
+					TIME:7 = 2
+					PRINTFORMD 다이아몬드 먼지가 보이게 된다!
+				ENDIF
+				PRINTL
+			CASE 2 ;overcast
+				PRINTFORMDW 날씨가 약간 흐려졌다.
+			CASE 3 ;cloudy
+				PRINTFORMDW 구름이 하늘 전체를 뒤덮고 있다.
+			CASE 4 ;rain
+				PRINTFORMDW 비가 온다!
+			CASE 5 ;downpour
+				PRINTFORMDW 비가 쏟아지기 시작했다!
+			CASE 6 ;drizzle
+				PRINTFORMDW 이슬비가 내리고 있다.
+			CASE 7 ;foggy
+				PRINTFORMDW 날씨가 안개처럼 흐려졌다.
+			CASE 8 ;snowy
+				PRINTFORMDW 눈이 내리고 있다!
+			CASE 9 ;snowstorm
+				PRINTFORMDW 눈이 내리고 있다! 눈보라다!
+			CASE 10 ;light snowfall
+				PRINTFORMDW 가볍게 눈이 내리고 있다.
+			CASE 11 ;snow grains
+				;doesn't happen naturally, but should work fine
+				PRINTFORMDW 눈송이가 내리고 있다.
+			CASE 12 ;sleet
+				PRINTFORMDW 이슬비가 내린다!
+			CASE 13 ;hail
+				PRINTFORMDW 우박이 내린다!
+			CASE 14 ;rainstorm
+				PRINTFORMDW 이 비는 멈추지 않아! 폭우야!
+			CASE 15 ;hailstorm
+				PRINTFORMDW 우박이 내릴 것이다!
+			CASE 16 ;panties, take actively worn panties from nearby regions and give them directly to the player, instead of using existing panty weather type
+				PRINTFORMDW 갑자기 엄청난 양의 팬티들이 사방으로 날아다니기 시작한다.
+				FOR LOCAL, 1, CHARANUM
+				SIF CFLAG:LOCAL:現在位置 == SUKIMA() ;not out and about
+					CONTINUE
+				SIF TALENT:LOCAL:行きずり
+					CONTINUE
+				IF QOL_REVISED_DISTANCE(GET_MAPID(CFLAG:LOCAL:現在位置), CFLAG:MASTER:デート中) < (30 + WIND_VELOCITY * 10) ;within a certain distance, high winds increase range
+					IF !CFLAG:LOCAL:ノーパン && EQUIP:LOCAL:下半身下着２ && CFLAG:LOCAL:344 == 0 && GET_INT(LOCAL, "下半身下着_ずらし可能", EQUIP:LOCAL:下半身下着２, "コレクション表示可能")
+						SIF !PANTS_ALREADY_COLLECTED(LOCAL)
+							SETCOLOR C_PINK
+						PRINTFORML %CALLNAME:LOCAL%의 %PANTSNAME(EQUIP:LOCAL:下半身下着２,LOCAL)%가 당신의 주머니 속으로 날아들어간다.
+						RESETCOLOR
+						CALL PANTS_GET(LOCAL)
+					ENDIF
+				ENDIF
+				NEXT
+				PRINTFORMDW 갑작스러운 팬티 폭우가 잠잠해지며 팬티 이슬비로 바뀐다.
+				FLAG:異常気象 = 7
+				; CASE 17 ;frogs, not implemented
+				;     PRINTFORMDL Countless frogs fall down from the sky!
+				;     SIF !RAND:5
+				;         PRINTFORMDL In the distance, you hear someone yell something about frogs on their 100000 yen pants.
+		ENDSELECT
+		;it might be desirable to let the player control wind speed too, but i do not see a use case for it right now, so for now it's always set to zero
+		WIND_VELOCITY = 0
+		FORBIDDEN_CHANGE_WEATHER = 1
+		RETURN 1
+	CASE 996 ;doppelganger draught
+		SELECTCASE TEQUIP:MASTER:DOPPELGANGER_MAX
+			CASE IS >= 4
+				PRINTFORMDL 더 이상 마시는 것은 위험할 것이다.
+				RETURN 3
+			CASE IS >= 2
+				PRINTFORMDL 더 강한 용량을 또 복용할 것인가(필요 수량 3)?
+				CALL ASK_YN
+				IF !RESULT
+					PRINTFORMDL 당신은 도플갱어 드래프트(doppelganger draught)를 더 마시고 의식이 더욱 확장되는 것을 느낀다.
+					ITEM:DOPPELGANGER_DRAUGHT -= 2
+					TEQUIP:MASTER:DOPPELGANGER_MAX = 4
+					RETURN 1
+				ELSE
+					RETURN 3
+				ENDIF
+			CASEELSE
+				PRINTFORMDL 당신은 도플갱어 드래프트 한 병을 삼키고 의식이 늘어나는 것을 느낀다.
+				TEQUIP:MASTER:DOPPELGANGER_MAX = 2
+				RETURN 1
+		ENDSELECT
+		;----------------------------------
+		;NAS CUSTOM CODE
+		;----------------------------------
+	CASE 41
+		PRINTFORML %PARSE("You pop")% 한 %ITEMNAME_TR(nItem)%.
+		PRINTFORML %PARSE("Your")% 볼이 발그레해지며 %PARSE("you let",1)% 조용히 신음한다.
+		CALL DrugStuffNoFluff(nTarget,nItem)
+		RETURN 1
+	CASE 42
+		PRINTFORML %PARSE("You pop")% a %ITEMNAME_TR(nItem)%.
+		PRINTFORML %PARSE("You begin")%더 세게 숨 쉬려고 하자, 갑작스러운 요의가 %PARSE("your")% 눈에 눈물을 고이게 했고 %PARSE("you try")% 그것을 참으려 했다.
+		CALL DrugStuffNoFluff(nTarget,nItem)
+		RETURN 1
+	CASE 51 TO 59
+		PRINTFORML \@ nTarget == MASTER ? %PARSE("You drink")% # %CALLNAME:nTarget% 마신다 \@ %ARTICLE(ITEMNAME_TR(nItem))%.	
+		CALL DrugStuffNoFluff(nTarget,nItem)
+		RETURN 1
+	CASE 101
+		PRINTFORMW 두 소녀가 서로 싸우는 표지의 책을 꺼냈다.
+		PRINTFORMW 「단막(彈幕)과 근접 전투 101」
+		PRINTFORMW 그것은 즉시 당신의 주의를 사로잡는다. 훑어보면 싸워야 할 상대들과 전투에 도움이 될 기교들을 보여준다.
+		PRINTFORML
+		CALL COLORMESSAGE("효과",C_YELLOW,1,1)
+		PRINTFORML 단막전에서 전투경험 +1을 얻는다
+		WAIT
+	CASE 108
+		PRINTFORMW 소녀가 열매를 따는 그림이 표지에 있는 책을 꺼냈다.
+		PRINTFORMW 「약초학자: 일본판」
+		PRINTFORMW 좀 지루해 보이지만, 어쨌든 그것을 읽어본다. 훑어보니 이상한 요괴들의 대장간 위치와 먹어야 할 것/먹으면 안 되는 것들이 눈에 들어온다.
+		PRINTFORML
+		CALL COLORMESSAGE("효과",C_YELLOW,1,1)
+		PRINTFORML 채집경험 +1을 얻었다.
+		WAIT
+	CASE 111
+		PRINTFORMW 작은 소녀가 말린 옷을 입고 자신을 내보이는 표지의 책을 꺼내자, 멀리서는 또 다른 소녀가 자위하는 모습이 보인다.
+		PRINTFORMW 「타락의 순환: 봄 20XX」
+		PRINTFORMW 그것은 즉시 당신의 주의를 사로잡는다. 훑어보면 성적인 기교와 그것을 하는 방법에 대한 단계별 지침들이 나타난다.
+		PRINTFORMW 단순히 이것들을 보는 것만으로도 매우 흥분한다.
+		PRINTFORML
+		CALL COLORMESSAGE("효과",C_YELLOW,1,1)
+		PRINTFORML 무지한 캐릭터들에게 성에 대해 가르친다.
+		WAIT
+	CASE 112
+		PRINTFORMW 당신은 단순히 볼드체 문구만 적힌 표지의 책을 꺼낸다.
+		PRINTFORMW 「일반 셀프 케어 가이드」
+		PRINTFORMW 지루하다. 그럼에도 불구하고 당신은 그것을 뒤적인다. 훑어보기만 해도 오르가즘, 알코올, 그리고 약물 중독에서 벗어날 수 있는 방법들을 보여준다. 
+		PRINTFORML
+		CALL COLORMESSAGE("효과",C_YELLOW,1,1)
+		PRINTFORML 오르가즘 부정 능력과 트라우마 손실의 패시브 습득량을 두 배로 늘린다.
+		PRINTFORML 알코올 및 약물 중독의 패시브 감소량을 두 배로 늘린다.
+		PRINTFORML 파괴되고 혼수상태인 캐릭터를 레벨 -3 트라우마로 초기화한다.
+		WAIT
+		IF CharaTrauma:nTarget:0 >= 4
+			CharaTrauma:nTarget:0 = 3
+			CharaTraumaExp:nTarget:0 = EXP_DEMAND_24(0,91,nTarget,,-5)-1
+			CALLF SILENT_ENDURANCECHANGE(nTarget)
+			CALL COLORMESSAGE(@"%PARSE("You",,,nTarget)%당신의 %PARSE("your",5,,nTarget)% 정신을 회복했다!",C_GREEN,2,1)
+		ENDIF
+	CASE 113
+		PRINTFORMW 화장실 옆에서 소변을 참으려는 소녀의 표지가 그려진 책을 꺼냈다.
+		PRINTFORMW 「며칠 동안 스스로를 붙잡기: (요)습관화를 위한 배변 훈련 안내서」
+		PRINTFORMW 흥미로운 책 제목이다. 훑어보니 방광이 가득 찼다는 경고 신호와 소변을 참는 방법들이 보였다.
+		PRINTFORML
+		CALL COLORMESSAGE("효과",C_YELLOW,1,1)
+		PRINTFORML 화장실에 갈 때 소변 참기 획득량이 두 배가 된다.
+		PRINTFORML 소변이나 대변을 보고 싶어 할 때 소변 참기 획득량이 두 배가 된다.
+		PRINTFORML 사고 발생 시 배변 훈련 퇴행량을 절반으로 줄인다.
+		PRINTFORML 실금 캐릭터의 배변 훈련 능력을 레벨 -4로 초기화한다.
+		PRINTFORML 실금에 대해 무지한 캐릭터들에게 필요할 때 보호구를 사용하도록 가르친다.
+		WAIT
+		IF PeeHold:nTarget:0 > -5 && PooHold:nTarget:0 > -5
+		ELSE
+			SIF PeeHold:nTarget:0 <= -5
+				PeeHold:nTarget:0 = -4
+			SIF PooHold:nTarget:0 <= -5
+				PooHold:nTarget:0 = -4
+			PeeHoldExp:nTarget:0 = EXP_DEMAND_20(0,91,nTarget,,-5)+1
+			PooHoldExp:nTarget:0 = EXP_DEMAND_21(0,92,nTarget,,-5)+1
+			CALLF SILENT_ENDURANCECHANGE(nTarget)
+			CALLF ResetBladders(nTarget)
+			CALL COLORMESSAGE(@"%PARSE("You",,,nTarget)%화장실에 가고 싶을 때 배운다!",C_GREEN,2,1)
+			PRINTFORM %CALLNAME:nTarget%의 배변 훈련 능력은 이제 레벨이 되었다. 
+			SETCOLOR C_YELLOW
+			PRINTFORM {PeeHold:nTarget:0}【%GET_TALENTNAME_TR(1514, TALENT:nTarget:57)%】
+			IF nScat
+				RESETCOLOR
+				PRINTFORM /
+				SETCOLOR 0x6b4737
+				PRINTFORML {PooHold:nTarget:0}【%GET_TALENTNAME_TR(1500, TALENT:nTarget:58)%】
+			ENDIF
+			RESETCOLOR
+			WAIT
+		ENDIF
+		IF TALENT:nTarget:ContinenceIgnorant
+			IF ABL:nTarget:43 >= UniversalRank("C")
+				TALENT:nTarget:ContinenceIgnorant = 0
+				CALL COLORMESSAGE(@"%PARSE("You have",,,nTarget)%필요할 때 방광 보호구를 사용법을 익혔다.",C_GREEN,2,1)
+			ELSE
+				PRINTFORMW %PARSE("You seem",,,nTarget)%실금과 배변 훈련이라는 주제에 대해 혼란스러워했다.
+				PRINTFORMW 좀 더 아는 후에 %PARSE("you",6,,nTarget)%에게 가르쳐 보는 건 어떨까
+			ENDIF
+		ENDIF
+	CASE 218
+		PRINTFORML %PARSE("You drink")% %ARTICLE(ITEMNAME_TR(nItem))%.
+		PRINTL 신선하다!
+		CALL DrugStuffNoFluff(nTarget,nItem)
+		RETURN 1
+	CASE 219
+		PRINTFORML %PARSE("You drink")% %ARTICLE(ITEMNAME_TR(nItem))%.
+		PRINTL 따뜻하고 활력이 넘친다!
+		CALL DrugStuffNoFluff(nTarget,nItem)
+		RETURN 1
+	CASE 220
+		CALL DrugStuffNoFluff(nTarget,nItem)
+		RETURN 1
+	CASE 221
+		PRINTFORML %PARSE("You drink")% %ARTICLE(ITEMNAME_TR(nItem))%.
+		PRINTL 새로고침 중이다!
+		CALL DrugStuffNoFluff(nTarget,nItem)
+		RETURN 1
+	CASE 222
+		PRINTFORML 이 마시멜로들로 무엇을 할 거니?
+		CALL ASK_M("그것들을 먹어라!",1, @"「\@ TALENT:MASTER:SexKnow >= 4 ? 그들의 구멍에 밀어넣는다 # 금단의지식을 요구한다 \@%CALLNAME:nTarget%'의」", TALENT:MASTER:SexKnow >= 4, "여기서 나 좀 나가게 해줘!", 1)
+		SELECTCASE RESULT
+			CASE 0
+				PRINTFORML %PARSE("You eat")%일부 %ITEMNAME_TR(nItem)%.
+				PRINTFORML 그것들은 베개처럼 부드럽다!
+				CALL DrugStuffNoFluff(nTarget,nItem)
+			CASE 1
+				PRINTFORML 너희는 그들로 어떤 교활한 짓을 할 작정이야?
+				CALL ASK_M(@"그들의 질을 가지고 %CALLNAME:nTarget%과 섹스를 시작한다.", (CFLAG:nTarget:うふふ || nTarget == MASTER) && HAS_VAGINA(nTarget), @"그들을 %CALLNAME:nTarget%의 뒤에 밀어 넣어라", CFLAG:nTarget:うふふ || nTarget == MASTER, "여기서 나 좀 나가게 해줘!", 1)
+				SELECTCASE RESULT
+					CASE 0
+						PRINTFORML %PARSE("You shove")%몇 개의 마시멜로를 네 질에 삼켜라.
+						PRINTFORML 말랑말랑하다. 마시멜로는 너의 질 속 약한 부분들을 겨냥한다.
+						SOURCE:nTarget:快Ｖ += 5000
+					CASE 1
+						PRINTFORML %PARSE("You shove")% 몇 개의 마시멜로를 위로 %PARSE("your",1)% 엉덩이
+						SOURCE:nTarget:快Ａ += 5000
+						DrugStats:nTarget:LaxativeTime += 90
+				ENDSELECT
+			CASEELSE
+				RETURN 3
+		ENDSELECT
+		RETURN 1
+	CASE 223
+		PRINTFORML %PARSE("You drink")% %ARTICLE(ITEMNAME_TR(nItem))%.
+		PRINTL 탄산음료가 당신을 에너지로 가득 채우자 즉시 상쾌함을 느낀다.
+		CALL DrugStuffNoFluff(nTarget,nItem)
+		RETURN 1
+	CASE 224
+		PRINTFORML %PARSE("You drink")% %ARTICLE(ITEMNAME_TR(nItem))%.
+		PRINTL 탄산음료가 당신의 에너지를 빨아들이자 즉시 피곤함을 느낀다.
+		CALL DrugStuffNoFluff(nTarget,nItem)
+		RETURN 1
+	CASE 225
+		PRINTFORML %PARSE("You drink")% %ARTICLE(ITEMNAME_TR(nItem))%.
+		PRINT 당신은 즉시 키치한 것들에 대한 열정이 줄어드는 것을 느낀다. 
+		SIF nRape
+			LOCALS += "raping others、"
+		SIF nRyona
+			LOCALS += "harming others、"
+		SIF nNecro
+			LOCALS += "fucking corpses、"
+		SIF GETBIT(nPee,1)
+			LOCALS += "peeing yourself、"
+		SIF GETBIT(nScat,2)
+			LOCALS += "pooping yourself、"
+		SIF nOmutsu
+			LOCALS += "wearing diapers、"
+		SIF nAdultBaby
+			LOCALS += "acting like a baby、"
+		SIF LOCALS == ""
+			LOCALS += "those that are unspeakable to you."
+		;You instantly feel aroused as the soda increases your attraction to kinky things like wearing and using diapers.
+		;You instantly feel aroused, even though there's nothing around to make you horny. It must be the soda!
+		PRINTFORML %LIST_IN_STRING(LOCALS)%.
+		CALL DrugStuffNoFluff(nTarget,nItem)
+		RETURN 1
+	CASE 300
+		PRINTFORM %PARSE("You use")% 티슈를 가져와 치우다 %PARSE("your",1)% 
+		LOCALS =
+		SIF SoiledSelf:nTarget:0
+			LOCALS += "wet、"
+		SIF SoiledSelf:nTarget:1
+			LOCALS += "messy、"
+		PRINTFORML %LIST_IN_STRING(LOCALS)%의 사타구니와 %PeeProtectType(nTarget,1)%.
+		CALL DrugStuffNoFluff(nTarget,nItem)
+		RETURN 1
+	CASE 303
+		IF !IsPadded(nTarget)
+			PRINTFORMW 당신의 %CLOTHES_TR(PANTSNAME(EQUIP:nTarget:下半身下着２, nTarget))% 아래에는 패딩이 없습니다.
+			PRINTFORMW 이것을 입을 수 없어요!
+			RETURN 3
+		ELSEIF CFLAG:nTarget:PadCount < 5
+			PRINTFORMW 당신은 부스터를 당신의 %PeeProtectType(nTarget)% 안에 넣었다.
+			PRINTFORMW 좀 더 두꺼워진 느낌이다... 
+			WAIT
+			CALL INTERACTIVE_TUTORIAL_GET(102,403,"Pads",1)
+			CALLF PadBuffs(nTarget,,, "Booster")
+			RETURN 1
+		ELSE
+			PRINTFORMW 여기에 넣을 수 없어! 안에 패드가 너무 많아!
+		ENDIF
+	CASE 304; catheter
+		IF IsPadded(nTarget)
+			PRINTFORML 이미 기저귀를 차고 있다.
+			PRINTFORMW 대신 그것을 사용해라.
+			RETURN 3
+		ELSEIF nCatheterized:nTarget:0
+			PRINTFORML 이미 카테터가 있습니다.
+			RETURN 3
+		ENDIF
+		PRINTFORMW 당신은 가방에서 카테터(catheter)를 꺼낸다.	
+		PRINTFORMW 당신은 %CLOTHES_TR(PANTSNAME(EQUIP:nTarget:下半身下着２, nTarget))%을 벗고 몸을 청결하게 한 후 누운다.
+		PRINTFORMW 당신은 카테터와 요도를 윤활제(Lubric)로 충분히 적신 다음 금지된 구멍에 밀어 넣는다.
+		PRINTFORMW 당신은 그것이 방광을 자극하기 시작할 때까지 깊숙이 밀어 넣는다.
+		PRINTFORMW 당신은 끝 부분에 주머니를 부착하고 하루를 계속한다.		
+		PRINTFORMW 상당히 편안하게 느껴진다.
+		SIF !nCatheterized:nTarget:0
+			nCatheterized:nTarget:0 = 1
+		nCatheterized:nTarget:1 = 1
+		CFLAG:nTarget:MaxDiapeCharges += 1000
+		CFLAG:nTarget:DiapeCharges += 1000
+	CASE 305;tape diape
+		CALL DiapeStartChecks(nTarget,101)
+		SELECTCASE RESULT
+			CASE 3
+				RETURN 3
+			CASEELSE
+				PRINTFORMW 당신은 가방에서 기저귀를 꺼낸다.	
+				PRINTFORMW 당신은 %CLOTHES_TR(PANTSNAME(EQUIP:nTarget:下半身下着２, nTarget))%을 벗고 몸을 청결하게 한 뒤 누운다.
+				PRINTFORMW 당신은 기저귀를 열고 패드가 있는 쪽을 자신에게 밀착시키고 탭이 달린 쪽을 등 뒤에 놓는다.
+				PRINTFORMW 당신은 양쪽 탭을 모두 열어 기저귀 앞부분에 단단히 붙인 후, 일어나기 위해 몸을 세운다. 
+				PRINTFORMW 상당히 편안한 느낌이다.
+				CALLF PANTY_REWORK_CHANGE(nTarget, 101)
+				RETURN 1
+		ENDSELECT
+	CASE 306;tape diape
+		CALL DiapeStartChecks(nTarget,102)
+		SELECTCASE RESULT
+			CASE 3
+				RETURN 3
+			CASEELSE
+				PRINTFORMW 당신은 가방에서 기저귀를 꺼낸다.	
+				PRINTFORMW 당신은 %CLOTHES_TR(PANTSNAME(EQUIP:nTarget:下半身下着２, nTarget))%를 벗고 몸을 청결하게 한 뒤 누운다.
+				PRINTFORMW 당신은 기저귀를 열고 양쪽 끝을 늘려 누출 방지대를 작동시킨다. 그런 다음 패드가 있는 부분을 옆으로 접어 부드럽게 만든다.
+				PRINTFORMW 당신은 패드가 있는 면을 몸에 대고 탭(띠)이 있는 면을 등 뒤로 한다.
+				PRINTFORMW 당신은 모든 4개의 탭을 열어 기저귀 앞부분에 붙여 단단히 고정한 후 일어선다. 
+				PRINTFORMW 상당히 편안하며 바스락거리는 소리도 난다.
+				CALLF PANTY_REWORK_CHANGE(nTarget, 102)
+				RETURN 1
+		ENDSELECT
+	CASE 307
+		;get a random character
+		CALL FISHER_YATES_SHAFFLE(CHARANUM)
+		VARSET LOCAL
+		FOR LOCAL, 1, CHARANUM
+		LOCAL:2 = SHAFFLE_ARRAY:LOCAL
+		;nTargetがあなた
+		SIF (LOCAL:2) == MASTER
+			CONTINUE
+		LOCAL:1 = (LOCAL:2)
+		BREAK
+		NEXT
+		SIF LOCAL:1 <= 0
+			RETURN
+		CALL DiapeStartChecks(nTarget,103)
+		SELECTCASE RESULT
+			CASE 3
+				RETURN 3
+			CASEELSE
+				PRINTFORMW 당신은 가방에서 기저귀 하나를 꺼낸다.	
+				PRINTFORMW 이것은 %NAME:(LOCAL:1)%을 모티브로 한 디자인인데, 정말 귀엽다.
+				PRINTFORMW 당신은 자신의 %CLOTHES_TR(PANTSNAME(EQUIP:nTarget:下半身下着２, nTarget))%를 벗고 몸을 청결하게 한 뒤 누운다.
+				PRINTFORMW 당신은 기저귀를 열어 양쪽 끝을 늘려 누출 방지 장치를 활성화한다. 그런 다음 옆으로 접어 패딩 부분을 부드럽게 만든다.
+				PRINTFORMW 당신은 패딩 부분이 자신에게 닿도록 하고, 테이프가 있는 쪽은 등 뒤에 위치시킨다.
+				PRINTFORMW 당신은 모든 4개의 테이프를 열고 기저귀 앞부분에 붙여 단단히 고정한 후 일어선다. 
+				PRINTFORMW 매우 편안하고 따뜻하며 부피감이 느껴진다. 하루 종일 여기서 소변을 볼 수 있을 것 같다.
+				PRINTFORMW 당신이 어떻게 움직이든, 기저귀는 항상 바스락거리며 걸음걸이를 만들어 존재를 알린다.
+				CALLF PANTY_REWORK_CHANGE(nTarget, 103)
+				RETURN 1
+		ENDSELECT
+	CASE 308
+		IF TCVAR:MASTER:ClothDiaper
+			PRINTFORMW 당신은 이미 기저귀를 다 사용했어요!
+			PRINTFORMW 다시 사용하려면 세탁해야 해요!
+			RETURN 3
+		ENDIF
+		CALL DiapeStartChecks(nTarget,105)
+		SELECTCASE RESULT
+			CASE 3
+				RETURN 3
+			CASEELSE
+				PRINTFORMW 당신은 가방에서 수건처럼 보이는 것을 꺼낸다.	
+				PRINTFORMW 당신은 그것을 연처럼 접어 전체가 단단해지도록 한다.
+				PRINTFORMW 당신은 %CLOTHES_TR(PANTSNAME(EQUIP:nTarget:下半身下着２, nTarget))%을 벗고 몸을 닦은 뒤 누운다.
+				PRINTFORMW 당신은 긴 쪽 모서리를 %FSYN("crotch")% 위에 놓고, 나머지 두 모서리를 당겨 같은 위치로 옮긴다.
+				PRINTFORMW 당신은 앞부분에 양쪽에서 안전핀 두 개를 집어 단단하게 고정한 후 일어선다. 
+				PRINTFORMW 꽤 편안하지만, 이것이 네가 부러지면 목숨을 구해주기는 할지 확신할 수 없다.
+				CALLF PANTY_REWORK_CHANGE(nTarget, 105)
+				TCVAR:MASTER:ClothDiaper = 1
+				RETURN 3
+		ENDSELECT
+	CASE 309; dream pad
+		IF CFLAG:nTarget:PadCount == 0
+			$InsertDreamPad
+			PRINTFORMW 당신은 꿈 패드를 당신의 %CLOTHES_TR(PANTSNAME(EQUIP:nTarget:下半身下着２, nTarget))% 안에 넣었다.
+			PRINTFORM 아무것도 없는 듯하다... 
+			IF FLAG:チュート文累計 >= 3200
+				PRINTFORML 하지만 그 안에서 끝없이 소변을 볼 수 있을 것 같은 기분이다.
+			ELSEIF FLAG:チュート文累計 >= 1600
+				PRINTFORML 하지만 이 안에서 여러 번 소변을 보고도 전혀 문제없다.
+			ELSEIF FLAG:チュート文累計 >= 600
+				PRINTFORML 하지만 이것 안에서 소변을 봐도 완전히 괜찮다.
+			ELSEIF FLAG:チュート文累計 >= 300
+				PRINTFORML 하지만 화장실에 갈 때까지 버텨줄 수도 있다.
+			ELSE
+				PRINTFORML 당신은 이것에 대해 어떤 자신감도 없다.
+			ENDIF
+			WAIT
+			CALL INTERACTIVE_TUTORIAL_GET(102,403,"Pads",1)
+			CALLF PadBuffs(nTarget,FLAG:チュート文累計*2,FLAG:チュート文累計*2, "Dream Pad")
+		ELSE
+			PRINTFORMW 여기에 이걸 넣을 수 없어! 이미 안에 패드가 있어!
+		ENDIF
+		; CASE 313
+		; 	PRINTFORMW You grab a thin metal rod out of your bag.
+		; 	PRINTFORMW You lay down and spread your legs.
+		; 	PRINTFORMW You put a liberal amount of lubricant on the sound and on yourself, expecting urethral penetration.
+		; 	PRINTFORMW You push the urethral sound against your %FSYN("urethra")%, before getting enough leverage to put it in fully.
+		; 	IF !CFLAG:nTarget:尿道処女喪失記念日
+		; 		SETCOLOR 247,171,166
+		; 		PRINTFORMW 【Urethral Virginity Loss】
+		; 		TCVAR:nTarget:Ｕ破瓜 = 1
+		; 		CALL SET_HISTORY_LOST_U(nTarget,nTarget,"UrethralSound")
+		; 		FONTREGULAR
+		; 		RESETCOLOR
+		; 	ENDIF
+		; 	PRINTFORMW It tries to close, but the urethral plug is preventing it.
+		; 	PRINTFORMW You feel pleasure and a bit of assurance that you won't leak.
+		; 	CALL EQUIP_COM161(nTarget)
+	CASE 314
+		PRINTFORML %PARSE("You pop")% 하나의 %ITEMNAME_TR(nItem)%.	
+		PRINTFORML %PARSE("You cry")%가 %PARSE("you try your"),1%로서 들어오는 사고를 막는 것이 최선이다.
+		CALL DrugStuffNoFluff(nTarget,nItem)
+		RETURN 1
+	CASE 315
+		PRINTFORML %PARSE("You pop",,,nTarget)% 하나 %ITEMNAME_TR(nItem)%.
+		PRINTFORML %PARSE("Your",5,,nTarget)% 몸이 더 차가워지며 성적 흥분이 사라진다.
+		CALL DrugStuffNoFluff(nTarget,nItem)
+		RETURN 1
+	CASE 316;pull ups
+		CALL DiapeStartChecks(nTarget,72)
+		SELECTCASE RESULT
+			CASE 3
+				RETURN 3
+			CASEELSE
+				PRINTFORMW 당신은 가방에서 기저귀를 꺼낸다.	
+				PRINTFORMW 당신은 %CLOTHES_TR(PANTSNAME(EQUIP:nTarget:下半身下着２, nTarget))%을 벗고 몸을 닦는다.
+				PRINTFORMW 당신은 기저귀를 쭉 늘리고 각 다리를 다리 구멍에 넣는다.
+				PRINTFORMW 당신은 기저귀를 더 이상 올라가지 않을 때까지 올려 입는다.
+				PRINTFORMW 패딩이 가볍긴 하지만 상당히 편하게 느껴진다.
+				CALLF PANTY_REWORK_CHANGE(nTarget, 72)
+				RETURN 1
+		ENDSELECT
+	CASE 317;night time pull ups
+		CALL DiapeStartChecks(nTarget,73)
+		SELECTCASE RESULT
+			CASE 3
+				RETURN 3
+			CASEELSE
+				PRINTFORMW 당신은 가방에서 두꺼운 풀업 기저귀를 꺼낸다.	
+				PRINTFORMW 당신은 %CLOTHES_TR(PANTSNAME(EQUIP:nTarget:下半身下着２, nTarget))%을 벗고 몸을 닦는다.
+				PRINTFORMW 당신은 풀업 기저귀를 쭉 늘이고 각 다리를 다리 구멍에 넣는다.
+				PRINTFORMW 당신은 각 다리를 다리 구멍에 넣는다.
+				PRINTFORMW 당신은 기저귀를 더 이상 올라가지 않을 때까지 끌어올린다.
+				PRINTFORMW 상당히 편한 느낌이다.
+				CALLF PANTY_REWORK_CHANGE(nTarget, 73)
+				RETURN 1
+		ENDSELECT
+	CASE 318;abdl pull ups
+		;get a random character
+		CALL FISHER_YATES_SHAFFLE(CHARANUM)
+		VARSET LOCAL
+		FOR LOCAL, 1, CHARANUM
+		LOCAL:2 = SHAFFLE_ARRAY:LOCAL
+		;nTargetがあなた
+		SIF (LOCAL:2) == MASTER
+			CONTINUE
+		LOCAL:1 = (LOCAL:2)
+		BREAK
+		NEXT
+		SIF LOCAL:1 <= 0
+			RETURN
+		CALL DiapeStartChecks(nTarget,74)
+		SELECTCASE RESULT
+			CASE 3
+				RETURN 3
+			CASEELSE
+				PRINTFORMW 당신은 가방에서 두꺼운 pull-up 기저귀를 꺼낸다.	
+				PRINTFORMW 이 것은 %NAME:(LOCAL:1)%을 모티브로 한 디자인이다, 정말 귀엽다.
+				PRINTFORMW 당신은 자신의 %CLOTHES_TR(PANTSNAME(EQUIP:nTarget:下半身下着２, nTarget))%를 벗고 몸을 청결하게 한다.
+				PRINTFORMW 당신은 pull-up 기저귀를 쭉 늘리고 각 다리를 다리 구멍에 통과시킨다.
+				PRINTFORMW 당신은 기저귀를 더 이상 올라가지 않을 때까지 끌어올린다.
+				PRINTFORMW 매우 편안하고, 따뜻하며, 부피감이 느껴진다. 하루 종일 여기서 소변을 볼 수 있을 것 같다.
+				PRINTFORMW 어떤 움직임을 하든 기저귀는 항상 바스락거리며 당신이 뒤뚱거리는 것을 만들어 그 존재를 알린다.
+				CALLF PANTY_REWORK_CHANGE(nTarget, 74)
+				RETURN 1
+		ENDSELECT
+	CASE 319;abdl pull ups
+		CALL DiapeStartChecks(nTarget,75)
+		SELECTCASE RESULT
+			CASE 3
+				RETURN 3
+			CASEELSE
+				PRINTFORMW 당신은 가방에서 아주 두꺼운 pull-up 기저귀를 꺼낸다.	
+				PRINTFORMW 당신은 %CLOTHES_TR(PANTSNAME(EQUIP:nTarget:下半身下着２, nTarget))%을 벗고 몸을 닦는다.
+				PRINTFORMW 당신은 풀업을 쭉 늘리고 각 다리를 다리 구멍으로 통과시킨다.
+				PRINTFORMW 당신은 기저귀를 더 이상 올라가지 않을 때까지 위로 당긴다.
+				PRINTFORMW 그것은 매우 편안하고, 따뜻하며, 부피가 크다. 여기서 하루 종일 소변을 볼 수 있을 것이다.
+				PRINTFORMW 어떻게 움직이든 기저귀는 당신을 뒤뚱거리게 만들며 그 존재를 알린다.
+				CALLF PANTY_REWORK_CHANGE(nTarget, 75)
+				RETURN 1
+		ENDSELECT
+	CASE 310, 329, 301, 302, 322, 330, 331, 332; Liners
+		P = FINDELEMENT(UNDERWEAR_PAD_TYPES_ITEMS,nItem)
+		CALL PAD_USE_ITEM(nTarget,UNDERWEAR_PAD_TYPES:P)
+		RETURN RESULT
+	CASE 533; gensou-chan bottle
+		SELECTCASE ABL:nTarget:DiaperAttraction + (MARK:nTarget:RegressionMark*2)
+			CASE IS < 3
+				PRINTFORML \@ nTarget == MASTER ? %PARSE("You")% # %CALLNAME:nTarget% \@ reluctantly \@ nTarget == MASTER ? %PARSE("press")% # 누르다 \@ the nipple to \@ nTarget == MASTER ? %PARSE("your")% # %HIS_HER(nTarget)% \@ lips and \@ nTarget == MASTER ? %PARSE("begin")% # 시작한다. \@ 빨아들이는 것.
+			CASE IS < 6
+				PRINTFORML 너는 \@ nTarget == MASTER ? %PARSE("You put")% # %CALLNAME:nTarget%이 입을 벌린다 \@the nipple in \@ nTarget == MASTER ? %PARSE("your")% # %HIS_HER(nTarget)%'s \@mouth and \@ nTarget == MASTER ? %PARSE("start")% # 시작한다. \@가 빨게 한다.
+			CASEELSE
+				PRINTFORML \@ nTarget == MASTER ? %PARSE("You put")% # %조사처리(CALLNAME:TARGET,"가")% 넣는다 \@ the nipple in \@ nTarget == MASTER ? %PARSE("your")% # %HIS_HER(nTarget)%'s \@ mouth and \@ nTarget == MASTER ? %PARSE("begin")% # 그것을 탐욕스럽게 빨기 시작한다. \@ 그것을 탐욕스럽게 빨며.
+		ENDSELECT
+		LOCAL = RAND:20
+		SELECTCASE LOCAL
+			CASE 0
+				PRINTFORML 과일 소다가 %PARSE("your",5,,nTarget)% 입으로 흐르기 시작한다.
+				PRINTFORML %PARSE("Your",,,nTarget)% 배가 이상함을 느끼며 %PARSE("you drink",5,,nTarget)% 이상한 소다를 마신다.
+			CASE 1
+				PRINTFORML 신선한 우유의 맛이 %PARSE("your",,,nTarget)% 입안 가득 퍼지며 %PARSE("you",5,,nTarget)% 기분이 나아진다. 
+			CASE 2
+				PRINTFORML 딸기 우유의 맛이 %PARSE("your",,,nTarget)% 입안 가득 퍼지며, %PARSE("you",5,,nTarget)%는 어린아이처럼 어지러움을 느꼈다.
+			CASE 3
+				PRINTFORML 커피의 쓴맛이 %PARSE("your",,,nTarget)% 입안을 가득 채운다. 
+				PRINTFORML 하지만 무언가 좀 이상하게 느껴진다, 왜냐하면 %PARSE("you remember",5,,nTarget)% 커피가 %PARSE("your",5,,nTarget)% 장에 하는 것에 비해서...
+			CASE 4
+				PRINTFORML 물맛이 %PARSE("your",,,nTarget)% 입안을 가득 채우며, 수분 보충의 중요성을 %PARSE("you",5,,nTarget)% 상기시킨다.
+				PRINTFORML 책임감 있는 생활 방식을 생각하니 %PARSE("you",5,,nTarget)% 조금 더 나이 들어 보이는 기분이 든다.
+			CASE 5
+				PRINTFORML 레모네이드의 시큼한 맛이 %PARSE("your",,,nTarget)% 입안 가득 퍼진다.
+				PRINTFORML 하지만 그것에 대해 어딘가 이상하다고 느낀다, 왜냐하면 %PARSE("you",5,,nTarget)%는 %PARSE("your",5,,nTarget)% 방광이 부풀어 오르는 것을 느낀다.
+			CASE 6
+				PRINTFORML 채소 주스의 맛이 %PARSE("your",,,nTarget)% 입안을 가득 채운다. 윽!
+				PRINTFORML %PARSE("You",5,,nTarget)%나는 채소에 대해 싫어하는 건 없는데, 이 주스는 정말 짜게 느껴진다!
+			CASE 7
+				PRINTFORML 검은차의 맛이 %PARSE("your",,,nTarget)% 입안을 가득 채웠다.
+				PRINTFORML 그 차가 %PARSE("your",5,,nTarget)% %PeeAndPoo(nPee,nScat,"bladder","bowels")%에게 미치는 효과만 없다면 부드럽게 느껴질 터인데, 그것은...
+			CASE 8
+				PRINTFORML 에너지 드링크의 맛이 %PARSE("your",,,nTarget)% 입안을 가득 채운다.
+				;PRINTFORML There's nothing special to this drink, surprisingly.
+				PRINTFORML 비록 그것이 %PARSE("your",5,,nTarget)% %PeeAndPoo(nPee,nScat,"bladder","bowels")%에게 영향을 미치는 것 같지만.
+			CASE 9
+				PRINTFORML 진진 Z의 맛이 %PARSE("your",,,nTarget)% 입안을 가득 채운다.
+				PRINTL 순식간에 연료 탱크가 가득 차네, 만탄!
+				PRINTFORML 비록 그것이 %PARSE("your",5,,nTarget)%와 %PeeAndPoo(nPee,nScat,"bladder","bowels")%에게 부담을 주는 것 같지만.
+			CASE 10
+				PRINTFORML 제조된 물약의 맛이 %PARSE("your",,,nTarget)% 입안을 가득 채웠다.
+				PRINTFORML %PARSE("Your",,,nTarget)% 배가 이상하게 느껴졌다, 그 기묘한 물약 때문에 %PARSE("you drink",5,,nTarget)%.
+			CASE 11
+				PRINTFORML 마법 물약의 맛이 %PARSE("your",,,nTarget)% 입안을 가득 채운다.
+				PRINTFORML 마력이 내면에서 솟구친다... 
+				PRINTFORML %PARSE("Your",,,nTarget)%와 %PeeAndPoo(nPee,nScat,"bladder","bowels")%도 내면에서 솟구치고 있다... 
+			CASE 12
+				PRINTFORML 강황 음료의 맛이 %PARSE("your",,,nTarget)% 입안 가득 퍼진다.
+				PRINTL 간 대사가 증가하여 이제 취하기가 더 어려워졌다.
+			CASE 13
+				PRINTFORML 영약의 맛이 %PARSE("your",,,nTarget)% 입안을 가득 채운다.
+				PRINTL 모든 피로와 지침이 그저 사라진다...!
+				IF nPee || nScat
+					PRINTFORML 하지만... 큰 대가를 치르고 얻은 것이었다...
+				ENDIF
+			CASE 14
+				PRINTFORML 생명의 엘릭서의 맛이 %PARSE("your",,,nTarget)% 입안을 가득 채웠다.
+				PRINTL 비범한 힘이 압도한다...!
+			CASE 15
+				PRINTFORML 비할 데 없는 애국자의 영약 맛이 %PARSE("your",,,nTarget)% 입안을 가득 채운다.
+				PRINTL 압도적인 힘...!
+				CALL BUFF_BASE(nTarget, BASE_体力, MAX(MAXBASE:nTarget:体力 / 15, 150))
+				CALL BUFF_BASE(nTarget, BASE_精力, MAX(MAXBASE:nTarget:精力 / 10, 150))
+			CASE 16
+				PRINTFORML 이거 좀 쓰고 쓰다 맛이 있네...
+				PRINTFORML 술이야! 아주 독한 걸로 말이지.
+			CASE 17
+				PRINTFORML 달여진 포션의 맛이 %PARSE("your",,,nTarget)% 입안을 가득 채운다.
+				PRINTFORML 네 방광과 장이 짜릿해진다...
+				PRINTFORMW 깨닫고 보니, 너는 방금 배변 기억 상실 포션을 %PARSE("your",,,nTarget)% 마셨다.
+			CASE 18
+				PRINTFORML 따뜻하고 구수한 수프의 맛이 %PARSE("your",,,nTarget)% 입안을 가득 채운다.
+			CASE 19
+				PRINTFORML 약의 맛이 %PARSE("your",,,nTarget)% 입안을 가득 채운다.
+				PRINTFORML 크윽. 쓰고, 그 후 %PARSE("you feel",5,,nTarget)% 약간 졸리다.
+		ENDSELECT
+		CALL DrugStuffNoFluff(nTarget,nItem,LOCAL)
+		CALL DRINK(nTarget,500)
+		CALL RECOVER(nTarget, 300, "体力", "GC 병을 통해 회복한다.")
+		CALL RECOVER(nTarget, 500, "気力", "GC 병을 통해 회복한다.")
+		WAIT
+		ITEM:GensouBottle++
+		SIF nTarget == MASTER
+			TFLAG:GensouBottleUsed++
+		SELECTCASE TFLAG:GensouBottleUsed
+			CASE IS > 5
+				PRINTFORMDW 병의 마지막 한 방울이 당신의 위로 들어가자, 잠이 오기 시작한다...
+				IF Item:MiniShinki && K102_NoMiniShinkiRecovery < 1
+					CALL EV908_FaintGoHome
+				ELSE
+					CALL PRINT_GP("W", @"스스로 몸을 가누지 못하고 땅으로 쓰러진다.")
+					RETURN 2
+				ENDIF
+			CASE 5
+				PRINTFORMDW 또 한 모금 마시기가 꽤 힘들어지는군.
+				PRINTFORMDW 오늘 남은 시간 동안 병을 내려놓는 게 좋을지도 모르겠어.
+		ENDSELECT
+		RETURN 1
+	CASE 522
+		IF !ITEM:Catherer
+			;requires catheter
+			PRINTFORMW 당신은 백에서 대상에게 혈액을 옮기는 데 필요한 카테터가 없다. \@ nTarget == MASTER ? %PARSE("you")% # %CALLNAME:nTarget% \@
+			RETURN 3
+		ELSEIF IsDead:TARGET:0
+			PRINTFORML %CALLNAME:nTarget%은 너무 멀리 가버렸다...
+			PRINTFORMW 이것을 %CALLNAME:nTarget%에게 사용해도 아무 일도 일어나지 않을 것이다...
+			RETURN 3
+		ENDIF
+		PRINTFORMW %PARSE("You inject")% 피 주머니를 ~에 \@ nTarget == MASTER ? %PARSE("your")% # %CALLNAME:nTarget%'s \@ 팔에
+		;PRINTFORMW You feel much better.
+		CALL RECOVER(nTarget,1500, "Blood", "수혈을 통해 회복한다.")
+		RETURN 1
+	CASE 524
+		IF nTarget == MASTER
+			PRINTFORMW 당신은 이부프로펜 알약을 하나 먹고 삼킨다.
+		ELSE
+			PRINTFORMW 당신은 이부프로펜 알약을 삼키고 그것을 %CALLNAME:nTarget%에게 준다, 그가 그것을 삼킨다.
+		ENDIF
+		CALL DrugStuffNoFluff(nTarget,nItem,,nGiver)
+		RETURN 1
+	CASE 525
+		PRINTFORMW 당신은 %PARSE("your",,,nTarget)%의 팔에 모르핀 주사기를 주입한다.
+		PRINTFORMW %PARSE("You feel",,,nTarget)%는 %PARSE("you",5,,nTarget)%가 더 많은 고통을 견딜 수 있다고 생각하는 듯하다.
+		CALL DrugStuffNoFluff(nTarget,nItem,,nGiver)
+		RETURN 1
+	CASE 536
+		CALL SkillTrainerMenu(nTarget)
+		RETURN RESULT
+	CASE 539
+		CALL MarketeersInjectorUse(nTarget)
+		RETURN RESULT
+	CASE 600
+		PRINTFORML %PARSE("You eat")% %ARTICLE(ITEMNAME_TR(nItem))%.
+		PRINTL 야호!
+		CALL RECOVER(nTarget, 100, "体力", "버섯을 통해 회복한다")
+		CALL RECOVER(nTarget, 50, "気力", "버섯을 통해 회복한다")
+		SIF nScat
+			TCVAR:nTarget:FoodIntake += 50
+		RETURN 1
+	CASE 601
+		PRINTFORML %PARSE("You eat")% %ARTICLE(ITEMNAME_TR(nItem))%.
+		PRINTL 오오...
+		PRINTL
+		CALL RECOVER(nTarget, -100, "体力", @"\@ nTarget == MASTER ? %PARSE("Your")% # %CALLNAME:nTarget%의 배가 아프다......... \@")
+		IF nScat
+			TCVAR:nTarget:FoodIntake += 50
+			TCVAR:nTarget:BowelState += 180
+		ENDIF
+		RETURN 1
+	CASE 602
+		PRINTFORML %PARSE("You eat")% %ARTICLE(ITEMNAME_TR(nItem))%.
+		PRINTL 음!
+		CALL RECOVER(nTarget, 150, "体力", "버섯을 통해 회복한다.")
+		CALL RECOVER(nTarget, 75, "気力", "버섯을 통해 회복한다.")
+		SIF nScat
+			TCVAR:nTarget:FoodIntake += 50
+		RETURN 1
+	CASE 603
+		PRINTFORML %PARSE("You eat")% %ARTICLE(ITEMNAME_TR(nItem))%.
+		PRINTL 야호!
+		CALL RECOVER(nTarget, 150, "体力", "버섯을 통해 회복한다.")
+		CALL RECOVER(nTarget, 75, "気力", "버섯을 통해 회복한다")
+		SIF nScat
+			TCVAR:nTarget:FoodIntake += 50
+		RETURN 1
+	CASE 604
+		PRINTFORML %PARSE("You eat")% %ARTICLE(ITEMNAME_TR(nItem))%.
+		IF !RAND:2
+			PRINTL 음!
+			CALL RECOVER(nTarget, 150, "体力", "버섯을 통해 회복한다.")
+			CALL RECOVER(nTarget, 75, "気力", "버섯을 통해 회복한다")
+			SIF nScat
+				TCVAR:nTarget:FoodIntake += 50
+		ELSE
+			PRINTL 우와아...
+			PRINTL
+			CALL RECOVER(nTarget, -100, "体力", @"\@ nTarget == MASTER ? %PARSE("Your")%은(는) 배가 아프다......... # %CALLNAME:nTarget%'의 \@")
+			SIF GETBIT(nPee, 1)
+				TCVAR:nTarget:利尿剤 = 90
+			IF nScat
+				TCVAR:nTarget:FoodIntake += 50
+				TCVAR:nTarget:BowelState = 1
+			ENDIF
+		ENDIF
+		RETURN 1
+	CASE 605
+		PRINTFORML %PARSE("You eat")% %ARTICLE(ITEMNAME_TR(nItem))%.
+		PRINTL 와!
+		CALL RECOVER(nTarget, 300, "体力", "버섯을 통해 회복한다")
+		CALL RECOVER(nTarget, 150, "気力", "버섯을 통해 회복한다")
+		TCVAR:nTarget:媚薬 += 60
+		TCVAR:nTarget:惚れ薬 += 60
+		SIF nScat
+			TCVAR:nTarget:FoodIntake += 50
+		RETURN 1
+	CASE 607
+		PRINTFORML %PARSE("You eat")% %ARTICLE(ITEMNAME_TR(nItem))%.
+		PRINTL 역겨워! 또 하나야!
+		CALL RECOVER(nTarget, 200, "体力", "허브를 통해 회복한다.")
+		CALL RECOVER(nTarget, 75, "気力", "허브를 통해 회복한다")
+		SIF nScat
+			TCVAR:nTarget:FoodIntake += 50
+		RETURN 1
+	CASE 608
+		PRINTFORML %PARSE("You eat")% %ARTICLE(ITEMNAME_TR(nItem))%.
+		PRINTFORML \@ nTarget == MASTER ? %PARSE("Your")% # %CALLNAME:nTarget%'s \@ 아랫부분이 좀 이상해...
+		CALL RECOVER(nTarget, 300, "体力", "약초를 통해 회복한다.")
+		CALL RECOVER(nTarget, 100, "気力", "풀을 통해 회복한다.")
+		SIF GETBIT(nPee, 1)
+			TCVAR:nTarget:利尿剤 = 90
+		SIF nScat
+			TCVAR:nTarget:FoodIntake += 50
+		RETURN 1
+	CASE 609
+		PRINTFORML %PARSE("You eat")% %ARTICLE(ITEMNAME_TR(nItem))%.
+		PRINTFORML 바삭하고 촉촉하다!
+		CALL RECOVER(nTarget, 100, "体力", "얼음을 통해 회복한다.")
+		CALL RECOVER(nTarget, 50, "気力", "아이스를 통해 회복한다.")
+		SIF GETBIT(nPee, 1)
+			CALL DRINK(nTarget,250)
+		RETURN 1
+	CASE 611
+		PRINTFORML %PARSE("You eat")% %ARTICLE(ITEMNAME_TR(nItem))%.
+		PRINTL 괜찮았다
+		CALL RECOVER(nTarget, 50, "体力", "허브를 통해 회복한다.")
+		CALL RECOVER(nTarget, 25, "気力", "허브를 통해 회복한다")
+		SIF nScat
+			TCVAR:nTarget:FoodIntake += 50
+		RETURN 1
+	CASE 612
+		PRINTFORML %PARSE("You eat")% %ARTICLE(ITEMNAME_TR(nItem))%.
+		PRINTL 오오...
+		PRINTL
+		CALL RECOVER(nTarget, -100, "体力", @"\@ nTarget == MASTER ? %PARSE("Your")% # %CALLNAME:nTarget%의 배가 아프다......... \@")
+		IF nScat
+			TCVAR:nTarget:FoodIntake += 50
+			TCVAR:nTarget:BowelState += 180
+		ENDIF
+		RETURN 1
+	CASE 613
+		PRINTFORML %PARSE("You eat")% %ARTICLE(ITEMNAME_TR(nItem))%.
+		PRINTFORML \@ nTarget == MASTER ? %PARSE("Your")% # %CALLNAME:nTarget%'s \@의 하반부가 좀 이상하게 느껴진다.
+		CALL RECOVER(nTarget, 400, "体力", "허브로 회복한다.")
+		CALL RECOVER(nTarget, 200, "気力", "허브를 통해 회복한다.")
+		SIF GETBIT(nPee, 1)
+			TCVAR:nTarget:利尿剤 = 90
+		SIF nScat
+			TCVAR:nTarget:FoodIntake += 50
+		RETURN 1
+	CASE 614
+		PRINTFORML %PARSE("You eat")% %ARTICLE(ITEMNAME_TR(nItem))%.
+		PRINTL 아! 으아아...
+		PRINTL
+		CALL RECOVER(nTarget, -400, "体力", @"\@ nTarget == MASTER ? %PARSE("Your")%은(는) 배가 아프다... 정말정말정말 심하다........... # %CALLNAME:nTarget%'s \@ tummy hurts... 정말정말정말 심하다...........")
+		IF nScat
+			TCVAR:nTarget:FoodIntake += 50
+			TCVAR:nTarget:BowelState += 360
+		ENDIF
+		RETURN 1
+	CASE 615
+		PRINTFORML %PARSE("You eat")% %ARTICLE(ITEMNAME_TR(nItem))%.
+		PRINTFORML 정말 좋다!
+		CALL RECOVER(nTarget, 500, "体力", "풀로 회복한다")
+		CALL RECOVER(nTarget, 400, "気力", "허브를 통해 회복한다")
+		SIF nScat
+			TCVAR:nTarget:FoodIntake += 50
+		RETURN 1
+	CASE 616
+		PRINTFORML %PARSE("You eat")% %ARTICLE(ITEMNAME_TR(nItem))%.
+		PRINTFORML 야호!
+		CALL RECOVER(nTarget, 125, "体力", "야미를 통해 회복한다.")
+		CALL RECOVER(nTarget, 100, "気力", "야무리를 통해 회복한다.")
+		SIF nScat
+			TCVAR:nTarget:FoodIntake += 150
+		RETURN 1
+	CASE 617
+		PRINTFORML %PARSE("You eat")% %ARTICLE(ITEMNAME_TR(nItem))%.
+		PRINTFORML 쓰라하다.
+		CALL RECOVER(nTarget, 125, "体力", "강황을 통해 회복한다.")
+		CALL RECOVER(nTarget, 100, "気力", "강황을 통해 회복한다.")
+		TFLAG:酔い止め = 1
+		SIF nScat
+			TCVAR:nTarget:FoodIntake += 150
+		RETURN 1
+	CASE 618
+		PRINTFORML %PARSE("You eat")% %ARTICLE(ITEMNAME_TR(nItem))%.
+		PRINTFORML 쓰다. 당근 맛도 아니었다.
+		CALL RECOVER(nTarget, 125, "体力", "인삼으로 회복한다.")
+		CALL RECOVER(nTarget, 100, "気力", "인삼으로 회복한다.")
+		SIF nScat
+			TCVAR:nTarget:FoodIntake += 150
+		RETURN 1
+	CASE 619
+		PRINTFORML %PARSE("You eat")% %ARTICLE(ITEMNAME_TR(nItem))%.
+		PRINTFORML 쓰라...
+		CALL RECOVER(nTarget, 125, "体力", "야미를 통해 회복한다")
+		CALL RECOVER(nTarget, 100, "気力", "야미를 통해 회복한다")
+		SIF nScat
+			TCVAR:nTarget:FoodIntake += 150
+		RETURN 1
+	CASE 620
+		PRINTFORML %PARSE("You eat")% %ARTICLE(ITEMNAME_TR(nItem))%.
+		PRINTFORML 먹을 때 당신에게 소리를 지른다… 너무 잔인하군…
+		CALL RECOVER(nTarget, 100, "体力", "루트를 통해 회복한다.")
+		CALL RECOVER(nTarget, 75, "気力", "루트를 통해 회복한다.")
+		SIF nScat
+			TCVAR:nTarget:FoodIntake += 100
+		RETURN 1
+	CASE 627
+		PRINTFORML %PARSE("You eat")% %ARTICLE(ITEMNAME_TR(nItem))%.
+		PRINTFORML 야호!
+		CALL RECOVER(nTarget, 125, "体力", "벌꿀을 통해 회복한다.")
+		CALL RECOVER(nTarget, 100, "気力", "꿀을 통해 회복한다.")
+		SIF nScat
+			TCVAR:nTarget:FoodIntake += 150
+		RETURN 1
+	CASE 629
+		PRINTFORML %PARSE("You eat")% %ARTICLE(ITEMNAME_TR(nItem))%.
+		PRINTFORML 야호!
+		CALL RECOVER(nTarget, 125, "体力", "대나무를 통해 회복한다.")
+		CALL RECOVER(nTarget, 100, "気力", "대나무를 통해 회복한다.")
+		SIF nScat
+			TCVAR:nTarget:FoodIntake += 150
+		RETURN 1
+	CASE 810
+		CALL MakeUnwaveringPaniel(50)
+	CASE 811
+		CALL MakeUnwaveringPaniel(51)
+	CASE 812
+		CALL MakeUnwaveringPaniel(52)
+	CASE 813
+		CALL MakeUnwaveringPaniel(53)
+	CASE 814
+		CALL MakeUnwaveringPaniel(54)
+	CASE 815
+		CALL MakeUnwaveringPaniel(55)
+	CASE 1100
+		IF nTarget == MASTER
+			PRINTFORMW 당신은 알약을 하나 삼킨다.
+			PRINTFORMW 당신은 믿을 수 없는 고양감을 느낀다.
+		ELSE
+			PRINTFORMW 당신은 알약을 삼키고 그것을 %CALLNAME:nTarget%에게 준다, 그가 그것을 삼킨다.
+		ENDIF
+		CALL DrugStuffNoFluff(nTarget,nItem,,nGiver)
+		RETURN 1
+	CASE 1101
+		PRINTFORMW 당신은 불법적이고 싸 보이는 모르핀을 %PARSE("your",,,nTarget)% 팔에 주사한다.
+		CALL DrugStuffNoFluff(nTarget,nItem,,nGiver)
+		IF RESULT == 0
+			PRINTFORMW %PARSE("You feel",,,nTarget)%는 %PARSE("you",5,,nTarget)%보다 더 많은 고통을 견딜 수 있다.
+		ELSE
+			PRINTFORMW %PARSE("You fell",,,nTarget)%처럼 %PARSE("you're",5,,nTarget)% 곧 기절할 것 같다.
+			PRINTFORMW 무슨 일이 일어나고 있는지 모르지만, 아마 그 모르핀은 주입하기에 그렇게 안전하지 않았던 모양이다.
+		ENDIF
+	CASE 1105
+		PRINTFORML %PARSE("You pop",,,nTarget)% 하나가 %ITEMNAME_TR(nItem)%.
+		PRINTFORML 이건 이부프로펜이 아니라, 완하제라고!
+		PRINTFORML %PARSE("You cry",,,nTarget)% 올 사고를 막기 위해 %PARSE("you try your",,,nTarget)% 최선인 것 같아...
+		CALL DrugStuffNoFluff(nTarget,314,,nGiver)
+		RETURN 1
+	CASE 1107
+		PRINTFORML 하나의 %PARSE("You pop",,,nTarget)%을/를 %ITEMNAME_TR(nItem)%한다.
+		IF nTarget == MASTER
+			PRINTFORML 아, 배가 안 좋구나.
+			PRINTFORML 정말로, 전혀 기분이 좋지 않은 것 같아.
+			PRINTL
+			PRINTFORML 배 속에서 고통스러운 감각이 차오르더니 이내 몰아친다.
+			PRINTFORML 후루즈! 배가 후루즈하며 고통에 비명을 지른다!
+		ENDIF
+		PRINTFORML %PARSE("You cry",,,nTarget)%가 %PARSE("you try your",,,nTarget)%에게 들어오는 사고를 막는 게 최선이다.
+		CALL DrugStuffNoFluff(nTarget,nItem,,nGiver)
+		RETURN 1
+	CASE 1108
+		PRINTFORML %PARSE("You pop",,,nTarget)% 하나의 %ITEMNAME_TR(nItem)%가 시작된다.
+		PRINTFORML %PARSE("Your",5,,nTarget)% 방광과 장이 저리기 시작한다.
+		CALL DrugStuffNoFluff(nTarget,nItem,,nGiver)
+		RETURN 1
+	CASE 1109
+		;Effect: Various.
+		;20%: Work just fine
+		;40%: Fake, just Ibuprofen
+		;15%: Nothing
+		;15%: make you depressed and lose all energy
+		;7%: be poison that slowly drains your stamina
+		;3%: just kills you
+		PRINTFORML %PARSE("You pop",,,nTarget)%하나의 %ITEMNAME_TR(nItem)%다.
+		SELECTCASE RAND(1,101)
+			CASE 1 TO 20
+				PRINTFORML %PARSE("Your")%의 볼이 붉어지며 %PARSE("you let",1)% 조용히 신음한다.
+				CALL DrugStuffNoFluff(nTarget,41)
+				RETURN 1
+			CASE 21 TO 60
+				PRINTFORML 그냥 이부프로펜인 것 같다.
+				CALL DrugStuffNoFluff(nTarget,524)
+				RETURN 1
+			CASE 61 TO 75
+				PRINTFORML 그것은 %PARSE("you",6,,nTarget)%에게 효과가 없는 것 같다.
+				RETURN 1
+			CASE 76 TO 90
+				PRINTFORML 갑자기 %PARSE("you start",5,,nTarget)%에게 기분이 좆같아지기 시작한다.
+				CALL DrugStuffNoFluff(nTarget,1111)
+				RETURN 1
+			CASE 91 TO 97
+				CALL DrugStuffNoFluff(nTarget,11091)
+				RETURN 1
+			CASE 97 TO 100
+				PRINTFORMW %PARSE("You fell",,,nTarget)% 마치 %PARSE("you're",5,,nTarget)% 기절할 지경인 것 같다.
+				PRINTFORMW 무슨 일이 일어나고 있는지는 모르겠지만, 아마 그 약은 먹기에 그렇게 안전하지 않았을지도 모른다.
+				CALL DrugStuffNoFluff(nTarget,11092)
+				RETURN 1
+		ENDSELECT
+	CASE 1110
+		IF nTarget == MASTER
+			PRINTFORMW 자신에게는 사용할 수 없다.
+			RETURN 3
+		ELSEIF SHIRAHU(nTarget)
+			PRINTFORMW 의식 있는 캐릭터에게는 사용할 수 없다.
+			RETURN 3
+		ELSE
+			IF CharWillDieAfterCheck(nTarget) == 1
+				PRINTFORML %CALLNAME:nTarget%의 부상은 생명과 양립할 수 없다.
+				PRINTFORML 모든 파괴된 신체 부위를 대체하여 소생시킨다.
+				RETURN 3
+			ELSEIF BASE:nTarget:Blood <= 0
+				PRINTFORMW %CALLNAME:nTarget%은(는) 소생하기 위해 피가 필요하다.
+				RETURN 3
+			ELSE
+				PRINTFORML 당신은 %ITEMNAME_TR(nItem)%을 %CALLNAME:nTarget%에게 사용한다.
+				PRINTFORMW 충격 후, %HIS_HER(nTarget)%의 눈이 떠지고 %HE_SHE(nTarget)%가 일어난다.
+				CALL DrugStuffNoFluff(nTarget,nItem)
+				ITEM:Defibrillator++
+				RETURN 1
+			ENDIF
+		ENDIF
+	CASE 1111
+		PRINTFORML %PARSE("You pop",,,nTarget)%은 %ITEMNAME_TR(nItem)%다.
+		PRINTFORML 갑자기 %PARSE("you start",5,,nTarget)% 기분이 엿 같아지다.
+		CALL DrugStuffNoFluff(nTarget,nItem,,nGiver)
+		RETURN 1
+	CASE 1114
+		PRINTFORML %PARSE("You drink",,,nTarget)% a %ITEMNAME_TR(nItem)%.
+		PRINTFORML %PARSE("Your",5,,nTarget)% 피로와 나른함은 변하지 않는 것 같다...
+		IF GETBIT(nPee, 1)
+			PRINTFORML 하지만 %PARSE("you",5,,nTarget)% 방광이 다른 이야기를 하기 시작했다...
+		ENDIF
+		CALL DrugStuffNoFluff(nTarget,nItem,,nGiver)
+		RETURN 1
+	CASE 1115
+		PRINTFORML %PARSE("You drink",,,nTarget)% a %ITEMNAME_TR(nItem)%.
+		PRINTFORML 오. 오우우...
+		PRINTFORML 아프다.
+		CALL DrugStuffNoFluff(nTarget,nItem,,nGiver)
+		RETURN 1
+	CASE 1116
+		PRINTFORML %PARSE("You drink",,,nTarget)% a %ITEMNAME_TR(nItem)%.
+		PRINTFORML %PARSE("You feel",5,,nTarget)%마치 세상을 상대하는 것처럼.
+		CALL DrugStuffNoFluff(nTarget,nItem,, nGiver)
+		RETURN 1
+	CASE 1117
+		PRINTFORML %PARSE("You drink",,,nTarget)% a %ITEMNAME_TR(nItem)%.
+		PRINTFORML %PARSE("You feel",5,,nTarget)%당신에게 흘러가는 마법의 힘.
+		CALL DrugStuffNoFluff(nTarget,nItem,,nGiver)
+		RETURN 1
+	CASE 1118
+		PRINTFORML %PARSE("You pop",,,nTarget)% 하나 %ITEMNAME_TR(nItem)%.
+		PRINTFORML %PARSE("You feel",5,,nTarget)% 이제 변을 덜 봐야 할 것 같은.
+		CALL DrugStuffNoFluff(nTarget,nItem,,nGiver)
+		RETURN 1
+	CASE 1119
+		PRINTFORML %PARSE("You pop",,,nTarget)% 하나 %ITEMNAME_TR(nItem)%.
+		PRINTFORML %PARSE("You feel",5,,nTarget)% 너는 이제 소변을 덜 봐야 할 것 같아
+		CALL DrugStuffNoFluff(nTarget,nItem,,nGiver)
+		RETURN 1
+	CASE 1120 ; meth
+		PRINTFORMW %PARSE("your",,,nTarget)% 입에 메스암(meth) 알약을 넣고 삼킨다.
+		PRINTFORMW 그것이 %PARSE("your",5,,nTarget)% 정신을 깨끗하게 만들면서 %PARSE("you",6,,nTarget)%가 완전히 잠에서 깨는 강렬한 감각이 몰려온다.
+		CALL DrugStuffNoFluff(nTarget,nItem)
+		RETURN 1
+	CASE 1122 ; fentanyl
+		PRINTFORMW 당신은 %PARSE("your",,,nTarget)% 팔에 소량의 펜타닐을 주입한다.
+		PRINTFORMW %PARSE("You feel",5,,nTarget)% 놀라운 황홀경.
+		CALL DrugStuffNoFluff(nTarget,nItem)
+		RETURN 1
+	CASE 1123 ; fentanyl
+		PRINTFORMW 당신은 상당한 양의 헤로인을 %PARSE("your",,,nTarget)% 팔에 주입한다.
+		PRINTFORMW %PARSE("You feel",5,,nTarget)% 행복감.
+		CFLAG:nTarget:PainSuppress += DRUG_EFFECTIVENESS(nTarget,300000,1)
+		TCVAR:nTarget:媚薬 = 1
+		CALL DrugStuffNoFluff(nTarget,nItem)
+		RETURN 1
+	CASE 1128; KyuuKyuu-Dou
+		PRINTFORML %PARSE("You drink",,,nTarget)% a %ITEMNAME_TR(nItem)%.
+		PRINTFORML %PARSE("You feel",5,,nTarget)% 같은 %PARSE("you",5,,nTarget)% 세상을 차지할 수 있다.
+		CALL DrugStuffNoFluff(nTarget,nItem,, nGiver)
+		RETURN 1
+	CASE 1129; Naloxone
+		PRINTFORMW 당신은 나록손 주사기를 %PARSE("your",,,nTarget)% 팔에 주입한다.
+		SIF SHIRAHU(nTarget)
+			PRINTFORMW %PARSE("You begin",5,,nTarget)%기분이 나아지려고.
+		CALL DrugStuffNoFluff(nTarget,nItem,,nGiver)
+		RETURN 1
+	CASE 253; cocaine
+		PRINTFORML %PARSE("You snort",,,nTarget)%한 줄의 %ITEMNAME_TR(nItem)%를.
+		PRINTFORML 대부분의 %PARSE("your",5,,nTarget)% 피로가 사라진다.
+		CALL DrugStuffNoFluff(nTarget,nItem,,nGiver)
+		RETURN 1
+	CASE 1125; crack cocaine
+		PRINTFORML %PARSE("You grab",,,nTarget)% %ITEMNAME_TR(nItem)%와 %PARSE("light",,,nTarget)%로 가득 찬 한 대마초를 성냥으로 불을 붙인 후, 그것을 %PARSE("your",5,,nTarget)%에 넣는다.
+		PRINTFORML 대부분의 %PARSE("your",5,,nTarget)% 피로는 사라진다.
+		CALL DrugStuffNoFluff(nTarget,nItem,,nGiver)
+		RETURN 1
+	CASE 1205; NeVivi
+		IF DreamDropTaken == 1
+			PRINTFORML 오늘 이미 사용했다.
+			PRINTFORMW 다시 사용해도 아무것도 하지 않는다.
+			RETURN
+		ENDIF
+		PRINTFORML %PARSE("You pop",,,nTarget)% 하나 %ITEMNAME_TR(nItem)%이다.
+		PRINTFORML %PARSE("You feel",5,,nTarget)% 당신의 밤 꿈들이 훨씬 더 생생해질 것이다.
+		CALL DrugStuffNoFluff(nTarget,nItem,,nGiver)
+		RETURN 1
+	CASE 1206; Yumenai
+		IF DreamDropTaken == -1
+			PRINTFORML 오늘 이미 사용했다.
+			PRINTFORMW 다시 사용해도 아무 일도 일어나지 않는다.
+			RETURN
+		ENDIF
+		PRINTFORML %PARSE("You pop",,,nTarget)% 그것 %ITEMNAME_TR(nItem)%.
+		PRINTFORML %PARSE("You feel",5,,nTarget)% 꿈의 잠재적 공포로부터 안전한 것.
+		CALL DrugStuffNoFluff(nTarget,nItem,,nGiver)
+		RETURN 1
+ENDSELECT
+RETURN 0
+;specify the type of the item, mandatory for the function below to work
+
+@ITEMTYPE_MOD(ARG)
+#FUNCTION
+;1 heal, 2 buff, 3 food, 4 snack, 5 fruit, 6 misc
+RETURNF ITEMTYPE_NAS(ARG)
+SIF GROUPMATCH(ITEMNAME:ARG, "ミルク瓶")
+	RETURNF 3
+SIF GROUPMATCH(ITEMNAME:ARG, "少女の卵")
+	RETURNF 4
+SIF GROUPMATCH(ITEMNAME:ARG, "睡眠薬", "超排卵誘発剤", "折り畳み傘", "ウェザー・リポート", "DOPPELGANGER_DRAUGHT")
+	RETURNF 6
+;set if item is enabled for use from item menu (com 490)
+;1 - player only, 2 - player&target, 0 - unavailable
+
+@Add_UsableItem(nItem)
+#FUNCTION
+#DIM nItem
+SELECTCASE nItem
+	CASE 36
+		RETURNF 1
+	CASE 252
+		RETURNF 1
+	CASE 923
+		RETURNF 1
+	CASE 924
+		RETURNF 2
+	CASE 991
+		RETURNF 1
+	CASEELSE
+		RETURNF NAS_UsableItem(nItem)
+ENDSELECT
+;note: this list will override the original properties as well so make sure to specify all of them when adding items here
+
+@Add_ItemModList(ARG, ARGS, ARG:1)
+CALL NAS_ItemModList(ARG, ARGS, ARG:1) ;eraNAS custom code
+SIF RESULT
+	RETURN RESULT
+SELECTCASE ITEMNAME:ARG
+	;qol custom code, for showing list of items that can be fermented
+	CASE "イモ", "大麦", "カボチャ", "はちみつ", "イチゴ", "キイチゴ", "スイカ", "ヤマブドウ", "かびたブドウ", "りんご", "梅", "ナッツ", "アケビ", "薬草", "どぶろく", "甘味材", "熟成前ラム", "熟成前フランボワーズ", "蒸留酒", "熟成前ブランデー", "熟成前フラゴリーノ", "上質食材", "草木灰", "ミルク瓶", "仙桃", "精米"
+		SELECTCASE ARGS
+			CASE "TYPE:Ferment"
+				RETURN 1
+		ENDSELECT
+	CASE "正体不明のタネ", "雛人形", "月の羽衣", "避水の玉", "私達だけが知る哀嘆", "ぼうおんへき", "タックルボックス", "レインコート", "永久凍土欠片", "醸造免許";addition custom code "正体不明のタネ", "雛人形", "ぼうおんへき", "タックルボックス", "レインコート", "醸造免許", bugfix: "月の羽衣", 避水の玉, 私達だけが知る哀嘆
+		SELECTCASE ARGS
+			CASE "TYPE:特殊"
+				RETURN 1
+		ENDSELECT
+	CASE "大鏡" ;addition custom code - enabled 大鏡
+		SELECTCASE ARGS
+			CASE "SALES"
+				IF ITEM:ARG
+					RETURN -1
+				ELSE
+					RETURN 0
+				ENDIF
+			CASE "購入"
+				CALL SHOP_ASK(ARG, ARG:1)
+				SIF !RESULT
+					ITEM:ARG ++
+			CASE "TYPE:調教", "TYPE:河童道具", "SHOP:通信販売", "SHOP:河童の道具屋"
+				RETURN 1
+		ENDSELECT
+	CASE "保温ジャー", "折り畳み傘", "チェーンソー", "釣り竿"
+		SELECTCASE ARGS
+			CASE "TYPE:改造可能"
+				RETURN 1
+		ENDSELECT
+	CASE "瓶"
+		SELECTCASE ARGS
+			CASE "SALES"
+				;無限に補充される
+				RETURN 99
+			CASE "購入"
+				CALL SHOP_ASK(ARG, ITEM:瓶 ? -(40*(ITEM:瓶))#0)
+				SIF !RESULT
+					ITEM:ARG ++
+			CASE "TYPE:日用品", "TYPE:うさぎ薬品"
+				RETURN 1
+		ENDSELECT
+	CASE "ミルク瓶"
+		SELECTCASE ARGS
+			CASE "TYPE:回復"
+				RETURN 1
+		ENDSELECT
+	CASE "ウェザー・リポート"
+		;todo
+		SELECTCASE ARGS
+			CASE "TYPE:消耗品"
+				RETURN 1
+		ENDSELECT
+	CASE "卵"
+		SELECTCASE ARGS
+			CASE "TYPE:消耗品"
+				RETURN 1
+		ENDSELECT
+	CASE "超排卵誘発剤"
+		SELECTCASE ARGS
+			CASE "TYPE:消耗品"
+				RETURN 1
+		ENDSELECT
+	CASE "少女の卵"
+		SELECTCASE ARGS
+			CASE "TYPE:消耗品"
+				RETURN 1
+		ENDSELECT
+	CASE "DOPPELGANGER_DRAUGHT"
+		SELECTCASE ARGS
+			CASE "TYPE:消耗品"
+				RETURN 1
+		ENDSELECT
+ENDSELECT

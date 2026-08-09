@@ -1,0 +1,426 @@
+﻿; Modular ERB: SHOP_住環境設定.ERB
+;FileName_SHOP.ERB -------------------------------- Rev1.00
+;RESULT_104(設定) 処理
+;CALL		SYSTEM
+;ARG		VOID
+;RETURN		VOID
+;COMMENT
+;----------------------------------------------------------
+
+@SCHEDULE
+;custom code
+#DIM nLineCnt_Head
+nLineCnt_Head = LINECOUNT
+DO
+SIF LINECOUNT - nLineCnt_Head > 0
+	CLEARLINE LINECOUNT - nLineCnt_Head
+PRINTFORML [ 0] - 기상 시간 설정 (현재: %時刻表示(TIME:3)%)
+PRINTFORML [ 1] - 수면실 변경 (현재: %NAME_FROM_PLACE(CFLAG:MASTER:初期位置)%%COND_STR(@", Landlord: %CALLNAME:拠点_大家%", 拠点_大家)%)
+;SIF FLAG:住み込みキャラ== 0
+;	PRINTL [2] - 住み込み
+PRINTFORML [ 4] - 부업 (현재: \@ FLAG:内職 ? 켜짐 # 꺼짐 \@)
+PRINTFORML [ 5] - %조사처리(CALLNAME:MASTER,"의")% 이름을 변경한다
+SIF KNOW_RESEARCH("Alcohol"); research
+	PRINTFORML [ 6] [6] - 술벌레가 있는 병을 옮긴다 (현재: \@ !MAIN_MAP ? %STR_TR(拠点_酒虫)% # %STR_TR(拠点_酒虫 + 8000)% \@)
+SIF ITEM:祭壇
+	PRINTFORML [ 7] - 사랑을 위한 자동 기도 (\@ FLAG:自動縁結び ? %CALLNAME:(FLAG:自動縁結び)%) # 해당 없음 \@ 현재 목표
+;NAS: LiG Housing
+IF PlayerLandBought
+	SELECTCASE PlayerLandProgress
+		CASE 0
+			PRINTL [ 8] - 건물 건설
+		CASE IS <= 4
+			PRINTL [ 8] - 재건
+		CASE 4
+			PRINTL [ 8] - 재건
+			PRINTL [ 9] - 개조
+	ENDSELECT
+	FOR LOCAL,0,100
+	IF ROOMDATA:LOCAL & ROOM_CUSTOM
+		PRINTL [10] - 방 리모델링
+		BREAK
+	ENDIF
+	NEXT
+	PRINTL [11] - 당신의 부지 이름을 변경한다
+	SIF PlayerHouseMaxGuests()
+		PRINTL [12] - 세입자 목록
+ENDIF
+;custom code (plus below)
+PRINTFORML [98] - 【팔로우】대상 변경 (현재: \@ STALKED ? %CALLNAME:STALKED% # 없음 \@)
+SIF GETBIT(NAS_BEDWETALARM,1) && GETBIT(nPee,1)
+	PRINTFORML [327] - 야뇨증 알람 간격 변경 (현재: \@ !NAS_BedWetAlarm_Timer ? 오염 시에만 # {NAS_BedWetAlarm_Timer}분마다 \@)
+PRINTFORML [451] - 취침 시 자동 자위 (현재: \@ AutoFap ? On # Off \@)
+PRINTFORML [452] - 모든 스침 캐릭터 제거
+PRINTFORML [453] - 침대 보호 설정
+;PRINTFORML [998] - Credits
+;#;PRINTFORML [-99] - Debug function for calling stuff
+PRINTL [100] - 반환
+INPUT
+IF RESULT == 100
+	RETURN 0
+ELSEIF RESULT == 0
+	CALL 起床時間設定()
+ELSEIF RESULT == 1
+	CALL 恋慕ルーム
+ELSEIF RESULT == 4
+	FLAG:内職 = !FLAG:内職
+	IF FLAG:内職
+		PRINTFORMW 잠자리에 들고 남은 TSP는 부업에 사용된다.
+	ELSE
+		PRINTFORMW 부업이 꺼졌다.
+	ENDIF
+ELSEIF RESULT == 5
+	CALL NAME_CUSTOM(MASTER)
+ELSEIF RESULT == 6
+	CALL 酒虫引っ越し
+ELSEIF RESULT == 7 && ITEM:祭壇
+	CALL AUTO_ENMUSUBI
+	;NAS: LiG Housing
+ELSEIF RESULT == 8
+	CALL PlayerHouseRenovate
+ELSEIF RESULT == 9
+ELSEIF RESULT == 10
+	CALL PlayerHouseRoomRemodel
+ELSEIF RESULT == 11
+	CALL PlayerHouseRename
+ELSEIF RESULT == 12
+	CALL PlayerHouseTenants
+	;=====================================
+ELSEIF RESULT == 98 ;custom code
+	CALL STALKER_CHANGE
+ELSEIF RESULT == 327
+	SIF !GETBIT(NAS_BEDWETALARM,1) || !GETBIT(nPee,1)
+		RESTART
+	gLineCount = LINECOUNT
+	DO
+	CLEARLINE LINECOUNT - gLineCount
+	PRINTFORML 야뇨증 경보기가 활성화될 간격을 선택하세요(소변으로만 감지하려면 0을 입력하세요.)
+	PRINTFORML [  0] - 소변으로만
+	PRINTFORML [ 30] - 30분
+	PRINTFORML [ 60] - 1시간 (60분)
+	PRINTFORML [120] - 2시간 (120분)
+	PRINTFORML [180] - 3시간 (180분)
+	PRINTFORML [360] - 6시간 (360분)
+	PRINTFORML [-1] - 선택 안 함
+	PRINTL
+	INPUT
+	SELECTCASE RESULT
+		CASE -1
+			BREAK
+		CASE 30 TO 1440
+			IF RESULT % 30
+				PRINTFORML 30분의 간격이 아니다!
+				WAIT
+				RESTART
+			ENDIF
+			NAS_BedWetAlarm_Timer = RESULT
+			BREAK
+		CASE 0
+			PRINTFORMW 
+			NAS_BedWetAlarm_Timer = 0
+	ENDSELECT
+	LOOP 1
+ELSEIF RESULT == 451
+	AutoFap = !AutoFap
+ELSEIF RESULT == 452
+	CALL COLORMESSAGE(@"경고: 이 선택은 모든 스침 캐릭터를 영구적으로 제거합니다!",C_RED,1,1)
+	CALL COLORMESSAGE(@"저장하고 싶은 모든 스침을 커스텀 캐릭터로 저장했는지 확인하세요!",C_RED,2,1)
+	CALL ASK_YN
+	LOCAL = RESULT
+	IF LOCAL == 0
+		CALLF KILL_ALL_MOBS()
+		PRINTFORMW 성공했다!
+		RESULT = 1
+	ELSE
+		RESULT = 0
+	ENDIF
+ELSEIF RESULT == 453
+	CALL BedProtectionSettings
+ELSEIF RESULT == 998
+	CALL SHOW_CREDITS_LIST
+ELSEIF RESULT == -99
+	;この項目ではなく
+	;@TEST_動作テスト用の中身をいじって下さいね
+	;#; CALL TEST_動作テスト用
+ENDIF
+LOOP 1
+
+@TEST_動作テスト用
+;好きに書け
+
+@酒虫引っ越し
+#DIMS 引っ越し先名称
+#DIM 引っ越し先地点
+PRINTFORML 새로운 장소를 선택한다.
+FOR LOCAL,1,100
+IF ROOMDATA:LOCAL & 場所_厨房
+	IF MAIN_MAP == 0
+		;Custom code
+		LOCALS = %LOC_THE(LOCAL, 1)%%STR_TR(LOCAL)%
+	ELSE
+		;Custom code
+		LOCALS = %LOC_THE(LOCAL + MAIN_MAP * 100, 1)%%STR_TR(LOCAL + 8000 + MAIN_MAP * 100)%
+	ENDIF
+	IF LOCAL == 拠点_酒虫 % 100
+		SETCOLOR C_AQUA
+	ELSEIF PRIVATEROOM:LOCAL && !TALENT:(PRIVATEROOM:LOCAL):恋慕
+		SETCOLOR 100, 100, 100
+	ENDIF
+	PRINTFORML [{LOCAL}] %LOCALS%
+	RESETCOLOR
+ENDIF
+NEXT
+DRAWLINE
+PRINTFORML [100] 신경 쓰지 마라
+INPUT
+IF INRANGE(RESULT,1,99) && ROOMDATA:RESULT & 場所_厨房
+	IF PRIVATEROOM:RESULT && !TALENT:(PRIVATEROOM:RESULT):恋慕
+		PRINTFORMW 거기에 두기는 좀 어색할 것이다.
+		RESTART
+	ENDIF
+	引っ越し先地点 = RESULT
+	IF MAIN_MAP == 0
+		;Custom code
+		引っ越し先名称 = %LOC_THE(引っ越し先地点)%%STR_TR(引っ越し先地点)%
+	ELSE
+		;Custom code
+		引っ越し先名称 = %LOC_THE(引っ越し先地点)%%STR_TR(引っ越し先地点 + 8000 + MAIN_MAP * 100)%
+		引っ越し先地点 += MAIN_MAP * 100
+	ENDIF
+	PRINTFORML 당신은 그 병을 %引っ越し先名称%로 옮기기로 결정한다.
+	PRINTFORML 그 병을 나르는 것은 상당히 힘든 일이다...
+	CALL COLORMESSAGE(@"술벌레는 %引っ越し先名称%으로 이사했다.",C_YELLOW,2)
+	拠点_酒虫 = 引っ越し先地点
+ENDIF
+;時間(ARG)に起床する場合どれだけ睡眠するかを算出
+
+@睡眠時間予測(ARG)
+#FUNCTION
+LOCAL = CFLAG:MASTER:就寝時間 - DAY * 1440
+;LOCAL = 1440 * DAY + ARG ;seems sketch, revert for now
+IF ARG >= LOCAL
+	RETURNF ARG - LOCAL
+ELSE
+	RETURNF 1440 + ARG - LOCAL
+	;RETURNF LOCAL - CFLAG:MASTER:就寝時間
+ENDIF
+
+@AUTO_ENMUSUBI
+PRINTFORML 이와 함께 캐릭터들은 낮에 기도받지 않은 경우 잠자리에 들기 전에 기도받는다. 
+PRINTFORML 대상을 선택한다.
+FOR LOCAL,1,CHARANUM
+SIF TALENT:LOCAL:行きずり
+	CONTINUE
+SIF CFLAG:LOCAL:出禁
+	CONTINUE
+SIF IsDead:LOCAL:0
+	CONTINUE
+SIF FLAG:自動縁結び == LOCAL
+	SETCOLOR C_YELLOW
+PRINTFORMLC [{LOCAL}] %CALLNAME:LOCAL%
+RESETCOLOR
+NEXT
+PRINTFORML 
+DRAWLINE
+PRINTFORML [999] 리턴
+INPUT
+IF RESULT == 999
+	FLAG:自動縁結び = 0
+ELSEIF INRANGE(RESULT,1,CHARANUM)
+	FLAG:自動縁結び = RESULT
+ENDIF
+
+@最低睡眠時間設定
+TIME:3 = (CFLAG:MASTER:就寝時間 - DAY * 1440) + 240
+SIF TIME:3 >= 1440
+	TIME:3 -= 1440
+SIF TIME:3 < 0
+	TIME:3 = 0
+
+@起床時間設定
+#DIM 同居人
+#DIM 前日就寝時間
+#DIM nStoreTime
+CALL LS_RESTRICT_PRINT("Change waking time") ;Custom code, restrict changing waking time during Lunatic Survival.
+SIF RESULT
+	RETURN
+nStoreTime = TIME:3 ;qol custom code
+前日就寝時間 = CFLAG:MASTER:就寝時間 - DAY * 1440
+同居人 = 0
+FOR LOCAL,1,CHARANUM
+IF CFLAG:LOCAL:初期位置 == CFLAG:MASTER:初期位置
+	同居人 = LOCAL
+	BREAK
+ENDIF
+NEXT
+DO
+;qol custom code, cleaner rendering of time slept (example: 10:0 becomes 10:00)
+PRINTFORML 알람은 몇 시에 울려야 할까요? (전날 취침 시간: %時刻表示(前日就寝時間)%) (수면 시간: %時刻表示(睡眠時間予測(TIME:3))%)
+PRINTBUTTON "┏━ △ ", 60
+PRINTBUTTON "━△", 10
+PRINTBUTTON "△━┓", 1
+PRINTL 
+PRINT ┃　
+SIF TIME:3 < 600
+	PRINT ０
+PRINTFORM %TOFULL(TOSTR(TIME:3 / 60))%：
+SIF TIME:3 % 60 < 10
+	PRINT ０
+PRINTFORM %TOFULL(TOSTR(TIME:3 % 60))%　
+PRINTBUTTON "□", 5555
+PRINTL 
+PRINTBUTTON "┗━ ▽ ", -60
+PRINTBUTTON "━▽", -10
+PRINTBUTTON "▽━┛", -1
+PRINTL 
+SIF 同居人 < CHARANUM && 同居人
+	PRINTFORM [2222] - %CALLNAME:同居人%과 동일함
+PRINTL 
+;custom code
+PRINTFORML [2223] - 다른 사람과 동일하게 설정한다.
+PRINT [3333] - 달력
+PRINT 　
+PRINTL [4444] - 직접 입력
+;qol custom code
+PRINTL [9999] - 취소
+IF 睡眠時間予測(TIME:3) < 240
+	PRINTFORM [5555] - 
+	CALL COLORMESSAGE("최소 4시간의 수면이 필요하다.", C_ORANGE, 1)
+ELSE
+	PRINTFORML [{0,4}] - 완료
+ENDIF
+INPUT
+IF RESULT == 0 && 睡眠時間予測(TIME:3) >= 240
+	PRINTFORM 알람은 이제 설정되었다. 
+	CALL COLORMESSAGE(@"%時刻表示(TIME:3)%", C_YELLOW)
+	PRINTFORMW .
+	RETURN 1
+ELSEIF RESULT == 9999 ;qol custom code
+	TIME:3 = nStoreTime
+	RETURN 0
+ELSEIF RESULT == 2222 && 同居人 < CHARANUM && 同居人
+	TIME:3 = CFLAG:同居人:起床時間
+	;custom code
+ELSEIF RESULT == 2223
+	PRINTFORML 누가?
+	DRAWLINE
+	FOR LOCAL,1,CHARANUM
+	SIF CFLAG:LOCAL:出禁
+		CONTINUE
+	IF 同居人 == LOCAL
+		SETCOLOR C_H_PINK
+		PRINTFORMLC [{LOCAL}] %CALLNAME:LOCAL,15,LEFT%
+		RESETCOLOR
+		CONTINUE
+	ENDIF
+	PRINTFORMLC [{LOCAL}] %CALLNAME:LOCAL,15,LEFT%
+	NEXT
+	PRINTL 
+	DRAWLINE
+	PRINTL [999] 됐어
+	INPUT
+	IF INRANGE(RESULT, 1, CHARANUM-1) && !CFLAG:RESULT:出禁
+		TIME:3 = CFLAG:RESULT:起床時間
+		PRINTFORML 당신은 %CALLNAME:RESULT%와 같은 시간에 잠에서 깬다.
+	ELSEIF RESULT != 999
+		PRINTFORML 안 돼!!!
+	ENDIF
+ELSEIF RESULT == 3333
+	CALL カレンダー()
+ELSEIF RESULT == 4444
+	CALL 起床時間入力()
+ELSEIF RESULT == 5555
+	CALL 最低睡眠時間設定()
+ELSEIF INRANGE(RESULT, -1360, 1360)
+	TIME:3 += RESULT
+	IF TIME:3 >= 1440
+		TIME:3 -= 1440
+	ELSEIF TIME:3 < 0
+		TIME:3 += 1440
+	ENDIF
+	CLEARLINE 10 ;qol custom code
+ENDIF
+LOOP 1
+;;------------------------------------------------------------
+;;案２　睡眠時間を直接指定する方法、起床時間を自動で設定してくれる
+;	$INPUT_LOOP_0
+;	PRINTL 最低でも4時間は寝る必要があり、12時間以上は自然に目が醒めてしまいます
+;	PRINTFORML 何時間寝ますか？(4~12を入力してください)(8時間が平均的な睡眠時間です)
+;	$INPUT_LOOP_1
+;	INPUT
+;	SIF RESULT < 4 || RESULT > 12
+;		GOTO INPUT_LOOP_1
+;	TIME:3 = ((LOCAL:1 / 60) + RESULT) * 60
+;	SIF (LOCAL:1 % 60)
+;		TIME:3 += 60
+;	SIF TIME:3 >= 1440
+;		TIME:3 -= 1440
+;	PRINTFORML 起床時間は（%時刻表示(TIME:3)%）になります
+;	PRINTL よろしいですか？
+;	PRINTL  [0] はい
+;	PRINTL  [1] いいえ
+;	$INPUT_LOOP_2
+;	INPUT
+;	IF RESULT == 0
+;		PRINTFORMW 起床時間を（%時刻表示(TIME:3)%）に設定しました
+;	ELSEIF RESULT == 1
+;		GOTO INPUT_LOOP_0
+;	ELSE
+;		GOTO INPUT_LOOP_2
+;	ENDIF
+
+@起床時間入力
+#DIM 時間
+#DIM 分数
+PRINTL 알람이 울릴 시간을 hhmm 형식으로 입력하세요 (hh는 0-23, mm는 0-59, 범위를 벗어나 입력하면 취소됩니다).
+PRINTL [2400] - 취소
+INPUT
+時間 = RESULT / 100
+分数 = RESULT % 100
+IF 0 <= 時間 && 時間 < 24 && 0 <= 分数 && 分数 < 60
+	TIME:3 = 時間 * 60 + 分数
+	PRINT 알람이 이제 ~에 울리도록 설정되었다. 
+	CALL COLORMESSAGE(@"%時刻表示(TIME:3)%", C_YELLOW)
+	PRINTFORMW .
+ENDIF
+
+@恋慕ルーム
+;qol custom code, replace with QoL_LiveIn.ERB
+CALL 恋慕ルーム_TR
+RETURN RESULT
+DRAWLINE
+PRINTL 여기서 자신의 방을 바꿀 수 있다.
+SIF CFLAG:MASTER:初期位置 == デフォルト初期位置
+	SETCOLOR C_AQUA
+PRINTFORML [  0] %NAME_FROM_PLACE(デフォルト初期位置)%은(는) (기본)
+RESETCOLOR
+FOR LOCAL, 1, CHARANUM
+SIF !CFLAG:LOCAL:神社在住
+	CONTINUE
+SIF CFLAG:MASTER:初期位置 == CFLAG:LOCAL:初期位置
+	SETCOLOR C_AQUA
+SIF IS_LOVER(LOCAL)
+	PRINTFORML [{LOCAL, 3}] - %NAME_FROM_PLACE(CFLAG:LOCAL:初期位置)%
+RESETCOLOR
+NEXT
+DRAWLINE
+PRINTFORML [999] - 취소
+INPUT
+IF RESULT == 999
+	RETURN
+ELSEIF RESULT == 0
+	;初期あなた私室
+	CFLAG:MASTER:初期位置 = デフォルト初期位置
+	PRINTFORML %NAME_FROM_PLACE(CFLAG:MASTER:初期位置)%로 설정한다.
+	PRINTFORMW 변경 사항은 내일 적용된다.
+	RETURN
+ELSEIF RESULT == [[針妙丸]] && TALENT:MASTER:体型 >= -4 && IS_LOVER(RESULT)
+	PRINTFORMW 네가 아기라서 함께 살 수 없다.
+ELSEIF IS_LOVER(RESULT) && CFLAG:RESULT:神社在住
+	CFLAG:MASTER:初期位置 = CFLAG:RESULT:初期位置
+	CALL KOJO_MESSAGE_SEND("EVENT", 19, RESULT, 3, 0)
+	PRINTFORML %NAME_FROM_PLACE(CFLAG:MASTER:初期位置)%로 설정했다.
+	PRINTFORMW 변경 사항은 내일부터 적용된다.
+	RETURN
+ENDIF
+RESTART

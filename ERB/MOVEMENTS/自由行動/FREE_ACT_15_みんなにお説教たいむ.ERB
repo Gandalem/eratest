@@ -1,0 +1,228 @@
+﻿; Modular ERB: 自由行動/FREE_ACT_15_みんなにお説教たいむ.ERB
+
+@EXIST_FreeAct15
+#LOCALSIZE 1
+#LOCALSSIZE 1
+;オブジェクト本体
+
+@FreeAct15(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+#DIM 経過時間
+経過時間 = Activity_Duration:TARGET
+SELECTCASE O_DATA
+	;自由行動に付き合うコマンドの名称
+	CASE "名称"
+		CALLF MAKE_STR(V_NAME, "様子をうかがう")
+	CASE "CHAIN"
+		;他キャラに連鎖しない場合コメントアウトすること
+		CALLF MAKE_INT(V_NAME, 1)
+	CASE "経過時間"
+		;自由行動に付き合うコマンドでの経過時間
+		;0だと30分か残り時間すべての小さい方
+		CALLF MAKE_INT(V_NAME, 0)
+ENDSELECT
+
+@自由行動内容_15(CHARA, ARGS, 時間係数, CHAIN)
+#DIM CHARA
+#DIM CHAIN
+#DIM 現在地
+#DIM メッセージ表示
+#DIM 時間係数
+#DIM 経過時間
+現在地 = CFLAG:CHARA:現在位置
+メッセージ表示 = 現在地 == CFLAG:MASTER:現在位置 ? 1 # 0
+SELECTCASE ARGS
+	CASE "発生"
+		;屋外で発生
+		SIF INROOM(現在地)
+			RETURN 0
+		;仕事予定の邪魔をしない
+		SIF !CHARA_HOLIDAY(CHARA)
+			RETURN 0
+		;映姫様は常に起点
+		SIF CHARA == 30
+			GOTO START
+		;小町/久侘歌以外の神霊と蓬莱人は対象外
+		SIF CHECK_CHARA(CHARA, "蓬莱人") || (TALENT:CHARA:神霊 && !GROUPMATCH(CHARA, 76, 129))
+			RETURN 0
+		;映姫様がすでに説教中なら発生
+		SIF Activity_Type:30 != 15 || 現在地 != CFLAG:30:現在位置 || !Activity_Duration:30
+			RETURN 0
+		$START
+		IF メッセージ表示
+			PRINTFORM %CALLNAME:CHARA% 
+			IF CHARA == 30
+				PRINTFORMW begin은 %FA15_TARGET(0)%에게 강의를 시작한다.
+			ELSE
+				PRINTFORMW 「\@ CHAIN ? %CALLNAME:CHAIN%의 강의에 참여한다 # %SPLIT_G("roped into:caught up in")% 에이키의 강의를 듣는다 \@...」
+			ENDIF
+		ELSEIF CHARA == 30
+			CALLF FA15_TARGET(0)
+		ENDIF
+		;自由行動にかける時間をRETURNする。小町のみ最低保障2時間
+		IF CHARA == 30
+			RETURN 60 + RAND:30
+		ELSE
+			LOCAL = 30 + RAND:60 + ((CHARA == 76) * 90)
+			Activity_Duration:30 = MAX(Activity_Duration:30, LOCAL)
+			RETURN LOCAL
+		ENDIF
+	CASE "行動中"
+		;行動中の処理、地の文もここで。
+		IF メッセージ表示
+			IF CHARA == 30
+				PRINTFORMW %CALLNAME:CHARA% 강의한다 %FA15_TARGET(1)% %TEXTR("ad nauseam/endlessly/at length/incessantly/")%...
+			ELSEIF 現在地 != CFLAG:30:現在位置 || Activity_Type:30 != 15
+				CALL FA15_RESET(CHARA)
+			ELSE
+				PRINTFORM %CALLNAME:CHARA%은 
+				SELECTCASE CFLAG:CHARA:性格傾向
+					;気弱系
+					CASE 1
+						PRINTFORM %TEXTR(@"being reduced to tears by/hanging %HIS_HER(CHARA)% head in %SPLIT_G("sadness:regret:shame")% while listening to/whimpering and sobbing from")%
+						;強気系
+					CASE 2
+						PRINTFORM %TEXTR(@"%SPLIT_G("장난스럽게:교묘하게")% sticking out %HIS_HER(CHARA)% tongue at/pretending to listen to/mostly ignoring/barely paying any attention to")%
+						;素直系
+					CASE 3
+						PRINTFORM %TEXTR(@"feeling %SPLIT_G("wreck처럼:낙담한:패배한:뚱한")%/nodding to every word%SPLIT_G("열심히:순종적으로:주의 깊게:")%")%%HE_SHE(CHARA)%가 듣는다
+						;真面目系
+					CASE 4
+						PRINTFORM %TEXTR(@"feeling %SPLIT_G("remorseful:sorry")%/repenting/reflecting on it/showing remorse/giving serious thought to it/taking it very seriously")%은 듣고 나서
+						;その他
+					CASEELSE
+						PRINTFORM %TEXTR(@"%SPLIT_G("순종적으로:조용히:인내심 있게")% %SPLIT_G("견디는 중:듣는 중:겪는 중:받는 중")%")%
+				ENDSELECT
+				PRINTFORMW  에이키의 강의...
+			ENDIF
+		ELSEIF CHARA != 30 && 現在地 != CFLAG:30:現在位置
+			CALL FA15_RESET(CHARA)
+		ENDIF
+	CASE "完了"
+		;行動時間を使い切ったときの処理、地の文もここで
+		IF メッセージ表示
+			IF CHARA == 30
+				PRINTFORMW 드디어, %CALLNAME:CHARA%가 %HIS_HER(CHARA)%의 강의를 마친 것 같다.
+			ELSE
+				PRINTDATAW
+					DATAFORM 강의가 끝나갈 무렵, %CALLNAME:CHARA% \@ CFLAG:CHARA:性格傾向 == 2 ? %SPLIT_G("bummed out by:fed up with:weary from")% 그렇게 보인다 # %SPLIT_G("looks relieved:lets out a sigh of relief")% \@.
+					DATAFORM %CALLNAME:CHARA% \@ CFLAG:CHARA:性格傾向 == 1 ? 강의가 끝난 후에도 여전히 눈물을 흘리고 있다 # 강의가 끝나자 작은 한숨을 내쉰다. \@
+					DATAFORM 강의가 끝난 후, %CALLNAME:CHARA% \@ CFLAG:CHARA:性格傾向 == 4 ? %HIS_HER(CHARA)%에게 진심으로 감사함을 표한다 # %SPLIT_G("utterly ashamed:very embarrassed:much bothered by it:shaken up")% 그렇게 보인다. \@
+				ENDDATA
+			ENDIF
+		ENDIF
+	CASE "中断"
+		;中断メッセージはうふふ突入時等でも表示されてしまうので表示しない
+		;説教する側がいなくなった場合の処理
+		IF CHARA == 30
+			FOR COUNT, 1, CHARANUM
+			SIF Activity_Type:COUNT != 15
+				CONTINUE
+			CALL FA15_RESET(COUNT)
+			NEXT
+		ENDIF
+	CASE "付き合う"
+		;自由行動に付き合ったとき用メッセージ
+		PRINTFORML 당신은 잠시 귀를 기울이고 강의를 캐주얼하게 듣는다.
+		IF TFLAG:193
+			PRINTFORML 에이키는 그것을 발견하고 너에게 설교를 하기 시작한다 %SPLIT_G("thoroughly:in full force:diligently")%!
+		ELSE
+			LOCALS = %\@ CHARA == 30 ? %FA15_TARGET(1)% # %CALLNAME:CHARA% \@%
+			PRINTDATAL
+				DATAFORM 당신은 그것이 언제 끝날지 전혀 모르는구나.
+				DATAFORM 네가 그 대상이 아니어서 정말 다행이야.
+				DATAFORM 가엾은 %LOCALS%에게 조금 안쓰럽게 느껴진다.
+			ENDDATA
+		ENDIF
+	CASE "ソース"
+		;付き合うコマンド選択時の入手ソース、時間係数は付き合った時間の1/10
+		;ソースの基準よくわかんないので適当
+		DOWNBASE:MASTER:気力 += 20 * 時間係数
+		;15%でいっしょに説教されて入手ソース増/MASTER消費気力激増
+		IF !RAND:6
+			TFLAG:193 = 1
+			SOURCE:30:歓楽 = (100 + ((ABL:30:親密 + 好感度係数(TARGET)) * 40)) * 時間係数
+			SOURCE:30:征服 = (60 + (ABL:30:サドっ気 * 60)) * 時間係数
+			IF TARGET != 30
+				SOURCE:TARGET:受動 = (30 + ((ABL:従順 + 好感度係数(TARGET)) * 50)) * 時間係数
+				SOURCE:TARGET:屈従 = (30 + ((ABL:従順 + 好感度係数(TARGET)) * 50)) * 時間係数
+				DOWNBASE:TARGET:気力 += 10 * 時間係数
+			ENDIF
+			DOWNBASE:MASTER:気力 += 150 * 時間係数
+		ELSE
+			SOURCE:歓楽 = (50 + ((ABL:親密 + 好感度係数(TARGET)) * 30)) * 時間係数
+			SOURCE:征服 = (20 + (ABL:サドっ気 * 50)) * 時間係数
+			IF TARGET != 30
+				SOURCE:TARGET:受動 = (20 + ((ABL:従順 + 好感度係数(TARGET)) * 20)) * 時間係数
+				SOURCE:TARGET:屈従 = (20 + ((ABL:従順 + 好感度係数(TARGET)) * 20)) * 時間係数
+				DOWNBASE:TARGET:気力 += 10 * 時間係数
+			ENDIF
+		ENDIF
+ENDSELECT
+;説教相手を表示する式中関数
+
+@FA15_TARGET(ARG)
+#FUNCTIONS
+#DIM 累計
+#DIMS モブ
+#DIMS ネームド
+;説教開始は仕様上常にモブキャラ
+IF !ARG
+	SELECTCASE GET_MAPID(CFLAG:30:現在位置)
+		CASE 0
+			モブ = youkai
+		CASE 1
+			モブ = shrine visitor
+		CASE 2
+			モブ = %TEXTR("village girl/villager/")%
+		CASE 3
+			モブ = %TEXTR("fairy maid/hobgoblin/")%
+		CASE 4
+			モブ = youkai rabbit
+		CASE 5
+			モブ = bake%TEXTR("neko/danuki/gitsune/")%
+		CASE 6
+			モブ = %TEXTR("zombie fairy/shinigami/")%
+		CASE 7
+			モブ = kappa
+		CASE 8
+			モブ = %TEXTR("worshipper/tengu/yamawaro/")%
+			SIF INRANGE(CFLAG:30:現在位置, 830, 850)
+				モブ = celestial
+		CASE 9
+			モブ = oni
+		CASE 10
+			モブ = %TEXTR("moon rabbit/lunarian/")%
+	ENDSELECT
+	LOCALS = %TEXTR("a passerby/an encountered/a nearby/a local/a bystander/a random/an onlooker")% %モブ%
+	SIF !RAND:4 ;custom code, moved down here
+		LOCALS += " who wasn't lucky enough to get away in time"
+	RETURNF LOCALS
+	;映姫様と同じ場所にいて自由行動=15且つ行動時間中のキャラが説教され中
+ELSE
+	ネームド =
+	累計 = 0
+	FOR COUNT, 1, CHARANUM
+	SIF COUNT == 30
+		CONTINUE
+	SIF CFLAG:30:現在位置 != CFLAG:COUNT:現在位置
+		CONTINUE
+	SIF Activity_Type:COUNT != 15 || !Activity_Duration:COUNT
+		CONTINUE
+	ネームド += @"%CALLNAME:COUNT%、"
+	累計 ++
+	NEXT
+	SIF 累計
+		RETURNF LIST_IN_STRING(ネームド)
+	RETURNF モブ
+ENDIF
+;集合等での強制中断処理
+
+@FA15_RESET(ARG)
+Activity_Type:ARG = 0
+Activity_Duration:ARG = 0
+RETURN

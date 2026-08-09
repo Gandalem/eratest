@@ -1,0 +1,341 @@
+﻿; Modular ERB: OMOGATARI/COM/COMF452 Hide Body.ERB
+;-------------------------------------------------
+;Hide Body
+;Hides a dead body
+;-------------------------------------------------
+
+@ADD_CUSTOM_COM452
+#DIM CurrentBodies
+#DIM MaxBodies
+#DIM AMT
+#DIM CHARA
+AMT = 50 + RAND:50
+MaxBodies = CheckBeforeHiding(MASTER)
+CurrentBodies = RESULT:1
+PRINTFORML 시신 은폐 상태: {RESULT:1}/{CheckBeforeHiding(MASTER)}
+PRINTFORML 시신을 회수할 것인가, 아니면 다른 것을 파낼 것인가?
+PRINTFORML 퍼센트는 시신이 발견될 확률을 보여준다.
+FOR LOCAL, 0, CHARANUM
+SIF CFLAG:MASTER:現在位置 != GET_MAP_REPLACEMENT(CFLAG:LOCAL:現在位置)
+	CONTINUE
+SIF !IsDead:LOCAL:0
+	CONTINUE
+SIF !CFLAG:LOCAL:出禁
+	CONTINUE
+IF HasGrave:(LOCAL):0
+	IF CFLAG:LOCAL:現在位置 != HasGrave:(LOCAL):0
+		LOCALS '= "(도난당함)"
+	ELSE
+		LOCALS '= "(매장된)"
+	ENDIF
+ELSEIF KnowsDeadBodies:29:LOCAL
+	LOCALS '= "(FOUND)"
+ELSE
+	LOCALS '= @"({(100/CalculateHideChance(LOCAL))}\%)"
+ENDIF
+PRINTFORMC [{LOCAL,3}] - %CALLNAME:LOCAL% %LOCALS%
+NEXT
+PRINTFORML
+IF IS_GRAVEYARD(CFLAG:MASTER:現在位置)
+	PRINTFORML 그레이브스:
+	FOR LOCAL, 0, CHARANUM
+	SIF HasGrave:(LOCAL):0 != CFLAG:MASTER:現在位置
+		CONTINUE
+	PRINTFORMC [{LOCAL+1000,4}] - %CALLNAME:LOCAL%
+	NEXT
+ENDIF
+PRINTFORML
+SIF (TFLAG:運搬 != MASTER) && IsDead:(TFLAG:運搬):0
+	PRINTFORML [{TFLAG:運搬,3}] - 버린다 %CALLNAME:(TFLAG:運搬)%
+IF OUTROOF(CFLAG:MASTER:現在位置)
+	PRINTFORML [300] - 더 깊은 함정인가 \@ PlayerPitfalls:(CFLAG:MASTER:現在位置) ? 함정이 있는가 # 함정 \@
+	SIF PlayerPitfalls:(CFLAG:MASTER:現在位置)
+		PRINTFORML [301] 함정을 채운다	
+ENDIF
+IF TFLAG:運搬 != MASTER && EQUIP:(TFLAG:運搬):その他３ != 60 && IS_GRAVEYARD(CFLAG:MASTER:現在位置)
+	PRINTFORML [360] - 운반 중인 %CALLNAME:(TFLAG:運搬)%을 관에 넣는다
+ELSEIF TFLAG:運搬 != MASTER && EQUIP:(TFLAG:運搬):その他３ == 60
+	PRINTFORML [360] - 관에서 %CALLNAME:(TFLAG:運搬)%을(를) 제거한다
+ENDIF
+PRINTFORML [999] 나 여기서 나가게 해줘!
+INPUT
+LOCAL = RESULT
+IF LOCAL == TFLAG:運搬
+	IF CurrentBodies < MaxBodies
+		IF FISHING_SPOT(CFLAG:MASTER:現在位置)
+			PRINTFORMDW 당신은 죽은 %CALLNAME:(TFLAG:運搬)%을 강에 버린다
+		ELSEIF CFLAG:MASTER:現在位置 == CFLAG:MASTER:初期位置
+			PRINTFORMDW 당신은 서랍을 열고 죽은 %CALLNAME:(TFLAG:運搬)%을 안에 넣는다.
+		ELSE
+			PRINTFORMDW 당신은 구덩이를 파고 죽은 %CALLNAME:(TFLAG:運搬)%을 그 안에 버린다.
+		ENDIF
+		CALL HideBody(TFLAG:運搬)
+		TFLAG:運搬 = MASTER
+	ELSE
+		PRINTFORMW 이 구역은 더 이상 시체를 담을 수 없다.
+	ENDIF
+ELSEIF LOCAL == 300
+	IF PlayerPitfalls:(CFLAG:MASTER:現在位置)
+		PlayerPitfalls:(CFLAG:MASTER:現在位置) += 1
+		PRINTFORMDL 당신은 더 깊은 함정을 판다
+		PRINTFORMDW 그 함정은 이제 {PlayerPitfalls:(CFLAG:MASTER:現在位置)} 레벨 깊이다.
+	ELSE
+		PRINTFORMDW 당신은 그 구역 안에 함정을 판다.
+		PlayerPitfalls:(CFLAG:MASTER:現在位置) = 1
+	ENDIF
+ELSEIF LOCAL == 301
+	IF PlayerPitfalls:(CFLAG:MASTER:現在位置)
+		PRINTFORMDW 당신은 해당 지역 내부의 함정을 채운다.
+		PlayerPitfalls:(CFLAG:MASTER:現在位置) = 0
+	ENDIF
+ELSEIF LOCAL == 360
+	PRINTFORMDW 당신은 %CALLNAME:(TFLAG:運搬)%을(를) 관 안에 넣는다.
+	EQUIP:(TFLAG:運搬):その他３ = 60
+ELSEIF INRANGE(LOCAL-1000,0,CHARANUM)
+	LOCAL = LOCAL-1000
+	SIF HasGrave:(LOCAL):0 != CFLAG:MASTER:現在位置
+		CONTINUE
+	CALL ASK_M("제물 바치기", 1, "무덤 위에서 자위한다", 1, "무덤에 소변을 보다", nPee && PeeBarStage(MASTER) >= 2, "무덤 위에 배설하다", nScat && PooBarStage(MASTER) >= 2, "무덤 파괴", 1, "여기서 나 좀 나가게 해줘!", 1)
+	SELECTCASE RESULT
+		CASE 0
+			PRINTFORML %PARSE("You place")%의 무덤 위에 %CALLNAME:LOCAL%가 꽃다발을 놓았다.
+			SETBIT GraveEffects:LOCAL:0, 0
+			CALL AL_NOTIFY_ACHIEVEMENT_COMPLETION("pressF")
+			IF SaveAchievementClaimed("pressF")
+				LOCAL = MIN(MAXBASE:MASTER:7 / 2, 500)
+				CALL BUFF_BASE(MASTER,7,LOCAL)
+				LOCAL = MIN(MAXBASE:MASTER:8 / 2, 500)
+				CALL BUFF_BASE(MASTER,8,LOCAL)
+			ENDIF
+		CASE 1
+			PRINTFORML %PARSE("You")%은(는) %CALLNAME:LOCAL%의 무덤 위에서 자위한다.
+			IF HAS_PENIS(MASTER)
+				;custom code for color
+				SETCOLOR C_CREAM
+				IF TALENT:MASTER:濃厚精液
+					AMT *= 2
+					;CALL CUMSOUNDS("m")
+					PRINTFORMW ... %PARSE("You release")% {AMT}ml의 %PARSE("your",1)% 더 걸쭉한 것.
+				ELSE
+					;CALL CUMSOUNDS("l")
+					PRINTFORMW ... %PARSE("You release")% {AMT}ml.
+				ENDIF
+				PRINTFORMW %PARSE("You finish")% 숨을 들이쉬며 %PARSE("your")% %TINKO()% 여러 가닥의 %SEMEN()% 바닥에  	
+				SETBIT GraveEffects:LOCAL:0, 1
+				RESETCOLOR
+			ENDIF
+			PRINTFORML 절정으로 등이 휘어지면서 정신이 하얗게 변하고, 오르면서 온몸이 쾌감으로 가득 찬다. 
+			IF PeeHold:MASTER:2 <= -2
+				;CALL PEESOUNDS("h")
+				PRINTFORML ... 당신의 오르가슴 동안 %PeeColor(MASTER)%가 잔디에 뿌려진다.
+				SETBIT GraveEffects:LOCAL:0, 2
+			ENDIF
+			BASE:MASTER:精力 -= AMT
+			DOWNBASE:MASTER:気力 = 100
+			;custom code for exp and message
+			EXP:MASTER:自慰経験 += 1
+			OrgasmDenyExp:MASTER:0 -= 1
+			SIF TALENT:MASTER:濃厚精液 || CFLAG:MASTER:溜まってる度 >= 900
+				PRINTFORML %PARSE("You feel")%안심했다.
+			CFLAG:MASTER:溜まってる度 /= 4
+			;-----------
+			PRINTFORMW 당신은 잠시 여운을 만끽한 뒤 일어나 다음에 무엇을 할지 생각한다.
+			nSexDone -- ;addition custom code
+			TIME += 20
+			FOR CHARA, 0, CHARANUM
+			SIF CFLAG:MASTER:現在位置 != CFLAG:CHARA:現在位置
+				CONTINUE
+			SIF !SHIRAHU(CHARA)
+				CONTINUE
+			SIF CHARA == MASTER
+				CONTINUE
+			IF RELATION:CHARA:LOCAL < 100
+				PRINTFORML %CALLNAME:CHARA%은(는) %PARSE("your")% 쇼를 즐긴다.
+				SOURCE:CHARA:歓楽 = 4000
+				CALL CHANGE_CFLAG(2, CHARA, 40 + RAND:20)
+				CALL CHANGE_CFLAG(4, CHARA, 40 + RAND:20)
+			ELSEIF RELATION:CHARA:LOCAL > 100
+				PRINTFORML %CALLNAME:CHARA%은 %PARSE("you")%가 %CALLNAME:LOCAL%의 무덤을 불경하게 대했다는 사실에 격분한다.
+				CALL SET_REP(CHARA,10,,1)
+				CALL GET_ANGRY(CHARA,1)
+			ELSE
+				PRINTFORML %CALLNAME:CHARA%은(는) %PARSE("you")%를 이상하게 본다...
+				CALL SET_REP(CHARA,10,,1)
+				CALL GET_ANGRY(CHARA)
+			ENDIF
+			NEXT
+		CASE 2
+			PRINTFORML %PARSE("You")+" "+FSYN("pee")% %CALLNAME:LOCAL%의 무덤 위에서.
+			BASE:MASTER:4 = 0
+			SETBIT GraveEffects:LOCAL:0, 2
+			FOR CHARA, 0, CHARANUM
+			SIF CFLAG:MASTER:現在位置 != CFLAG:CHARA:現在位置
+				CONTINUE
+			SIF !SHIRAHU(CHARA)
+				CONTINUE
+			SIF CHARA == MASTER
+				CONTINUE
+			IF RELATION:CHARA:LOCAL < 100 || ABL:CHARA:PeeAddict >= 10
+				PRINTFORML %CALLNAME:CHARA%은(는) %PARSE("your")% 쇼를 즐긴다.
+				SOURCE:CHARA:歓楽 = 4000
+				CALL CHANGE_CFLAG(2, CHARA, 40 + RAND:20)
+				CALL CHANGE_CFLAG(4, CHARA, 40 + RAND:20)
+			ELSEIF RELATION:CHARA:LOCAL > 100
+				PRINTFORML %CALLNAME:CHARA%은(는) %PARSE("you")%가 %CALLNAME:LOCAL%의 무덤을 모독한 것에 대해 격분했다...
+				CALL SET_REP(CHARA,7,,1)
+				CALL GET_ANGRY(CHARA,1)
+			ELSE
+				PRINTFORML %CALLNAME:CHARA%이(가) %PARSE("you")%를 이상하게 본다...
+				CALL SET_REP(CHARA,7,,1)
+				CALL GET_ANGRY(CHARA)
+			ENDIF
+			NEXT
+		CASE 3
+			PRINTFORML %PARSE("You")+" "+FSYN("poo")%은(는) %CALLNAME:LOCAL%의 무덤 위에서.
+			BASE:MASTER:17 = 0
+			SETBIT GraveEffects:LOCAL:0, 3
+			FOR CHARA, 0, CHARANUM
+			SIF CFLAG:MASTER:現在位置 != CFLAG:CHARA:現在位置
+				CONTINUE
+			SIF !SHIRAHU(CHARA)
+				CONTINUE
+			SIF CHARA == MASTER
+				CONTINUE
+			IF RELATION:CHARA:LOCAL < 100 || ABL:CHARA:PooAddict >= 10
+				PRINTFORML %CALLNAME:CHARA%은(는) %PARSE("your")% 쇼를 즐긴다.
+				SOURCE:CHARA:歓楽 = 4000
+				CALL CHANGE_CFLAG(2, CHARA, 40 + RAND:20)
+				CALL CHANGE_CFLAG(4, CHARA, 40 + RAND:20)
+			ELSEIF RELATION:CHARA:LOCAL > 100
+				PRINTFORML %CALLNAME:CHARA%은(는) %PARSE("you")%가 %CALLNAME:LOCAL%의 무덤을 무시한 것에 분노한다...
+				CALL SET_REP(CHARA,7,,1)
+				CALL GET_ANGRY(CHARA,1)
+			ELSE
+				PRINTFORML %CALLNAME:CHARA%은(는) %PARSE("you")%를 이상하게 본다...
+				CALL SET_REP(CHARA,7,,1)
+				CALL GET_ANGRY(CHARA)
+			ENDIF
+			NEXT
+	ENDSELECT
+ELSEIF INRANGE(LOCAL,0,CHARANUM)
+	SIF !IsDead:LOCAL:0
+		RETURN
+	PRINTFORMDW 당신은 %CALLNAME:LOCAL%의 시신을 회수한다.
+	CFLAG:LOCAL:出禁 = 0
+ENDIF
+RETURN 1
+
+@HideBody(ARG)
+IF IS_MORGUE(CFLAG:ARG:現在位置)
+	CFLAG:ARG:出禁 = 30
+ELSEIF IS_GRAVEYARD(CFLAG:ARG:現在位置)
+	CFLAG:ARG:出禁 = 20
+ELSEIF FISHING_SPOT(CFLAG:ARG:現在位置) || CFLAG:ARG:現在位置 == CFLAG:MASTER:初期位置
+	CFLAG:ARG:出禁 = 10
+ELSEIF OUTROOF(CFLAG:ARG:現在位置)
+	CFLAG:ARG:出禁 = 3
+ELSE
+	CFLAG:ARG:出禁 = 3
+ENDIF
+
+@CheckBeforeHiding(ARG = -1)
+#FUNCTION
+#DIM MaxBodies
+#DIM CurrentBodies
+#DIM C_ID
+VARSET CurrentBodies
+SIF ARG == -1
+	ARG = MASTER
+FOR C_ID, 1, CHARANUM
+IF CFLAG:ARG:現在位置 == CFLAG:C_ID:現在位置 && IsDead:C_ID:0 && CFLAG:(C_ID):出禁
+	CurrentBodies ++
+ENDIF
+NEXT
+IF ROOMDATA:(CFLAG:ARG:現在位置 % 100) & Is_Graveyard
+	MaxBodies = 20
+ELSEIF FISHING_SPOT(CFLAG:ARG:現在位置)
+	MaxBodies = 10
+ELSEIF OUTROOF(CFLAG:ARG:現在位置)
+	MaxBodies = 3
+ELSEIF CFLAG:ARG:現在位置 == CFLAG:MASTER:初期位置
+	MaxBodies = 1
+ENDIF
+RESULT:1 = CurrentBodies
+RETURNF MaxBodies
+
+@PlayerPitfall(ARG)
+#DIM C_ID
+SIF ARG == MASTER
+	RETURN
+SIF CFLAG:ARG:睡眠
+	RETURN
+;Lucid Dream
+SIF inTrain == 3
+	RETURN
+IF PlayerPitfalls:(CFLAG:ARG:現在位置)
+	IF (50 - (ABL:ARG:戦闘能力 * 7)) < RAND:100
+		SIF CFLAG:ARG:現在位置 == CFLAG:MASTER:現在位置
+			PRINTFORML %CALLNAME:ARG%의 발밑에 함정이 있었지만, %HE_SHE(ARG)%은 그것을 쉽게 피했다.
+	ELSE
+		PRINTFORML %CALLNAME:ARG%은(는) %PARSE("your")% 함정 속으로 떨어진다!!!
+		LOCAL = RAND(MAX(100/PlayerPitfalls:(CFLAG:ARG:現在位置),1)) + TFLAG:幸運補正
+		SELECTCASE LOCAL
+			CASE IS <= 10
+				PRINTFORML 이야!!
+				PRINTFORML %CALLNAME:ARG%은/는 %HIS_HER(ARG)%의 엉덩이에 세게 떨어진다...
+				CALL RECOVER(ARG, -200, "体力", "아이쿠, 내 엉덩이!")
+				WAIT
+			CASE 0
+				PRINTFORML %CALLNAME:ARG%은 이상한 각도로 구덩이에 머리부터 떨어지며 %HIS_HER(ARG)%의 목이 부러진다...
+				BASE:ARG:体力 = -5000
+				DOWNBASE:ARG:体力 = 5000
+				CALL SET_HISTORY_DEATH(ARG,MASTER,"Pitfall")
+				CFLAG:ARG:出禁 = 3
+				WAIT
+				RETURN
+			CASEELSE
+				CALL RECOVER(ARG, -50, "体力", "Ow!")
+				WAIT
+		ENDSELECT
+		IF TALENT:ARG:妊娠
+			CALL COLORMESSAGE(@"%CALLNAME:ARG%의 배 속 아기가 죽었다. 참 잔혹하군...",C_RED,2,1)
+			TALENT:ARG:妊娠 = 0
+			CFLAG:ARG:妊娠経過日数 = 0
+		ENDIF
+		FOR C_ID, 1, CHARANUM
+		IF CFLAG:ARG:現在位置 == CFLAG:C_ID:現在位置 && IsDead:C_ID:0 && CFLAG:(C_ID):出禁
+			PRINTFORML %CALLNAME:ARG%은(는) %CALLNAME:C_ID%의 시체 위로 떨어진다!
+			CALL FIND_DEATH(ARG,C_ID,1)
+		ENDIF
+		NEXT
+		IF CFLAG:ARG:現在位置 == CFLAG:MASTER:現在位置
+			PRINTFORM %PARSE("You")%\@ TARGET != ARG ? %" "%and %CALLNAME:TARGET% # \@ 
+			SELECTCASE 14-LOCAL
+				CASE IS <= 1
+					PRINTFORML \@ TARGET != ARG ? %PARSE("peek")% # 엿보다 \@ ~에 빠진 함정으로 %CALLNAME:ARG%떨어져 들어갔던 곳에
+					PRINTFORML %CALLNAME:ARG%볼 수 있다 %TEXTR(@"slumped on %HIS_HER(ARG)% butt/upside down with %HIS_HER(ARG)% \@ EQUIP:下半身下着２ ? 팬티 # 벌거벗은 사타구니 \@ exposed/passed out")% 구덩이 바닥에
+				CASE 2, 3, 4
+					PRINTFORML \@ TARGET != ARG ? %PARSE("take")% 살짝 들여다보기 # 확인해 보다 \@ 함정의.
+					PRINTFORML %CALLNAME:ARG% %SPLIT_G(@"screams out curses:curses %HIS_HER(ARG)% luck aloud:is cussing away loudly")% 구덩이 바닥에서.
+				CASEELSE
+					PRINTFORML 조심스럽게 \@ TARGET != ARG ? %PARSE("approach")% # approach \@ %CALLNAME:ARG%가 떨어졌던 함락에 다가가고 있다.
+					PRINTFORMW 구덩이 바닥에서 통제할 수 없는 격렬한 살의가 솟아오르고 있었다...
+			ENDSELECT
+		ENDIF
+		SOURCE:ARG:鬱屈 += 50 + LOCAL * 50
+		SOURCE:ARG:苦痛 += 350 + LOCAL * 50
+		TCVAR:ARG:なるべく動かない = 1
+	ENDIF
+ENDIF
+
+@ADD_CUSTOM_COM_ABLE452
+; Do not allow during ufufu or time stop
+SIF CFLAG:うふふ != 0
+	RETURN 0
+SIF !TFLAG:100
+	RETURN 0
+SIF !FISHING_SPOT(CFLAG:MASTER:現在位置) && !OUTROOF(CFLAG:MASTER:現在位置) && !CFLAG:MASTER:現在位置 == CFLAG:MASTER:初期位置
+	RETURN 0
+SIF !nNecro
+	RETURN 0
+RETURN 1

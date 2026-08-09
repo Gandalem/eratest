@@ -1,0 +1,434 @@
+﻿; Modular ERB: 願掛けパッチ.ERB
+
+@GANKAKE_0(ARG,ARG:1)
+FLAG:願掛け内容 = ARG
+IF CFLAG:ARG:神社在住 && ARG > 0
+	;	// 好感度上昇 //
+	CFLAG:ARG:好感度 += 10 + RAND:10
+	CFLAG:ARG:信頼度 += 5 + RAND:10
+ELSEIF CFLAG:ARG:来訪不能
+	FLAG:願掛け内容 = -1
+ELSE
+	FOR LOCAL, 1, CHARANUM
+	;	// 引っ越しで自宅が変わるので自宅メンバーも願掛けフラグは立てることにする //
+	;	SIF CFLAG:LOCAL:神社在住 > 0
+	;		CONTINUE
+	IF ARG == LOCAL
+		CFLAG:LOCAL:翌日来訪 = 1
+	ELSE
+		CFLAG:LOCAL:翌日来訪 = 0
+	ENDIF
+	NEXT
+ENDIF
+
+@GANKAKE_1(ARG)
+#FUNCTION
+#DIM バフ可能個所数
+#DIM バフする個所候補, 12
+#DIM 実際バフする個所
+;バフする個所候補:0~12に素質番号を割り振り、その度にバフ可能個所数を増やす
+VARSET バフする個所候補
+バフ可能個所数 = 0
+実際バフする個所 = 0
+IF TALENT:ARG:思慕 || IS_LOVER(ARG)
+	IF TALENT:ARG:性的興味 < 1
+		バフする個所候補:バフ可能個所数 = 23
+		バフ可能個所数 ++
+	ENDIF
+	IF TALENT:ARG:自己愛 < 1
+		バフする個所候補:バフ可能個所数 = 31
+		バフ可能個所数 ++
+	ENDIF
+	IF TALENT:ARG:濡れやすさ < 1
+		バフする個所候補:バフ可能個所数 = 41
+		バフ可能個所数 ++
+	ENDIF
+	IF TALENT:ARG:快感応答 < 1
+		バフする個所候補:バフ可能個所数 = 70
+		バフ可能個所数 ++
+	ENDIF
+	IF TALENT:ARG:倒錯的 < 1
+		バフする個所候補:バフ可能個所数 = 80
+		バフ可能個所数 ++
+	ENDIF
+	IF TALENT:ARG:サド < 1
+		バフする個所候補:バフ可能個所数 = 82
+		バフ可能個所数 ++
+	ENDIF
+	IF TALENT:ARG:マゾ < 1
+		バフする個所候補:バフ可能個所数 = 83
+		バフ可能個所数 ++
+	ENDIF
+ENDIF
+FOR LOCAL,101,105
+IF TALENT:ARG:LOCAL < 1
+	バフする個所候補:バフ可能個所数 = LOCAL
+	バフ可能個所数 ++
+ENDIF
+NEXT
+IF TALENT:ARG:106 < 1
+	バフする個所候補:バフ可能個所数 = 106
+	バフ可能個所数 ++
+ENDIF
+SIF !バフ可能個所数
+	RETURNF バフ可能個所数
+実際バフする個所 = バフする個所候補:(RAND:バフ可能個所数)
+TALENT:ARG:実際バフする個所 ++
+TCVAR:TARGET:願掛け補正 = 実際バフする個所
+TFLAG:193 = 実際バフする個所
+RETURNF バフ可能個所数
+
+@SHOW_CHALALIST
+SIF FLAG:並び替え
+	CALL CHARASORT_EX
+FOR LOCAL:1, 1, EX_CHARANUM
+IF FLAG:並び替え
+	LOCAL = RESULT:(LOCAL:1)
+	SIF LOCAL < 0
+		CONTINUE
+ELSE
+	LOCAL = LOCAL:1
+	SIF LOCAL >= CHARANUM
+		BREAK
+ENDIF
+SIF !CFLAG:LOCAL:出禁 && !TALENT:LOCAL:行きずり
+	PRINTFORMLC [{LOCAL, 3}] %CALLNAME:LOCAL,15,LEFT%
+NEXT
+;21/08/27 反発履歴削除追加、反発解除時に反発履歴も消去可に変更
+
+@IKENIE(ARG,ARG:1)
+;ARG 対象
+;ARG:1 願い(1=反発解除 2=感度一時上昇 3=小槌 4=時間停止バレ解除[オミット]
+;			 5=天罰 6=子宝祈願 7=サドっ気減少 8=反発履歴削除)
+#DIM 総計
+#DIM 種類数
+#DIM ダブり
+#DIM 捧げた枚数
+#DIM 捧げる枚数
+#DIM 必要枚数
+#DIM nCost
+;NAS: Replaced
+CALL PANTY_REWORK_PRAYING(ARG,ARG:1)
+RETURN RESULT
+;=======
+VARSET LOCAL
+CALL CHECK_COLLECTION(ARG)
+総計 = RESULT:0
+種類数 = RESULT:1
+ダブり = 総計 - 種類数
+捧げた枚数 = 0
+捧げる枚数 = 0
+SELECTCASE ARG:1
+	CASE 1
+		必要枚数 = 10
+	CASE 2
+		必要枚数 = 3
+	CASE 3
+		必要枚数 = CFLAG:MASTER:魔力回収 / 2 + 1
+	CASE 4,6,8
+		必要枚数 = 1
+	CASE 5,7
+		必要枚数 = 3
+		;addition custom code, from KR version
+	CASE 9,10,11,12,13
+		必要枚数 = 5
+	CASE 14
+		必要枚数 = 10
+	CASE 999 ;pullout promise patch
+		必要枚数 = 10
+ENDSELECT
+PRINTFORML 당신의 머릿속에 목소리가 울린다...
+CALL COLORMESSAGE(@"만약 그런 축복을 받고 싶다면, 제물을 바쳐라...",C_YELLOW,2,1) ;custom code
+CALL COLORMESSAGE(@"바쳐라 {必要枚数} 의 %CALLNAME:ARG%의 팬티들...",C_YELLOW,2,1) ;custom code
+PRINTFORM 현재 %CALLNAME:ARG%팬티 개수: 
+IF !種類数
+	PRINTL 단 하나도 없다
+	RETURN -1
+ENDIF
+PRINTFORML 총합 {総計,3} 고유 항목: {種類数,3} 중복 항목: {ダブり}
+IF 総計 < 必要枚数
+	PRINTFORML Opantsu님을 만족시키려면 아직 {必要枚数 - 総計}개가 더 필요하다.
+	RETURN -1
+ENDIF
+LOCALS = 중복 제공하기
+SIF ダブり < 必要枚数
+	LOCALS = 중복 없는 팬티를 제공한다
+$LOOP
+CALL ASK_M("취소",1,@"%LOCALS%",総計 >= 必要枚数)
+IF RESULT == 1
+	FOR LOCAL, 0, MAXPANTS
+	IF CFLAG:ARG:(パンツ管理 + LOCAL) > 1
+		捧げる枚数 = MIN(CFLAG:ARG:(パンツ管理 + LOCAL) - 1,(必要枚数 - 捧げた枚数))
+		CFLAG:ARG:(パンツ管理 + LOCAL) -= 捧げる枚数
+		捧げた枚数 += 捧げる枚数
+		SIF 捧げた枚数 >= 必要枚数
+			BREAK
+	ENDIF
+	NEXT
+	IF 捧げた枚数 < 必要枚数
+		FOR LOCAL, 0, MAXPANTS
+		捧げる枚数 = MIN(CFLAG:ARG:(パンツ管理 + LOCAL),(必要枚数 - 捧げた枚数))
+		CFLAG:ARG:(パンツ管理 + LOCAL) -= 捧げる枚数
+		捧げた枚数 += 捧げる枚数
+		FLAG:700 --
+		SIF 捧げた枚数 >= 必要枚数
+			BREAK
+		NEXT
+	ENDIF
+	SIF ARG:1 == 1
+		CALL ASK_M("오래된 증오의 표식도 제거한다.",1,"기록은 그대로 두어라",1)
+	SELECTCASE ARG:1
+		CASE 1
+			MARK:ARG:反発刻印 --
+			;achievement custom code
+			IF !RESULT
+				MARK:ARG:反発取得履歴 = MAX(MARK:ARG:反発取得履歴 - 1, 0)
+				;IF !ADD_ACHIEVEMENT_OBTAINFLAG:Achievement_HateMarkPrayRemoval
+				IF !SaveAchievementCompleted("insightHate")
+					;CALL ANIMATION_ROLL_TEXT( @"Achievement Unlocked：[Discontent Insight]!", 0 ) ;addition custom code
+					;ADD_ACHIEVEMENT_OBTAINFLAG:Achievement_HateMarkPrayRemoval = 1
+					CALL AL_NOTIFY_ACHIEVEMENT_COMPLETION("insightHate") ;achievement menu rework custom code
+				ENDIF
+			ENDIF
+			TFLAG:193 = 30
+		CASE 2
+			FLAG:願掛け内容 = 999
+		CASE 3
+			CFLAG:MASTER:魔力回収 = 1
+			SIF (CFLAG:MASTER:小槌 == 4 || CFLAG:MASTER:小槌 == 5) && TALENT:MASTER:形状 == 2
+				TALENT:MASTER:形状 = CFLAG:MASTER:382
+		CASE 4
+			CFLAG:ARG:時間停止バレ = 0
+		CASE 5
+			FLAG:願掛け内容 = 204
+			TFLAG:193 = 200
+			FLAG:開運大紋購入回数 = 1
+			BASE:53:体力 = 1
+			BASE:53:気力 = 0
+		CASE 6
+			FLAG:願掛け内容 = 206
+			IF FLAG:子宝祈願 == TARGET
+				CFLAG:子宝補正 ++
+			ELSE
+				FOR LOCAL,1,CHARANUM
+				CFLAG:LOCAL:子宝補正 = 0
+				NEXT
+				CFLAG:子宝補正 ++
+			ENDIF
+			SIF TALENT:妊娠願望
+				CFLAG:子宝補正 ++
+			SIF TALENT:恋人
+				CFLAG:子宝補正 ++
+			FLAG:子宝祈願 = TARGET
+		CASE 7
+			ABL:ARG:サドっ気 -= 1
+			JUEL:ARG:優越 = 0
+			EXP:ARG:嗜虐快楽経験 = MAX(EXP:ARG:嗜虐快楽経験 - 200, 0)
+		CASE 8
+			MARK:ARG:反発取得履歴 = 0
+			TFLAG:193 = 35
+		CASE 999 ;pullout promise patch
+			CFLAG:ARG:PullOutPromiseDenied = 0
+		CASEELSE
+			;addition custom code
+			CALL Add_GodPrayerEffect(ARG, ARG:1)
+	ENDSELECT
+	PRINTFORML 당신은 소지품 옆에서 기도하고, %NUM_COUNT(必要枚数)%가 불타오르며%COND_STR(@"s", 必要枚数 == 1)% 타오른다!
+	FLAG:篤信 += 必要枚数
+	IF ARG:1 == 7
+		CALL COLORMESSAGE(@"%CALLNAME:ARG%의 새드끼가 감소했다.",C_YELLOW,2,1)
+		CALL COLORMESSAGE(@"%CALLNAME:ARG%의 새드끼 경험치가 낮아졌다.",C_YELLOW,2,1)
+		CALL COLORMESSAGE(@"%CALLNAME:ARG%의 지배 보석은 0으로 설정되어 있다.",C_YELLOW,2,1)
+	ENDIF
+	IF ARG:1 == 6
+		CALL COLORMESSAGE(@"당신의 애정과 헌신은 잊히지 않는다.",C_YELLOW,1,1) ;custom code
+		CALL COLORMESSAGE(@"(%HIM_HER(ARG)%에게 손을 대면 네 소원은 이루어질 것이다...)",C_YELLOW,2,1) ;custom code
+	ELSEIF ARG:1 == 2 && !GANKAKE_1(ARG)
+		PRINTW
+		PRINTW ...
+		PRINTW ......
+		PRINTW .........
+		PRINTW ............
+		PRINTFORML 오판츠님은 %CALLNAME:ARG%의 몸을 더 이상 음란하게 만들 수 없는 것 같다...
+		RETURN -1
+	ELSE
+		CALL COLORMESSAGE(@"(네 소원은 이루어진다...)",C_YELLOW,2,1) ;custom code
+	ENDIF
+	PRINTFORML 오판츠님에 대한 믿음이 깊어진다.
+	RETURN 0
+ELSE
+	RETURN -1
+ENDIF
+;addition custom code, unified function to apply pink wind through weather/wish
+
+@PINK_WIND(ARG) ;arg = 1 natural occurence, 0 - wish
+#DIM DYNAMIC 供物
+#DIM DYNAMIC 捧げる枚数
+#DIM DYNAMIC 総数
+#DIM HIT
+IF !ARG ;addition custom code
+	DO
+	IF FLAG:パンツ輸送 == 0
+		供物 = 0
+		BREAK
+	ENDIF
+	PRINTFORML 여분의 팬티 한 벌을 더 드릴까요?
+	CALL ASK_M("하지 마라", 1, "확인", 1, "컬렉션을 확인해라", 1)
+	SELECTCASE RESULT
+		CASE 0, 1
+			供物 = RESULT
+			BREAK
+		CASE 2
+			CALL SHOW_HAVE_COLLECTION()
+			PRINTL 
+	ENDSELECT
+	LOOP 1
+ENDIF
+SETCOLOR 255,100,255
+FONTBOLD
+PRINTFORMW 분홍빛 바람이 환상향을 스친다!
+FOR LOCAL,1,CHARANUM
+SIF CFLAG:LOCAL:出禁 ;qol custom code, prevent disabled characters from receiving pink wind effect
+	CONTINUE
+IF 供物
+	CALL CHECK_COLLECTION(LOCAL, 1)
+	捧げる枚数 = RESULT
+ENDIF
+IF !ARG ;addition custom code
+	HIT = !RAND:15
+ELSE
+	HIT = !RAND:8 && !TALENT:LOCAL:妊娠
+ENDIF
+;供物を捧げることにより元の持ち主に桃色の風を確定で当てる
+IF HIT || (供物 && 捧げる枚数 > 0)
+	IF 供物
+		IF 捧げる枚数 > 0
+			IF HIT
+				PRINTFORM 〇●
+				;従来通りの確率に当たりかつ捧げた場合に加算
+				総数 ++
+			ELSE
+				PRINTFORM 〇　
+			ENDIF
+			;同キャラのパンツを2枚以上捧げた枚数分加算
+			SIF 捧げる枚数 > 1
+				総数 += (捧げる枚数 - 1) * 2
+		ELSEIF HIT
+			PRINTFORM 　●
+		ENDIF
+	ENDIF
+	PRINTFORML %CALLNAME:LOCAL%은 분홍색 바람에 휘감기며 이상함을 느낀다...
+	CFLAG:LOCAL:溜まってる度 += LIMIT((10 + RAND:20 + RAND:20 + RAND:20) * ABL:LOCAL:欲望,200,1000)
+	;捧げてかつ、くすねてはいていない場合追加効果あってもよさげ？
+	SIF !TALENT:LOCAL:人形 ;addition custom code, universal effect
+		TCVAR:LOCAL:発情 = 1
+	;addition custom code, chance to trigger sex request if hit by pink wind
+	SIF !TALENT:LOCAL:人形
+		CALLF Add_SPECIAL_REQUEST_CREATION(LOCAL, 15, 20)
+ENDIF
+NEXT
+RESETCOLOR
+FONTREGULAR
+IF !ARG ;addition custom code, if a wish was applied
+	IF 供物
+		PRINTFORML 다음 순간, 당신의 제물은 공기 속으로 녹아 사라진다.
+		;VARSET PANTS_TEMP
+		;FLAG:パンツ輸送 = 0
+		CALL CLEAR_HAVE_COLLECTION()
+	ENDIF
+	CALL COLORMESSAGE(@"(네 소원은 이루어졌다...)",C_YELLOW,2,1) ;custom code
+	PRINTFORML 당신의 오판츠님에 대한 믿음이 깊어진다.
+	FLAG:篤信 += (1 + 総数)
+ENDIF
+
+@DOWSING_PANTS
+#DIM CHK_SLOT
+#DIM CHARA
+#DIM HIT
+PRINTFORMW 찾고 있는 사람을 만나기 위해 기도한다...
+PRINTL 
+HIT = 0
+FOR CHK_SLOT, 1, 6
+SIF !GETBIT(CAN_DOWSING(), CHK_SLOT)
+	CONTINUE
+CHARA = 0
+HIT = 0 ;bug fix
+;custom code
+LOCALS = 요청을 구하기 %TOFULL(TOSTR(CHK_SLOT))% ＜%REQUEST_NAMES_TR(STR_DATA_IRAI(IRAI_SLOT:CHK_SLOT, "依頼名", IRAI_ID_TO_CLIENT(IRAI_SLOT:CHK_SLOT)))%＞
+FOR LOCAL, 0, 5
+REUSELASTLINE %LOCALS%%"." * LOCAL%
+TWAIT 150, 1
+NEXT
+PRINTFORML %LOCALS%
+SELECTCASE IRAI_SLOT_TO_TASKNAME(CHK_SLOT)
+	CASE "捜索（人物）"
+		CHARA = IRAI_SLOT_TO_PERSON(CHK_SLOT)
+		;手持ち
+		CALL CHECK_COLLECTION(CHARA, 1)
+		IF RESULT
+			CALL DOWSING_PANTS_MESSAGE(CHARA, 1)
+			HIT = 1
+		ELSE
+			;コレクション
+			CALL CHECK_COLLECTION(CHARA, 0)
+			IF RESULT
+				CALL DOWSING_PANTS_MESSAGE(CHARA, 0)
+				HIT = 1
+			ENDIF
+		ENDIF
+		;custom code, add pointer to the irai
+		SIF HIT
+			IRAI_EX:CHK_SLOT = CHARA
+	CASE "捜索（場所）"
+		;自宅があるキャラを抽出
+		FOR CHARA, 1, CHARANUM
+		IF CFLAG:CHARA:自宅位置 == GET_MAP_REPLACEMENT(IRAI_SLOT_TO_PLACE(CHK_SLOT))
+			;手持ち
+			CALL CHECK_COLLECTION(CHARA, 1)
+			IF RESULT
+				CALL DOWSING_PANTS_MESSAGE(CHARA, 1)
+				HIT = 1
+				BREAK
+			ELSE
+				;コレクション
+				CALL CHECK_COLLECTION(CHARA, 0)
+				IF RESULT
+					CALL DOWSING_PANTS_MESSAGE(CHARA, 0)
+					HIT = 1
+					BREAK
+				ENDIF
+			ENDIF
+		ENDIF
+		NEXT
+		;custom code, add pointer to the irai
+		SIF HIT
+			IRAI_EX:CHK_SLOT = IRAI_SLOT_TO_PLACE(CHK_SLOT) + 5000
+	CASEELSE
+		CONTINUE
+ENDSELECT
+SIF !HIT
+	PRINTFORMW …하지만 그 기도는 외면당했다.
+NEXT
+
+@DOWSING_PANTS_MESSAGE(CHARA, HAND)
+#DIM CHARA
+#DIM HAND
+#DIM 種類
+#DIM 所有数
+CALL FISHER_YATES_SHAFFLE(MAXPANTS)
+SETCOLOR C_YELLOW
+FOR LOCAL, 0, MAXPANTS
+種類 = SHAFFLE_ARRAY:LOCAL
+IF !HAND
+	IF CFLAG:CHARA:(種類 + パンツ管理)
+		PRINTFORMW 뭐야! %CALLNAME:CHARA%의 %PANTSNAME(種類,CHARA)%가 빛나기 %COND_STR("s",!PLURAL_PANTIES(PANTSNAME(種類,CHARA)))% 시작했어!
+		BREAK
+	ENDIF
+ELSE
+	IF PANTS_TEMP:CHARA:種類
+		PRINTFORMW 뭐야! %CALLNAME:CHARA%의 %PANTSNAME(種類,CHARA)%가 %COND_STR("s",!PLURAL_PANTIES(PANTSNAME(種類,CHARA)))% 빛나기 시작했다!
+		BREAK
+	ENDIF
+ENDIF
+NEXT
+RESETCOLOR

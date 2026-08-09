@@ -1,0 +1,1557 @@
+﻿; Modular ERB: OMOGATARI/COM616 Edits.ERB
+
+@COM616_BODY_CHANGE(ARG)
+#DIM NEWTRAIT
+#DIM OLDVAL, VARSIZE("TALENT")
+#DIM NEWVAL, VARSIZE("TALENT")
+#DIM CBC_PRIVATES, VARSIZE("TALENT")
+#DIM OLDBASE, 10
+#DIM NEWBASE, 10
+#DIM TIMESTAY
+#DIM CurCost
+#DIM PAGE
+#DIMS CONST DISP_NAME = "Base", "Race", "Body", "Endurance", "Sensitivities"
+#DIM COM616LINECOUNT
+VARSET CurCost
+VARSET LOCAL
+COM616LINECOUNT = LINECOUNT
+;store old values
+FOR LOCAL:300, 0, 999
+SIF TALENT_TR(LOCAL:300) == ""
+	CONTINUE
+OLDVAL:(LOCAL:300) = TALENT:ARG:(LOCAL:300)
+NEWVAL:(LOCAL:300) = TALENT:ARG:(LOCAL:300)
+NEXT
+FOR LOCAL:300, 0, 9
+OLDBASE:(LOCAL:300) = MAXBASE:ARG:(LOCAL:300)
+NEWBASE:(LOCAL:300) = MAXBASE:ARG:(LOCAL:300)
+NEXT
+;endurance values, gender, age
+NEWVAL:2 = GET_GENDER(ARG)
+NEWVAL:17 = CharaAge:ARG:0
+NEWVAL:(56) = DrugAddict:ARG:0
+NEWVAL:(57) = PeeHold:ARG:0
+NEWVAL:(58) = PooHold:ARG:0
+NEWVAL:(121) = AlcoholAddict:ARG:0
+NEWVAL:(95) = OrgasmDeny:ARG:0
+DO
+$PickTrait
+VARSET LOCAL
+VARSET TIMESTAY
+VARSET CurCost
+CLEARLINE LINECOUNT - COM616LINECOUNT
+DRAWLINE
+PRINTFORML 몸을 어떻게 바꿀지 선택한다.
+DRAWLINE
+;base calc
+FOR LOCAL:300, 0, 9
+IF NEWBASE:(LOCAL:300) != OLDBASE:(LOCAL:300)
+	TIMESTAY ++
+	CurCost += (NEWBASE:(LOCAL:300) - OLDBASE:(LOCAL:300))*10000
+ENDIF
+NEXT
+;talent cost
+FOR LOCAL:300, 0, VARSIZE("TALENT")
+TRYCCALLFORM COM616_BODY_CHANGE_TALENT_COST_{LOCAL:300}(ARG,NEWVAL,TIMESTAY,CurCost)
+CATCH
+IF NEWVAL:(LOCAL:300) != OLDVAL:(LOCAL:300)
+	TIMESTAY ++
+	CurCost += ABS((ABS(NEWVAL:(LOCAL:300))) - (ABS(OLDVAL:(LOCAL:300))))*10000
+ENDIF
+ENDCATCH
+NEXT
+SELECTCASE PAGE
+	CASE 0
+		TRYCALLFORM COM616_BODY_CHANGE_TALENT_PAGE_0(ARG,OLDBASE,NEWBASE,CurCost,TIMESTAY)
+	CASEELSE
+		TRYCALLFORM COM616_BODY_CHANGE_TALENT_PAGE_{PAGE}(ARG,OLDVAL,NEWVAL,CurCost,TIMESTAY)
+ENDSELECT
+DRAWLINE
+FOR LOCAL, 0, VARSIZE("DISP_NAME")
+SIF PAGE == LOCAL
+	SETCOLOR 0x00FFFF
+;exception for player character
+PRINTBUTTON DISP_NAME:LOCAL, LOCAL + 8000
+RESETCOLOR
+PRINTFORM 　　
+NEXT
+PRINTL
+PRINTFORML 비용: %金額表示(CurCost)%, {MAX(TIMESTAY,3)}일
+PRINTFORML [999] - 설정!
+PRINTFORML [ -1] - 여기서 나가게 해줘!
+INPUT
+SELECTCASE RESULT
+	CASE 999
+		TIMESTAY = MAX(TIMESTAY,3)
+		LOCALS '= @"필요한 치료는 약 {TIMESTAY}일이 걸립니다. 당신은 %MedicalCenterName()%에 머물게 됩니다."
+		LOCALS += @"우리는 어떠한 장기적인 부작용이나 당신의 건강에 어떤 방식으로든 해를 끼치지 않기 위해 우리가 할 수 있는 모든 것을 할 것입니다."
+		LOCALS += @"「이 모든 것에 상당한 비용이 들 것이라는 것은 말할 필요가 없다 \@ CurCost >= 100000 ? 많이 # 조금 \@. 준비됐나?」"
+		CALL COM616_EIRINSPEAK, LOCALS
+		CALL ASK_YN
+		SIF RESULT
+			GOTO PickTrait
+		CALL COM616_CHECK(CurCost)
+		SIF RESULT
+			GOTO PickTrait
+		FOR LOCAL:302, 0, 400
+		IF NEWVAL:(LOCAL:302) != OLDVAL:(LOCAL:302)
+			;effects
+			TRYCCALLFORM COM616_BODY_CHANGE_TALENT_EFFECT_{LOCAL:302}(ARG,NEWVAL)
+			CATCH
+			TALENT:ARG:(LOCAL:302) = NEWVAL:(LOCAL:302)
+			ENDCATCH
+		ENDIF
+		NEXT
+		FOR LOCAL:300, 0, 9
+		MAXBASE:ARG:(LOCAL:300) = NEWBASE:(LOCAL:300)
+		NEXT
+		;age
+		SIF NEWVAL:17 != charaAge:ARG:0
+			charaAge:ARG:0 = NEWVAL:17
+		CALL newGenderSystemConvert(MASTER)
+		CALL COM616_PAY(CurCost)
+		PRINTFORMW 그 조치는 당신이 '예'라고 말한 직후 즉시 시작된다.
+		PRINTFORMW 당신은 %MedicalCenterName()%에서 %NUM_COUNT(TIMESTAY)%일 후에 퇴원하며, 그때 집으로 돌아간다.
+		PRINTFORMW 대부분 괜찮게 느껴지며, 새로운 몸을 본 광경이 짜릿함을 안겨준다.
+		PRINTFORMW 당장 자랑하고 싶어서 견딜 수가 없다...
+		FOR LOCAL, 0, TIMESTAY
+		;PRINTFORMW DAY:3 - {DAY:3}
+		DAY ++
+		DAY:3 ++
+		CALL CHANGE_MONTH
+		;PRINTFORMW AFTER {DAY:3}
+		NEXT
+		CFLAG:MASTER:現在位置 = CFLAG:MASTER:初期位置
+		CFLAG:MASTER:就寝時間 = DAY * 1440 + TIME
+		;day ends here
+		CALL OYASUMI()
+		RETURN 1
+	CASE -1
+		RETURN -1
+	CASE 8000 TO VARSIZE("DISP_NAME")+8000
+		PAGE = RESULT-8000
+	CASE IS >= 1000
+		NEWTRAIT = (RESULT / 1000) - 1
+		SELECTCASE RESULT % 1000
+			CASE 0
+				SIF NEWBASE:NEWTRAIT > 100
+					NEWBASE:NEWTRAIT -= 100
+			CASE 1
+				NEWBASE:NEWTRAIT += 100
+		ENDSELECT
+	CASEELSE
+		NEWTRAIT = RESULT
+		CBC_PRIVATES:RESULT = TALENT:ARG:NEWTRAIT
+		TRYCCALLFORM COM616_BODY_CHANGE_TALENT_{NEWTRAIT}(ARG,NEWVAL)
+		CATCH
+		IF GET_TALENTNAME(NEWTRAIT,-1) != GET_TALENTNAME(NEWTRAIT,1) || GET_TALENTNAME(NEWTRAIT,2) != GET_TALENTNAME(NEWTRAIT,1)
+			PRINTFORML 어떤 티어를 발현하고 싶은지 선택해 주세요?
+			FOR LOCAL:301, -10, 20
+			SIF GET_TALENTNAME_TR(NEWTRAIT,LOCAL:301) == "" && LOCAL:301 != 0
+				CONTINUE
+			SIF NEWVAL:NEWTRAIT == LOCAL:301
+				SETCOLOR C_ORANGE
+			IF NEWTRAIT == 2
+				SIF TOSTR_GENDER(LOCAL:301) == "" && LOCAL:301 != 0
+					CONTINUE
+				PRINTFORML [{LOCAL:301}] - 【%TOSTR_GENDER(LOCAL:301)%】
+			ELSE
+				PRINTFORML [{LOCAL:301}] - 【%GET_TALENTNAME_TR(NEWTRAIT,LOCAL:301)%】
+			ENDIF
+			RESETCOLOR
+			NEXT
+			PRINTFORML
+			PRINTFORML
+			PRINTFORML [999] 되돌리기
+			INPUT
+			SIF RESULT == 999
+				GOTO PickTrait
+			NEWVAL:NEWTRAIT = RESULT
+		ELSEIF NEWVAL:NEWTRAIT == 1
+			NEWVAL:NEWTRAIT = 0
+		ELSE
+			NEWVAL:NEWTRAIT = 1
+		ENDIF
+		ENDCATCH
+		SIF RESULT == 999
+			GOTO PickTrait
+ENDSELECT
+LOOP 1
+
+@COM616_BODY_CHANGE_TALENT_PAGE_0(ARG,OLDBASE,NEWBASE,CurCost,TIMESTAY)
+#DIM REF OLDBASE,
+#DIM REF NEWBASE,
+#DIM REF TIMESTAY
+#DIM REF CurCost
+;base
+CALL COM616_BARS(ARG, "体力", 28, "緑",,NEWBASE:0)
+SETCOLOR 0x70C070
+PRINTBUTTON "[－]", 1000
+PRINTBUTTON "[＋]", 1001
+RESETCOLOR
+PRINTL
+CALL COM616_BARS(ARG, "気力", 28, "青",,NEWBASE:1)
+SETCOLOR 0x70C070
+PRINTBUTTON "[－]", 2000
+PRINTBUTTON "[＋]", 2001
+RESETCOLOR
+PRINTL
+IF HAS_PENIS(ARG)
+	CALL COM616_BARS(ARG, "精力", 28, "黄",,NEWBASE:6)
+	SETCOLOR 0x70C070
+	PRINTBUTTON "[－]", 7000
+	PRINTBUTTON "[＋]", 7001
+	RESETCOLOR
+	PRINTL
+ENDIF
+PRINTL
+
+@COM616_BODY_CHANGE_TALENT_PAGE_1(ARG,OLDVAL,NEWVAL,CurCost,TIMESTAY)
+#DIM REF OLDVAL,
+#DIM REF NEWVAL,
+#DIM REF TIMESTAY
+#DIM REF CurCost
+FOR LOCAL:300, 0, VARSIZE("TALENT")
+SIF TALENT_TR(LOCAL:300) == ""
+	CONTINUE
+SIF !TALENT_CATEGORY_RACE(LOCAL:300)
+	CONTINUE
+SELECTCASE TALENT_CATEGORY_BODY_CHANGE_BLACKLIST(LOCAL:300)
+	CASE 1
+		CONTINUE
+	CASEELSE
+		TRYCCALLFORM COM616_BODY_CHANGE_TALENT_SELECTION_{LOCAL:300}(ARG,NEWVAL,TIMESTAY,CurCost)
+		CATCH
+		IF TALENT:ARG:(LOCAL:300) != 0 || NEWVAL:(LOCAL:300) != TALENT:ARG:(LOCAL:300)
+			IF NEWVAL:(LOCAL:300) != OLDVAL:(LOCAL:300)
+				SETCOLOR C_ORANGE
+			ENDIF
+			PRINTFORML [{LOCAL:300}] %TALENT_TR(LOCAL:300)%: %GET_TALENTNAME_TR(LOCAL:300,NEWVAL:(LOCAL:300),ARG)%
+		ELSE
+			PRINTFORML [{LOCAL:300}] %TALENT_TR(LOCAL:300)%: 해제
+		ENDIF
+		RESETCOLOR
+		ENDCATCH
+ENDSELECT
+NEXT
+;body talents
+
+@COM616_BODY_CHANGE_TALENT_PAGE_2(ARG,OLDVAL,NEWVAL,CurCost,TIMESTAY)
+#DIM REF OLDVAL,
+#DIM REF NEWVAL,
+#DIM REF TIMESTAY
+#DIM REF CurCost
+FOR LOCAL:300, 0, VARSIZE("TALENT")
+SIF TALENT_TR(LOCAL:300) == ""
+	CONTINUE
+SIF TALENT_CATEGORY_RACE(LOCAL:300)
+	CONTINUE
+SIF GROUPMATCH(LOCAL:300,56,57,58,95,121)
+	CONTINUE
+SIF GROUPMATCH(LOCAL:300,101,102,103,104,106,107)
+	CONTINUE
+SELECTCASE TALENT_CATEGORY_BODY_CHANGE_BLACKLIST(LOCAL:300)
+	CASE 1
+		CONTINUE
+	CASEELSE
+		TRYCCALLFORM COM616_BODY_CHANGE_TALENT_SELECTION_{LOCAL:300}(ARG,NEWVAL,TIMESTAY,CurCost)
+		CATCH
+		IF TALENT:ARG:(LOCAL:300) != 0 || NEWVAL:(LOCAL:300) != TALENT:ARG:(LOCAL:300)
+			IF NEWVAL:(LOCAL:300) != OLDVAL:(LOCAL:300)
+				SETCOLOR C_ORANGE
+			ENDIF
+			PRINTFORML [{LOCAL:300}] %TALENT_TR(LOCAL:300)%: %GET_TALENTNAME_TR(LOCAL:300,NEWVAL:(LOCAL:300),ARG)%
+		ELSE
+			PRINTFORML [{LOCAL:300}] %TALENT_TR(LOCAL:300)%: 해제
+		ENDIF
+		RESETCOLOR
+		ENDCATCH
+ENDSELECT
+NEXT
+;endurance
+
+@COM616_BODY_CHANGE_TALENT_PAGE_3(ARG,OLDVAL,NEWVAL,CurCost,TIMESTAY)
+#DIM REF OLDVAL,
+#DIM REF NEWVAL,
+#DIM REF TIMESTAY
+#DIM REF CurCost
+FOR LOCAL:300, 0, VARSIZE("TALENT")
+SIF TALENT_TR(LOCAL:300) == ""
+	CONTINUE
+SIF !GROUPMATCH(LOCAL:300,56,57,58,95,121)
+	CONTINUE
+SELECTCASE TALENT_CATEGORY_BODY_CHANGE_BLACKLIST(LOCAL:300)
+	CASE 1
+		CONTINUE
+	CASEELSE
+		TRYCCALLFORM COM616_BODY_CHANGE_TALENT_SELECTION_{LOCAL:300}(ARG,NEWVAL,TIMESTAY,CurCost)
+		CATCH
+		ENDCATCH
+ENDSELECT
+NEXT
+;sensitivities
+
+@COM616_BODY_CHANGE_TALENT_PAGE_4(ARG,OLDVAL,NEWVAL,CurCost,TIMESTAY)
+#DIM REF OLDVAL,
+#DIM REF NEWVAL,
+#DIM REF TIMESTAY
+#DIM REF CurCost
+FOR LOCAL:300, 0, VARSIZE("TALENT")
+SIF TALENT_TR(LOCAL:300) == ""
+	CONTINUE
+SIF TALENT_CATEGORY_RACE(LOCAL:300)
+	CONTINUE
+SIF !GROUPMATCH(LOCAL:300,101,102,103,104,106,107)
+	CONTINUE
+SELECTCASE TALENT_CATEGORY_BODY_CHANGE_BLACKLIST(LOCAL:300)
+	CASE 1
+		CONTINUE
+	CASEELSE
+		TRYCCALLFORM COM616_BODY_CHANGE_TALENT_SELECTION_{LOCAL:300}(ARG,NEWVAL,TIMESTAY,CurCost)
+		CATCH
+		IF TALENT:ARG:(LOCAL:300) != 0 || NEWVAL:(LOCAL:300) != TALENT:ARG:(LOCAL:300)
+			IF NEWVAL:(LOCAL:300) != OLDVAL:(LOCAL:300)
+				SETCOLOR C_ORANGE
+			ENDIF
+			PRINTFORML [{LOCAL:300}] %TALENT_TR(LOCAL:300)%: %GET_TALENTNAME_TR(LOCAL:300,NEWVAL:(LOCAL:300),ARG)%
+		ELSE
+			PRINTFORML [{LOCAL:300}] %TALENT_TR(LOCAL:300)%: 해제
+		ENDIF
+		RESETCOLOR
+		ENDCATCH
+ENDSELECT
+NEXT
+;===================================
+;[2] Sex
+;===================================
+
+@COM616_BODY_CHANGE_TALENT_SELECTION_2(ARG,NEWVAL,TIMESTAY,CurCost)
+#DIM REF NEWVAL,
+#DIM REF TIMESTAY
+#DIM REF CurCost
+SIF NEWVAL:(2) != GET_GENDER(ARG)
+	SETCOLOR C_ORANGE
+PRINTFORML [{2}] %TALENT_TR(2)%: %TOSTR_GENDER(NEWVAL:(2))%
+RESETCOLOR
+
+@COM616_BODY_CHANGE_TALENT_COST_2(ARG,NEWVAL,TIMESTAY,CurCost)
+#DIM REF NEWVAL,
+#DIM REF TIMESTAY
+#DIM REF CurCost
+IF NEWVAL:(2) != GET_GENDER(ARG)
+	TIMESTAY ++
+	CurCost += 15000
+ENDIF
+;===================================
+;[17] biological age
+;===================================
+
+@COM616_BODY_CHANGE_TALENT_SELECTION_17(ARG,NEWVAL,TIMESTAY,CurCost)
+#DIM REF NEWVAL,
+#DIM REF TIMESTAY
+#DIM REF CurCost
+SIF NEWVAL:(17) != CharaAge:ARG:0
+	SETCOLOR C_ORANGE
+PRINTFORML [{17}] %TALENT_TR(17)%: {NEWVAL:(17)}세
+RESETCOLOR
+
+@COM616_BODY_CHANGE_TALENT_COST_17(ARG,NEWVAL,TIMESTAY,CurCost)
+#DIM REF NEWVAL,
+#DIM REF TIMESTAY
+#DIM REF CurCost
+IF NEWVAL:(17) != CharaAge:ARG:0
+	TIMESTAY ++
+	CurCost += ABS((ABS(NEWVAL:(17))) - (ABS(CharaAge:ARG:0)))*5000
+ENDIF
+
+@COM616_BODY_CHANGE_TALENT_17(ARG,NEWVAL)
+#DIM REF NEWVAL,
+PRINTFORML %NAME:ARG%의 연령은 현재 {charaAge:ARG:0}이다.
+PRINTFORML 변경하려면 0부터 1000 사이의 연령을 입력한다. (취소하려면 공란으로 둔다.)
+PRINTL
+PRINTBUTTON "[뒤로] ", charaAge:ARG:0
+PRINTBUTTON "[3] ", 3
+PRINTBUTTON "[7] ", 7
+PRINTBUTTON "[10] ", 10
+PRINTBUTTON "[13] ", 13
+PRINTBUTTON "[16] ", 16
+PRINTBUTTON "[20] ", 20
+PRINTBUTTON "[25] ", 25
+PRINTBUTTON "[40] ", 40
+PRINTBUTTON "[60] ", 60
+PRINTBUTTON "[80] ", 80
+PRINTL
+INPUT
+IF INRANGE(RESULT,0,1000)
+	NEWVAL:17 = RESULT
+	PRINTFORMW 수락되었다. %NAME:ARG%는 수락 시 {NEWVAL:17}가 될 것이다.
+ENDIF
+;===================================
+;[56] Drug Addiction
+;===================================
+
+@COM616_BODY_CHANGE_TALENT_SELECTION_56(ARG,NEWVAL,TIMESTAY,CurCost)
+#DIM REF NEWVAL,
+#DIM REF TIMESTAY
+#DIM REF CurCost
+SIF NEWVAL:(56) != DrugAddict:ARG:0
+	SETCOLOR C_ORANGE
+PRINTFORML [{56}] %TALENT_TR(56)%의 레벨은 {NEWVAL:(56)} (%TOSTR_DRUGADDICT(NEWVAL:(56))%)이다.
+RESETCOLOR
+
+@COM616_BODY_CHANGE_TALENT_56(ARG,NEWVAL)
+#DIM REF NEWVAL,
+PRINTFORML 어떤 티어를 발현하고 싶은지 선택해 주세요?
+FOR LOCAL:301, -5, 7
+SIF NEWVAL:56 == LOCAL:301
+	SETCOLOR C_ORANGE
+PRINTFORML [{LOCAL:301}] - 【%TOSTR_DRUGADDICT(LOCAL:301)%】
+RESETCOLOR
+NEXT
+PRINTFORML
+PRINTFORML
+PRINTFORML [999] 되돌리기
+INPUT
+SIF RESULT == 999
+	RETURN 999
+NEWVAL:56 = RESULT
+
+@COM616_BODY_CHANGE_TALENT_COST_56(ARG,NEWVAL,TIMESTAY,CurCost)
+#DIM REF NEWVAL,
+#DIM REF TIMESTAY
+#DIM REF CurCost
+IF NEWVAL:(56) != DrugAddict:ARG:0
+	TIMESTAY ++
+	CurCost += 15000
+ENDIF
+
+@COM616_BODY_CHANGE_TALENT_EFFECT_56(ARG,NEWVAL)
+#DIM REF NEWVAL,
+DrugAddict:ARG:0 = NEWVAL:56
+DrugExp:MASTER:0 = EXP_DEMAND_23(0,91,ARG)
+CALLF SILENT_ENDURANCECHANGE(ARG)
+;===================================
+;[57] Pee Holding
+;===================================
+
+@COM616_BODY_CHANGE_TALENT_SELECTION_57(ARG,NEWVAL,TIMESTAY,CurCost)
+#DIM REF NEWVAL,
+#DIM REF TIMESTAY
+#DIM REF CurCost
+SIF NEWVAL:(57) != PeeHold:ARG:0
+	SETCOLOR C_ORANGE
+PRINTFORML [{57}] %TALENT_TR(57)%: 레벨 {NEWVAL:(57)} (%TOSTR_CONTINENCE(NEWVAL:(57))%)
+RESETCOLOR
+
+@COM616_BODY_CHANGE_TALENT_57(ARG,NEWVAL)
+#DIM REF NEWVAL,
+PRINTFORML 어떤 티어를 발현하고 싶은지 선택해 주세요?
+FOR LOCAL:301, -5, 7
+SIF NEWVAL:57 == LOCAL:301
+	SETCOLOR C_ORANGE
+PRINTFORML [{LOCAL:301}] - 【%TOSTR_CONTINENCE(LOCAL:301)%】
+RESETCOLOR
+NEXT
+PRINTFORML
+PRINTFORML
+PRINTFORML [999] 되돌리기
+INPUT
+SIF RESULT == 999
+	RETURN 999
+NEWVAL:57 = RESULT
+
+@COM616_BODY_CHANGE_TALENT_COST_57(ARG,NEWVAL,TIMESTAY,CurCost)
+#DIM REF NEWVAL,
+#DIM REF TIMESTAY
+#DIM REF CurCost
+IF NEWVAL:(57) != PeeHold:ARG:0
+	TIMESTAY ++
+	CurCost += 15000
+ENDIF
+
+@COM616_BODY_CHANGE_TALENT_EFFECT_57(ARG,NEWVAL)
+#DIM REF NEWVAL,
+PeeHold:ARG:0 = NEWVAL:57
+PeeHoldExp:MASTER:0 = EXP_DEMAND_20(0,91,ARG)
+CALLF SILENT_ENDURANCECHANGE(ARG)
+;===================================
+;[58] Poo Holding
+;===================================
+
+@COM616_BODY_CHANGE_TALENT_SELECTION_58(ARG,NEWVAL,TIMESTAY,CurCost)
+#DIM REF NEWVAL,
+#DIM REF TIMESTAY
+#DIM REF CurCost
+SIF NEWVAL:(58) != PooHold:ARG:0
+	SETCOLOR C_ORANGE
+PRINTFORML [{58}] [58] %TALENT_TR(58)%: 레벨 {NEWVAL:(58)} (%TOSTR_CONTINENCE(NEWVAL:(58))%)
+RESETCOLOR
+
+@COM616_BODY_CHANGE_TALENT_58(ARG,NEWVAL)
+#DIM REF NEWVAL,
+PRINTFORML 어떤 티어를 발현하고 싶은지 선택해 주세요?
+FOR LOCAL:301, -5, 7
+SIF NEWVAL:58 == LOCAL:301
+	SETCOLOR C_ORANGE
+PRINTFORML [{LOCAL:301}] - 【%TOSTR_CONTINENCE(LOCAL:301)%】
+RESETCOLOR
+NEXT
+PRINTFORML
+PRINTFORML
+PRINTFORML [999] 되돌리기
+INPUT
+SIF RESULT == 999
+	RETURN 999
+NEWVAL:58 = RESULT
+
+@COM616_BODY_CHANGE_TALENT_COST_58(ARG,NEWVAL,TIMESTAY,CurCost)
+#DIM REF NEWVAL,
+#DIM REF TIMESTAY
+#DIM REF CurCost
+IF NEWVAL:(58) != PooHold:ARG:0
+	TIMESTAY ++
+	CurCost += 15000
+ENDIF
+
+@COM616_BODY_CHANGE_TALENT_EFFECT_58(ARG,NEWVAL)
+#DIM REF NEWVAL,
+PooHold:ARG:0 = NEWVAL:58
+PooHoldExp:MASTER:0 = EXP_DEMAND_20(0,91,ARG)
+CALLF SILENT_ENDURANCECHANGE(ARG)
+;===================================
+;[95] Sanity
+;===================================
+
+@COM616_BODY_CHANGE_TALENT_SELECTION_95(ARG,NEWVAL,TIMESTAY,CurCost)
+#DIM REF NEWVAL,
+#DIM REF TIMESTAY
+#DIM REF CurCost
+SIF NEWVAL:(95) != OrgasmDeny:ARG:0
+	SETCOLOR C_ORANGE
+PRINTFORML [{95}] %TALENT_TR(95)%: 레벨 {NEWVAL:(95)} (%TOSTR_SANITY(NEWVAL:(95))%)
+RESETCOLOR
+
+@COM616_BODY_CHANGE_TALENT_95(ARG,NEWVAL)
+#DIM REF NEWVAL,
+PRINTFORML 어떤 티어를 발현하고 싶은지 선택해 주세요?
+FOR LOCAL:301, -5, 7
+SIF NEWVAL:95 == LOCAL:301
+	SETCOLOR C_ORANGE
+PRINTFORML [{LOCAL:301}] - 【%TOSTR_SANITY(LOCAL:301)%】
+RESETCOLOR
+NEXT
+PRINTFORML
+PRINTFORML
+PRINTFORML [999] 되돌리기
+INPUT
+SIF RESULT == 999
+	RETURN 999
+NEWVAL:95 = RESULT
+
+@COM616_BODY_CHANGE_TALENT_COST_95(ARG,NEWVAL,TIMESTAY,CurCost)
+#DIM REF NEWVAL,
+#DIM REF TIMESTAY
+#DIM REF CurCost
+IF NEWVAL:(95) != OrgasmDeny:ARG:0
+	TIMESTAY ++
+	CurCost += 15000
+ENDIF
+
+@COM616_BODY_CHANGE_TALENT_EFFECT_95(ARG,NEWVAL)
+#DIM REF NEWVAL,
+OrgasmDeny:ARG:0 = NEWVAL:95
+OrgasmDenyExp:MASTER:0 = EXP_DEMAND_19(0,91,ARG)
+CALLF SILENT_ENDURANCECHANGE(ARG)
+;===================================
+;[96] Bladder Size
+;===================================
+
+@COM616_BODY_CHANGE_TALENT_SELECTION_96(ARG,NEWVAL,TIMESTAY,CurCost)
+#DIM REF NEWVAL,
+#DIM REF TIMESTAY
+#DIM REF CurCost
+;artificial
+IF !GET_INT(ARG, "Hediff", DT_CELL_GET(@"Hediff", HediffGet(ARG,74,0), "type", 1), "Natural")
+	SETCOLOR C_GRAY
+	PRINTPLAINFORM [{96}] %TALENT_TR(96)%: %TOSTR_BLADDERSIZE(NEWVAL:(96))% (인공적인 부분을 수정할 수 없음)
+	RESETCOLOR
+	PRINTL
+	RETURN
+ENDIF
+SIF NEWVAL:(96) != TALENT:ARG:BladderSize
+	SETCOLOR C_ORANGE
+PRINTFORML [{96}] %TALENT_TR(96)%: %TOSTR_BLADDERSIZE(NEWVAL:(96))%
+RESETCOLOR
+
+@COM616_BODY_CHANGE_TALENT_96(ARG,NEWVAL)
+#DIM REF NEWVAL,
+PRINTFORML 어떤 티어를 발현하고 싶은지 선택해 주세요?
+FOR LOCAL:301, -4, 4
+SIF NEWVAL:96 == LOCAL:301
+	SETCOLOR C_ORANGE
+PRINTFORML [{LOCAL:301}] - 【%TOSTR_BLADDERSIZE(LOCAL:301)%】
+RESETCOLOR
+NEXT
+PRINTFORML
+PRINTFORML
+PRINTFORML [999] 되돌리기
+INPUT
+SIF RESULT == 999
+	RETURN 999
+NEWVAL:96 = RESULT
+
+@COM616_BODY_CHANGE_TALENT_COST_96(ARG,NEWVAL,TIMESTAY,CurCost)
+#DIM REF NEWVAL,
+#DIM REF TIMESTAY
+#DIM REF CurCost
+IF NEWVAL:(96) != TALENT:ARG:BladderSize
+	TIMESTAY ++
+	CurCost += 25000
+ENDIF
+
+@COM616_BODY_CHANGE_TALENT_EFFECT_96(ARG,NEWVAL)
+#DIM REF NEWVAL,
+CALLF AddBionic(ARG,74,106-(NEWVAL:96),0)
+;===================================
+;[97] Bowel Size
+;===================================
+
+@COM616_BODY_CHANGE_TALENT_SELECTION_97(ARG,NEWVAL,TIMESTAY,CurCost)
+#DIM REF NEWVAL,
+#DIM REF TIMESTAY
+#DIM REF CurCost
+;artificial
+IF !GET_INT(ARG, "Hediff", DT_CELL_GET(@"Hediff", HediffGet(ARG,67,0), "type", 1), "Natural")
+	SETCOLOR C_GRAY
+	PRINTPLAINFORM [{97}] %TALENT_TR(97)%: %TOSTR_BLADDERSIZE(NEWVAL:(97))% (인공적인 부분은 수정할 수 없다)
+	RESETCOLOR
+	PRINTL
+	RETURN
+ENDIF
+SIF NEWVAL:(97) != TALENT:ARG:BowelSize
+	SETCOLOR C_ORANGE
+PRINTFORML [{97}] %TALENT_TR(97)%: %TOSTR_BLADDERSIZE(NEWVAL:(97))%
+RESETCOLOR
+
+@COM616_BODY_CHANGE_TALENT_97(ARG,NEWVAL)
+#DIM REF NEWVAL,
+PRINTFORML 어떤 티어를 발현하고 싶은지 선택해 주세요?
+FOR LOCAL:301, -4, 4
+SIF NEWVAL:97 == LOCAL:301
+	SETCOLOR C_ORANGE
+PRINTFORML [{LOCAL:301}] - 【%TOSTR_BLADDERSIZE(LOCAL:301)%】
+RESETCOLOR
+NEXT
+PRINTFORML
+PRINTFORML
+PRINTFORML [999] 되돌리기
+INPUT
+SIF RESULT == 999
+	RETURN 999
+NEWVAL:97 = RESULT
+
+@COM616_BODY_CHANGE_TALENT_COST_97(ARG,NEWVAL,TIMESTAY,CurCost)
+#DIM REF NEWVAL,
+#DIM REF TIMESTAY
+#DIM REF CurCost
+IF NEWVAL:(97) != TALENT:ARG:BowelSize
+	TIMESTAY ++
+	CurCost += 25000
+ENDIF
+
+@COM616_BODY_CHANGE_TALENT_EFFECT_97(ARG,NEWVAL)
+#DIM REF NEWVAL,
+CALLF AddBionic(ARG,67,115-(NEWVAL:97),0)
+;===================================
+;[121] Alcohol Addiction
+;===================================
+
+@COM616_BODY_CHANGE_TALENT_SELECTION_121(ARG,NEWVAL,TIMESTAY,CurCost)
+#DIM REF NEWVAL,
+#DIM REF TIMESTAY
+#DIM REF CurCost
+IF NEWVAL:(121) != AlcoholAddict:ARG:0
+	SETCOLOR C_ORANGE
+ENDIF
+PRINTFORML [{121}] %TALENT_TR(121)%: 레벨 {NEWVAL:(121)} (%TOSTR_DRINKADDICT(NEWVAL:(121))%)
+RESETCOLOR
+
+@COM616_BODY_CHANGE_TALENT_121(ARG,NEWVAL)
+#DIM REF NEWVAL,
+PRINTFORML 어떤 티어를 발현하고 싶은지 선택해 주세요?
+FOR LOCAL:301, -5, 7
+SIF NEWVAL:121 == LOCAL:301
+	SETCOLOR C_ORANGE
+PRINTFORML [{LOCAL:301}] - 【%TOSTR_DRINKADDICT(LOCAL:301)%】
+RESETCOLOR
+NEXT
+PRINTFORML
+PRINTFORML
+PRINTFORML [999] 되돌리기
+INPUT
+SIF RESULT == 999
+	RETURN 999
+NEWVAL:121 = RESULT
+
+@COM616_BODY_CHANGE_TALENT_COST_121(ARG,NEWVAL,TIMESTAY,CurCost)
+#DIM REF NEWVAL,
+#DIM REF TIMESTAY
+#DIM REF CurCost
+IF NEWVAL:(121) != AlcoholAddict:ARG:0
+	TIMESTAY ++
+	CurCost += 15000
+ENDIF
+
+@COM616_BODY_CHANGE_TALENT_EFFECT_121(ARG,NEWVAL)
+#DIM REF NEWVAL,
+AlcoholAddict:ARG:0 = NEWVAL:121
+DrinkingExp:ARG:0 = EXP_DEMAND_22(0,91,ARG)
+CALLF SILENT_ENDURANCECHANGE(ARG)
+
+@COM616_BARS(C_ID, BASE_NAME, BAR_LENGTH, COLOR_NAME, OP, TEMPMAX)
+#DIM  C_ID
+#DIMS BASE_NAME
+#DIM  BAR_LENGTH
+#DIMS COLOR_NAME
+#DIMS OP
+#DIM  BASE_ID
+#DIM TEMPMAX
+BASE_ID = FINDELEMENT(BASENAME, BASE_NAME)
+SIF BASE_ID < 0
+	THROW 存在しないBASE_NAME %BASE_NAME%
+SIF !TEMPMAX
+	TEMPMAX = MAXBASE:C_ID:BASE_ID
+SIF !STRCOUNT(OP, "「種類表記無し」")
+	PRINTFORM %BASE_TR(BASE_NAME), 4% 
+CALL PRINT_COLORBAR(BASE:C_ID:BASE_ID, TEMPMAX, BAR_LENGTH, UNICODE(0x2585), UNICODE(0x2585), BARCOLORSET(COLOR_NAME), RESULT:1)
+IF !STRCOUNT(OP, "「数字表記無し」")
+	IF MAXBASE:C_ID:BASE_ID != TEMPMAX
+		SETCOLOR C_ORANGE
+	ENDIF
+	PRINTFORM  ({BASE:C_ID:BASE_ID,5}/{TEMPMAX,5}) 
+	RESETCOLOR
+ENDIF
+SIF STRCOUNT(OP, "「改行」")
+	PRINTFORML 
+;Talent Categories
+
+@TALENT_CATEGORY_RACE(ARG)
+#FUNCTION
+;種族,132=吸血鬼は被るので身体特徴に移動
+SIF GROUPMATCH(ARG,90,91,164,165,166,189,190,191,192,193,194,195,196,197,198)
+	RETURNF 1
+;nas talents
+SIF GROUPMATCH(ARG,300, 1212, 1214,1208)
+	RETURNF 1
+
+@TALENT_CATEGORY_SEX(ARG)
+#FUNCTION
+;性的特徴
+SIF GROUPMATCH(ARG,0,1,3,4,5,6,7,8,9,60,70,72,73,74,75,76,77,78,82,83,122,142,152,183,184,185,250,254,255,256,257,258,259,260,261,262,263,264)
+	RETURNF 1
+;id 79?
+;NAS
+SIF GROUPMATCH(ARG,57,1302, 225,1215,122,142,152,122,142,152,177,178,179,180, 232, 236, 237, 238, 241, 28, 29, 1302)
+	RETURNF 1
+
+@TALENT_CATEGORY_PHYSICAL(ARG)
+#FUNCTION
+SIF GROUPMATCH(ARG,2,16,17,41,54,56,92,100,101,102,103,104,105,106,121,130,132,133,134,137,138,143,146,149,108,109,110,111)
+	RETURNF 1
+;addition custom code, 223(Strong Muscles), 108(butt size), 310~312(pregnancy)
+SIF GROUPMATCH(ARG,223,310,311,312)
+	RETURNF 1
+;nas talents
+SIF GROUPMATCH(ARG,1500,1514,1501,1502,1301)
+	RETURNF 1
+;111
+;107
+
+@TALENT_CATEGORY_MENTAL(ARG)
+#FUNCTION
+SIF GROUPMATCH(ARG,1310,9,10,11,12,13,14,18,19,20,21,22,23,24,25,26,30,31,32,33,61,62,71,80,81,84,85,86,94,151,155)
+	RETURNF 1
+;addition custom code: 297
+SIF GROUPMATCH(ARG,297)
+	RETURNF 1
+
+@TALENT_CATEGORY_COMBAT(ARG)
+#FUNCTION
+SIF GROUPMATCH(ARG,40,59,1401,1402,1403)
+	RETURNF 1
+
+@TALENT_CATEGORY_PRACTICAL(ARG)
+#FUNCTION
+SIF GROUPMATCH(ARG,46, 47, 48, 49, 50,51,52,53,55,93,135,136,144,161,162)
+	RETURNF 1
+;addition custom code: 179, 180, 224, 225
+SIF GROUPMATCH(ARG,179, 180, 224, 225)
+	RETURNF 1
+;nas talents
+SIF GROUPMATCH(ARG,1504, 1505)
+	RETURNF 1
+
+@TALENT_CATEGORY_BELIEF(ARG)
+#FUNCTION
+;Beliefs (Tech Know, Sex Know, ESP, Religion)
+SIF GROUPMATCH(ARG,1204,1300,1400,1211,1510,1511)
+	RETURNF 1
+
+@TALENT_CATEGORY_BODY_CHANGE_BLACKLIST(ARG)
+#FUNCTION
+;Blacklist for talent body change
+SELECTCASE ARG
+	CASE 0, 1, 3 TO 6, 7 TO 15, 18 TO 34, 46 TO 53, 62, 71 TO 86, 92 TO 94, 122, 133 TO 136, 138 TO 142, 144 TO 146, 150 TO 162, 165, 167 TO 182, 184, 185, 189, 198, 199, 250, 254 TO 303, 220 TO 241, 59
+		RETURNF 1
+	CASE 242, 243, 132, 55, 87, 137, 320, 321, 352, 353, 354, 356, 357, 501, 502, 503, 504, 88, 89, 355
+		RETURNF 1
+	CASEELSE
+ENDSELECT
+;Player pregnancy is in eraNAS so this remedy can be done.
+
+@COM616_SELECTION_12_NAS
+SIF !HAS_VAGINA(MASTER)
+	RETURN 0
+LOCALS '= "「Oh, poor thing. Infertile, and at such young age no less? You have my condolences.」/"
+LOCALS += "「Ah, yes yes. Pregnancy, for you. Sounds like a big deal. Tough stuff, huh?」/"
+LOCALS += "「Normally, I would tell you to just fuck off, but... 」/"
+LOCALS += "「Something has actually happened that can finally make you pregnant... At last!」/"
+LOCALS += "「Though, you might be having a bit of trouble getting those sperm to you.」/"
+LOCALS += "「I can offer you a little help to even the playing field somewhat.」"
+CALL COM616_EIRINSPEAK, LOCALS
+WAIT
+IF FLAG:デート相手 == MASTER
+	LOCALS '= "「I need the person that you want to be impregnated by however.」/"
+	LOCALS += "「I can't do anything without it.」"
+	CALL COM616_EIRINSPEAK, LOCALS, "smile"
+	WAIT
+	RETURN 0
+ELSEIF !HAS_PENIS(FLAG:デート相手)
+	LOCALS '= "「Um....」"
+	LOCALS += "「Pregnancy ain't going to happen without a penis.」"
+	CALL COM616_EIRINSPEAK, LOCALS, "blush"
+	WAIT
+	RETURN 0
+ELSE
+	LOCALS '= "「If you don't mind my methods, that is...」"
+	CALL COM616_EIRINSPEAK, LOCALS, "blush"
+	PRINTFORML 에린은 당신 앞에서 장갑을 끼면서 말한다.
+	CALL ASK_YN("동의한다", "취소")
+	IF RESULT
+		LOCALS '= @"「흥, 네 마음대로 해라, %CALLNAME:MASTER%시여.」/「후후후...」"
+		CALL COM616_EIRINSPEAK, LOCALS, "smile"
+		WAIT
+		RETURN 0
+	ELSE
+		CALL COM616_CHECK(15000)
+		SIF RESULT
+			RETURN 0
+		CALL COM616_REMEDY(23)
+		LOCALS '= "「Well, happy childmaking. I recommend feeding your partner with meals that have [Blessing] property to increase your chances.」/"
+		LOCALS += "「One should be enough for that day. Perhaps the Shrine Maiden can teach you her secrets?」/"
+		LOCALS += @"「게다가, 만약 당신이 %MedicalCenterName()%에 아이를 갖는다면, 저희가 성별을 결정해 드릴 수 있습니다.」"
+		LOCALS += "「We also offer plans including rabbit ears, cat ears, dog tails and so on.」/"
+		LOCALS += "「By all means, please swing by. Happy mothers all over Gensokyo can attest to our credibility.」"
+		CALL COM616_EIRINSPEAK, LOCALS, "smile"
+		PRINTFORMW 당신은 그녀에게 그것에 대해 생각해보겠다고 말한다.
+		CALL COM616_PAY(15000)
+		RETURN 1
+	ENDIF
+	RETURN 0
+ENDIF
+;potty (pee) training
+;unused since body change is the main way of changing continence
+; @COM616_SELECTION_40_NAS
+; IF ABL:[[永琳]]:従順 >= 5
+; PRINTFORML [-5] I can't live without my diapee!
+; PRINTFORML [-4] I can barely feel my bladder...
+; PRINTFORML [-3] I've started to wet the bed again...
+; ENDIF
+; PRINTFORML [-2] Actually, give me that
+; PRINTFORML [-1] Only had the occasional accident
+; PRINTFORML [ 0] I want to be fully potty trained
+; PRINTFORML [ 1] Just a bit better than normal is fine
+; PRINTFORML [ 2] Peeing myself is scary...
+; PRINTFORML [ 3] I don't want to be bothered by the need to pee, so just give me an iron bladder
+; PRINTFORML [ 4] I want to hold a day's worth of pee and not have a puddle on the floor
+; PRINTFORML [ 5] Huge bladders are huge
+; IF TALENT:[[永琳]]:恋人 || TALENT:[[永琳]]:恋慕
+; PRINTFORML [ 6] Use the power of the void to make me not need to pee
+; ENDIF
+; PRINTFORML [99] I changed my mind
+; INPUT
+; LOCAL = RESULT
+; LOCAL:1 = ABS(LOCAL-PeeHold:MASTER:0)*30000
+; SIF LOCAL > 6 || LOCAL < -5
+; 	RETURN 0
+; IF PeeHold:MASTER:0 == LOCAL
+; 	LOCALS '= "「I believe you already have this at the moment. Choose something else.」"
+; 	CALL COM616_EIRINSPEAK, LOCALS
+; 	WAIT
+; 	RETURN 0
+; ENDIF
+; PRINTFORM Going from
+; SETCOLOR EnduranceColors(PeeHold:MASTER:0)
+; PRINTFORM {PeeHold:MASTER:0} 【%GET_TALENTNAME_TR(1514,PeeHold:MASTER:0)%】
+; RESETCOLOR
+; PRINTFORM  to
+; SETCOLOR EnduranceColors(RESULT)
+; PRINTFORML {RESULT} 【%GET_TALENTNAME_TR(1514,RESULT)%】
+; RESETCOLOR
+; PRINTFORML This will cost you %"\\"+DIGIT_GROUP(LOCAL:1)%
+; CALL ASK_YN("Agree", "Cancel")
+; SIF RESULT
+; 	RETURN 0
+; CALL COM616_CHECK(LOCAL:1)
+; SIF RESULT
+; 	RETURN 0
+; PeeHold:MASTER:0 = LOCAL
+; PeeHoldExp:MASTER:0 = EXP_DEMAND_20(0,20,MASTER)
+; CALLF SILENT_ENDURANCECHANGE(MASTER)
+; FLAG:5702 = 1
+; CALL COM616_PAY(LOCAL:1)
+; RETURN 1
+; ;just do this instead of the urethral plugs.
+; ;CALL COM616_REMEDY(40)
+; WAIT
+; LOCALS '= "「That should do it.」/"
+; LOCALS += "「You should be able to stay dry except in the most chaotic orgasms.」/"
+; LOCALS += "「Though no body is able to endure such pleasure at once, not even mine.」/"
+; LOCALS += "「At least be happy you aren't contemplating diapers now.」/"
+; CALL COM616_EIRINSPEAK, LOCALS, "smile"
+; CALL COM616_PAY(((FLAG:5702)+1)*10000)
+; FLAG:5702 ++
+; @COM616_SELECTION_41_NAS
+; LOCALS '= "「Not being able to hold fecal matter is always a issue of the mind and damage to the rectum.」/"
+; LOCALS += "「However, if it happens frequently, you probably made it into a habit.」/"
+; LOCALS += "「Other times, it's probably your body releasing poop unintentionally.」/"
+; SIF PooHold:MASTER:0 <= -3
+; 	LOCALS += "「And... uh, I can also do some potty training for you.」/"
+; ;SIF ABL:MASTER:Urethra >= 4
+; ;	LOCALS += "「And... maybe some urethral training as well.」"
+; CALL COM616_EIRINSPEAK, LOCALS
+; WAIT
+; 	IF ABL:[[永琳]]:従順 >= 5
+; 	PRINTFORML [-5] I can't live without my diapee!
+; 	PRINTFORML [-4] Poo keeps leaking out of me...
+; 	PRINTFORML [-3] Wah... I keep waking up stinky
+; 	ENDIF
+; 	PRINTFORML [-2] My tummy really doesn't like me
+; 	PRINTFORML [-1] Only had the occasional accident
+; 	PRINTFORML [ 0] I want to be fully potty trained
+; 	PRINTFORML [ 1] Just a bit better than normal is fine
+; 	PRINTFORML [ 2] Humiliating... I don't want that
+; 	PRINTFORML [ 3] I don't want to be bothered by the need to poo, so just give me a lead belly
+; 	PRINTFORML [ 4] I can hold a week's worth
+; 	PRINTFORML [ 5] My bowels are nearly endless
+; 	IF TALENT:[[永琳]]:恋人 || TALENT:[[永琳]]:恋慕
+; 	PRINTFORML [ 6] Use the power of the void to make not not need to poop
+; 	ENDIF
+; 	PRINTFORML [99] I changed my mind
+; 	INPUT
+; 	LOCAL = RESULT
+; 	LOCAL:1 = ABS(LOCAL-PooHold:MASTER:0)*30000
+; 	SIF LOCAL > 6 || LOCAL < -5
+; 		CONTINUE
+; 	IF PooHold:MASTER:0 == LOCAL
+; 		LOCALS '= "「I believe you already have this at the moment. Choose something else.」"
+; 		CALL COM616_EIRINSPEAK, LOCALS
+; 		WAIT
+; 		CONTINUE
+; 	ENDIF
+; 	PRINTFORM Going from
+; 	SETCOLOR EnduranceColors(PooHold:MASTER:0)
+; 	PRINTFORM {PooHold:MASTER:0} 【%GET_TALENTNAME_TR(1500,PooHold:MASTER:0)%】
+; 	RESETCOLOR
+; 	PRINTFORM  to
+; 	SETCOLOR EnduranceColors(RESULT)
+; 	PRINTFORML {RESULT} 【%GET_TALENTNAME_TR(1500,RESULT)%】
+; 	RESETCOLOR
+; 	PRINTFORML This will cost you %"\\"+DIGIT_GROUP(LOCAL:1)%
+; 	CALL ASK_YN("Agree", "Cancel")
+; 	SIF RESULT
+; 		CONTINUE
+; 	CALL COM616_CHECK(LOCAL:1)
+; 	SIF RESULT
+; 		CONTINUE
+; 	PooHold:MASTER:0 = LOCAL
+; 	PooHoldExp:MASTER:0 = EXP_DEMAND_21(0,21,MASTER)
+; 	CALLF SILENT_ENDURANCECHANGE(MASTER)
+; 	FLAG:5702 = 1
+; 	CALL COM616_PAY(LOCAL:1)
+; 	BREAK
+; @COM616_SELECTION_42_NAS
+; LOCALS '= "「Sexual endurance is mostly a mental thing, hence why it's hard to build yet easy to lose.」/"
+; LOCALS += "「On the other side, cumming thoughout the sex session is a sensation of it's own.」"
+; CALL COM616_EIRINSPEAK, LOCALS
+; IF TALENT:[[永琳]]:恋人 || TALENT:[[永琳]]:恋慕
+; PRINTFORML [-5] Aaahhhhhhhhhhhhhh～～～～～～～～～～～～
+; PRINTFORML [-4] When I think of you... I.. I'm cumming～～
+; ENDIF
+; PRINTFORML [-3] Can't stop cumming～
+; PRINTFORML [-2] Take me back to my puberty years
+; PRINTFORML [-1] I like to cum
+; PRINTFORML [ 0] Average endurance is fine
+; PRINTFORML [ 1] I just want to last a bit longer
+; PRINTFORML [ 2] I need quite a bit to get me over the edge
+; PRINTFORML [ 3] Sex is nice, orgasms are not.
+; PRINTFORML [ 4] I can go all night
+; PRINTFORML [ 5] Climaxing? No. Never.
+; PRINTFORML [99] I changed my mind
+; INPUT
+; LOCAL = RESULT
+; LOCAL:1 = ABS(LOCAL-OrgasmDeny:MASTER:0)*20000
+; SIF LOCAL > 5 || LOCAL < -5
+; 	CONTINUE
+; IF OrgasmDeny:MASTER:0 == LOCAL
+; 	LOCALS '= "「I believe you already have this at the moment. Choose something else.」"
+; 	CALL COM616_EIRINSPEAK, LOCALS
+; 	WAIT
+; 	CONTINUE
+; ENDIF
+; PRINTFORM Going from
+; SETCOLOR EnduranceColors(OrgasmDeny:MASTER:0)
+; PRINTFORM {OrgasmDeny:MASTER:0} 【%GET_TALENTNAME_TR(1310,OrgasmDeny:MASTER:0)%】
+; RESETCOLOR
+; PRINTFORM  to
+; SETCOLOR EnduranceColors(RESULT)
+; PRINTFORML {RESULT} 【%GET_TALENTNAME_TR(1310,RESULT)%】
+; RESETCOLOR
+; PRINTFORML This will cost you %"\\"+DIGIT_GROUP(LOCAL:1)%
+; CALL ASK_YN("Agree", "Cancel")
+; SIF RESULT
+; 	CONTINUE
+; CALL COM616_CHECK(LOCAL:1)
+; SIF RESULT
+; 	CONTINUE
+; OrgasmDeny:MASTER:0 = LOCAL
+; OrgasmDenyExp:MASTER:0 = EXP_DEMAND_19(0,93,MASTER)
+; CALLF SILENT_ENDURANCECHANGE(MASTER)
+; CALL COM616_PAY(LOCAL:1)
+; BREAK
+; @COM616_SELECTION_43_NAS
+; LOCALS '= "「I don't usually offer care for drunkards, otherwise I'd have the entire place crawling with them...」/"
+; LOCALS += "「But I'm willing to make an exception, seeing as you didn't drink yourself silly just yet.」"
+; CALL COM616_EIRINSPEAK, LOCALS, "angry"
+; PRINTFORML [-5] I don't want to drink alcohol ever again
+; PRINTFORML [-4] Please make it harder for me to indulge in unnecessary alcoholism
+; PRINTFORML [-3] Make me against alcohol
+; PRINTFORML [-2] I only drink in special occasions
+; PRINTFORML [-1] I drink light
+; PRINTFORML [ 0] I want normal drinking habits
+; IF TALENT:[[永琳]]:恋人 || TALENT:[[永琳]]:恋慕
+; PRINTFORML [ 1] I want some confidence in my drinking
+; PRINTFORML [ 2] I need quite a bit to give me the buzz
+; PRINTFORML [ 3] Weak stuff never does anything to me
+; PRINTFORML [ 4] I want to drink 5 bottles of hard sake and not get shitfaced
+; PRINTFORML [ 5] Alcohol is life
+; ENDIF
+; PRINTFORML [99] I changed my mind
+; INPUT
+; LOCAL = RESULT
+; LOCAL:1 = ABS(LOCAL-AlcoholAddict:MASTER:0)*10000
+; SIF LOCAL > 5 || LOCAL < -5
+; 	CONTINUE
+; IF AlcoholAddict:MASTER:0 == LOCAL
+; 	LOCALS '= "「I believe you already have this at the moment. Choose something else.」"
+; 	CALL COM616_EIRINSPEAK, LOCALS
+; 	WAIT
+; 	CONTINUE
+; ENDIF
+; PRINTFORM Going from
+; SETCOLOR EnduranceColors(AlcoholAddict:MASTER:0)
+; PRINTFORM {AlcoholAddict:MASTER:0} 【%GET_TALENTNAME_TR(121,AlcoholAddict:MASTER:0)%】
+; RESETCOLOR
+; PRINTFORM  to
+; SETCOLOR EnduranceColors(RESULT)
+; PRINTFORML {RESULT} 【%GET_TALENTNAME_TR(121,RESULT)%】
+; RESETCOLOR
+; PRINTFORML This will cost you %"\\"+DIGIT_GROUP(LOCAL:1)%
+; CALL ASK_YN("Agree", "Cancel")
+; SIF RESULT
+; 	CONTINUE
+; CALL COM616_CHECK(LOCAL:1)
+; SIF RESULT
+; 	CONTINUE
+; AlcoholAddict:MASTER:0 = LOCAL
+; DrinkingExp:MASTER:0 = EXP_DEMAND_22(0,93,MASTER)
+; CALLF SILENT_ENDURANCECHANGE(MASTER)
+; CALL COM616_PAY(LOCAL:1)
+; BREAK
+; @COM616_SELECTION_44_NAS
+; LOCALS '= "「I forgot what they said on the \"arcade machines\" but...」/"
+; LOCALS += "「Winners don't do drugs.」"
+; CALL COM616_EIRINSPEAK, LOCALS, "angry"
+; PRINTFORML [-5] I'm a winner! I never do drugs!
+; PRINTFORML [-4] Please make it harder for me to indulge in unnecessary substances
+; PRINTFORML [-3] Drugs bad
+; PRINTFORML [-2] I only do drugs in special occasions
+; PRINTFORML [-1] I want a huff to get me high
+; PRINTFORML [ 0] I want normal drug taking habits
+; IF TALENT:[[永琳]]:恋人 || TALENT:[[永琳]]:恋慕
+; PRINTFORML [ 1] I like drugs
+; PRINTFORML [ 2] I need quite a bit to give me the high
+; PRINTFORML [ 3] Weak stuff never does anything to me
+; PRINTFORML [ 4] I want to have a megadose and not get an overdose
+; PRINTFORML [ 5] I live off drugs
+; ENDIF
+; PRINTFORML [99] I changed my mind
+; INPUT
+; LOCAL = RESULT
+; LOCAL:1 = ABS(LOCAL-DrugAddict:MASTER:0)*10000
+; SIF LOCAL > 5 || LOCAL < -5
+; 	CONTINUE
+; IF DrugAddict:MASTER:0 == LOCAL
+; 	LOCALS '= "「I believe you already have this at the moment. Choose something else.」"
+; 	CALL COM616_EIRINSPEAK, LOCALS
+; 	WAIT
+; 	CONTINUE
+; ENDIF
+; PRINTFORM Going from
+; SETCOLOR EnduranceColors(DrugAddict:MASTER:0)
+; PRINTFORM {DrugAddict:MASTER:0} 【%GET_TALENTNAME_TR(56,DrugAddict:MASTER:0)%】
+; RESETCOLOR
+; PRINTFORM  to
+; SETCOLOR EnduranceColors(RESULT)
+; PRINTFORML {RESULT} 【%GET_TALENTNAME_TR(56,RESULT)%】
+; RESETCOLOR
+; PRINTFORML This will cost you %"\\"+DIGIT_GROUP(LOCAL:1)%
+; CALL ASK_YN("Agree", "Cancel")
+; SIF RESULT
+; 	CONTINUE
+; CALL COM616_CHECK(LOCAL:1)
+; SIF RESULT
+; 	CONTINUE
+; DrugAddict:MASTER:0 = LOCAL
+; DrugExp:MASTER:0 = EXP_DEMAND_23(0,93,MASTER)
+; CALLF SILENT_ENDURANCECHANGE(MASTER)
+; CALL COM616_PAY(LOCAL:1)
+; BREAK
+; abortion
+
+@COM616_SELECTION_50_NAS
+CALL COM616_SELECTION_ABORTION(50)
+
+@COM616_SELECTION_51_NAS
+CALL COM616_SELECTION_ABORTION(51)
+
+@COM616_SELECTION_ABORTION(ARG)
+LOCALS '= "「Accidents happen. That's for sure.」/"
+LOCALS += "「Maybe you forgot it's a dangerous day, or maybe drunk an ovulation drug instead of a birth control pill.」/"
+LOCALS += "「If you don't want to wait to put your kid into adoption, I can kill it for you...」/"
+LOCALS += "「Humanely that is. Kicking you in the stomach doesn't count」/"
+CALL COM616_EIRINSPEAK, LOCALS
+CALL ASK_YN("동의한다", "취소")
+IF RESULT
+	LOCALS '= @"「\@ ARG == 50 ? 당신의 # %CALLNAME:(FLAG:デート相手)%의 \@ 배에 자라고 있는 그 아기가 정말 잘 자랄 거예요.」"
+	CALL COM616_EIRINSPEAK, LOCALS
+	WAIT
+	RETURN 0
+ELSE
+	CALL COM616_CHECK(10000)
+	SIF RESULT
+		RETURN 0
+	CALL COM616_REMEDY(ARG)
+	WAIT
+	CALL COM616_PAY(10000)
+	RETURN 1
+ENDIF
+;body change
+
+@COM616_SELECTION_54_NAS
+LOCALS '= "「I can change your body in every aspect you like」/"
+LOCALS += "「It won't be cheap though.」"
+CALL COM616_EIRINSPEAK, LOCALS, "smile"
+CALL COM616_BODY_CHANGE(MASTER)
+SIF RESULT == 1
+	RETURN 1
+; hymen reconstruction
+
+@COM616_SELECTION_55_NAS
+LOCALS '= "「Who are you trying to fool by having your hymen reconstructed?」/"
+LOCALS += "「An experienced virgin doesn't sound very convincing at all.」/"
+LOCALS += "「Though, I'll do it since I have the stuff to reconstruct a person's virginity.」/"
+LOCALS += "「After all, the hymen is just two flaps that move away when something is inserted.」/"
+CALL COM616_EIRINSPEAK, LOCALS, "anger"
+CALL ASK_YN("동의한다", "취소")
+IF RESULT
+	LOCALS '= "「After all, you only have one /first/ time.」/"
+	CALL COM616_EIRINSPEAK, LOCALS
+	WAIT
+	RETURN 0
+ELSE
+	CALL COM616_CHECK(20000)
+	SIF RESULT
+		RETURN 0
+	CALL COM616_REMEDY(55)
+	WAIT
+	CALL COM616_PAY(20000)
+	RETURN 1
+ENDIF
+;surgery
+
+@COM616_SELECTION_60_NAS
+LOCALS '= @"「아, 의료 서비스를 요청하셨나요?」/「손상되고 불구인 신체 부위는 시간이 지나면 회복되지만, 파괴된 부위나 절단은 보통 수술이 필요합니다.」"
+CALL COM616_EIRINSPEAK, LOCALS
+WAIT
+CALL ASK_YN("동의한다", "취소")
+IF !RESULT
+	CALL COM616_PAY(50000)
+	CALL COM616_REMEDY(60)
+	RETURN 1
+ENDIF
+;fem MC preg
+
+@COM616_REMEDY_23_NAS
+LOCALS '= @"「좋아. 이제 나에게 혼자만의 시간이 좀 필요해, %CALLNAME:(FLAG:デート相手)%와 함께。」"
+CALL COM616_EIRINSPEAK, LOCALS, "smile"
+WAIT
+PRINTFORMW %PARSE("You leave")%방에서 시간을 보내며 %CALLNAME:(FLAG:デート相手)%의 수술이 완료되기를 기다렸다.
+PRINTFORMW 결국 에이린과 %CALLNAME:(FLAG:デート相手)%는 대기실로 돌아갔다.
+LOCALS '= "「This should do it. It's not the matter of the sperm count, but its quality and *power*, if you will.」/"
+LOCALS += "「However, the effect is short-lived and will be over by tomorrow. Make haste.」"
+CALL COM616_EIRINSPEAK, LOCALS
+WAIT
+; originally wanted to give minimum 100-300 points, but that code conflicts with cheat branch, so instead it'll lower req points by 5-10% :pedysmile: much stronger this way
+PRINTFORMW %CALLNAME:(FLAG:デート相手)%은(는) 지금 [농후정액]을 가지고 있다!
+TALENT:(FLAG:デート相手):濃厚精液 = 1
+Add_Yagokoro_PregBonus = 1
+TIME += 20
+RETURN 1
+;abortion
+
+@COM616_REMEDY_50_NAS
+LOCALS '= @"자궁 안에 넣는 좌약이다."
+LOCALS += @"그것은 아기를 통과하기 쉬운 액체로 녹인다."
+CALL COM616_EIRINSPEAK, LOCALS, "smile"
+WAIT
+PRINTFORML 에린은 알약을 꺼내 %PARSE("your")% 질 안에 넣은 뒤, 막대기를 사용해 그것을 %PARSE("your",1)% 자궁 안으로 밀어 넣었다.
+PRINTFORMW %PARSE("You")%는 %PARSE("your",1)% 내부가 부풀어 오르고 액화되어 %PARSE("your",1)% 질에서 새어 나오는 것을 느낀다.
+LOCALS '= "「Easy and quick.」/"
+LOCALS += "「Now just don't get yourself pregnant again.」/"
+CALL COM616_EIRINSPEAK, LOCALS
+WAIT
+PRINTFORMW %PARSE("You are")%이제 더 이상 【임신】 상태가 아니다.
+;TALENT:MASTER:0 = 1
+CFLAG:MASTER:妊娠経過日数 = 0
+CFLAG:MASTER:無自覚妊娠 = 0
+CFLAG:MASTER:身に覚え_母 = 0
+CFLAG:MASTER:身に覚え_父 = 0
+CFLAG:MASTER:妊娠自覚状態 = 0
+TALENT:MASTER:妊娠 = 0
+TIME += 5
+RETURN 1
+; abortion (but not for me)
+
+@COM616_REMEDY_51_NAS
+LOCALS '= @"「좋아. 이제 %CALLNAME:(FLAG:デート相手)%이랑 잠깐 단둘이 있을 시간이 필요해.」"
+CALL COM616_EIRINSPEAK, LOCALS, "smile"
+WAIT
+PRINTFORMW %PARSE("You leave")%방에서 시간을 보내며 %CALLNAME:(FLAG:デート相手)%의 수술이 끝날 때까지 기다린다.
+PRINTFORMW 결국 에이린과 %CALLNAME:(FLAG:デート相手)%는 대기실로 돌아간다.
+LOCALS '= "「Easy and quick.」/"
+LOCALS += "「Now just don't get yourself pregnant again.」/"
+CALL COM616_EIRINSPEAK, LOCALS
+WAIT
+PRINTFORMW  %CALLNAME:(FLAG:デート相手)%은 이제 더 이상 【임신】 상태가 아니다.
+TALENT:(FLAG:デート相手):0 = 1
+CFLAG:(FLAG:デート相手):妊娠経過日数 = 0
+CFLAG:(FLAG:デート相手):無自覚妊娠 = 0
+CFLAG:(FLAG:デート相手):身に覚え_母 = 0
+CFLAG:(FLAG:デート相手):身に覚え_父 = 0
+CFLAG:(FLAG:デート相手):妊娠自覚状態 = 0
+TALENT:(FLAG:デート相手):妊娠 = 0
+TIME += 5
+RETURN 1
+; hymen reconstruction
+
+@COM616_REMEDY_55_NAS
+LOCALS '= @"「사람의 처녀성을 되찾아 줄 수 있는 사탕이 여기 있어.」"
+LOCALS += @"만들 수 있는 것들과는 달리 이 사탕은 직장과 요도구를 재구성할 수도 있다."
+LOCALS += @"그리고 그것을 완전히 해라."
+LOCALS += @"「그것은 당신의 첫 키스마저 잊게 만들 수도 있다.」"
+CALL COM616_EIRINSPEAK, LOCALS, "smile"
+WAIT
+PRINTFORML %PARSE("You take")% 사탕을 넣고 입에 넣는다 %PARSE("your")% 입에
+PRINTFORMW %PARSE("You")%은 %PARSE("your")%의 질이 조여오는 것을 느낄 수 있다.
+LOCALS '= "「Tasty, isn't it?」/"
+LOCALS += "「Just remember that the reconstructed virginity is still as fragile as natural virginity.」/"
+LOCALS += "「So be careful to not lose your investment」'"
+CALL COM616_EIRINSPEAK, LOCALS
+WAIT
+PRINTFORMW %PARSE("You are")%지금은 【처녀】다.
+TALENT:MASTER:0 = 1
+CFLAG:MASTER:アナル処女喪失記念日 = 0
+CFLAG:MASTER:LostVirginUDay = 0
+TALENT:MASTER:キス未経験 = 1
+TALENT:MASTER:非童貞 = 0
+TIME += 5
+RETURN 1
+;surgery
+
+@COM616_REMEDY_60_NAS
+LOCALS '= @"「이 병원 가운을 입어줘서 네 몸에 무슨 문제가 있는지 제대로 볼 수 있게.」"
+LOCALS += @"그 후에 이 테이블에 누우면 수술 절차를 시작할 수 있다."
+LOCALS += @"「손상된 신체 부위는 고쳐주고 절단된 부분은 개선된 재생 복사본으로 대체해 주겠다」"
+LOCALS += @"「필요한 치료는 약 3일이 걸린다. 당신은 이곳, %MedicalCenterName()%에 머물게 될 것이다.」"
+LOCALS += @"우리는 어떠한 장기적인 부작용이나 당신의 건강에 어떤 방식으로든 해를 끼치지 않기 위해 우리가 할 수 있는 모든 것을 할 것입니다."
+CALL COM616_EIRINSPEAK, LOCALS, "smile"
+WAIT
+PRINTFORML %CALLNAME:72%은(는) 다른 방으로 가서 옷을 갈아입으라고 지시하기 전에 병원 가운을 준다.
+PRINTFORML 당신은 옷을 벗기 시작하고 드레스를 입기 시작한다.
+PRINTFORMW 다 마치면, 검사실로 돌아간다.
+PRINTFORML 당신은 수술대 위로 일어난다.
+PRINTFORML 에린은 당신에게 해당 테이블에 누워 침착할 것을 지시한다.
+PRINTFORMW 에린은 당신의 코에 호흡기를 씌우고 기계를 작동시키기 시작한다.
+LOCALS '= "「Stay still, as it'll take quite a bit for the anesthetic to kick in.」/"
+SIF GETBIT(nPee,1)
+	LOCALS += "「Also, I'll be putting this urinary catheter on you. Wetting during surgery is quite the common occurrence.」"
+CALL COM616_EIRINSPEAK, LOCALS
+SIF GETBIT(nPee,1)
+	CALL EVENT_Loss_U(MASTER,72,"catherer", @"수술 중에 %CALLNAME:72%에게 카테터가 강제로 삽입되었다.")
+WAIT
+PRINTFORMW 당신은 서서히 잠들기 시작한다...
+PRINTFORMW ...
+PRINTFORMW ..
+PRINTFORMW .
+PRINTFORMW 당신은 %MedicalCenterName()%에서 3일 후에 퇴원하며, 그 시점에 집으로 돌아간다.
+PRINTFORMW 대부분 괜찮다고 느끼며, 수리되고 새로 강화된 자신의 몸을 보는 광경에 전율한다.
+PRINTFORMW 드디어 다시 건강해질 날이 기다려진다...
+;soon this will actually give bionic copies but right now it just calls "i need some help"
+FOR LOCAL,0,100
+SIF IsPartDestroyed(MASTER,LOCAL)
+	CALLF AddBionic(MASTER,LOCAL,36)
+NEXT
+CALLF HESOYAM(MASTER)
+FOR LOCAL, 0, 3
+;PRINTFORMW DAY:3 - {DAY:3}
+DAY ++
+DAY:3 ++
+CALL CHANGE_MONTH
+;PRINTFORMW AFTER {DAY:3}
+NEXT
+CFLAG:MASTER:現在位置 = CFLAG:MASTER:初期位置
+CFLAG:MASTER:就寝時間 = DAY * 1440 + TIME
+;day ends here
+BASE:MASTER:体力 = 0
+RETURN 1
+;bladder train
+
+@COM616_REMEDY_40_NAS
+LOCALS '= "「I'll have to ask to take your pants off so I can test it's effectiveness on you.」/"
+LOCALS += "「I'll also have to ask you to hold yourself, even if it's tempting to pee on me.」"
+CALL COM616_EIRINSPEAK, LOCALS, "blush"
+WAIT
+IF !FLAG:5702
+	PRINTFORMW 에린이 야고코로마데의 엘릭서를 제시한다. 라벨에는 '바소프레신'이라고 적혀 있다.
+	PRINTFORMW 그녀는 또한 '성장 젤(Growing Gel)'이라는 라벨이 붙은 병을 가진 주사기도 꺼냈다.
+	LOCALS '= "「I'm going to inject your bladder with this gel. It'll stop the random urges to pee... for a while...」/"
+	LOCALS += "「Stay still. Don't tense up.」"
+	CALL COM616_EIRINSPEAK, LOCALS
+	PRINTFORMW 그녀는 주사기를 젤 병 안에 넣고 채운다.
+	PRINTFORML %BREAKENG(@"에이린은 주사기를 당신의 방광에 찔러 넣고, 그 안에 젤을 주입했다.")%
+	LOCALS '= "「That was easy. I also have a drink on hand which could be helpful for you.」/"
+	LOCALS += "「Drink this, it should slow down urine production to a reasonable level」"
+	CALL COM616_EIRINSPEAK, LOCALS
+	PRINTFORML 에린이 병을 건네자 당신은 그것을 집게 된다.
+	PRINTFORML 당신은 그것을 집어 한 번에 마신다.
+	LOCALS '= "「Now, I'll have to see if it worked on you or not.」/"
+	LOCALS += "「This is also the way I potty train people...」/"
+	LOCALS += "「And the reason I told you to take off your pants..」"
+	CALL COM616_EIRINSPEAK, LOCALS, "blush"
+	IF HAS_PENIS(MASTER)
+		PRINTFORML %BREAKENG(@"에이린은 당신의 방광에 직접 압력을 가하고 전기 마사지기를 당신의 성기에 사용한다.")% 
+	ELSE
+		PRINTFORML %BREAKENG(@"에이린은 당신의 방광에 직접 압력을 가하고 음핵에 전기 마사지기를 적용한다.")%
+	ENDIF
+	PRINTFORMW 진동기(vibrator)와 가해진 압력의 조합이 강렬한 소변 욕구를 불러일으킨다.
+	PRINTFORMW 당신은 다리를 꼬고 손을 사타구니에 대려 하지만, 에린이 그 허사적인 노력에 미소 지으며 길을 막는다.
+	PRINTFORMW 그녀는 당신이 방광 외의 다른 것으로 스스로를 붙잡도록 허락하지 않는다.	
+	PRINTFORMW 당신은 모든 것을 방광에 집중하며 그것을 참으려 한다...
+	PRINTFORML %BREAKENG(@"에이린은 진동기를 최고 세도로 설정하고 당신이 절정에 도달하거나 스스로 오줌을 지릴 것을 예상한다.")%
+	PRINTFORMW 당신의 몸이 오르가즘을 기대하며 떨린다.
+	LOCALS '= @"「우리가 이제 막 시작했는데 포기할 수 없잖아? 견딜 수 있어, %CALLNAME:MASTER%.」"
+	CALL COM616_EIRINSPEAK, LOCALS, "smile"
+	WAIT
+	PRINTFORMDW 그녀는 진동기를 벗어 방광에 가해지던 압력을 해제한다.
+	PRINTFORMDW 당신은 소변을 보려고 애쓰기 시작하고 간절히 안도감을 구한다... 
+	PRINTFORMDW 에린은 팔을 붙잡고 발을 밟으며, 방광에 직접적인 압력을 다시 가하자 당신의 간청을 거부한다.
+	PRINTFORMDW 게다가 진동기가 켜지며 당신의 %FSYN("crotch")%에 다시 적용된다.
+	LOCALS '= @"「소변으로 춤을 추는 건 방광을 단련시키지 못해. 내가 말했듯이, 견뎌야 해.」"
+	CALL COM616_EIRINSPEAK, LOCALS, "smile"
+	PRINTFORMDW 방광이 저릿해지기 시작하면서 참기가 점점 힘들어졌다.
+	PRINTFORMDW 오르가슴에 사로잡히는 것을 막으려 애쓰면서 골반이 떨리기 시작한다.
+	PRINTFORMDW 진동기와 압박감이 다시 자신으로부터 분리된다. 
+	PRINTFORMDW 당신은 %FSYN("crotch")%를 감싸 안고 앞으로 숙여서, %FSYN("pee:ing")%하는 것을 막기 위해 격렬하게 제자리걸음을 하기 시작한다.
+	PRINTFORMW 에린은 당신이 화장실로 달려가려는 시도를 보고 한 걸음 떼기도 전에 제지했다.  
+	LOCALS '= @"「딱 한 번만 더 참을 수 있어.」/"
+	LOCALS += "「Most bladders without this would've break about here」/"
+	LOCALS += "「I hope yours isn't like the rest after I've injected you.」/"
+	CALL COM616_EIRINSPEAK, LOCALS, "smile"
+	PRINTFORMW 압박감이 다시 돌아왔지만, 이번에는 조금 다르다.
+	PRINTFORMW 절정에 이르거나 실수로 소변을 보려고 할 때마다 진동기가 당신에게서 멀어진다. 마치 그녀가 마땅히 누려야 할 절정을 거부하는 것처럼.
+	PRINTFORMW 그럼에도 불구하고, 이렇게 오줌이 마려운 적은 없었다...
+	PRINTFORMW 이 클라이맥스에 대한 갈망...
+	PRINTFORMW 이 쾌락에 대한 갈망...
+	PRINTFORMW 이 안도감에 대한 갈망...
+	LOCALS '= @"「마지막 일격이야, 할 수 있어.」"
+	LOCALS += "「3...」/"
+	LOCALS += "「2...」/"
+	LOCALS += "「1...」/"
+	CALL COM616_EIRINSPEAK, LOCALS, "smile"
+	PRINTFORML %BREAKENG(@"마지막으로 말하는데, 진동기는 가능한 최고 설정으로 되어 있다.")%			
+	PRINTFORMW 진동기가 음핵을 때리는 감각과 극도의 소변 보고 싶은 갈망이 하나로 녹아내리는 쾌감으로 합쳐진다.
+	PRINTFORMW 정신이 하얗게 되고 몸이 절정에 이르러 방광을 비우기를 기대하면서 그것이 당신을 지배한다...
+	PRINTFORML %BREAKENG(@"네가 이걸 막을 방법은 없어...")%	
+	PRINTFORMDW 당신은 방광 근육을 이완하며 안도감을 기대한다...
+	PRINTFORMDW ...
+	PRINTFORMDW ..
+	PRINTFORMDW .
+	IF TALENT:MASTER:おもらし癖 >= 3
+		CALL PEESOUNDS("loc")
+		PRINTFORMDW 당신은 마지막으로 가득 적시는 것을 즐기며 황홀하게 신음한다...
+		PRINTFORMDW 우선은...
+		LOCALS '= "「Fuck.」/"
+		LOCALS += "「That was just a calibration run. Basically what it would take to cause a normal bladder to break.」/"
+		LOCALS += "「You definitely lost it. You'll have to do some more potty training on your own.」/"
+		LOCALS += "「The good thing is that you showed signs of holding yourself.」/"
+		LOCALS += "「Ideally you should be able to fully hold yourself within a week.」"
+		EXP:MASTER:放尿経験 += 11
+		Qol_Info_Count_Array:MASTER:Qol_Count_Wetting += 1	;qol custom code. force this to increase by 1 every time (doing it by experience gain results in skewed stuff)
+		CALL QoL_Info_Write(MASTER, Qol_Dates_Wetting) ;qol custom code
+		PRINTFORMW %PARSE("Your")%[요실금]이 제거되었고, 당신은 이제 [강력한 방광]을 가지게 되었다!		
+	ELSEIF TALENT:MASTER:おもらし癖 == 2
+		CALL PEESOUNDS("hs")
+		PRINTFORMDW 당신은 겨우 참으면서 바닥에 작은 물웅덩이가 생긴다.
+		LOCALS '= "「Oh... You were almost there, whatever.」/"
+		LOCALS += "「That was just a calibration run. Basically what it would take to cause a normal bladder to break.」/"
+		LOCALS += "「You looked like you were about to lose it, but my techniques almost saved you.」/"
+		LOCALS += "「You should be able to fully endure that in a few days.」"
+		EXP:MASTER:放尿経験 += 3
+		Qol_Info_Count_Array:MASTER:Qol_Count_Wetting += 1	;qol custom code. force this to increase by 1 every time (doing it by experience gain results in skewed stuff)
+		CALL QoL_Info_Write(MASTER, Qol_Dates_Wetting) ;qol custom code
+		PRINTFORMW %PARSE("Your")% 오줌싸개버릇은 이제 제거되었고, 너는 또한 [강한 방광]을 갖게 되었다!	
+	ELSE
+		PRINTFORMDW 아무것도 나오지 않았다. 그 절망은 모두 네 마음속에 있었다.
+		LOCALS '= "「Ok, looks good.」/"
+		LOCALS += "「That was just a calibration run. Basically what it would take to cause a normal bladder to break.」/"
+		LOCALS += "「You looked like you were about to lose it, but my techniques saved you.」"
+		PRINTFORMW %PARSE("You")%이제 [강한 방광]을 가졌다!	
+	ENDIF
+	CALL COM616_EIRINSPEAK, LOCALS
+	WAIT
+ELSE
+	PRINTFORMW 당신은 %PeeProtectType(MASTER)%를 벗고 에린이 당신의 하반신을 검사하게 한다.
+	LOCALS '= @"「네 안에 넣은 젤이 아직 괜찮은 것 같아.」"
+	LOCALS += "「What seems to have happened is that you managed to pee yourself though that injection regularly.」/"
+	;SIF ABL:MASTER:Urethra >= 5
+	;	LOCALS += "「Furthermore, your urethra has been extremely stretched, making it extremely hard to hold your urine.」/"
+	LOCALS += "「I'll have to do a longer potty training session with you to retrain your mind.」/"
+	CALL COM616_EIRINSPEAK, LOCALS, "smile"
+	WAIT
+	PRINTFORMW 지시에 따라 침대에 누워 에린이 다음에 무엇을 할지 기다린다...
+	PRINTFORMW 흡수 패드가 깔려 있는 것 같은데, 마치 네가 스스로 오줌을 싸거나 거세당할 것을 기대하는 것 같다.
+	LOCALS '= @"「내가 다음에 할 일 때문에 긴장을 풀어줘야 해.」/"
+	LOCALS += "「If you tense up, it'll make it exponentially harder...」/"
+	CALL COM616_EIRINSPEAK, LOCALS, "smile"
+	PRINTFORMW 당신은 정신은 그렇지 않음에도 불구하고 저항하며 몸을 이완한다...
+	PRINTFORMW 에이린은 작은 금속 플러그를 집어, 많은 양의 윤활제를 발라 네 요도에 깔끔하게 밀어 넣는다.
+	PRINTFORMW 요도 사운드만 삽입되어도 너는 오르가즘을 느끼고 몸 전체가 절정에 차면서 사정한다.
+	PRINTFORMW %CAPITALIZE(FSYN("pee:n"))%은(는) 방광에서 나오려 하지만, 요도 사운드가 새어 나오는 것을 막는다.
+	PRINTFORMW 그것은 안정을 갈망한다...
+	LOCALS '= @"「오... 넣으니까 절정에 이른 것 같네.」/"
+	LOCALS += "「Don't worry, you'll have many more...」/"
+	LOCALS += @"「그냥 참아줘, %CALLNAME:MASTER%.」"
+	CALL COM616_EIRINSPEAK, LOCALS, "blush"
+	IF HAS_PENIS(MASTER)
+		PRINTFORML %BREAKENG(@"에이린은 당신의 방광에 직접 압력을 가하고 전기 마사지기를 당신의 거시기(dick)에 적용한다.")% 
+	ELSE
+		PRINTFORML %BREAKENG(@"에이린은 당신의 방광에 직접 압력을 가하고 음핵에 전기 마사지기를 적용한다.")%
+	ENDIF
+	PRINTFORMW 이전과 같은 것들이다...
+	PRINTFORML 진동기의 감각이 당신을 떨게 만들고, 요도가 막혀 그 느낌을 증폭시킨다.
+	PRINTFORML 아직 소변이 마려운 것은 아니지만, 그것을 느끼기 시작한다.
+	PRINTFORMW 에린은 점차 진동기의 강도를 높여 당신을 다시 절정에 이르게 한다.
+	PRINTFORMW 소변이 마렵다는 느낌과 함께 몸을 뒤틀기 시작한다.
+	PRINTFORMW 마사지기의 진동이 참을 수 없게 되자, 몸을 비트는 것이 절박함으로 변해간다.
+	PRINTFORML
+	PRINTFORMW 에린은 진동기를 최고 설정으로 놓고, 당신의 방광은 플러그를 통해 터지기 직전이다.
+	PRINTFORMW 당신은 소변이 마려운 느낌, 진동기, 그리고 그것을 내보낼 수 없다는 감각들이 하나로 결합되어 거부할 수 없는 힘 속에서 쾌락과 하나가 된다.
+	CALL PEESOUNDS("s")
+	PRINTFORMW %CAPITALIZE(FSYN("pee:n"))%이 요도 소리를 통해 나오기 시작한다.
+	LOCALS '= @"「마지막 일격이야, 할 수 있어.」"
+	LOCALS += "「3...」/"
+	LOCALS += "「2...」/"
+	LOCALS += "「1...」/"
+	CALL COM616_EIRINSPEAK, LOCALS
+	WAIT
+	PRINTFORML 에이린은 요도 탐촉자를 폭력적으로 빼내며 홍수 문을 연다.
+	PRINTFORMW 당신도 마사지기로 격렬하게 오르가즘을 느낀다.
+	CALL PEESOUNDS("loc")
+	PRINTFORMW 네가 이걸 막을 방법은 없어.
+	PRINTFORML 달콤해... 달콤한 안도감....
+	PRINTFORML 전능한 쾌락이 너의 몸을 지배하며, 넌 바보같이 침대에서 소변을 봐...
+	PRINTFORMW 패드 밑부분이 너에게서 나오는 소변을 흡수하기 시작한다.
+	EXP:MASTER:放尿経験 += 13
+	Qol_Info_Count_Array:MASTER:Qol_Count_Wetting += 1	;qol custom code. force this to increase by 1 every time (doing it by experience gain results in skewed stuff)
+	CALL QoL_Info_Write(MASTER, Qol_Dates_Wetting) ;qol custom code
+	PRINTFORML
+	PRINTFORMW 당신은 오르가슴의 여운 속에 잠겨 있지만, 에이린에게 마주하게 된다.
+	LOCALS '= @"내가 당신의 요도 마개를 빼낼 때, 스스로를 붙잡아야 할 겁니다."
+	LOCALS += @"「네가 그것을 감당할 때까지 계속할 거야.」"
+	LOCALS += @"「소변을 지리면 상황이 더 나빠질 뿐이다.」"
+	CALL COM616_EIRINSPEAK, LOCALS
+	WAIT
+	PRINTFORML 요도 사운드가 당신의 요도 안에 두 번째로 삽입된다.
+	PRINTFORMW 그리고 그녀는 진동기를 다시 켠다...
+	PRINTFORMW 이번에는 이전보다 좀 더 오래 버텼지만, 그녀가 그것을 빼자...
+	CALL PEESOUNDS("loc")
+	PRINTFORMW 너 또 실수를 했네.
+	LOCALS '= @"「당신의 방광이 참을 수 있다는 신호를 보이기 시작했다. 그것은 좋다.」"
+	LOCALS '= @"「다른 일로 바쁠 테니 리젠에게 맡길게.」"
+	LOCALS += @"방광이 심하게 퇴화했으므로 이것은 하루 종일 지속될 것이라는 점을 명심해라."
+	LOCALS += @"「%HIM_HER(MASTER,,1)%를 우동에 담는다.」"
+	CALL COM616_EIRINSPEAK, LOCALS
+	WAIT
+	CALL SPTALK, [[鈴仙]], , 0, "「Leave it to me, Master!」", 1
+	WAIT
+	PRINTFORMW 라이젠은 요도 소리에 윤활제를 다시 바르고, 같은 방식으로 당신의 요도에 삽입한 뒤, 전과 같은 곳에서 진동기를 켠다. 
+	PRINTFORMW 이 과정이 몇 시간 동안 반복된다...
+	PRINTFORMW 당신은 신음하고 비명을 지르지만 끝이 없다...
+	PRINTFORMW 얼마나 자주 사정하고 범했는지 감을 잃는다...
+	PRINTFORMW 끊임없이 소변 보고 싶은 절박함의 압박이 몸을 과부하시켜 실신하게 만든다... 
+	PRINTFORML
+	PRINTFORML 당신은 그 후 풀려나 방으로 돌아가 침대에 힘없이 쓰러진다.
+	PRINTFORML 레이선이 잠시 너를 간호하지만, 무릎이 너무 풀려서 균형을 잡기조차 힘들다.
+	PRINTFORMW 너는 그저 잠이 들기로 한다...
+	PRINTFORML	
+	;end day
+	;EXP:MASTER:UExp += 10
+	;EXP:MASTER:USex += 10
+	EXP:MASTER:Ｃ経験 += 20
+	EXP:MASTER:Ｃ絶頂経験 += 20
+	EXP:MASTER:絶頂経験 += 20
+	BASE:MASTER:体力 = 0
+	EXP:MASTER:放尿経験 += 78
+	Qol_Info_Count_Array:MASTER:Qol_Count_Wetting += 6	;qol custom code
+	CALL QoL_Info_Write(MASTER, Qol_Dates_Wetting) ;qol custom code
+	TALENT:[[永琳]]:機嫌 = 1
+	CFLAG:MASTER:現在位置 = CFLAG:MASTER:初期位置
+ENDIF
+TALENT:MASTER:おもらし癖 = -2
+PeeHoldExp:MASTER:0 = 250
+PeeHold:MASTER:0 = 2
+EXP:MASTER:Ｃ経験 += 20
+EXP:MASTER:Ｃ絶頂経験 += 20
+EXP:MASTER:絶頂経験 += 20
+RETURN 1
+; @COM616_REMEDY_41_NAS
+; LOCALS '= "「I'll have to ask to take your pants off so I can test it's effectiveness on you.」/"
+; LOCALS += "「I'll also have to ask you to hold yourself, even if it's tempting to pee on me.」"
+; CALL COM616_EIRINSPEAK, LOCALS, "blush"
+; WAIT
+
+@Add_Challenge_Player_Punish(CHARA)
+#DIM CHARA
+PRINTFORML 벌칙으로, %CALLNAME:CHARA%가 당신에게 결투를 신청한다!
+CALL LoG_ChallengePlayer(CHARA)

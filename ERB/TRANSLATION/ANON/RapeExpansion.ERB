@@ -1,0 +1,644 @@
+﻿; Modular ERB: ANON/RapeExpansion.ERB
+;==========================================================
+;NAS_RapeOption
+;----------------------------------------------------------
+;Description
+;----------------------------------------------------------
+;Allows the player to forcefully push down the target without their consent.
+;Requires the player to fail the consent check.
+;Base Power is determined by twice their Danmaku skill (Melee in NAS), and half of their finger skill
+;----------------------------------------------------------
+;Parameters
+;----------------------------------------------------------
+;ARG: Target
+;==========================================================
+
+@NAS_RapeOption(ARG)
+#DIM DIFFERENCE
+;requires the rape toggle, capturing skill, and rope
+IF !RAPE_CONDITION()
+	GOTO NoRape
+ENDIF
+SETCOLOR C_RED
+PRINTFORML %CALLNAME:ARG%을 강압적으로 밀어붙인다?
+RESETCOLOR
+PRINTFORML
+PRINTFORML [  0] 괜찮다.
+PRINTFORML [999] 여기서 날 나가게 해줘!
+INPUT
+SELECTCASE RESULT
+	CASE 0
+		IF MARK:ARG:MARK_FORCE
+			GOTO GoRape
+		ELSE
+			PRINTFORML 어떻게 그걸 할 건데?
+			;options
+			;danmaku (no lethal because player is very likely to kill the touhou)
+			;force push
+			CALL ASK_M( "단막", 1, "힘으로 밀어붙인다", 1, "취소", 1 )
+			SELECTCASE RESULT
+				CASE 0
+				CASE 1
+					TCVAR:ARG:793 = 2*ABL:ARG:42 + (ABL:ARG:指)
+					TCVAR:MASTER:793 = 2*ABL:MASTER:42 + (ABL:MASTER:指)
+					CALL SHOW_POWERFAVOR(TCVAR:MASTER:793,MASTER)
+					SIF TCVAR:MASTER:793
+						CALL POWERBUFFS(MASTER)
+					DRAWLINE
+					CALL SHOW_POWERFAVOR(TCVAR:ARG:793,ARG)
+					SIF TCVAR:ARG:793
+						CALL POWERBUFFS(ARG)
+					;Size difference
+					SELECTCASE TALENT:MASTER:形状
+						CASE 0,3,4
+							LOCAL = 0
+						CASE 1
+							LOCAL = -2
+						CASE 2
+							LOCAL = -1
+						CASE 6
+							LOCAL = 1
+						CASE 5,10
+							LOCAL = 2
+					ENDSELECT
+					LOCAL:1 = ((TALENT:MASTER:体型 - TALENT:ARG:体型) * 2 + LOCAL)*4
+					IF LOCAL:1
+						TCVAR:MASTER:793 = TCVAR:MASTER:793 + LOCAL:1
+						CALL COLORMESSAGE(@"크기 차이",C_PINK,1,1)
+						CALL SHOW_POWERFAVOR(TCVAR:MASTER:793,MASTER)
+					ENDIF
+					DIFFERENCE = (TCVAR:MASTER:793-TCVAR:ARG:793)
+					IF DIFFERENCE >= 0
+						$GoRape
+						PRINTFORMW 모든 %PARSE("your")% 힘으로, 당신은 %CALLNAME:ARG%를 아래로 밀어붙인다.
+						TFLAG:194 = 0
+						TCVAR:抱き寄せ初回 = 20
+						CALL COM_KOJO_CALL(ARG, 350)
+						CALL NAS_StartRape(ARG)
+					ELSE
+						TFLAG:押し倒せない ++
+						RETURN -1
+					ENDIF
+				CASE 2
+					GOTO NoRape
+			ENDSELECT
+		ENDIF
+	CASEELSE
+		$NoRape
+		TFLAG:押し倒せない ++
+		RETURN -1
+ENDSELECT
+
+@NAS_StartRape(ARG)
+SOURCE:ARG:反感 += 20000
+TFLAG:98 = -10
+TCVAR:ARG:無理矢理 = 1
+CFLAG:ARG:うふふ = 1
+CFLAG:MASTER:うふふ = 1
+TCVAR:ARG:抱き寄せ初回 = 20
+SOURCE:ARG:Terror += 1000
+;TEQUIP:ARG:拘束 = 1
+TFLAG:押し倒せない = 0
+CFLAG:ARG:ヤラせちゃった = 1
+SETBIT FALL_RAPE:ARG:0,  0 ;custom code, rape expansion
+
+@NAS_ResumeTimeInRape
+#DIM DYNAMIC RTIR_VICTIMS,VARSIZE("TARGET")
+#DIMS DYNAMIC RITR_STRING
+VARSET RTIR_VICTIMS, -1
+VARSET RITR_STRING
+IF !RAPE_CONDITION()
+	RETURN -1
+ENDIF
+FOR LOCAL,1,GET_TARGETNUM()+1
+IF CFLAG:(TARGET:LOCAL):うふふ
+	RITR_STRING += @"%CALLNAME:(TARGET:LOCAL)%、"
+	RTIR_VICTIMS:(LOCAL-1) = (TARGET:LOCAL)
+ENDIF
+NEXT
+SETCOLOR C_RED
+PRINTFORML !! WARNING !!
+PRINTFORML 시간을 재개하는 것은 %LIST_IN_STRING(RITR_STRING)%의 의식적인 강간으로 간주될 것이다!
+RESETCOLOR
+PRINTFORML
+PRINTFORML [  0] 괜찮아.
+PRINTFORML [999] 여기서 나 좀 나가게 해줘!
+INPUT
+SELECTCASE RESULT
+	CASE 0
+		CALL 時間停止解除
+		FOR LOCAL,1,GET_TARGETNUM()+1
+		IF CFLAG:(TARGET:LOCAL):うふふ
+			CALL NAS_StartRape(TARGET:LOCAL)
+			CALL RE_HOSTILE_CHECK(TARGET:LOCAL)
+		ENDIF
+		NEXT
+	CASEELSE
+		RETURN -1
+ENDSELECT
+;checks for marks by setting the target.
+
+@RE_HOSTILE_CHECK(ARG)
+#DIM REHC_LASTCHARA
+#DIM REHC_TSP
+REHC_LASTCHARA = TARGET
+REHC_TSP = FLAG:70
+TARGET = ARG
+FLAG:70 = 0
+CALL SOURCE_反感(TARGET)
+CALL MARK_GOT_CHECK(TARGET)
+CALL KOJO_MESSAGE_SEND("MARK",-1,TARGET,-1,-1)
+TARGET = REHC_LASTCHARA
+FLAG:70 = REHC_TSP
+;==========================================================
+;NAS_NonConWarning
+;----------------------------------------------------------
+;Description
+;----------------------------------------------------------
+;Warns the player that they're about to do non-consensual sex
+;----------------------------------------------------------
+;Parameters
+;----------------------------------------------------------
+;ARG: Target
+;nType: Ufufu Type
+;==========================================================
+
+@NAS_NonConWarning(ARG, nType)
+#DIM nType
+IF CFLAG:ARG:ヤラせちゃった || GETBIT(CFLAG:ARG:既成事実, 1)
+	RETURN 1
+ENDIF
+SETCOLOR C_RED
+PRINTFORML 비동의 성관계가 시작되었다. 계속 진행하면 %CALLNAME:ARG%와의 순수한 관계를 잃게 된다.
+RESETCOLOR
+PRINTFORML
+PRINTFORML [  0] 괜찮다.
+PRINTFORML [999] 여기서 나를 꺼내!
+INPUT
+SELECTCASE RESULT
+	CASE 0
+	CASEELSE
+		TFLAG:押し倒せない ++
+		SELECTCASE nType
+			CASE 1
+				CALL ENDUFUFU(ARG)
+			CASE 2
+				CALL ENDUFUFU_ALL
+		ENDSELECT
+		RETURN -1
+ENDSELECT
+;==========================================================
+;COM_ABLE107_MOD
+;----------------------------------------------------------
+;Description
+;----------------------------------------------------------
+;Custom COM_ABLE107 function which allows restraining in TSP.
+;----------------------------------------------------------
+;Parameters
+;----------------------------------------------------------
+;None
+;==========================================================
+
+@COM_ABLE107_MOD
+;拘束プレイ実行判定
+SIF !TFLAG:100
+	RETURN 0
+;一括管理
+SIF GLOBAL_COMABLE(107) && !FLAG:70 ;custom code: Rape Expansion
+	RETURN RESULT
+;縄でしばってるとダメ
+SIF TEQUIP:縄
+	RETURN 0
+;睡眠姦中
+SIF CFLAG:イタズラ > 1
+	RETURN 0
+;停止中は不可
+;TSPer vs TSPer countermeasure
+SIF FLAG:70 && MAXBASE:TARGET:TSP
+	RETURN 0
+;解除はいつでも可能
+SIF TEQUIP:拘束
+	RETURN 1
+;アイテムを持っているか、アイテムなし設定でないとダメ
+SIF ITEM:27 == 0 && NOITEM == 0
+	RETURN 0
+RETURN 1
+;==========================================================
+;RapeState1Requirement
+;----------------------------------------------------------
+;Description
+;----------------------------------------------------------
+;Requirements for the first state of the rape route
+; 50 Fallen Rape Exp
+; Force Mark 1
+; 2 Fall Rapce Conditions
+;----------------------------------------------------------
+;Parameters
+;----------------------------------------------------------
+;ARG: Character ID
+;==========================================================
+
+@RapeState1Requirement(ARG)
+#FUNCTION
+SIF TALENT:ARG:TALENT_RAPE1 || TALENT:ARG:TALENT_RAPE2
+	RETURNF 0
+SIF EXP:ARG:EXP_RAPE < REQUIRED_EXP_RAPE1
+	RETURNF 0
+SIF MARK:ARG:MARK_FORCE < REQUIRED_FORCE_RAPE1
+	RETURNF 0
+SIF FALLEN_RAPE_TRACK_COUNT(ARG) < REQUIRED_FRM_RAPE1
+	RETURNF 0
+RETURNF 1
+;==========================================================
+;RapeState1Requirement
+;----------------------------------------------------------
+;Description
+;----------------------------------------------------------
+;Requirements for the second state of the rape route
+; 250 Fallen Rape Exp
+; Force Mark 3
+; 4 Fall Rapce Conditions
+;----------------------------------------------------------
+;Parameters
+;----------------------------------------------------------
+;ARG: Character ID
+;==========================================================
+
+@RapeState2Requirement(ARG)
+#FUNCTION
+SIF TALENT:ARG:TALENT_RAPE2
+	RETURNF 0
+SIF EXP:ARG:EXP_RAPE < REQUIRED_EXP_RAPE2
+	RETURNF 0
+SIF MARK:ARG:MARK_FORCE < REQUIRED_FORCE_RAPE2
+	RETURNF 0
+SIF FALLEN_RAPE_TRACK_COUNT(ARG) < REQUIRED_FRM_RAPE2
+	RETURNF 0
+RETURNF 1
+;==========================================================
+;RapeStatesGet
+;----------------------------------------------------------
+;Description
+;----------------------------------------------------------
+;Message for getting rape route fall states
+;----------------------------------------------------------
+;Parameters
+;----------------------------------------------------------
+;ARG: Character ID
+;==========================================================
+
+@RapeStatesGet(ARG)
+SIF !nRape
+	RETURN
+IF RapeState2Requirement(ARG)
+	PRINTFORML 반복적으로 괴롭힘과 성폭력을 당한 후, %CALLNAME:ARG%의 정신이 무너졌다...
+	IF EXISTVAR("NAS_VERSION")
+		LOCALS '= @"【%GET_TALENTNAME_TR(TALENT_RAPE2,1)%】"
+	ELSE
+		LOCALS '= @"[%GET_TALENTNAME_TR(TALENT_RAPE2,1)%]"
+	ENDIF
+	CALL KOJO_MESSAGE_SEND("EVENT", 21, ARG, 21)
+	PRINTFORML %CALLNAME:ARG%는 이제 %LOCALS%를 가지고 있다.
+	TALENT:ARG:TALENT_RAPE1 = 0
+	TALENT:ARG:TALENT_RAPE2 = 1
+	CALL QoL_Info_Write(LOCAL, Qol_Dates_RapeState1) ;qol custom code
+	MARK:ARG:3 = 0
+	CALL COLORMESSAGE("모든 증오의 흔적이 지워졌다.",C_AQUA,2)
+ELSEIF RapeState1Requirement(ARG)
+	PRINTFORML 여러 차례의 강간 세션 끝에, %CALLNAME:ARG%는 조금 부서지고 있음을 느끼기 시작했다...
+	IF EXISTVAR("NAS_VERSION")
+		LOCALS '= @"【%GET_TALENTNAME_TR(TALENT_RAPE1,1)%】"
+	ELSE
+		LOCALS '= @"[%GET_TALENTNAME_TR(TALENT_RAPE1,1)%]"
+	ENDIF
+	CALL KOJO_MESSAGE_SEND("EVENT", 21, ARG, 20)
+	PRINTFORML %CALLNAME:ARG%이 당신에게 %LOCALS%를 시작했다.
+	TALENT:ARG:TALENT_RAPE1 = 1
+	CALL QoL_Info_Write(LOCAL, Qol_Dates_RapeState1) ;qol custom code
+ENDIF
+;==========================================================
+;SHOW_FALL_STATE_REV_24
+;----------------------------------------------------------
+;Description
+;----------------------------------------------------------
+;Displays requirements for rape fall state 1
+;----------------------------------------------------------
+;Parameters
+;----------------------------------------------------------
+;ARG: Character ID
+;==========================================================
+
+@SHOW_FALL_STATE_REV_INFO_24(ARG)
+SFSR_TYPE '= "Rape Route"
+SFSR_CANDO = nRape
+SFSR_NAME '= GET_TALENTNAME_TR(TALENT_RAPE2,1)
+
+@SHOW_FALL_STATE_REV_24(ARG)
+IF TALENT:ARG:TALENT_RAPE2
+	PRINT 　
+	CALL COLORMESSAGE(@"획득함",C_YELLOW,1)
+ELSE
+	PRINT 　
+	CALL COND_COLORMESSAGE(EXP:ARG:EXP_RAPE >= REQUIRED_EXP_RAPE2,@"{REQUIRED_EXP_RAPE2} 성폭행 경험치 (현재:{EXP:ARG:EXP_RAPE})")
+	PRINT 　
+	CALL COND_COLORMESSAGE(MARK:ARG:MARK_FORCE >= REQUIRED_FORCE_RAPE2,@"강제 표시 레벨{REQUIRED_FORCE_RAPE2}(현재:{MARK:ARG:MARK_FORCE})")
+	PRINT 　
+	CALL COND_COLORMESSAGE(FALLEN_RAPE_TRACK_COUNT(ARG) >= REQUIRED_FRM_RAPE2,@"{REQUIRED_FRM_RAPE2} 강간 마일스톤 (현재:{FALLEN_RAPE_TRACK_COUNT(ARG)})")
+ENDIF
+;==========================================================
+;SHOW_FALL_STATE_REV_25
+;----------------------------------------------------------
+;Description
+;----------------------------------------------------------
+;Displays requirements for rape fall state 2
+;----------------------------------------------------------
+;Parameters
+;----------------------------------------------------------
+;ARG: Character ID
+;==========================================================
+
+@SHOW_FALL_STATE_REV_INFO_25(ARG)
+SFSR_TYPE '= "Rape Route"
+SFSR_CANDO = nRape
+SFSR_NAME '= GET_TALENTNAME_TR(TALENT_RAPE1,1)
+
+@SHOW_FALL_STATE_REV_25(ARG)
+IF TALENT:ARG:TALENT_RAPE1 || TALENT:ARG:TALENT_RAPE2
+	PRINT 　
+	CALL COLORMESSAGE(@"획득함",C_YELLOW,1)
+ELSE
+	PRINT 　
+	CALL COND_COLORMESSAGE(EXP:ARG:EXP_RAPE >= REQUIRED_EXP_RAPE1,@"{REQUIRED_EXP_RAPE1} 강간 경험치 (현재:{EXP:ARG:EXP_RAPE})")
+	PRINT 　
+	CALL COND_COLORMESSAGE(MARK:ARG:MARK_FORCE >= REQUIRED_FORCE_RAPE1,@"강제 표시 레벨 {REQUIRED_FORCE_RAPE1} (현재:{MARK:ARG:MARK_FORCE})")
+	PRINT 　
+	CALL COND_COLORMESSAGE(FALLEN_RAPE_TRACK_COUNT(ARG) >= REQUIRED_FRM_RAPE1,@"{REQUIRED_FRM_RAPE1} 강간 이정표 (현재:{FALLEN_RAPE_TRACK_COUNT(ARG)})")
+ENDIF
+;==========================================================
+;SHOW_FALL_STATE_REV_24
+;----------------------------------------------------------
+;Description
+;----------------------------------------------------------
+;Displays the fallen rape tracker
+;----------------------------------------------------------
+;Parameters
+;----------------------------------------------------------
+;ARG: Character ID
+;==========================================================
+
+@SHOW_FALL_STATE_REV_INFO_29(ARG)
+SFSR_TYPE '= "Rape Route"
+SFSR_CANDO = nRape
+SFSR_STRING '= @"추락한 강간 추적자"
+
+@SHOW_FALL_STATE_REV_29(ARG)
+PRINT 　
+CALL COND_COLORMESSAGE(GETBIT(FALL_RAPE:ARG:0,0),@"의식적으로 강간당했다")
+PRINT 　
+CALL COND_COLORMESSAGE(GETBIT(FALL_RAPE:ARG:0,1),@"강간 중 오르가즘을 느끼도록 강요당했다.")
+PRINT 　
+CALL COND_COLORMESSAGE(GETBIT(FALL_RAPE:ARG:0,2),@"강간 중에 다중 오르가슴을 갖도록 강요당했다.")
+PRINT 　
+CALL COND_COLORMESSAGE(GETBIT(FALL_RAPE:ARG:0,3),@"강제로 안으로 들어왔다.")
+PRINT 　
+CALL COND_COLORMESSAGE(GETBIT(FALL_RAPE:ARG:0,4),@"강제로 임신했다.")
+;==========================================================
+;FALLEN_RAPE_TRACK_COUNT
+;----------------------------------------------------------
+;Description
+;----------------------------------------------------------
+;Tracks how many milestones have happened during rape
+;----------------------------------------------------------
+;Parameters
+;----------------------------------------------------------
+;ARG: Character ID
+;==========================================================
+
+@FALLEN_RAPE_TRACK_COUNT(ARG)
+#FUNCTION
+#DIM DYNAMIC FRTC = 0
+FOR LOCAL,0,64
+SIF GETBIT(FALL_RAPE:ARG:0,0)
+	FRTC ++
+NEXT
+RETURNF FRTC
+;==========================================================
+;SOURCE_FORCE
+;----------------------------------------------------------
+;Description
+;----------------------------------------------------------
+;Used for checking FORCE marks.
+;Uses Denial, Terror, Shame, and a bit of Submission
+;Distribution:
+;Terror: 50%
+;Submission: 20%
+;Denial: 20%
+;Shame: 10%
+;----------------------------------------------------------
+;Parameters
+;----------------------------------------------------------
+;ARG: Target
+;==========================================================
+
+@SOURCE_FORCE(ARG)
+#FUNCTION
+#DIM SF_SOURCE,5
+SIF FLAG:70
+	RETURNF 0
+; SF_SOURCE:0 = CUP:ARG:Terror * 50/100
+; SF_SOURCE:1 = CUP:ARG:屈服 * 20/100
+; ;SF_SOURCE:2 = CUP:ARG:否定 * 20/100
+; SF_SOURCE:2 = CUP:ARG:抑鬱 * 20/100
+; SF_SOURCE:3 = CUP:ARG:恥情 * 10/100
+;revised
+SF_SOURCE:0 = CUP:ARG:Terror
+SF_SOURCE:1 = CUP:ARG:屈服
+;SF_SOURCE:2 = CUP:ARG:否定 * 20/100
+SF_SOURCE:2 = CUP:ARG:抑鬱
+SF_SOURCE:3 = CUP:ARG:恥情
+SF_SOURCE:4 = SF_SOURCE:0 + SF_SOURCE:1 + SF_SOURCE:2 + SF_SOURCE:3
+IF CFLAG:ARG:うふふ == 2
+	TIMES SF_SOURCE:4, 0.2
+ELSEIF !TCVAR:ARG:無理矢理 && CFLAG:ARG:うふふ
+	TIMES SF_SOURCE:4, 0.3
+ENDIF
+RETURNF SF_SOURCE:4
+;==========================================================
+;MARK_MESSAGE_FORCE
+;----------------------------------------------------------
+;Description
+;----------------------------------------------------------
+;Message for gaining FORCE marks
+;----------------------------------------------------------
+;Parameters
+;----------------------------------------------------------
+;None
+;==========================================================
+
+@MARK_MESSAGE_FORCE()
+IF TFLAG:TFLAG_FORCE_GET == 1
+	PRINTFORML %조사처리(CALLNAME:TARGET,"의")% 몸이 트라우마로 고통받기 시작한다%COND_STR(" during rape",TCVAR:TARGET:無理矢理)%...
+	PRINTFORMW %조사처리(CALLNAME:TARGET,"가")% 강제 표시 LV1을 얻었다!
+ELSEIF TFLAG:TFLAG_FORCE_GET == 2
+	PRINTFORML 트라우마가 %조사처리(CALLNAME:TARGET,"의")% 몸에 새겨진다. %HE_SHE(TARGET)%은 악몽을 견디며...
+	PRINTFORMW %조사처리(CALLNAME:TARGET,"가")% 강제 마크 LV2를 얻었다!
+ELSEIF TFLAG:TFLAG_FORCE_GET == 3
+	PRINTFORML %조사처리(CALLNAME:TARGET,"의")% 정신은 %HIS_HER(TARGET)%에 대한 강제적인 행동들 \@ TCVAR:TARGET:無理矢理 ? 동안 완전히 굴복한다 # %HIM_HER(TARGET)% \@...
+	PRINTFORMW %조사처리(CALLNAME:TARGET,"가")% 강제 마크 LV3를 얻었다!
+ELSEIF TFLAG:TFLAG_FORCE_GET == 4
+	PRINTFORML %조사처리(CALLNAME:TARGET,"의")% 정신이 극한의 힘%COND_STR(" during rape",TCVAR:TARGET:無理矢理)%을 쾌락으로 해석하기 시작한다...
+	PRINTFORMW %조사처리(CALLNAME:TARGET,"는")%(는) 힘 마크 LV4를 얻었다!
+ELSEIF TFLAG:TFLAG_FORCE_GET == 5
+	PRINTFORML %조사처리(CALLNAME:TARGET,"의")% 정신과 코어가 과도한 힘으로 압도되어 부서진다.
+	PRINTFORMW %조사처리(CALLNAME:TARGET,"가")% 강제 마크 Lv5를 받았다!
+ENDIF
+;==========================================================
+;RAPED_2HU_MOVE
+;----------------------------------------------------------
+;Description
+;----------------------------------------------------------
+;Raped Touhous will move away from you if they're alone.
+;----------------------------------------------------------
+;Parameters
+;----------------------------------------------------------
+;ARG: Character
+;==========================================================
+
+@RAPED_2HU_MOVE(ARG)
+#FUNCTION
+SIF CFLAG:ARG:300 != CFLAG:MASTER:300
+	RETURNF 0
+SIF !GETBIT(FALL_RAPE:ARG:0, 0)
+	RETURNF 0
+SIF TALENT:ARG:TALENT_RAPE2
+	RETURNF 0
+RETURNF 1
+;==========================================================
+;SOURCE_TERROR
+;----------------------------------------------------------
+;Description
+;----------------------------------------------------------
+;Terror SOURCE processing
+;Essentially this is what I thought Fear was meant to be
+;----------------------------------------------------------
+;Parameters
+;----------------------------------------------------------
+;ARG: Character
+;==========================================================
+
+@SOURCE_TERROR(ARG)
+VARSET LOCAL
+;inherit fear for terror
+SOURCE:ARG:Terror += SOURCE:ARG:恐怖
+SOURCE:ARG:Terror += SOURCE:ARG:苦痛
+LOCAL = SOURCE:ARG:Terror
+;相手主導
+SIF ARG != MASTER && CFLAG:ARG:うふふ == 2
+	TIMES LOCAL, 0.50
+;================================
+;ABILITIES
+;================================
+;LOCAL = ABL補正(LOCAL,ABL:ARG:従順,1); commented, this makes NO sense
+IF TCVAR:ARG:無理矢理
+	;rape
+	;set a flat 8x multipler and ignore obedience.
+	;also adds 150 terror PALAMs
+	TIMES LOCAL , 8.00
+	LOCAL += 150
+	GOTO SKIP_OBED
+ENDIF
+SELECTCASE ABL:ARG:従順
+	CASE IS >= 20
+		TIMES LOCAL , 0.10
+	CASE IS >= 10
+		TIMES LOCAL , 0.30
+	CASE 9
+		TIMES LOCAL , 0.50
+	CASE 8
+		TIMES LOCAL , 1.00
+	CASE 7
+		TIMES LOCAL , 1.50
+	CASE 6
+		TIMES LOCAL , 2.00
+	CASE 5
+		TIMES LOCAL , 2.50
+	CASE 4
+		TIMES LOCAL , 3.00
+	CASE 3
+		TIMES LOCAL , 3.50
+	CASE 2
+		TIMES LOCAL , 4.00
+	CASE 1
+		TIMES LOCAL , 5.00
+	CASEELSE
+		TIMES LOCAL , 6.00
+ENDSELECT
+;================================
+;TALENTS
+$SKIP_OBED
+;================================
+;GAIN
+;==================
+;Timid
+SIF TALENT:ARG:度胸 < 0
+	TIMES LOCAL , 2.00
+;Sexually Ignorant (and in Sex)
+SIF (TALENT:ARG:SexKnow == -1 || TALENT:ARG:27) && CFLAG:ARG:うふふ
+	TIMES LOCAL , 1.40
+;Shy
+SIF TALENT:ARG: 33 > 0
+	TIMES LOCAL , 1.60
+;Weakness
+SIF TALENT:ARG:34 > 0
+	TIMES LOCAL , 2.50
+;Wimp
+SIF TALENT:ARG:40 > 0
+	TIMES LOCAL , 2.00
+;Submits Easily
+SIF TALENT:ARG:72 > 0
+	TIMES LOCAL , 3.00
+;Child Like
+SIF TALENT:ARG:151 > 0
+	TIMES LOCAL , 4.00
+;==================
+;LOSE
+;==================
+;Brave
+SIF TALENT:ARG:度胸 > 0
+	TIMES LOCAL , 0.70
+;Defiant
+;Self Control
+SIF TALENT:ARG:20 > 0
+	TIMES LOCAL , 0.8
+;Aphat/Psycho
+SIF TALENT:ARG:21 > 0
+	TIMES LOCAL , 0.5
+;Emotionless
+SIF TALENT:ARG:34 > 0
+	TIMES LOCAL , 0.5
+;Tough
+SIF TALENT:ARG:22
+	TIMES LOCAL , 0.5
+;Insane
+SIF TALENT:ARG:141 > 0
+	TIMES LOCAL , 0.3
+;================================
+CUP:ARG:Terror += LOCAL
+;pregnacy resitance multiplier for rape
+;will be determined in a new PR
+; @RapePreggoMultiplier(ARG)
+; #FUNCTION
+; #DIM DYNAMIC RPM_MULT
+; SELECTCASE FALLEN_RAPE_TRACK_COUNT(ARG)
+; CASE 5
+; 	RPM_MULT = 30
+; CASE 4
+; 	RPM_MULT = 40
+; CASE 3
+; 	RPM_MULT = 60
+; CASE IS <= 2
+; 	RPM_MULT = 80
+; CASEELSE
+; 	RPM_MULT = 25
+; ENDSELECT
+; RETURNF RPM_MULT

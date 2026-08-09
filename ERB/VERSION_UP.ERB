@@ -1,0 +1,142 @@
+﻿; Modular ERB: VERSION_UP.ERB
+;変数の書き換えなどを伴なうバージョンアップ用
+
+@VERSION_UP
+#DIM CHARA
+SIF !GETBIT(FLAG:1000, 1)
+	CALL KAISYONASI
+SIF !GETBIT(FLAG:1000, 2) && FLAG:地主
+	CALL MODE_NOUMIN
+SIF !GETBIT(FLAG:1000, 3)
+	CALL BUGFIX_KOIBITO
+SETBIT FLAG:1000, 3
+SIF !GETBIT(FLAG:1000, 4)
+	CALL BUGFIX_KOIBITO
+;atw edit, hardcore content toggle
+;CALL HARDCORE_CONTENT_DEFAULT
+SETBIT FLAG:1000, 4
+;kojo auto updata
+FOR LOCAL, 0, CHARANUM
+CALL KOJO_MESSAGE_SEND("KOJO_VERSION", 0, LOCAL)
+NEXT
+
+@KAISYONASI
+SETBIT FLAG:1000, 1
+;Bugfix
+SETBIT FLAG:1000, 3
+SETBIT FLAG:1000, 4
+;Custom code, replaced
+CALL KAISYONASI_TR
+RETURN
+PRINTFORML 스스로 상대에게 고백할 정도는 배짱이 있는 건가?
+CALL ASK_YN("그야 뭐","무리입니다")
+IF !RESULT
+	PRINTFORMW 가치가 없는 모드를 사용하지 않습니다.
+	FLAG:甲斐性無 = 0
+ELSE
+	PRINTFORMW 가치 없는 모드를 켭니다(일부 명령 사용 불가/상대에게 깔릴 시 강화).
+	FLAG:甲斐性無 = 1
+ENDIF
+
+@KAISYONASI_TR
+$REPRINT
+LOCAL = LINECOUNT
+PRINTFORML 누군가에게 당신의 연모를 고백할 담력이 있습니까?
+PRINTL [0] No
+PRINTL [1] 예
+PRINTL [2] 설명해라
+PRINTFORML [3] 하지만 %PARSE("you play",1)% 잡기 어렵다
+INPUT
+SELECTCASE RESULT
+	CASE 0
+		PRINTFORMDL
+		PRINTFORMDL 다른 사람들은 얼마나 더 적극적이어야 할까?
+		PRINTFORMDL [0] 조금 더 적극적으로
+		PRINTFORMDL [1] 훨씬 더 적극적으로
+		PRINTFORMDL [2] 강간의 도시
+		$LOOP
+		INPUT
+		LOCAL:1 = RESULT
+		SIF LOCAL:1 < 0 || LOCAL:1 > 2
+			GOTO LOOP
+		PRINTFORMW 무능력 모드가 켜졌다. 일부 행동은 사용할 수 없게 되며, 소녀들은 일반적으로 더 강압적으로 변한다.
+		FLAG:甲斐性無 = LOCAL:1+1
+		FLAG:LUSTMODE = 0
+	CASE 1
+		PRINTFORMW 무능 모드는 사용되지 않는다 (노말 모드 선택됨).
+		FLAG:甲斐性無 = 0
+		FLAG:LUSTMODE = 0
+	CASE 2
+		PRINTFORML 담력이 없으면 고백이나 공공장소에서의 성희롱 등 일부 행동이 불가능해진다. 
+		PRINTFORMW 하지만 다른 사람들은 대신 그런 행동을 할 가능성이 더 높아질 것이다.
+		PRINTFORMW 희귀하게 구는 것은 욕망 모드를 활성화하며, 제압당하는 것을 피하는 즐거움을 누린다.
+		CLEARLINE LINECOUNT - LOCAL
+		GOTO REPRINT
+	CASE 3
+		PRINTFORMDL
+		PRINTFORMDL 다른 사람들은 얼마나 더 강하게 밀어붙여야 할까?
+		PRINTFORMDL [0] 조금 더 강하게
+		PRINTFORMDL [1] 훨씬 더 강하게
+		PRINTFORMDL [2] 강간 도시
+		$LOOP1
+		INPUT
+		LOCAL:1 = RESULT
+		SIF LOCAL:1 < 0 || LOCAL:1 > 2
+			GOTO LOOP1
+		PRINTFORMW 욕망 모드가 켜졌다. 행동에 제약이 없고, 여자들은 일반적으로 더 적극적일 것이다.
+		FLAG:甲斐性無 = LOCAL:1+1
+		FLAG:LUSTMODE = 1
+ENDSELECT
+PRINTL 
+;Custom code
+$REPRINT_TWO
+LOCAL = LINECOUNT
+LOADGLOBAL
+PRINTFORML 안정 기간 제한을 무시할 것인가?
+PRINTL [0] 아니요 (일반 모드)
+PRINTL [1] 예
+PRINTL [2] 안정 기간?
+INPUT
+IF RESULT == 0
+	PRINTW 임신 성별 제한이 복구되었다.
+	nGlobalStableBypass = 0
+ELSEIF RESULT == 1
+	PRINTW 임신 성별 제한이 제거되었다.
+	nGlobalStableBypass = 1
+ELSEIF RESULT == 2
+	PRINTL 평소에는 임신 초기와 후기에는 성관계가 불가능하다.
+	PRINTW "안정기" 동안에만 성관계가 가능하다. 그래서 그 이름이 붙은 것이다.
+	CLEARLINE LINECOUNT - LOCAL
+	GOTO REPRINT_TWO
+ENDIF
+SAVEGLOBAL
+
+@BUGFIX_KOIBITO
+VARSET LOCAL
+[IF_NDEBUG]
+PRINTFORML 이전 버전의 버그를 수정하기 위해 연인은 한 명을 제외하고 모두 초기화됩니다.
+PRINTFORMW 사과의 의미로 미라다의 돌을 가지세요.
+[ENDIF]
+FLAG:追加恋人枠 = 0
+ITEM:ミラダの石 += 1
+FOR LOCAL,1,CHARANUM
+SIF TALENT:LOCAL:恋人
+	LOCAL:1 ++
+NEXT
+SIF LOCAL:1 <= 1
+	RETURN
+PRINTFORML 연인으로 유지할 캐릭터를 선택한다.
+FOR LOCAL,1,CHARANUM
+SIF TALENT:LOCAL:恋人
+	PRINTFORMLC [{LOCAL}] %CALLNAME:LOCAL%
+NEXT
+PRINTFORML 
+INPUT
+SIF TALENT:RESULT:恋人
+	LOCAL:2 = RESULT
+FOR LOCAL,1,CHARANUM
+TALENT:LOCAL:恋人 = 0
+NEXT
+TALENT:(LOCAL:2):恋人 = 1 ;custom code, lover check patch
+TALENT:MASTER:恋人 = LOCAL:2
+PRINTFORMW 초기화 완료.

@@ -1,0 +1,675 @@
+﻿; Modular ERB: 情事発覚.ERB
+;FileName_情事発覚.ERB --------------------------------- Rev1.00
+;情事の発覚
+;CALL		USER
+;ARG		0:入室キャラNO, 1:発覚状況(0:同室, 1:覗き)
+;RETURN		0:同室, 1:立ち去る
+;COMMENT
+;-----------------------------------------------------------
+
+@AFFAIR_DISCLOSURE(ARG, NOZOKI)
+#DIM PREV_TARGET
+#DIM IRAI_ABLE
+#DIM NOZOKI
+#DIM FORCE_STOP
+#DIM FORCE_GETOUT
+#DIM WITNESSED
+#DIM HAPPENING_TYPE
+CALL AFFAIR_DISCLOSURE_TR(ARG, NOZOKI) ;qol custom code, replaced
+RETURN RESULT
+VARSET LOCAL
+FORCE_STOP = 0
+FORCE_GETOUT = 0
+HAPPENING_TYPE = 0
+WITNESSED = TFLAG:現在のTARGET
+SIF CFLAG:MASTER:イタズラ
+	WITNESSED = TARGET
+IF WITNESSED && (CFLAG:(WITNESSED):うふふ || CFLAG:(WITNESSED):イタズラ) && !GETBIT(FLAG:潜伏,0)
+	DRAWLINE
+	IF CFLAG:(WITNESSED):イタズラ
+		PRINTFORMW %CALLNAME:ARG%이 %PARSE("you")%을/를 \@ INROOM(CFLAG:MASTER:現在位置) ? 침대 위에서 # 외부에서 성관계를 하는 것을 \@ %CALLNAME:(WITNESSED)%과!
+		IF !CFLAG:ARG:弱み握り && CFLAG:(WITNESSED):イタズラ == 2 && TCVAR:Common_Sense_Alteration_Status <= 50 && FLAG:催眠強度 <= 50 ;hypnosis patch
+			PRINTFORMW %CALLNAME:ARG%이것을 이용해서 %PARSE("you")%를 협박할 수 있다.
+		ELSE
+			PRINTFORMW %CALLNAME:ARG%는 역겹다는 듯하다.
+		ENDIF
+		SIF IsDead:WITNESSED:0
+			CALL SET_REP(ARG,19,,1)
+		CALL TOUCH_SET(0,0,0,1)
+		DRAWLINE
+		FORCE_STOP = 1
+		SIF TCVAR:Common_Sense_Alteration_Status <= 50 && FLAG:催眠強度 <= 50 ;hypnosis patch
+			CFLAG:ARG:弱み握り += 10
+	ELSEIF TFLAG:102 == 3 && TFLAG:抱きつきモード
+		PRINTFORMW %CALLNAME:ARG%이 %PARSE("you")%가 %CALLNAME:(TFLAG:現在のTARGET)%에게 추파 던지는 것을 목격한다!
+		PRINTFORMW %CALLNAME:(TFLAG:現在のTARGET)%은 %HE_SHE(TFLAG:現在のTARGET)%가 %PARSE("from you",1)%을 분리하자 후회스러운 표정을 짓는다.
+		CALL UWAKI_RECORD(ARG,0,TFLAG:現在のTARGET)
+		TFLAG:抱きつきモード = 0
+		TFLAG:102 = 1
+		CALL 押し倒され終了
+	ELSE
+		IF NOZOKI
+			;custom code
+			PRINTFORMW ~로부터%LOC_THE(CFLAG:ARG:現在位置, 0, 1)%【%NAME_FROM_PLACE(CFLAG:ARG:現在位置)%】%CALLNAME:ARG%당신과 ~ 사이의 유대감에 다가온다 %CALLNAME:(TFLAG:現在のTARGET)%!
+		ELSE
+			PRINTFORMW %CALLNAME:ARG%은(는) 당신과 %CALLNAME:(TFLAG:現在のTARGET)% 사이의 밀회를 목격한다.
+		ENDIF
+		;bug fix custom code for secluded spot FLAG:潜伏
+		IF RESULT:10 == 99
+			CALL UWAKI_RECORD(ARG,0,TFLAG:現在のTARGET)
+		ELSE
+			CALL UWAKI_RECORD(ARG)
+		ENDIF
+		;恋人同士（もしくは恋人を含む）場合
+		IF TALENT:MASTER:恋人 && (TALENT:(TFLAG:現在のTARGET):恋人 || WITH_恋人())
+			;出くわした
+			IF !NOZOKI
+				;入ってきた方が恋人だった場合、割り込んでくる
+				;				IF TALENT:MASTER:恋人 && TALENT:MASTER:恋人 == TALENT:ARG:恋人
+				IF TALENT:ARG:恋人
+					PRINTFORMW %CALLNAME:ARG%은(는) 저항하지 못하고 합류한다.
+					CFLAG:ARG:うふふ = CFLAG:(WITNESSED):うふふ
+					;恋人が他の女といちゃついてたら、理性吹っ飛んでもおかしくないし、テンションマックスって意味でムードが上がってもいいんじゃないかなぁと愚考する次第
+					;BASE:ARG:ムード = MAXBASE:ARG:ムード
+					;BASE:ARG:理性 = 0
+					;上記がコメントアウトされてるけど、それが原因のバグが出てるっぽいので追記
+					;まあ、マックス＆0にするのはさすがにやり過ぎだった気がしないでもない
+					SIF BASE:ARG:ムード < 300
+						BASE:ARG:ムード = 300
+					SIF BASE:ARG:理性 > 300
+						BASE:ARG:理性 = 300
+					;見た人
+					CALL KOJO_MESSAGE_SEND("EVENT",6,ARG,WITNESSED,2)
+					CALL UWAKI_RECORD(ARG,1,RESULT:10 == 99 ? WITNESSED # 0) ;bug fix
+					;見られた人（最も地位の高いTARGETで代表）
+					;CALL KOJO_EVENT(4,WITNESSED,ARG)
+					CALL KOJO_MESSAGE_SEND("EVENT",7,WITNESSED,ARG,2)
+					CALL UWAKI_RECORD(WITNESSED,1,RESULT:10 == 99 ? ARG # 0) ;bug fix
+					DRAWLINE
+					RETURN 0
+					;してる方が恋人だった場合、そそくさと立ち去る（恋人が混じっている多人数プレイかつTARGETが恋人でない場合も立ち去る
+				ELSE
+					PRINTFORMW 당신의 눈이 %HE_SHE(ARG)%와 마주치면 서둘러 도망친다...
+					IF !NOZOKI
+						;見た人
+						CALL KOJO_MESSAGE_SEND("EVENT",6,ARG,WITNESSED,3)
+						;見られた人（最も地位の高いTARGETで代表）
+						CALL KOJO_MESSAGE_SEND("EVENT",7,WITNESSED,ARG,3)
+					ENDIF
+					IF CFLAG:ARG:現在位置 == CFLAG:ARG:前ターン位置
+						CALL GETOUT(ARG)
+					ELSE
+						CFLAG:ARG:現在位置 = CFLAG:ARG:前ターン位置
+					ENDIF
+					;キャラを動かしたのでTARGET再設定
+					CALL TARGETSET_CHACK
+					CFLAG:ARG:同室 = 0
+					RETURN 1
+				ENDIF
+				;覗きみた
+			ELSE
+				PRINTFORMW %CALLNAME:ARG%은(는) 얼굴을 붉히며 도망가기 전에 %HIS_HER(ARG)%의 얼굴을 숨긴다...
+				IF !NOZOKI
+					;見た人
+					CALL KOJO_MESSAGE_SEND("EVENT",6,ARG,WITNESSED,3)
+					;見られた人（最も地位の高いTARGETで代表）
+					CALL KOJO_MESSAGE_SEND("EVENT",7,WITNESSED,ARG,3)
+				ENDIF
+				IF CFLAG:ARG:現在位置 == CFLAG:ARG:前ターン位置
+					CALL GETOUT(ARG)
+				ELSE
+					CFLAG:ARG:現在位置 = CFLAG:ARG:前ターン位置
+				ENDIF
+				;キャラを動かしたのでTARGET再設定… まぁ、覗きなんで大丈夫なはず。
+				CALL TARGETSET_CHACK
+				CFLAG:ARG:同室 = 0
+				RETURN 1
+			ENDIF
+			;ここから恋人が含まれていない場合
+		ELSEIF (TALENT:ARG:淫乱 || TALENT:ARG:ヤリマン)
+			PRINTFORMW 당신이 %CALLNAME:ARG%를 부르면, %HE_SHE(ARG)%는 기꺼이 다가온다.
+			CFLAG:ARG:うふふ = CFLAG:(WITNESSED):うふふ
+			CFLAG:ARG:同室 = 1
+			;見た人
+			CALL KOJO_MESSAGE_SEND("EVENT",6,ARG,WITNESSED,4)
+			;見られた人（最も地位の高いTARGETで代表）
+			CALL KOJO_MESSAGE_SEND("EVENT",7,WITNESSED,ARG,4)
+		ELSEIF TALENT:ARG:SexKnow == -1 && !(CFLAG:ARG:既成事実 & 合意_うふふ)
+			;無知かつうふふ未経験
+			IF NOZOKI
+				;custom code
+				PRINTFORMW %NAME_FROM_PLACE_THE(CFLAG:ARG:現在位置)% %CALLNAME:ARG%는 당신의 불륜을 바라본다 \@ TALENT:ARG:羞恥心 > 0 ? 숨기면서 %HIS_HER(ARG)%의 홍당무한 얼굴 # 호기심으로 가득 찬 \@...
+			ELSE
+				PRINTFORML %CALLNAME:ARG%는 당신의 연인을 바라본다 \@ TALENT:ARG:羞恥心 > 0 ? 숨기면서 # 호기심으로 가득 찬 %HIS_HER(ARG)%의 홍조 띤 얼굴을 \@...
+				;NAS: Lose ignorance
+				CALL ASK_M(@"%CALLNAME:ARG%가 지켜보게 하라", 1, @"%HIM_HER(ARG)%을/를 내쫓는다", 1)
+				SELECTCASE RESULT
+					CASE 0
+						PRINTFORMW 당신은 %CALLNAME:ARG%에게 당신과 %CALLNAME:WITNESSED%가 섹스하는 것을 보게 하여 어떻게 작동하는지 지켜보게 한다.
+					CASE 1
+						PRINTFORMW 당신은 혼란스러운 %CALLNAME:ARG%를 두고 떠난다.
+						CALL GETOUT(ARG)
+						CALL TARGETSET_CHACK
+						CFLAG:ARG:同室 = 0
+				ENDSELECT
+			ENDIF
+			;そのキャラの私室でヤってた場合
+		ELSEIF CFLAG:ARG:初期位置 == CFLAG:MASTER:現在位置
+			PRINTFORML %CALLNAME:ARG%은 당신이 그런 짓을 %HIS_HER(ARG)% 방에서 했다고 비난한 뒤 쫓아낸다.
+			PRINTFORMW %HE_SHE(ARG,1)%은 이것으로 당신을 협박할 수 있다.
+			CALL GET_ANGRY(ARG)
+			FORCE_STOP = 1
+			FORCE_GETOUT = 1
+			CFLAG:ARG:弱み握り += 20
+			DRAWLINE
+		ELSEIF CFLAG:ARG:行動 == 5 && CFLAG:MASTER:現在位置 == CFLAG:ARG:職場
+			PRINTFORML %CALLNAME:ARG%은(는) 당신이 그런 일을 하는 것에 대해 %HIS_HER(ARG)%의 직장에서 비난한 후 당신을 내쫓는다.
+			PRINTFORMW %HE_SHE(ARG,1)%은(는) 이것을 이용해 당신을 협박할 수 있다.
+			CALL GET_ANGRY(ARG)
+			FORCE_STOP = 1
+			FORCE_GETOUT = 1
+			CFLAG:ARG:弱み握り += 20
+			DRAWLINE
+		ELSEIF CFLAG:ARG:態度 < 3 && PRIVATEROOM:(CFLAG:MASTER:現在位置 % 100) && PRIVATEROOM:(CFLAG:MASTER:現在位置 % 100) != TARGET
+			SIF !CFLAG:ARG:弱み握り
+				PRINTFORMW %CALLNAME:ARG%는 이것을 이용해 당신을 협박할 수 있다.
+			IF !NOZOKI
+				;見た人
+				;CALL KOJO_EVENT(1,ARG,WITNESSED)
+				CALL KOJO_MESSAGE_SEND("EVENT",6,ARG,WITNESSED,1)
+				;見られた人（最も地位の高いTARGETで代表）
+				;CALL KOJO_EVENT(2,WITNESSED,ARG)
+				CALL KOJO_MESSAGE_SEND("EVENT",7,WITNESSED,ARG,1)
+			ENDIF
+			CALL TOUCH_SET(0,0,0,1)
+			DRAWLINE
+			FORCE_STOP = 1
+			CFLAG:ARG:弱み握り += 10
+			;謹慎処分とか弱味とかの処理を入れる予定
+		ELSE
+			IF !NOZOKI
+				;態度だけだと既成事実とか見てないことに気づく、ので合意がある場合に迫ってくるように
+				IF TCVAR:MASTER:馴れ合い >= 3 && GETBIT(CFLAG:ARG:既成事実 , 1)
+					PRINTFORMW %CALLNAME:ARG%은(는) 저항하지 못하고 합류한다.
+					CFLAG:ARG:うふふ = CFLAG:(WITNESSED):うふふ
+					;一応、押し倒し可能なムードに
+					;理性は押し倒しに関係してないけど、理性的なら混ざろうとしないだろうと
+					BASE:ARG:ムード = MAX(BASE:ARG:ムード, 300)
+					BASE:ARG:理性 = MIN(BASE:ARG:理性, 300)
+					;見た人
+					CALL KOJO_MESSAGE_SEND("EVENT",6,ARG,WITNESSED,2)
+					CALL UWAKI_RECORD(ARG,1,RESULT:10 == 99 ? WITNESSED # 0) ;bug fix
+					;見られた人（最も地位の高いTARGETで代表）
+					CALL KOJO_MESSAGE_SEND("EVENT",7,WITNESSED,ARG,2)
+					CALL UWAKI_RECORD(WITNESSED,1,RESULT:10 == 99 ? ARG # 0) ;bug fix
+					DRAWLINE
+					RETURN 0
+				ELSE
+					PRINTFORMW %CALLNAME:ARG%은(는) \@ TALENT:ARG:恋慕 ? 실망한 듯이 보인다 # 부끄러워하며 몸을 돌리고 \@ 서둘러 떠난다...
+					;見た人
+					CALL KOJO_MESSAGE_SEND("EVENT",6,ARG,WITNESSED,3)
+					;見られた人（最も地位の高いTARGETで代表）
+					CALL KOJO_MESSAGE_SEND("EVENT",7,WITNESSED,ARG,3)
+					IF CFLAG:ARG:現在位置 == CFLAG:ARG:前ターン位置
+						CALL GETOUT(ARG)
+					ELSE
+						CFLAG:ARG:現在位置 = CFLAG:ARG:前ターン位置
+					ENDIF
+					CALL TARGETSET_CHACK
+					CFLAG:ARG:同室 = 0
+					IF TALENT:ARG:恋慕
+						TALENT:ARG:機嫌 = MIN(TALENT:ARG:機嫌, 0)
+						BASE:ARG:怒り += MAXBASE:ARG:怒り / 2
+						CFLAG:ARG:情事目撃 = TARGET
+					ENDIF
+					RETURN 1
+				ENDIF
+				;覗かれた場合
+			ELSE
+				PRINTFORMW %CALLNAME:ARG%은(는) \@ TALENT:ARG:恋慕 ? 실망한다 # 부끄러워하며 외면한다 \@...
+				IF TALENT:ARG:恋慕 && !CFLAG:ARG:情事目撃
+					IF TCVAR:ARG:馴れ合い < 3
+						TALENT:ARG:機嫌 = MIN(TALENT:ARG:機嫌, 0)
+						BASE:ARG:怒り += MAXBASE:ARG:怒り / 4
+					ENDIF
+					CFLAG:ARG:情事目撃 = TARGET
+				ENDIF
+			ENDIF
+		ENDIF
+	ENDIF
+ENDIF
+IF FORCE_STOP
+	SIF CFLAG:MASTER:イタズラ
+		CALL SET_PRANK(0,TARGET,2)
+	FOR LOCAL,0,CHARANUM
+	CALL ENDUFUFU(LOCAL)
+	SIF LOCAL == WITNESSED || LOCAL == ARG
+		CONTINUE
+	CALL GETOUT(LOCAL)
+	NEXT
+	TFLAG:106 = 0
+	RETURN 0
+ENDIF
+;通常遭遇
+;experimental bug fix: modified below, TIME != TIME:3 removed because girls won't greet you right after waking up with tsp movement enabled (time doesn't change therefore this gets ignored)
+IF !CFLAG:ARG:睡眠 && (!NOZOKI || CFLAG:ARG:現在位置 == CFLAG:MASTER:現在位置) && !FLAG:時間停止 && !CHK_DATENOW(CFLAG:ARG:デート中) && (CFLAG:MASTER:現在位置 != CFLAG:MASTER:初期位置 || CFLAG:MASTER:あなた前ターン位置 != CFLAG:MASTER:初期位置) && !GETBIT(FLAG:潜伏,0)
+	;デート中に偶然遭遇
+	IF CHK_DATENOW(CFLAG:MASTER:デート中)
+		CALL PRINT_FACE, ARG, "通常"
+		IF !CFLAG:(NO:ARG):面識 && TALENT:ARG:行きずり
+			PRINTFORMW 당신은 %CALLNAME:ARG%를 부른다.
+		ELSE
+			IF !TCVAR:ARG:今日会ったか && !cMorningGreeting:ARG:0 ;custom code, hide the line if the morning event was seen
+				PRINTFORMW 당신은 %CALLNAME:ARG%를 마주친다.
+			ELSE
+				PRINTFORMW 당신은 %CALLNAME:ARG%를 다시 마주친다.
+			ENDIF
+		ENDIF
+		IF CFLAG:(NO:ARG):面識 == 0
+			CALL SYOTAIMEN(ARG)
+		ELSE
+			;IF MOREDATE && NumberOfDates > 1 && !IS_IN_GROUP_DATE(ARG) ; If seen while dating more than one person
+			;	IF !TCVAR:ARG:今日会ったか
+			;		CALL KOJO_MESSAGE_SEND("EVENT",1,ARG,9,GET_RANDOM_DATE)
+			;	ENDIF
+			;	CALL KOJO_MESSAGE_SEND("EVENT",1,ARG,1007,GET_RANDOM_DATE)
+			;ELSE
+			FOR LOCAL:4,1,CHARANUM
+			IF CHK_DATENOW(CFLAG:(LOCAL:4):デート中)
+				IF !TCVAR:ARG:今日会ったか
+					CALL KOJO_MESSAGE_SEND("EVENT",1,ARG,9,LOCAL:4)
+				ENDIF
+				CALL KOJO_MESSAGE_SEND("EVENT",1,ARG,7,LOCAL:4)
+				BREAK
+			ELSEIF LOCAL:4 == CHARANUM - 1
+				IF !TCVAR:ARG:今日会ったか
+					CALL KOJO_MESSAGE_SEND("EVENT",1,ARG,9,0)
+				ENDIF
+				CALL KOJO_MESSAGE_SEND("EVENT",1,ARG,6,0)
+			ENDIF
+			NEXT
+		ENDIF
+		;さっきから居るのは分かっていたか否か
+	ELSEIF CFLAG:ARG:前ターン位置 == CFLAG:ARG:現在位置
+		CALL PRINT_FACE, ARG
+		PRINTFORMW %CALLNAME:ARG%은(는) \@ CAN_MOVE(CFLAG:MASTER:前ターン位置, CFLAG:ARG:現在位置) == 2 ? 이다 # 이었다 \@%AT_IN_ON(CFLAG:ARG:現在位置)%에.
+		SIF !TCVAR:ARG:今日会ったか && !cMorningGreeting:ARG:0 ;custom code, hide the line if the morning event was seen
+			PRINTFORML %CALLNAME:ARG%를 본 당신은 오늘 %HIM_HER(ARG)%에게 인사하지 않았다는 것을 깨닫는다.
+		HAPPENING_TYPE = 1
+		;風呂に入ってきた場合
+	ELSEIF CAN_MOVE(CFLAG:MASTER:前ターン位置, CFLAG:ARG:前ターン位置) < 2 && CFLAG:ARG:前ターン位置 != CFLAG:MASTER:前ターン位置 && BATHCHECK(CFLAG:MASTER:現在位置)
+		CALL PRINT_FACE, ARG, "通常", "裸", "", ""
+		PRINTFORMW %CALLNAME:ARG%은(는) 욕실에 들어간다...
+		IF BATH_REMOVE_COND(ARG)
+			IF CFLAG:ARG:弱み握り && HETEROSEX(MASTER,ARG)
+				PRINTFORMW %CALLNAME:ARG%가 당신을 몰아낸다...
+				CFLAG:MASTER:現在位置 = KICKOUT()
+				HAPPENING_TYPE = 5
+				CALL TARGETSET_CHACK
+				CFLAG:ARG:同室 = 0
+			ELSE
+				PRINTFORMW 당신들의 눈이 잠시 마주친 후 %CALLNAME:ARG%은(는) 달려 나간다...
+				CFLAG:ARG:現在位置 = CFLAG:ARG:前ターン位置
+				CALL TARGETSET_CHACK
+				CFLAG:ARG:同室 = 0
+				HAPPENING_TYPE = 4
+			ENDIF
+		ELSE
+			PRINTFORMW %CALLNAME:ARG%은(는) 당신과 함께하고 싶어 하는 것 같다.
+			SIF !TCVAR:ARG:今日会ったか && !cMorningGreeting:ARG:0 ;custom code, hide the line if the morning event was seen
+				PRINTFORML 당신은 오늘 %HIM_HER(ARG)%에게 인사하지 않았다는 것을 깨닫는다.
+			HAPPENING_TYPE = 3
+		ENDIF
+		;トイレに入ってきた場合
+	ELSEIF CAN_MOVE(CFLAG:MASTER:前ターン位置, CFLAG:ARG:前ターン位置) < 2 && CFLAG:ARG:前ターン位置 != CFLAG:MASTER:前ターン位置 && IN_TOILET(CFLAG:MASTER:現在位置)
+		CALL COLORMESSAGE(@"【화장실 침입】",0x9696FA, 1, 0)
+		PRINTW 누군가 화장실 문을 두드린다.
+		$TOILET_INPUT_LOOP
+		PRINTL [0]그곳이 사용 중이라고 말해라 [1]들어가게 해라
+		INPUT
+		IF RESULT == 1
+			PRINTFORM %CALLNAME:ARG%이/가 들어간다 
+			PRINTFORMS NAME_FROM_PLACE(CFLAG:ARG:現在位置)
+			PRINTFORMW .
+			HAPPENING_TYPE = 2
+			CALL DumpingShit(ARG)
+		ELSEIF RESULT == 0
+			IF PeeBarStage(ARG) >= 4 || PooBarStage(ARG) >= 4
+				PRINTFORMW 노크 소리가 점점 거세진다. 당신은 마치 %CALLNAME:ARG%가 자신을 향해 나가라고 비명을 지르는 것을 듣는다.
+				SIF PeeBarStage(ARG) >= 6 || PooBarStage(ARG) >= 6
+					PRINTFORMW 노크 소리가 멈추고, %CALLNAME:ARG%에게서 안도의 한숨이 새어 나왔다...
+				IF PooBarStage(ARG) >= 6
+					SIF PeeBarStage(ARG) >= 3
+						LOCAL = 1
+					CALL UNCHI_OMORASHI(ARG,LOCAL)
+				ELSEIF PeeBarStage(ARG) >= 6
+					SIF PooBarStage(ARG) >= 3
+						LOCAL = 1
+					CALL OSHIKKO_OMORASHI(ARG,LOCAL)
+				ENDIF
+			ELSE
+				PRINTW 발소리가 조용해진다.
+			ENDIF
+			CFLAG:ARG:現在位置 = CFLAG:ARG:前ターン位置
+			CALL TARGETSET_CHACK
+			CFLAG:ARG:同室 = 0
+			HAPPENING_TYPE = -1
+		ELSE
+			GOTO TOILET_INPUT_LOOP
+		ENDIF
+		;addition custom code, if door is locked, and it's not target's place either they knock on the door or leave
+	ELSEIF FLAG:自室施錠 && CAN_MOVE(CFLAG:MASTER:前ターン位置, CFLAG:ARG:前ターン位置) < 2 && CFLAG:ARG:前ターン位置 != CFLAG:MASTER:前ターン位置 && CFLAG:MASTER:現在位置 != CFLAG:ARG:初期位置
+		IF CFLAG:ARG:2 >= 500
+			PRINTFORML 누군가 문을 두드린다.
+			IF CFLAG:ARG:2 >= 1000
+				PRINTFORML 당신은 그것이 %CALLNAME:ARG%의 목소리라는 것을 알 수 있다.
+			ELSE
+				PRINTFORML 당신은 잠시 그 사람이 누구인지 본다... 그 사람은 %CALLNAME:ARG%이다.
+			ENDIF
+			CALL ASK_YN("열지 마라", @"%HIM_HER(ARG)%이/가 안에 있다")
+			IF RESULT
+				PRINTFORM %CALLNAME:ARG%이(가) 들어간다 
+				PRINTFORMS NAME_FROM_PLACE(CFLAG:ARG:現在位置)
+				PRINTFORMW .
+				HAPPENING_TYPE = 2
+				GOTO CAMEIN
+			ELSE
+				PRINTW 발소리가 조용해진다.
+			ENDIF
+		ELSE
+			PRINTFORML %CALLNAME:ARG%이 들어오려고 하지만 문이 잠겨 있어서 %HE_SHE(ARG)%은(는) 떠난다.
+		ENDIF
+		CFLAG:ARG:現在位置 = CFLAG:ARG:前ターン位置
+		CALL TARGETSET_CHACK
+		CFLAG:ARG:同室 = 0
+		HAPPENING_TYPE = -1
+		$CAMEIN
+		;---------------------------------------------------------------------------------------------------------------
+		;ELSEIF CAN_MOVE(CFLAG:MASTER:前ターン位置, CFLAG:ARG:前ターン位置) < 2 && CFLAG:ARG:前ターン位置 != CFLAG:MASTER:前ターン位置
+		;↑の条件では来訪時に初対面口上が出ない場合があるので変更
+	ELSEIF CFLAG:ARG:前ターン位置 != CFLAG:MASTER:前ターン位置
+		CALL PRINT_FACE, ARG, "通常", "服", "", ""
+		IF CFLAG:ARG:前ターン位置 != MAXROOM && CFLAG:ARG:前ターン位置 != OMANEKIBEYA()
+			;Custom code
+			PRINTFORMW %CALLNAME:ARG%은(는) %NAME_FROM_PLACE_THE(CFLAG:ARG:現在位置, 1)%에 온다.
+		ENDIF
+		SIF !TCVAR:ARG:今日会ったか && !cMorningGreeting:ARG:0 ;custom code, hide the line if the morning event was seen
+			PRINTFORML 당신은 오늘 %HIM_HER(ARG)%에게 인사하지 않았다는 것을 깨닫는다.
+		HAPPENING_TYPE = 2
+	ENDIF
+	IF !FLAG:70 && CFLAG:ARG:現在位置 == CFLAG:MASTER:現在位置
+		IF !NOZOKI && HAPPENING_TYPE >= 0
+			;初対面
+			IF CFLAG:(NO:ARG):面識 == 0
+				CALL SYOTAIMEN(ARG)
+			ELSEIF CFLAG:ARG:情事目撃 && CFLAG:(CFLAG:ARG:情事目撃):現在位置 != CFLAG:ARG:現在位置
+				PRINTFORMW %CALLNAME:ARG%은(는) 당신에게 이전에 %CALLNAME:(CFLAG:ARG:情事目撃)%과 했던 일에 대해 추궁한다.
+				;CALL KOJO_EVENT(0, ARG, 2)
+				CALL KOJO_MESSAGE_SEND("EVENT",8,ARG,1,0)
+				CFLAG:ARG:情事目撃 = 0
+			ELSEIF CFLAG:ARG:情事目撃 && CFLAG:(CFLAG:ARG:情事目撃):現在位置 == CFLAG:ARG:現在位置
+				PRINTFORMW %CALLNAME:ARG%는 당신을 꾸짖고 %CALLNAME:(CFLAG:ARG:情事目撃)%에게 이전에 했던 행동에 대해 말한다...
+				CALL KOJO_MESSAGE_SEND("EVENT",8,ARG,2,0)
+				CFLAG:ARG:情事目撃 = 0
+			ELSE
+				IF !TCVAR:ARG:今日会ったか && CFLAG:ARG:同室
+					CALL KOJO_MESSAGE_SEND("EVENT",1,ARG,8,0)
+				ENDIF
+				;通常遭遇口上
+				CALL KOJO_MESSAGE_SEND("EVENT",1,ARG,HAPPENING_TYPE,0)
+			ENDIF
+		ENDIF
+		CALL FirstMeetToday(ARG)
+	ENDIF
+ENDIF
+IF WORKING(ARG, 1) ;qol custom code, show if they're working when you see them
+	CALL 仕事情景描写(ARG)
+	SIF FLAG:70
+		PRINTFORMW 적어도, 그게 시간 정지 상태에서는 그렇게 보인다는 거지.
+	PRINTFORML
+ENDIF
+
+@OSASOI(ARG)
+#DIM 目的地
+#DIM 自宅地域
+#DIM 現在地域
+自宅地域 = CFLAG:ARG:自宅位置 / 100
+現在地域 = GET_MAPID(CFLAG:MASTER:現在位置)
+;仕事がある日は誘わない
+SIF !CHARA_HOLIDAY(ARG)
+	RETURN
+SIF GROUPMATCH(TIME:5, 5, 9)
+	RETURN
+SIF !AT_HOME(MASTER)
+	RETURN
+SIF LS_RESTRICTION("Go out") ;Custom code, restrict invitations during Lunatic Survival.
+	RETURN
+IF ADD_BANQUET_DATE_CHECK(ARG) ;addition custom code, new banquet system
+	目的地 = GET_MAPID(ADD_BANQUETS_LOCATION:ADD_BANQUET_INDEX(CFLAG:ARG:BANQUET))
+	PRINTFORML %CALLNAME:ARG%이(가) 당신을 %ADD_BANQUET_TERM(CFLAG:ARG:BANQUET)%에서 열리는 %GET_MAPNAME(目的地)%에 초대한다.
+	GOTO INVITE_ENKAI
+ENDIF
+SIF ADD_BANQUET_PREVENT_MOVEMENT(ARG)
+	RETURN
+IF TALENT:ARG:恋慕 && !RAND:5 && !CFLAG:ARG:宴会参加
+	IF CFLAG:ARG:溜まってる度 >= (700 + TALENT:ARG:羞恥心 * 150) && !CFLAG:ARG:神社在住 && !CFLAG:ARG:自宅位置
+		PRINTFORML %CALLNAME:ARG%은(는) 당신을 %HIS_HER(ARG)%의 방으로 초대한다.
+		CALL KOJO_MESSAGE_SEND("EVENT",27,ARG,3,自宅地域)
+		CALL ASK_YN("Go","가지 마라")
+		IF !RESULT
+			PRINTFORML 당신은 초대장을 받아들여 %CALLNAME:ARG%의 방으로 향한다...
+			CALL KOJO_MESSAGE_SEND("EVENT",27,ARG,4,自宅地域)
+			IF !GROUPMATCH(ARG, [[舞]], [[里乃]], [[隠岐奈]]) ;qol custom code, skip for back door inhabitants
+				PRINTFORMW +{TIME_REQUIRED(現在地域, 自宅地域)} %PLURALIZER("Minute", TIME_REQUIRED(現在地域, 自宅地域))%
+				TIME += TIME_REQUIRED(現在地域, 自宅地域)
+			ENDIF
+			SIF MOREDATE
+				HouseInvitationStatus = 0
+			CFLAG:ARG:デート中 = 自宅地域
+			CFLAG:MASTER:デート中 = 自宅地域
+			FLAG:デート相手 = ARG
+			CFLAG:MASTER:同行 = 60
+			CFLAG:ARG:同行 = 60
+			TFLAG:デート前好感度 = CFLAG:ARG:2
+			TARGET = ARG
+			CALL OMANEKI_ENTER(ARG)
+			CALL TARGETSET_CHACK
+			;お誘いに乗ったか断ったかをRETURNで返すようにしました
+			RETURN 1
+		ELSE
+			PRINTFORMW %CALLNAME:ARG%는 조금 실망한 듯 보인다.
+			CALL KOJO_MESSAGE_SEND("EVENT",27,ARG,5,自宅地域)
+			RETURN 0
+		ENDIF
+	ELSEIF !RAND:4 && CFLAG:ARG:よく行く地域 >= 0 && CFLAG:ARG:よく行く地域 != MAIN_MAP
+		目的地 = CFLAG:ARG:よく行く地域
+	ELSE
+		目的地 = RAND:10
+		SIF 目的地 == MAIN_MAP
+			RETURN
+	ENDIF
+	;要求移動時間が60以上だと不発
+	IF TIME_REQUIRED(現在地域, 目的地) >= 60 || !BETWEENTIME(CFLAG:ARG:起床時間, CFLAG:ARG:就寝時間 + CFLAG:ARG:眠気覚まし - 180) ;bugfix, don't invite just to fall asleep immediately
+		RETURN 0
+	ENDIF
+	PRINTFORML %CALLNAME:ARG%이(가) 당신을 %GET_MAPNAME(目的地)%로 초대한다.
+	$INVITE_ENKAI
+	CALL KOJO_MESSAGE_SEND("EVENT",27,ARG,0,目的地)
+	CALL ASK_YN("Go","가지 마라")
+	IF !RESULT
+		CALL KOJO_MESSAGE_SEND("EVENT",27,ARG,1,目的地)
+		CFLAG:MASTER:同行 = 60
+		CFLAG:ARG:同行 = 60
+		TFLAG:デート前好感度 = CFLAG:ARG:2
+		TIME += 10 ;bugfix, update game state
+		IF MOREDATE
+			CALL ADD_TO_GROUP_DATE(ARG)
+			CALL SET_DATES(目的地, Datees, NumberOfDates, TIME_REQUIRED(CFLAG:MASTER:デート中, 目的地) - 1000)
+		ELSE
+			CALL SET_DATE(目的地, ARG, TIME_REQUIRED(CFLAG:MASTER:デート中, 目的地) - 1000)
+		ENDIF
+		CALL TARGETSET_CHACK
+		RETURN 1
+	ELSE
+		PRINTFORMW %CALLNAME:ARG%은(는) 약간 실망한 표정을 짓는다.
+		CALL KOJO_MESSAGE_SEND("EVENT",27,ARG,2,目的地)
+		RETURN 0
+	ENDIF
+ENDIF
+RETURN 0
+
+@UWAKI_RECORD(ARG,公認,浮気相手)
+#DIM 浮気相手
+#DIM 公認
+SIF UWAKI_KNOWN:ARG:0 == ""
+	UWAKI_KNOWN:ARG:0 = /
+SIF UWAKI_ACCEPTED:ARG:0 == ""
+	UWAKI_ACCEPTED:ARG:0 = /
+IF 浮気相手
+	LOCALS = %CALLNAME:浮気相手%
+	SIF !STRCOUNT(UWAKI_KNOWN:ARG:0,LOCALS)
+		UWAKI_KNOWN:ARG:0 = %UWAKI_KNOWN:ARG:0%%LOCALS%/
+	SIF !STRCOUNT(UWAKI_ACCEPTED:ARG:0,LOCALS) && 公認
+		UWAKI_ACCEPTED:ARG:0 = %UWAKI_ACCEPTED:ARG:0%%LOCALS%/
+ELSE
+	;第二引数が0の場合、あなたと同じ場所にいるキャラ全員記録
+	FOR LOCAL,1,CHARANUM
+	SIF LOCAL == ARG
+		CONTINUE
+	SIF CFLAG:LOCAL:現在位置 != CFLAG:MASTER:現在位置
+		CONTINUE
+	LOCALS = %CALLNAME:LOCAL%
+	SIF !STRCOUNT(UWAKI_KNOWN:ARG:0,LOCALS)
+		UWAKI_KNOWN:ARG:0 = %UWAKI_KNOWN:ARG:0%%LOCALS%/
+	SIF !STRCOUNT(UWAKI_ACCEPTED:ARG:0,LOCALS) && 公認
+		UWAKI_ACCEPTED:ARG:0 = %UWAKI_ACCEPTED:ARG:0%%LOCALS%/
+	NEXT
+ENDIF
+
+@GET_UWAKI_HISTORY(ARG,浮気相手)
+;公認だと2を返す
+#FUNCTION
+#DIM 浮気相手
+LOCALS = /%CALLNAME:浮気相手%/
+IF STRCOUNT(UWAKI_ACCEPTED:ARG:0,LOCALS)
+	RETURNF 2
+ELSEIF STRCOUNT(UWAKI_KNOWN:ARG:0,LOCALS)
+	RETURNF 1
+ELSE
+	RETURNF 0
+ENDIF
+
+@SYOTAIMEN(CharacterIndex)
+;Custom code, use a DIM instead of ARG to prevent it getting overwritten when an encounter event moves the player to another unmet character.
+#DIM DYNAMIC CharacterIndex
+SIF CFLAG:CharacterIndex:面識
+	RETURN
+IF TALENT:CharacterIndex:行きずり == 1
+	IF TALENT:MASTER:魅惑
+		PRINTFORMW %CALLNAME:CharacterIndex%은(는) 너를 [매혹적]이라고 느낀다!
+		CALL COLORMESSAGE(@"호의와 친밀도+",C_YELLOW,2,1)
+		ABL:CharacterIndex:親密 += 2
+		CFLAG:CharacterIndex:好感度 += 300
+	ENDIF
+	IF TALENT:MASTER:謎の魅力
+		PRINTFORMW %CALLNAME:CharacterIndex%은(는) 당신의 [수수께끼의매력]을 알아차리자 마음이 뛰기 시작한다!
+		CALL COLORMESSAGE(@"호의와 친밀도+",C_YELLOW,2,1)
+		ABL:CharacterIndex:親密 += 2
+		CFLAG:CharacterIndex:好感度 += 300
+	ENDIF
+ENDIF
+;addition custom code
+IF TALENT:MASTER:容姿 > 0 && !TALENT:CharacterIndex:感情乏しい
+	PRINTFORML %CALLNAME:CharacterIndex%는 당신의 [아름다운] 얼굴에 매료된다!
+	CALL COLORMESSAGE(@"호의 +100",C_YELLOW,2,1)
+	CFLAG:CharacterIndex:好感度 += 100
+ENDIF
+IF !FLAG:なりきり
+	SETCOLOR 0xc53d43
+	SIF NO:CharacterIndex != 拠点_大家
+		PRINTFORMW %CALLNAME:CharacterIndex%은(는) 당신을 처음 만나 인사를 건넨다.
+	RESETCOLOR
+	CALL KOJO_MESSAGE_SEND("ENCOUNTER",0,CharacterIndex,1,0)
+ENDIF
+CFLAG:CharacterIndex:面識 = 1
+CALL QoL_Info_Write(CharacterIndex, Qol_Dates_Meet) ;qol custom code
+
+@FirstMeetToday(ARG)
+#DIM PREV_TARGET
+#DIM IRAI_ABLE
+SIF CFLAG:ARG:現在位置 != CFLAG:MASTER:現在位置
+	RETURN
+SIF TCVAR:ARG:今日会ったか
+	RETURN
+TCVAR:ARG:今日会ったか = 1
+CFLAG:ARG:最後に会った日 = DAY
+SIF TCVAR:ARG:アナザー普段着
+	PRINTFORMW %CALLNAME:ARG%은(는) 오늘 평소와 다른 옷을 입고 있다.
+IF TCVAR:ARG:Subconscious_Exhibitionist_Nudist_Sense ;custom code
+	PRINTFORML %CALLNAME:ARG%은/는 ... \@ TCVAR:ARG:Subconscious_Exhibitionist_Nudist_Sense == 2 ? 벌거벗은 # %HIS_HER(ARG)%의 속옷을 입지 않은 채 \@?!
+	PRINTFORMW 많은 횟수 동안 \@ TCVAR:ARG:Subconscious_Exhibitionist_Nudist_Sense == 2 ? 누디스트 # 퍼포먼스광으로 최면 걸린 것이 %HIM_HER(ARG)%이 옷을 입는 것을 잊게 만든 것 같다... \@
+ENDIF
+IF CFLAG:ARG:オナバレ
+	;陥落素質あり、【快感に素直】の時、わりと素直な反応に
+	IF CFLAG:ARG:オナバレ == 1
+		IF (IS_LOVER(ARG) || TALENT:ARG:セフレ) && TALENT:ARG:快感応答 == 1
+			PRINTFORMW 지난번 %HE_SHE(ARG)%가 자위하는 모습이 들켰던 것을 떠올리면서, %CALLNAME:ARG% %TEXTR(@"doesn't look very bothered/looks at you as if %HE_SHE(ARG)% has something to say/tries to stay calm")%은(는)...
+		ELSE
+			PRINTFORMW %CALLNAME:ARG%은(는) 며칠 전 자위하는 것을 들킨 후 부끄러워한다...
+		ENDIF
+	ELSEIF CFLAG:ARG:オナバレ == 2
+		IF (IS_LOVER(ARG) || TALENT:ARG:セフレ) && TALENT:ARG:快感応答 == 1
+			PRINTFORMW %HE_SHE(ARG)%이 자위하는 모습이 발각되었던 것과 %HE_SHE(ARG)%이 동의한 것을 떠올리며, %CALLNAME:ARG% %TEXTR(@"casts you a sidelong glance/flashes you a wide grin/smiles in reminiscence")%...
+		ELSE
+			PRINTFORMW %CALLNAME:ARG%은 다른 날 자위하는 걸 들킨 후와, 그리고 %HE_SHE(ARG)%이 동의한 일 때문에 부끄러워한다.
+		ENDIF
+	ELSEIF CFLAG:ARG:オナバレ == 3
+		IF (IS_LOVER(ARG) || TALENT:ARG:セフレ) && TALENT:ARG:快感応答 == 1
+			PRINTFORMW %HE_SHE(ARG)%가 자위하는 모습과 그 뒤의 절정 장면을 기억하며, %CALLNAME:ARG% %TEXTR(@"gives you a wink/gives you a fleeting glance/looks a bit awkward")%...
+		ELSE
+			PRINTFORML %CALLNAME:ARG%은 지난번에 자위하는 걸 들킨 게 너무 창피해서 %HE_SHE(ARG)%는 당신을 제대로 쳐다보지도 못한다.
+			PRINTFORMW 특히 ~할 때 %HE_SHE(ARG)% 보여준 쇼를 기억한다면 %HE_SHE(ARG)% 보여줬던
+		ENDIF
+	ENDIF
+	CFLAG:ARG:オナバレ = 0
+ELSEIF TALENT:ARG:機嫌 == 1
+	PRINTFORMW 좋은 일이 있었나? %CALLNAME:ARG%는 오늘 기분이 좋아 보인다.
+ELSEIF TALENT:ARG:機嫌 == -1
+	PRINTFORMW 보아하니 \@ ARG == 47 ? %HE_SHE([[里香]])%은 기분이 안 좋다 # %CALLNAME:ARG%는 오늘 기분이 나쁘다 \@... 
+ENDIF
+IF CFLAG:ARG:溜まってる度 >= 500 && TALENT:MASTER:劣情察知 && !nChildrenPresent ;bugfix custom code
+	SETCOLOR 255,100,255
+	FONTBOLD
+	PRINTFORMW 핑!
+	PRINTFORMW 당신은 %CALLNAME:ARG%가 참을 수 없는 성적 욕정을 가지고 있음을 감지한다...!
+	RESETCOLOR
+	FONTREGULAR
+ENDIF
+;wet bed rep
+IF CFLAG:MASTER:初期位置 == CFLAG:ARG:現在位置
+	CALL BEDWETTER_FIND_OUT(ARG)
+	CALL PANTY_REWORK_DIRTY_FIND_OUT(ARG) ; dirty undies in collection
+ENDIF
+;=====================================
+CALL SEASONAL(ARG)
+PREV_TARGET = TARGET
+TARGET = ARG
+CALL CAN_IRAI_START
+IRAI_ABLE = RESULT
+IF IRAI_ABLE && IRAI_CHARA_TO_PROGRESS(ARG) == "依頼未受託" && !FLAG:依頼スルー
+	;CALL先の判定でTARGET==CLIENT前提の処理が多々あるので一時変更、そのまま戻ってくるので退避しとく
+	CALL IRAI_START(ARG)
+	TARGET = PREV_TARGET
+ELSEIF IRAI_ABLE && GROUPMATCH(IRAI_CHARA_TO_PROGRESS(ARG), "期限切れ", "報告忘れ")
+	PRINTFORML %CALLNAME:ARG%은(는) 당신이 요청을 완료하지 않은 것에 대해 화가 나 있다.
+	;TFLAG:104の使い方がよくわからん
+	;TFLAG:104 = ARG
+	CALL IRAI_REPORT(ARG)
+	TARGET = PREV_TARGET
+ELSEIF TALENT:ARG:機嫌 >= 0 && BASE:MASTER:気力 > 0 && BASE:ARG:気力 > 0 && !CFLAG:MASTER:同行 && NEMUKE() < 720 && !睡眠時間(ARG)
+	CALL OSASOI(ARG)
+	SIF !RESULT
+		TARGET = PREV_TARGET
+ELSE
+	TARGET = PREV_TARGET
+ENDIF

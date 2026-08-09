@@ -1,0 +1,2059 @@
+﻿; Modular ERB: OMOGATARI/Body Parts/BodyPartController.ERB
+
+@IsPartCrippled(ARG,nPart,nType = 0)
+#FUNCTION
+#DIM nPart
+#DIM nType
+#DIM nWound
+#DIM maxWounds
+IF (CFLAG:MASTER:睡眠 && inTrain == 1) ;optimizations
+	RETURNF 0
+ENDIF
+CALLF BodyPartDependencies(nPart)
+FOR LOCAL,0,20
+SIF !BodyPartChildren:LOCAL
+	BREAK
+SELECTCASE nType
+	CASE 0
+		IF (BodyPartHealth:ARG:(BodyPartChildren:LOCAL):0 <= 0 || BodyPartRemoved:ARG:(BodyPartChildren:LOCAL)) && BodyPartHealth:ARG:(BodyPartChildren:LOCAL):1
+			;bionic priority
+			;DEBUGPRINTFORML %BDY_PART_NAME(BodyPartChildren:LOCAL)% is crippled
+			;IF IsBionicPart(ARG,nPart,0) && BodyPartHealth:ARG:(nPart):0 > 0 && !BodyPartRemoved:ARG:(nPart)
+			IF PartOrChildIsBionic(ARG,nPart,1)
+				;DEBUGPRINTFORML Giving bionic priority to %BDY_PART_NAME(nPart)%
+				RETURNF 0
+			ENDIF
+			RETURNF BodyPartChildren:LOCAL
+		ENDIF
+	CASE 1
+		VARSET tempHediffList
+		maxWounds = DT_SELECT(@"Hediff", @"chara = {ARG} and part = {BodyPartChildren:LOCAL}", "", tempHediffList)
+		FOR nWound,0, maxWounds
+		IF DT_CELL_GET(@"Hediff", tempHediffList:nWound, "bleeding", 1) && !DT_CELL_GET(@"Hediff", tempHediffList:nWound, "tended", 1)
+			RETURNF BodyPartChildren:LOCAL
+		ENDIF
+		NEXT
+	CASE 100
+		;bionic
+		IF DT_SELECT(@"Hediff", @"chara = {ARG} and part = {BodyPartChildren:LOCAL} and type > 100")
+			RETURNF BodyPartChildren:LOCAL
+		ENDIF
+	CASEELSE
+		IF BodyPartStatus:ARG:(BodyPartChildren:LOCAL):nType
+			RETURNF BodyPartChildren:LOCAL
+		ENDIF
+ENDSELECT
+NEXT
+RETURNF 0
+
+@BODY_PART_HEALTH(ARG, nButtons)
+#DIM B_Health
+#DIM nPart
+#DIM nWound
+#DIM ShowWounds
+#DIM nTotalHealth,2
+#DIM nButtons
+#DIM hediffStack, 10
+#DIM hediffStackSTR
+#DIM hediffStackCount
+#DIM currentBodyPart
+#DIMS GetPartName
+#DIM BPH_tempHediffList, 1000
+#DIM buttonIf
+#DIMS B_HTML, 3
+#DIM B_HTML_COLOR
+PRINTL
+SIF nButtons == 7
+	GOTO BodyStatus
+; CALLF ReinitAllCharaCapacity(ARG)
+CALL CrippleEffects(ARG)
+PRINTFORML 【능력】
+FOR LOCAL,0,VARSIZE("CapacityStats")
+LOCAL:1 = CapacityStats:ARG:LOCAL
+SELECTCASE LOCAL
+	CASE 10,11
+		SIF LOCAL == 10 && !nPee
+			CONTINUE
+		SIF LOCAL == 11 && !nScat
+			CONTINUE
+		IF LOCAL:1 >= 0
+			PRINTFORMC %CapibilitityNames(LOCAL)%: +{LOCAL:1}
+		ELSE
+			PRINTFORMC %CapibilitityNames(LOCAL)%: {LOCAL:1}
+		ENDIF
+	CASE 12
+		CONTINUE
+	CASEELSE
+		PRINTFORMC %CapibilitityNames(LOCAL)%: {LOCAL:1}\%
+ENDSELECT
+SIF LOCAL % 4 == 3
+	PRINTL    
+NEXT
+$BodyStatus
+PRINTFORML 【신체 부위 체력】
+CALL BLOOD_STATUS(ARG,28)
+PRINTL
+CALL AGONY_STATUS(ARG,28)
+PRINTL
+FOR currentBodyPart,0,100
+SIF BDY_PART_NAME(currentBodyPart) == ""
+	CONTINUE
+SIF !HasBodyPart(ARG,currentBodyPart)
+	CONTINUE
+SIF !DT_SELECT(@"Hediff", @"chara = {ARG} and part = {currentBodyPart}", "") && !BodyPartRemoved:ARG:currentBodyPart && currentBodyPart
+	CONTINUE
+SIF nButtons == 7 && !DT_SELECT(@"Hediff", @"chara = {ARG} and part = {currentBodyPart} and type < 100", "")
+	CONTINUE
+VARSET ShowWounds
+IF currentBodyPart
+	B_Health = (BodyPartHealth:ARG:currentBodyPart:0*100/MAX(BodyPartHealth:ARG:currentBodyPart:1*1,1))
+ELSE
+	B_Health = BODY_PARTS_HEALTH_CALC(ARG)
+ENDIF
+GetPartName '= BDY_PART_NAME(currentBodyPart)
+SIF GetPartName == ""
+	GetPartName '= @"알 수 없는 부위 {currentBodyPart}"
+B_HTML '= @"%GetPartName,10,LEFT%"
+B_HTML_COLOR = GETCOLOR()
+IF currentBodyPart
+	SELECTCASE B_Health
+		CASE IS >= 100 ; literally "Functions normally"
+		CASE IS >= 80
+			B_HTML_COLOR = C_GREEN
+		CASE IS >= 60
+			B_HTML_COLOR = C_YELLOW
+		CASE IS >= 40
+			B_HTML_COLOR = C_ORANGE
+		CASE IS >= 20
+			B_HTML_COLOR = C_D_ORANGE
+		CASE IS > 0
+			B_HTML_COLOR = C_RED
+		CASE IS > -100
+			B_HTML_COLOR = C_D_RED
+		CASE IS < - 100
+			B_HTML_COLOR = C_GRAY
+	ENDSELECT
+ELSE
+	B_HTML_COLOR = GET_HEALTH_COLOR(ARG, B_Health,1)
+ENDIF
+SIF BodyPartRemoved:ARG:currentBodyPart
+	B_HTML_COLOR = C_GRAY
+IF currentBodyPart
+	B_HTML:1 '= @"\@ BODY_PARTS_HEALTH(ARG,currentBodyPart) > -100 && !BodyPartRemoved:ARG:currentBodyPart ? {BODY_PARTS_HEALTH(ARG,currentBodyPart),4}\% # %"----",5%\@"
+ELSE
+	B_HTML:1 '= @"{BODY_PARTS_HEALTH_CALC(ARG),4}\%"
+ENDIF
+B_HTML '= @"%B_HTML%%HTML_COLOR(B_HTML:1,TOSTR(B_HTML_COLOR,"X6"))%: "
+; PRINTFORM ({BodyPartHealth:ARG:currentBodyPart:0,5}/{BodyPartHealth:ARG:currentBodyPart:1,5}):
+SELECTCASE currentBodyPart
+	CASE 12
+		SELECTCASE B_Health
+			CASE IS >= 100 ; literally "Functions normally"
+				B_HTML += @"양호한 상태로"
+			CASE IS >= 96
+				;SETCOLOR C_GREEN
+				B_HTML += @"부상당함"
+			CASE IS >= 92
+				;SETCOLOR C_GREEN
+				B_HTML += @"주의력 감소"
+			CASE IS >= 88
+				;SETCOLOR C_YELLOW
+				B_HTML += @"균형 상실"
+			CASE IS >= 84
+				;SETCOLOR C_YELLOW
+				B_HTML += @"희미해진 기억"
+			CASE IS >= 80
+				;SETCOLOR C_ORANGE
+				B_HTML += @"걸을 수 없다"
+			CASE IS >= 75
+				;SETCOLOR C_D_ORANGE
+				B_HTML += @"인지 능력 상실"
+			CASE IS >= 70
+				;SETCOLOR C_D_ORANGE
+				B_HTML += @"말하기의 어려움"
+			CASE IS >= 60
+				;SETCOLOR C_D_ORANGE
+				B_HTML += @"부분 마비"
+			CASE IS >= 50
+				;SETCOLOR C_RED
+				B_HTML += @"일반 발작"
+			CASE IS >= 40
+				;SETCOLOR C_RED
+				B_HTML += @"저운동증"
+			CASE IS >= 30
+				;SETCOLOR C_RED
+				B_HTML += @"유효하지 않음"
+			CASE IS >= 20
+				;SETCOLOR C_D_RED
+				B_HTML += @"뇌사 상태"
+			CASE IS >= 10
+				;SETCOLOR C_D_RED
+				B_HTML += @"소생술 금지"
+			CASE IS > -100
+				;SETCOLOR C_D_RED
+				B_HTML += @"공허"
+			CASEELSE
+				GOTO PartIsDestroyed
+		ENDSELECT
+	CASE 53
+		SELECTCASE B_Health
+			CASE IS >= 100
+				B_HTML += @"양호한 상태로"
+			CASE IS >= 80
+				;SETCOLOR C_GREEN
+				B_HTML += @"부상당함"
+			CASE IS >= 75
+				;SETCOLOR C_YELLOW
+				B_HTML += @"심각한 부상을 입었다."
+			CASE IS >= 60 ; 深くまで抉れています; lit. "Gouged deeply". Meaning partially assumed from context
+				;SETCOLOR C_YELLOW
+				B_HTML += @"깊숙이 파헤쳐져 있다"
+			CASE IS >= 35
+				;SETCOLOR C_ORANGE
+				B_HTML += @"깊이 부상을 입고 내장까지 손을 뻗는다."
+			CASE IS >= 20
+				;SETCOLOR C_ORANGE
+				B_HTML += @"내장이 언제 터져도 이상하지 않았다."
+			CASE IS >= 0
+				;SETCOLOR C_D_ORANGE
+				B_HTML += @"간이 눈앞에 보이지만, 겨우 버티고 있다."
+			CASE IS >= -25
+				;SETCOLOR C_RED
+				B_HTML += @"내장 탈출"
+			CASE IS >= -50
+				;SETCOLOR C_RED
+				B_HTML += @"모든 내부 장기가 보인다."
+			CASE IS >= -80
+				;SETCOLOR C_RED
+				B_HTML += @"하반신이 간신히 연결되어 있다."
+			CASE IS > -100
+				;SETCOLOR C_D_RED
+				B_HTML += @"아무것도 없는 곳에"
+			CASEELSE
+				GOTO PartIsDestroyed
+		ENDSELECT
+	CASE 81 TO 83, 91 TO 93, 20 TO 23, 30 TO 33
+		SELECTCASE B_Health
+			CASE IS >= 100
+				B_HTML += @"양호한 상태로"
+			CASE IS >= 92
+				B_HTML += @"부상당함"
+			CASE IS >= 84
+				B_HTML += @"개방된 상처"
+			CASE IS >= 70
+				B_HTML += @"심각한 부상을 입었다"
+			CASE IS >= 60
+				B_HTML += @"부분적으로 패인"
+			CASE IS >= 50
+				B_HTML += @"깊게 파인 개방 상처"
+			CASE IS >= 54
+				B_HTML += @"심하게 패였다. 아마 많이 아플 것이다"
+			CASE IS >= 40
+				B_HTML += @"뼈까지 도달한 듯 보이는 깊은 상처"
+			CASE IS >= 20
+				B_HTML += @"근섬유가 갈라지고, 뼈가 겨우 보인다."
+			CASE IS >= 0
+				B_HTML += @"뼈가 완전히 노출되었다."
+			CASE IS >= -25
+				B_HTML += @"뼈가 부서지고 주변 살이 벗겨졌다."
+			CASE IS >= -50
+				B_HTML += @"뼈가 부러졌다. 끔찍한 상태로"
+			CASE IS >= -75
+				B_HTML += @"겨우 연결되었다"
+			CASE IS >= -100
+				B_HTML += @"알아볼 수 없다"
+			CASEELSE
+				GOTO PartIsDestroyed
+		ENDSELECT
+	CASE 63, 64
+		SELECTCASE B_Health
+			CASE IS >= 100
+				B_HTML += @"양호한 상태로"
+			CASE IS >= 90
+				B_HTML += @"약간 다쳤다"
+			CASE IS >= 82
+				B_HTML += @"부분적으로 부상을 입은 채 어두운 붉은색이다."
+			CASE IS >= 74
+				B_HTML += @"부상당함"
+			CASE IS >= 66
+				B_HTML += @"움직일 때마다 느껴지는 둔한 고통"
+			CASE IS >= 56
+				B_HTML += @"흉측하게 보이는 부상"
+			CASE IS >= 48
+				B_HTML += @"베인 상처가 어두운 붉은색을 띠며 변했다."
+			CASE IS >= 20
+				B_HTML += @"심하게 부상을 입었다. 극심한 고통이 동반된다."
+			CASE IS >= 0
+				B_HTML += @"심하게 부풀어 있으며 벌어진 궤양들로 뒤덮여있다."
+			CASE IS >= -50
+				B_HTML += @"언제든지 살점이 떨어져 나갈 수 있었다."
+			CASE IS >= -70
+				B_HTML += @"더 이상 기능하지 않는다."
+			CASE IS >= -100
+				B_HTML += @"알아볼 수 없는"
+			CASEELSE
+				GOTO PartIsDestroyed
+		ENDSELECT
+	CASE 47, 77
+		SELECTCASE B_Health
+			CASE IS >= 100
+				B_HTML += @"양호한 상태로"
+			CASE IS >= 90
+				B_HTML += @"약간 다쳤다"
+			CASE IS >= 80
+				B_HTML += @"몸이 좋지 않을지도 모른다."
+			CASE IS >= 60
+				B_HTML += @"컨디션이 좋지 않다"
+			CASE IS >= 40
+				B_HTML += @"기능적 손상"
+			CASE IS >= 20
+				B_HTML += @"기능 장애가 있는"
+			CASE IS >= 0
+				B_HTML += @"심하게 손상됨"
+			CASEELSE
+				GOTO PartIsDestroyed
+		ENDSELECT
+	CASE 0
+		SELECTCASE B_Health
+			CASE IS >= 100
+				B_HTML += @"양호한 상태로"
+			CASE IS >= 90
+				B_HTML += @"약간 다쳤다"
+			CASE IS >= 80
+				B_HTML += @"부상당함"
+			CASE IS >= 54
+				B_HTML += @"기능적 손상"
+			CASE IS >= 34
+				B_HTML += @"심하게 부상당했다."
+			CASE IS > 0
+				B_HTML += @"치명적인 부상을 입었다"
+			CASEELSE
+				B_HTML += @"죽음"
+		ENDSELECT
+	CASEELSE
+		SELECTCASE B_Health
+			CASE IS >= 100
+				IF BodyPartRemoved:ARG:currentBodyPart
+					[IF_NDEBUG]
+					CONTINUE
+					[ENDIF]
+					SETCOLOR C_GRAY
+					B_HTML += @"사라졌다"
+				ELSE
+					B_HTML += @"양호한 상태로"
+				ENDIF
+			CASE IS >= 90
+				;SETCOLOR C_GREEN
+				B_HTML += @"약간 다쳤다"
+			CASE IS >= 80
+				;SETCOLOR C_GREEN
+				B_HTML += @"큰 멍이 보인다"
+			CASE IS >= 60
+				;SETCOLOR C_YELLOW
+				B_HTML += @"고통스럽게 부상을 입었다"
+			CASE IS >= 50
+				;SETCOLOR C_ORANGE
+				B_HTML += @"매우 부어 있고 변색되었다"
+			CASE IS >= 40
+				;SETCOLOR C_ORANGE
+				B_HTML += @"상처는 색이 변했고, 고통스러워 보인다."
+			CASE IS >= 20
+				;SETCOLOR C_D_ORANGE
+				B_HTML += @"부분적으로 도려내져 고통스러워 보인다."
+			CASE IS >= 10
+				;SETCOLOR C_RED
+				B_HTML += @"크게 파헤쳐졌다"
+			CASE IS > 0
+				;SETCOLOR C_RED
+				B_HTML += @"알아볼 수 없을 정도로 손상되었다."
+			CASE IS >= -20
+				;SETCOLOR C_D_RED
+				B_HTML += @"기형이고 간신히 기능한다"
+			CASE IS >= -50
+				;SETCOLOR C_D_RED
+				B_HTML += @"심하게 손상됨"
+			CASE IS >= -100
+				;SETCOLOR C_D_RED
+				B_HTML += @"아무것도 없는 곳에"
+			CASE IS <  -100
+				$PartIsDestroyed
+				SETCOLOR C_GRAY
+				LOCAL:66 = HediffGet(ARG,currentBodyPart,DT_SELECT(@"Hediff", @"chara = {ARG} and part = {currentBodyPart} and type < 100")-1)
+				IF LOCAL:66 == 0
+					LOCAL:66 = HediffGet(ARG,currentBodyPart,DT_SELECT(@"Hediff", @"chara = {ARG} and part = {currentBodyPart} and type < 100"))
+				ENDIF
+				IF LOCAL:66 == 0
+					B_HTML += @"알려지지 않은 헤드프에 의해 파괴되었다"
+				ELSEIF STRLENS(GET_STR(ARG,"Hediff",DT_CELL_GET(@"Hediff", LOCAL:66, "type",1),"Destroyed String"))
+					B_HTML += GET_STR(ARG,"Hediff",DT_CELL_GET(@"Hediff", LOCAL:66, "type",1),"Destroyed String")
+				ELSE
+					B_HTML += @"파괴됨"
+				ENDIF
+				;LOCALS += @"({Hediff:ARG:LOCAL:(LOCAL:3)} ({(LOCAL:3)}))"
+			CASEELSE
+				;SETCOLOR C_D_RED
+				B_HTML += @"치명적으로 손상됨"
+		ENDSELECT
+ENDSELECT
+IF IsPartCrippled(ARG,currentBodyPart)
+	LOCAL:1 = IsPartCrippled(ARG,currentBodyPart)
+	SIF LOCAL:1 != currentBodyPart
+		B_HTML += @" (%BDY_PART_NAME(LOCAL:1)%가 부러져서) 불구 상태이다."
+ENDIF
+B_HTML:2 '= ""
+IF currentBodyPart
+	B_HTML:2 '= @"체력: {BodyPartHealth:ARG:currentBodyPart:0}/{MAX(BodyPartHealth:ARG:currentBodyPart:1*1,1)} ({B_HEALTH}\%)"
+	SIF STRLENS(BDY_PART_DESC_0(currentBodyPart))
+		B_HTML:2 += @"<br>%HTML_ESCAPE(BDY_PART_DESC_0(currentBodyPart))%"
+	B_HTML '= @"<nonbutton title='%B_HTML:2%'>%B_HTML%</nonbutton>"
+ENDIF
+HTML_PRINT B_HTML
+VARSET ShowWounds
+LOCALS =
+hediffStackCount = DT_SELECT(@"Hediff", @"chara = {ARG} and part = {currentBodyPart}", "")
+FOR nWound, 0, hediffStackCount
+LOCAL:5 = HediffCount(ARG,currentBodyPart,nWound)
+;ARRAYSORT RESULT, BACK, 0, 100
+SIF 300-nWound == FINDELEMENT(PartStack, 90)
+	LOCALS += @"      %HediffName(ARG,currentBodyPart,nWound,1, nButtons ? 1+nButtons # 1, nButtons == 1 ? 0 # 1)%"
+NEXT
+LOCALS += "<br>"
+HTML_PRINT LOCALS
+;IF ShowWounds
+;    PRINTFORM %LIST_IN_STRING(LOCALS)%
+;    PRINTFORM )
+;ENDIF
+NEXT
+;#392167
+
+@HediffName(ARG,nPart,nWound,ShowTend,HTML, stack = 1)
+#FUNCTIONS
+#DIM nPart
+#DIM nWound
+#DIM nHediff
+#DIM ShowTend
+#DIM DYNAMIC stack
+#DIM DYNAMIC HTML
+#DIM totalHediffCount
+#DIM hediffStack, 10
+totalHediffCount = DT_SELECT(@"Hediff", @"chara = {ARG} and part = {nPart}", "", tempHediffList)
+nHediff = tempHediffList:(nWound)
+VARSET hediffStack
+hediffStack:0 = 1
+hediffStack:1 = DT_CELL_GET(@"Hediff", nHediff, "severity", 1)
+hediffStack:2 = DT_CELL_GET(@"Hediff", nHediff, "bleeding", 1)
+hediffStack:3 = DT_CELL_GET(@"Hediff", nHediff, "type", 1)
+hediffStack:4 = GetHediffStage(ARG,nHediff)
+LOCALS =
+IF stack
+	FOR LOCAL, 0, totalHediffCount
+	SIF LOCAL == nWound
+		CONTINUE
+	IF HediffSameSource(ARG,nPart,nWound,LOCAL)
+		hediffStack:0 ++
+		hediffStack:1 += DT_CELL_GET(@"Hediff", tempHediffList:LOCAL, "severity", 1)
+		hediffStack:2 += DT_CELL_GET(@"Hediff", tempHediffList:LOCAL, "bleeding", 1)
+	ENDIF
+	NEXT
+ENDIF
+IF HTML == 8
+	LOCALS += @"<button value='{nHediff}' title='%HTML_Escape(BionicDescription((hediffStack:3)))%'>"
+ELSEIF HTML == 2 || HTML == 8 || (HTML == 3 && IsBionicPart(ARG,nPart,nWound) && GET_INT(ARG, "Hediff", (hediffStack:3), "Has Config"))
+	LOCALS += @"<button value='{nPart*100000+nWound}' title='%HTML_Escape(BionicDescription((hediffStack:3)))%'>"
+ELSEIF HTML
+	LOCALS += @"<nonbutton title='%HTML_Escape(BionicDescription((hediffStack:3)))%'>"
+ENDIF
+;invalid hediff
+SIF !hediffStack:3
+	RETURNF
+;hidden hediff
+[IF_NDEBUG]
+SIF GET_INT(ARG, "Hediff", hediffStack:3, @"{hediffStack:4}/Hidden")
+	RETURNF
+[ENDIF]
+IF IsBionicPart(ARG,nPart,nWound)
+	;blank hediff names
+	SIF !STRLENS(GET_STR(ARG, "Hediff", (hediffStack:3), "名前"))
+		RETURNF
+	LOCALS += @"%GET_STR(ARG, "Hediff", (hediffStack:3), "名前")%"
+	GOTO BYPASS
+ELSEIF IsDrugHediff(ARG,nPart,nWound)
+	;blank hediff names
+	SIF !STRLENS(GET_STR(ARG, "Hediff", (hediffStack:3), "名前"))
+		RETURNF
+	LOCALS += @"%GET_STR(ARG, "Hediff", (hediffStack:3), "名前")% ({hediffStack:1}m)"
+	GOTO BYPASS
+ENDIF
+SIF DT_CELL_GET(@"Hediff", nHediff, "permanent", 1) && hediffStack:1 >= 500
+	LOCALS += @"영구적 "
+LOCALS += @"%GET_STR(ARG, "Hediff", (hediffStack:3), "名前")%"
+SIF DT_CELL_GET(@"Hediff", nHediff, "permanent", 1) && hediffStack:1 < 500 && hediffStack:1 > 0
+	LOCALS += @" 상처"
+SIF STRLENS(GET_STR(ARG, "Hediff", hediffStack:3, @"{hediffStack:4}/Name"))
+	LOCALS += @" (%GET_STR(ARG, "Hediff", hediffStack:3, @"{hediffStack:4}/Name")%)"
+SIF hediffStack > 1
+	LOCALS += @" {hediffStack}x"
+;SIF !ShowWounds
+;    PRINTFORM  (
+;ShowWounds = 1
+IF IsDiseaseHediff(ARG,nPart,nWound)
+	LOCALS += @" ({(hediffStack:1*100)/(GET_INT(ARG, "Hediff", (hediffStack:3), "Scale") ? GET_INT(ARG, "Hediff", (hediffStack:3), "Scale") # 100)}\%, "
+ELSE
+	LOCALS += @" ({hediffStack:1}, "
+ENDIF
+IF DT_CELL_GET(@"Hediff", nHediff, "owner", 1) >= CHARANUM
+	LOCALS += @"알 수 없음 "
+ELSE
+	LOCALS += @"%CALLNAME:(DT_CELL_GET(@"Hediff", nHediff, "owner", 1))%'s "
+ENDIF
+IF TOINT(DT_CELL_GETS(@"Hediff", nHediff, "cause", 1)) || DT_CELL_GETS(@"Hediff", nHediff, "cause", 1) == "0"
+	LOCALS += @"%HTML_ESCAPE(GET_STR(MASTER, "Weapon", TOINT(DT_CELL_GETS(@"Hediff", nHediff, "cause", 1)), "名前"))%"
+ELSE
+	LOCALS += @"%HTML_ESCAPE(DT_CELL_GETS(@"Hediff", nHediff, "cause", 1))%"
+ENDIF
+IF ShowTend
+	IF hediffStack:2 || DT_CELL_GET(@"Hediff", nHediff, "tended", 1)
+		LOCALS += ", "
+		IF DT_CELL_GET(@"Hediff", nHediff, "tended", 1)
+			LOCALS += @"치료 상태: {DT_CELL_GET(@"Hediff", nHediff, "tended", 1)}\%"
+		ELSEIF hediffStack:2
+			LOCALS += @"출혈 ({hediffStack:2}x)"
+		ELSE
+		ENDIF
+	ENDIF
+ENDIF
+LOCALS += ")"
+$BYPASS
+IF HTML
+	IF HTML == 2 || HTML == 8 || (HTML == 3 && IsBionicPart(ARG,nPart,nWound) && GET_INT(ARG, "Hediff", (hediffStack:3), "Has Config"))
+		LOCALS += @"</button>"
+	ELSEIF HTML
+		LOCALS += @"</nonbutton>"
+	ENDIF
+	IF GET_STR(ARG, "Hediff", hediffStack:3, @"Color") != ""
+		LOCALS '= @"<font color='#%GET_STR(ARG, "Hediff", hediffStack:3, @"Color")%'>%LOCALS, 2%</font>"
+	ELSEIF IsBionicPart(ARG,nPart,nWound)
+		LOCALS = %COLOR_PRINT_HTML(LOCALS, "C_AQUA")%
+	ELSEIF IsDrugHediff(ARG,nPart,nWound)
+		LOCALS = %COLOR_PRINT_HTML(LOCALS, "C_OD_PINK")%
+	ELSEIF DT_CELL_GET(@"Hediff", nHediff, "permanent", 1) || BodyPartRemoved:ARG:nPart
+		LOCALS = %COLOR_PRINT_HTML(LOCALS, "C_GRAY")%
+	ELSE
+		SELECTCASE (hediffStack:1*100)/BodyPartHealth:ARG:nPart:1
+			CASE IS >= 200
+				LOCALS = %COLOR_PRINT_HTML(LOCALS, "C_D_RED")%
+			CASE IS >= 100
+				LOCALS = %COLOR_PRINT_HTML(LOCALS, "C_RED")%
+			CASE IS >= 75
+				LOCALS = %COLOR_PRINT_HTML(LOCALS, "C_D_ORANGE")%
+			CASE IS >= 50
+				LOCALS = %COLOR_PRINT_HTML(LOCALS, "C_ORANGE")%
+			CASE IS >= 30
+				LOCALS = %COLOR_PRINT_HTML(LOCALS, "C_YELLOW")%
+			CASE IS >= 20
+				LOCALS = %COLOR_PRINT_HTML(LOCALS, "C_GREEN")%
+			CASEELSE
+		ENDSELECT
+	ENDIF
+ENDIF
+RETURNF LOCALS
+;Dumps a list of the 2hu's hediffs
+
+@DumpHediffs(ARG)
+#FUNCTION
+LOCAL:6 = DT_SELECT("Hediff", @"chara = {ARG}",,tempHediffList)
+FOR LOCAL, 0, DT_ROW_LENGTH(@"Hediff")
+DEBUGPRINTFORM {LOCAL} 타입: {DT_CELL_GET(@"Hediff", tempHediffList:LOCAL, "type",1)}은 부위 {DT_CELL_GET(@"Hediff", tempHediffList:LOCAL, "Part",1)} 심각도: {DT_CELL_GET(@"Hediff", tempHediffList:LOCAL, "severity",1)}
+DEBUGPRINTFORML
+NEXT
+;checks if the hediff was dealt by the same person with the same cause, of the same type.
+
+@HediffSameSource(ARG,nPart,nTargetWound,nComparingWound)
+#FUNCTION
+#DIM nPart
+#DIM nTargetWound
+#DIM nComparingWound
+nTargetWound = HediffGet(ARG,nPart,nTargetWound)
+nComparingWound = HediffGet(ARG,nPart,nComparingWound)
+SIF DT_CELL_GETS(@"Hediff", nTargetWound, "cause", 1) != DT_CELL_GETS(@"Hediff", nComparingWound, "cause", 1)
+	RETURNF 0
+SIF DT_CELL_GET(@"Hediff", nTargetWound, "owner", 1) != DT_CELL_GET(@"Hediff", nComparingWound, "owner", 1)
+	RETURNF 0
+SIF DT_CELL_GET(@"Hediff", nTargetWound, "type", 1) != DT_CELL_GET(@"Hediff", nComparingWound, "type", 1)
+	RETURNF 0
+RETURNF 1
+;count number of the same hediffs
+
+@HediffCount(ARG,nPart,nTargetWound)
+#FUNCTION
+#DIM nPart
+#DIM nTargetWound
+#DIM woundStacks
+#DIM HC, 300
+#DIM HC_COUNT
+VARSET woundStacks
+VARSET PartStack
+HC_COUNT = DT_SELECT(@"Hediff", @"chara = {ARG} and part = {nPart}",,HC)
+FOR LOCAL, 0, HC_COUNT
+;SIF LOCAL == nTargetWound
+;    CONTINUE
+SIF LOCAL > 300
+	BREAK
+IF HediffSameSource(ARG,nPart,nTargetWound,LOCAL)
+	woundStacks++
+	;woundGot:LOCAL = 1
+	PartStack:(300-LOCAL) = 90
+ENDIF
+NEXT
+RETURNF woundStacks
+
+@HasBodyPart(ARG,nPart)
+#FUNCTION
+#DIM nPart
+SELECTCASE nPart
+	CASE 68,69,70,71
+		SIF !HAS_PENIS(ARG)
+			RETURNF 0
+	CASE 62,63,64
+		SIF !HAS_VAGINA(ARG)
+			RETURNF 0
+	CASE 73
+		SIF TALENT:ARG:191 != 6
+			RETURNF 0
+	CASE 56,57
+		SIF !GROUPMATCH(TALENT:ARG:191,3,5,7,8,13) && !TALENT:ARG:192
+			RETURNF 0
+	CASE 58
+		SIF !GROUPMATCH(ARG,38,49)
+			RETURNF 0
+ENDSELECT
+RETURNF 1
+
+@CharaBodySize(ARG)
+#FUNCTION
+SELECTCASE CharaAge:ARG:0
+	CASE IS >= 18
+		RETURNF 100
+	CASE 15 TO 17
+		RETURNF 90
+	CASE 13 TO 15
+		RETURNF 85
+	CASE 10 TO 12
+		RETURNF 70
+	CASE 7 TO 9
+		RETURNF 55
+	CASE 3 TO 6
+		RETURNF 40
+	CASE 0 TO 2
+		RETURNF 20
+ENDSELECT
+;for broad damage
+
+@BroadDamage(ARG = -1,ARGS = "thorax",DMG = 0,DMG_TYPE = 1,nDealer=-555,nItem="No Item Given!", nPerm = 0, nCritical = -1)
+#FUNCTION
+#DIM DMG
+#DIM DMG_TYPE
+#DIM nDealer
+#DIMS nItem
+#DIM nPerm
+#DIM nCritical
+#DIM DMG_MAIN_PART
+#DIM DMG_MULTIPLIER
+IF nCritical == -1
+	IF INRANGE(nDealer,0,CHARANUM-1)
+		nCritical = RAND(100) < GetCriticalAccuracy(nDealer)
+	ELSE
+		nCritical = !RAND(3)
+	ENDIF
+ENDIF
+SELECTCASE ARGS
+	CASE "head"
+		DMG_MAIN_PART = 1
+		DMG_MULTIPLIER = 400
+	CASE "thorax"
+		DMG_MAIN_PART = 40
+		DMG_MULTIPLIER = 100
+	CASE "stomach"
+		DMG_MAIN_PART = 53
+		DMG_MULTIPLIER = 75
+	CASE "crotch"
+		DMG_MAIN_PART = 61
+		DMG_MULTIPLIER = 100
+	CASE "larm"
+		DMG_MAIN_PART = 20
+		DMG_MULTIPLIER = 33
+	CASE "rarm"
+		DMG_MAIN_PART = 30
+		DMG_MULTIPLIER = 33
+	CASE "lleg"
+		DMG_MAIN_PART = 81
+		DMG_MULTIPLIER = 33
+	CASE "rleg"
+		DMG_MAIN_PART = 91
+		DMG_MULTIPLIER = 33
+	CASE "arms"
+		SELECTCASE RAND:2
+			CASE 0
+				CALLF BroadDamage(ARG,"larm",DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical)
+			CASE 1
+				CALLF BroadDamage(ARG,"rarm",DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical)
+		ENDSELECT
+		RETURNF
+	CASE "legs"
+		SELECTCASE RAND:2
+			CASE 0
+				CALLF BroadDamage(ARG,"lleg",DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical)
+			CASE 1
+				CALLF BroadDamage(ARG,"rleg",DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical)
+		ENDSELECT
+		RETURNF
+	CASE "limb"
+		SELECTCASE RAND:4
+			CASE 0
+				CALLF BroadDamage(ARG,"lleg",DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical)
+			CASE 1
+				CALLF BroadDamage(ARG,"rleg",DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical)
+			CASE 2
+				CALLF BroadDamage(ARG,"larm",DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical)
+			CASE 3
+				CALLF BroadDamage(ARG,"rarm",DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical)
+		ENDSELECT
+		RETURNF
+	CASE "torso"
+		SELECTCASE RAND:3
+			CASE 0
+				CALLF BroadDamage(ARG,"thorax",DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical)
+			CASE 1
+				CALLF BroadDamage(ARG,"stomach",DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical)
+			CASE 2
+				CALLF BroadDamage(ARG,"crotch",DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical)
+		ENDSELECT
+		RETURNF
+	CASE "fullbody"
+		CALLF BroadDamage(ARG,"head",DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical)
+		CALLF BroadDamage(ARG,"thorax",DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical)
+		CALLF BroadDamage(ARG,"stomach",DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical)
+		CALLF BroadDamage(ARG,"crotch",DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical)
+		CALLF BroadDamage(ARG,"larm",DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical)
+		CALLF BroadDamage(ARG,"rarm",DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical)
+		CALLF BroadDamage(ARG,"lleg",DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical)
+		CALLF BroadDamage(ARG,"rleg",DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical)
+		RETURNF
+ENDSELECT
+LOCAL:2 = DMG
+DMG = DamageMitigate(ARG,nDealer,DMG,DMG_MAIN_PART)
+IF !DMG
+	RETURNF
+ELSEIF DMG < LOCAL:2/10 && GROUPMATCH(DMG_TYPE,1,2,6)
+	DMG_TYPE = 6
+ENDIF
+SELECTCASE ARGS
+	CASE "head"
+		CALLF DamageBodyPart(ARG,1,DMG,DMG_TYPE,nDealer,nItem, nPerm)
+		IF nCritical
+			IF !RAND:4
+				;neck
+				CALLF DamageBodyPart(ARG,11,DMG,DMG_TYPE,nDealer,nItem, nPerm, 1200)
+			ELSE
+				;brain
+				IF !RAND:3
+					IF !RAND:2
+						CALLF DamageBodyPart(ARG,5,DMG,DMG_TYPE,nDealer,nItem, nPerm)
+					ELSE
+						CALLF DamageBodyPart(ARG,6,DMG,DMG_TYPE,nDealer,nItem, nPerm)
+					ENDIF
+				ENDIF
+				CALLF DamageBodyPart(ARG,12,DMG,DMG_TYPE,nDealer,nItem, 1)
+			ENDIF
+		ELSE
+			SELECTCASE RAND:3
+				CASE 0
+					CALLF DamageBodyPart(ARG,4,DMG,DMG_TYPE,nDealer,nItem, nPerm)
+				CASE 1
+					CALLF DamageBodyPart(ARG,7,DMG,DMG_TYPE,nDealer,nItem, nPerm)
+				CASE 2
+					CALLF DamageBodyPart(ARG,8,DMG,DMG_TYPE,nDealer,nItem, nPerm)
+			ENDSELECT
+			SIF !RAND:6
+				CALLF DamageBodyPart(ARG,12,DMG,DMG_TYPE,nDealer,nItem, 1)
+		ENDIF
+	CASE "crotch"
+		CALLF DamageBodyPart(ARG,60,DMG,DMG_TYPE,nDealer,nItem, nPerm)
+		CALLF DamageBodyPart(ARG,61,DMG,DMG_TYPE,nDealer,nItem, nPerm)
+		IF nCritical
+			SELECTCASE RAND:3
+				CASE 0
+					IF HAS_VAGINA(ARG)
+						CALLF DamageBodyPart(ARG,62,DMG,DMG_TYPE,nDealer,nItem, nPerm)
+						CALLF DamageBodyPart(ARG,63,DMG,DMG_TYPE,nDealer,nItem, nPerm)
+						CALLF DamageBodyPart(ARG,64,DMG,DMG_TYPE,nDealer,nItem, nPerm)
+					ENDIF
+					IF HAS_PENIS(ARG)
+						CALLF DamageBodyPart(ARG,68,DMG,DMG_TYPE,nDealer,nItem, nPerm)
+						CALLF DamageBodyPart(ARG,69,DMG,DMG_TYPE,nDealer,nItem, nPerm)
+						CALLF DamageBodyPart(ARG,70,DMG,DMG_TYPE,nDealer,nItem, nPerm)
+						CALLF DamageBodyPart(ARG,71,DMG,DMG_TYPE,nDealer,nItem, nPerm)
+					ENDIF
+				CASE 1
+					CALLF DamageBodyPart(ARG,65,DMG,DMG_TYPE,nDealer,nItem, nPerm)
+					CALLF DamageBodyPart(ARG,67,DMG,DMG_TYPE,nDealer,nItem, nPerm)
+				CASE 2
+					CALLF DamageBodyPart(ARG,72,DMG,DMG_TYPE,nDealer,nItem, nPerm)
+					CALLF DamageBodyPart(ARG,74,DMG,DMG_TYPE,nDealer,nItem, nPerm)
+			ENDSELECT
+		ENDIF
+	CASE "stomach"
+		CALLF DamageBodyPart(ARG,52,DMG,DMG_TYPE,nDealer,nItem, nPerm)
+		CALLF DamageBodyPart(ARG,53,DMG,DMG_TYPE,nDealer,nItem, nPerm)
+		IF nCritical
+			SELECTCASE RAND:3
+				CASE 0
+					CALLF DamageBodyPart(ARG,75,DMG,DMG_TYPE,nDealer,nItem, nPerm)
+				CASE 1
+					CALLF DamageBodyPart(ARG,76,DMG,DMG_TYPE,nDealer,nItem, nPerm)
+				CASE 2
+					CALLF DamageBodyPart(ARG,77,DMG,DMG_TYPE,nDealer,nItem, nPerm)
+			ENDSELECT
+		ENDIF
+	CASE "thorax"
+		CALLF DamageBodyPart(ARG,40,DMG,DMG_TYPE,nDealer,nItem, nPerm)
+		SELECTCASE RAND:3
+			CASE 0
+				CALLF DamageBodyPart(ARG,41,DMG,DMG_TYPE,nDealer,nItem, nPerm)
+				SIF nCritical
+					CALLF DamageBodyPart(ARG,45,DMG,DMG_TYPE,nDealer,nItem, nPerm)
+			CASE 1
+				CALLF DamageBodyPart(ARG,43,DMG,DMG_TYPE,nDealer,nItem, nPerm)
+				SIF nCritical
+					CALLF DamageBodyPart(ARG,46,DMG,DMG_TYPE,nDealer,nItem, nPerm)
+			CASE 2
+				SIF nCritical
+					CALLF DamageBodyPart(ARG,47,DMG,DMG_TYPE,nDealer,nItem, nPerm)
+		ENDSELECT
+	CASE "lleg"
+		SELECTCASE RAND:3
+			CASE 0
+				CALLF DamageBodyPart(ARG,81,DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical ? 400 # 100)
+			CASE 1
+				CALLF DamageBodyPart(ARG,82,DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical ? 400 # 100)
+			CASE 2
+				CALLF DamageBodyPart(ARG,83,DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical ? 400 # 100)
+		ENDSELECT
+	CASE "rleg"
+		SELECTCASE RAND:3
+			CASE 0
+				CALLF DamageBodyPart(ARG,91,DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical ? 400 # 100)
+			CASE 1
+				CALLF DamageBodyPart(ARG,92,DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical ? 400 # 100)
+			CASE 2
+				CALLF DamageBodyPart(ARG,93,DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical ? 400 # 100)
+		ENDSELECT
+	CASE "larm"
+		SELECTCASE RAND:3
+			CASE 0
+				CALLF DamageBodyPart(ARG,20,DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical ? 400 # 100)
+			CASE 1
+				CALLF DamageBodyPart(ARG,22,DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical ? 400 # 100)
+			CASE 2
+				CALLF DamageBodyPart(ARG,23,DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical ? 400 # 100)
+		ENDSELECT
+	CASE "rarm"
+		SELECTCASE RAND:3
+			CASE 0
+				CALLF DamageBodyPart(ARG,30,DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical ? 400 # 100)
+			CASE 1
+				CALLF DamageBodyPart(ARG,32,DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical ? 400 # 100)
+			CASE 2
+				CALLF DamageBodyPart(ARG,33,DMG,DMG_TYPE,nDealer,nItem, nPerm, nCritical ? 400 # 100)
+		ENDSELECT
+ENDSELECT
+RETURNF DMG*DMG_MULTIPLIER/100
+
+@CanFracturePart(nPart)
+#FUNCTION
+#DIM nPart
+SELECTCASE nPart
+	CASE 81 TO 83, 91 TO 93, 61, 20 TO 23, 30 TO 33
+		RETURNF 1
+ENDSELECT
+RETURNF 0
+
+@ClearAllHediffs(ARG, ARG:1)
+#FUNCTION
+#DIM tempHediffDef
+tempHediffCount = DT_SELECT(@"Hediff", @"chara = {ARG}", , tempHediffList)
+FOR LOCAL, 0, tempHediffCount
+tempHediffDef = DT_CELL_GET(@"Hediff", tempHediffList:LOCAL, "type",1)
+SIF GROUPMATCH(GET_STR(ARG, "Hediff", tempHediffDef, "Hediff Type"),"Bionic","Drug")  && !ARG:1
+	CONTINUE
+;DEBUGPRINTFORML @"Clearing hediff {tempHediffList:LOCAL} from %NAME:ARG%"
+DT_ROW_REMOVE @"Hediff", tempHediffList:LOCAL
+NEXT
+IF INRANGE(ARG,0,CHARANUM-1)
+	FOR LOCAL,0,100
+	SIF BDY_PART_NAME(LOCAL) == ""
+		CONTINUE
+	BodyPartHealth:ARG:LOCAL:0 = BodyPartHealth:ARG:LOCAL:1
+	BodyPartRemoved:ARG:LOCAL = PartOrChildIsBionic(ARG,LOCAL,1)
+	NEXT
+ENDIF
+;get a hediff
+
+@HediffGet(ARG,nPart,nHediff)
+#FUNCTION
+#DIM DYNAMIC nPart
+#DIM DYNAMIC nHediff
+; IF (CFLAG:MASTER:睡眠 && inTrain == 1) ;optimizations
+;     RETURNF 0
+; ENDIF
+SIF nPart < 0 || nHediff < 0
+	RETURNF 0
+VARSET HediffGetHediffList
+HediffGetHediffCount = DT_SELECT(@"Hediff", @"chara = {ARG} and part = {nPart}", "", HediffGetHediffList)
+nHediff = HediffGetHediffList:(nHediff)
+RETURNF nHediff
+
+@ClearPartHediff(ARG, nPart, ARG:1)
+#FUNCTION
+#DIM nPart
+SIF BDY_PART_NAME(nPart) == ""
+	RETURNF 0
+BodyPartHealth:ARG:nPart:0 = BodyPartHealth:ARG:nPart:1
+SIF nNecro
+	BodyPartRemoved:ARG:nPart = 0
+FOR LOCAL,1,DT_SELECT(@"Hediff", @"chara = {ARG} and part = {nPart}")+1
+SIF DT_CELL_GET(@"Hediff", RESULT:LOCAL, "type",1) > 100 && !ARG:1
+	CONTINUE
+DT_ROW_REMOVE @"Hediff", RESULT:LOCAL
+NEXT
+
+@ClearHediff(ARG,nBodyPart,nHediff)
+#FUNCTION
+#DIM DYNAMIC nBodyPart
+#DIM DYNAMIC nHediff
+#DIM DYNAMIC nGot
+nGot = HediffGet(ARG,nBodyPart,nHediff)
+DT_ROW_REMOVE @"Hediff", nGot
+RETURNF 1
+
+@HealAllHediffs(ARG,nAmount)
+#FUNCTION
+#DIM DYNAMIC nAmount
+#DIM DYNAMIC nHediff
+#DIM DYNAMIC nHediffDef
+#DIM DYNAMIC nPart
+#DIM DYNAMIC nHediffCount
+#DIM DYNAMIC nCurrentSeverity
+SIF IsDead:ARG:0
+	RETURNF
+nHediffCount = DT_SELECT("Hediff", @"chara = {ARG}", "",tempHediffList)
+FOR nHediff,0, nHediffCount
+nPart = DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "part",1)
+nHediffDef = DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "type",1)
+SIF GROUPMATCH(GET_STR(ARG, "Hediff", nHediffDef, "Hediff Type"), "Bionic", "Drug") ; no bionics
+	CONTINUE
+SIF DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "permanent",1) ; perm hediffs don't heal
+	CONTINUE
+nCurrentSeverity = DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "severity", 1)
+;heal if part isn't destroyed
+;hourai exception (they can heal all)
+IF (BodyPartHealth:ARG:(nPart):0 > -BodyPartHealth:ARG:(nPart):1 || !nNecro || TALENT:ARG:197 == 4) && BodyPartHealth:ARG:(nPart):1
+	LOCAL:6 = (DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "tended",1) ? MAX(DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "tended",1)/8, 3) # 1) * (nAmount)
+	SELECTCASE TALENT:ARG:130
+		CASE -1
+			LOCAL:6 /= 2
+		CASE 1
+			LOCAL:6 *= 2
+	ENDSELECT
+	;PRINTFORML Healing %DamageTypes:(Hediff:ARG:(nPart):(LOCAL:3))% ({HediffSeverity:ARG:(nPart):(LOCAL:3)} damage) for {LOCAL:6}
+	DT_CELL_SET @"Hediff", tempHediffList:nHediff, "severity", MAX(0,nCurrentSeverity - LOCAL:6), 1
+	IF DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "severity",1) <= 0
+		;DEBUGPRINTFORML Clearing hediff {tempHediffList:nHediff} from %NAME:ARG%
+		DT_ROW_REMOVE @"Hediff", tempHediffList:nHediff
+	ENDIF
+ENDIF
+NEXT
+;make drug hediffs lapse
+
+@LapseDrugHediffs(ARG,nAmount)
+#FUNCTION
+#DIM DYNAMIC nAmount
+#DIM DYNAMIC nHediff
+#DIM DYNAMIC nHediffDef
+#DIM DYNAMIC nPart
+#DIM DYNAMIC nHediffCount
+#DIM DYNAMIC nCurrentSeverity
+SIF IsDead:ARG:0
+	RETURNF
+nHediffCount = DT_SELECT("Hediff", @"chara = {ARG}", "",tempHediffList)
+FOR nHediff,0, nHediffCount
+nPart = DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "part",1)
+nHediffDef = DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "type",1)
+SIF !GROUPMATCH(GET_STR(ARG, "Hediff", nHediffDef, "Hediff Type"), "Drug") ; must be drugs
+	CONTINUE
+SIF DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "permanent",1) ; perm hediffs don't heal
+	CONTINUE
+nCurrentSeverity = DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "severity", 1)
+;drugs lapse
+DT_CELL_SET @"Hediff", tempHediffList:nHediff, "severity", MAX(0,nCurrentSeverity - nAmount), 1
+IF DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "severity",1) <= 0
+	;DEBUGPRINTFORML Clearing hediff {tempHediffList:nHediff} from %NAME:ARG%
+	DT_ROW_REMOVE @"Hediff", tempHediffList:nHediff
+ENDIF
+NEXT
+
+@TendAllHediffs(ARG,nAmount)
+#FUNCTION
+#DIM DYNAMIC nAmount
+#DIM DYNAMIC nHediff
+#DIM DYNAMIC nPart
+#DIM DYNAMIC nHediffCount
+SIF IsDead:ARG:0
+	RETURNF
+nHediffCount = DT_SELECT("Hediff", @"chara = {ARG}", "",tempHediffList)
+FOR nHediff,0, nHediffCount
+nPart = DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "part",1)
+SIF DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "type",1) > 100 ; no bionics
+	CONTINUE
+SIF DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "permanent",1) ; perm hediffs don't heal
+	CONTINUE
+;heal if part isn't destroyed
+;hourai exception (they can heal all)
+IF (BodyPartHealth:ARG:(nPart):0 > -BodyPartHealth:ARG:(nPart):1 || !nNecro || TALENT:ARG:197 == 4) && BodyPartHealth:ARG:(nPart):1
+	;PRINTFORML Healing %DamageTypes:(Hediff:ARG:(nPart):(LOCAL:3))% ({HediffSeverity:ARG:(nPart):(LOCAL:3)} damage) for {LOCAL:6}
+	DT_CELL_SET @"Hediff", tempHediffList:nHediff, "tended", nAmount, 1
+ENDIF
+NEXT
+
+@DamageBodyPart(ARG = -1,BodyPart,DMG,DMG_TYPE,nDealer,nItem,nPerm = 0,nBleedMultiplier = 100)
+#FUNCTION
+#DIM DYNAMIC BodyPart
+#DIM DYNAMIC DMG
+#DIM DYNAMIC DMG_TYPE
+#DIM DYNAMIC nHediff
+#DIM DYNAMIC nDealer
+#DIM DYNAMIC nPerm
+#DIMS DYNAMIC nItem
+#DIM DYNAMIC nBleeds
+#DIM DYNAMIC nBleedMultiplier
+;don't hurt the baby!
+SIF IS_BABY(ARG) || (NASCheat:5 && ARG == MASTER)
+	RETURNF
+SIF nDealer == -1 || nDealer == ARG
+	GOTO BYPASS
+SELECTCASE TALENT:ARG:40
+	CASE -2
+		TIMES DMG, 0.25
+	CASE -1
+		TIMES DMG, 0.5
+	CASE 1
+		TIMES DMG, 1.15
+ENDSELECT
+DMG = DMG*YoujutsuResistMULT(DamageResist:ARG:DMG_TYPE:1)/100
+;bionics are always 1 damage
+SIF DMG_TYPE > 100
+	DMG = 1
+;no damage
+SIF DMG <= 0
+	RETURNF
+$BYPASS
+;bodypart is 0, assume this is whole body.
+; SIF !BodyPart
+;     THROW @"Attempted to give {ARG} %NAME:ARG% a hediff on an invalid body part ({BodyPart})!"
+SIF !DMG_TYPE
+	THROW @"주다 시도함 {ARG} %NAME:ARG% 잘못된 피해 유형을 가진{DMG_TYPE})!"
+;invalid part
+SIF !HasBodyPart(ARG,BodyPart)
+	RETURNF
+;part is supposed to be removed, attribute part to parent instead
+IF PartOrChildIsBionic(ARG,BodyPart,1)
+	CALLF BodyPartParentFromChild(BodyPart)
+	BodyPart = BodyPartChildren:0
+ENDIF
+;can't further damage a destroyed part
+SIF IsPartDestroyed(ARG,BodyPart) && BodyPart != 40
+	RETURNF
+; nHediff = GetFreeHediff(ARG,BodyPart)
+; Hediff:ARG:BodyPart:nHediff = DMG_TYPE
+; HediffSeverity:ARG:BodyPart:nHediff = DMG
+; HediffOwner:ARG:BodyPart:nHediff = nDealer
+; HediffCause:ARG:BodyPart:nHediff = %nItem%
+; HediffPermanent:ARG:BodyPart:nHediff = nPerm
+;nHediffCount = DT_SELECT("Hediff", @"chara = {ARG}",,tempHediffList)
+DT_ROW_ADD @"Hediff", "chara", ARG, "part", BodyPart, "type", DMG_TYPE, "severity", DMG, "tended", 0, "bleeding", 0, "owner", nDealer, "cause", nItem, "permanent", nPerm,
+nHediff = RESULT
+IF GROUPMATCH(GET_STR(ARG,"Hediff", DMG_TYPE, "Hediff Type"),"Damage", "Disease")
+	BleedTimeout:ARG:0 = 60
+	KilledBy:ARG:0 = nDealer
+	KilledWith:ARG:0 = %nItem%
+	LastHediff:ARG = BodyPart*100+DMG_TYPE
+ENDIF
+;BodyPartHealth:ARG:BodyPart:0 -= DMG
+;BodyWound:ARG:BodyPart:(VARSIZE(BodyWound:ARG:BodyPart:0)+1) = DMG
+IF GET_INT(ARG,"Hediff", DMG_TYPE, "Bleed Threshold") && !PartOrChildIsBionic(ARG,BodyPart)
+	nBleeds = DT_CELL_GET(@"Hediff", nHediff, "bleeding")+(DMG/GET_INT(ARG,"Hediff", DMG_TYPE, "Bleed Threshold"))
+	SIF nBleedMultiplier != 100
+		nBleeds = nBleeds*nBleedMultiplier/100
+	DT_CELL_SET @"Hediff", nHediff, "bleeding", nBleeds, 1
+ENDIF
+;;#; PRINTFORML %CALLNAME:ARG%'s %BDY_PART_NAME(BodyPart)%: %HediffName(ARG, BodyPart, DT_SELECT(@"Hediff_{ARG}", @"part = {BodyPart}")-1)%
+
+@IsPartDestroyed(ARG,nPart)
+#FUNCTION
+#DIM nPart
+#DIM nParent
+#DIM nChildPart
+IF (CFLAG:MASTER:睡眠 && inTrain == 1) ;optimizations
+	RETURNF 0
+ENDIF
+SIF BodyPartHealth:ARG:(nPart):0 <= -BodyPartHealth:ARG:(nPart):1 && BodyPartHealth:ARG:(nPart):1
+	RETURNF 1
+;return negative if the parent is not dead
+CALLF BodyPartParentFromChild(nPart)
+IF IsBionicPart(ARG,BodyPartChildren:0,0) == 1 && BodyPartHealth:ARG:(BodyPartChildren:0):0 > 0 && !BodyPartRemoved:ARG:(BodyPartChildren:0)
+	;DEBUGPRINTFORML Giving bionic priority to %BDY_PART_NAME(BodyPartChildren:0)%
+	RETURNF 0
+ENDIF
+SIF BodyPartRemoved:ARG:nPart
+	RETURNF 1
+;Initialize character capacity, pain, efficiently.
+;Most stuff related to capacities goes here
+;We can save capacities to CapacityStats
+;Main goal is to eliminate as many loops and ultimately INCREASE ZE PERFORMANCE
+
+@CrippleEffects(C_ID)
+#DIM C_ID; character
+#DIM A_LOOP
+#DIM A_ID; capacity
+#DIM B_ID; body type
+#DIM H_ID; hediff
+#DIM H_DEF; hediff definition
+#DIM H_PART; hediff part
+#DIM H_STAGE; hediff stage
+#DIM DYNAMIC A_MAX ;agony max
+#DIM DYNAMIC A_MULT ;agony mult
+#DIM DYNAMIC A_ADD ;agony add
+#DIM nValue, 10
+#DIM DYNAMIC nInfluence, 10
+#DIM DYNAMIC DamageOffset, 100
+#DIM DYNAMIC EfficiencyMult, 100
+#DIM DYNAMIC CapacityMax, VARSIZE("CapacityStats")
+#DIM DYNAMIC CapacityMult, VARSIZE("CapacityStats")
+#DIM DYNAMIC CapacityOffset, VARSIZE("CapacityStats")
+#DIM DYNAMIC HediffList, 10000
+#DIM DYNAMIC HediffCount
+#DIM DYNAMIC H_GENITAL,2
+#DIM Lapse
+#DIM DYNAMIC TempBloodLoss
+#DIM CrippledParts
+#DIM D_INDEX, 3
+#DIM DYNAMIC BaseWasBuffed, VARSIZE("BASE")
+HediffCount = DT_SELECT(@"Hediff", @"chara = {C_ID}", "", HediffList)
+VARSET CrippledParts
+VARSET CapacityMax
+VARSET CapacityMult, 100
+VARSET CapacityOffset
+HealthFlags:C_ID:0 = 0
+Lapse = TIME_PROGRESS(TIME:1)
+MAXBASE:C_ID:Agony = MAX(10000,MAXBASE:C_ID:0*5)
+BASE:C_ID:Agony = 0
+A_MAX = MAXBASE:C_ID:Agony
+A_MULT = 100
+BleedTimeout:C_ID:0 -= Lapse
+SIF !IsDead:C_ID:0
+	BASE:C_ID:Blood = LIMIT(BASE:C_ID:Blood+(Lapse*2),0,MAXBASE:C_ID:Blood)
+TCVAR:C_ID:Bleeding = 0
+; IF (CFLAG:MASTER:睡眠 && inTrain == 1) ;optimizations
+;     GOTO BypassHediffs
+; ENDIF
+;tsp unbuff
+VARSET BaseWasBuffed
+FOR D_INDEX,0,VARSIZE("BionicBASE")
+SIF BionicBASE:C_ID:D_INDEX
+	BaseWasBuffed:D_INDEX = BionicBASE:C_ID:D_INDEX
+MAXBASE:C_ID:D_INDEX -= BionicBASE:C_ID:D_INDEX
+BUFF:C_ID:D_INDEX -= BionicBASE:C_ID:D_INDEX
+BionicBASE:C_ID:D_INDEX = 0
+NEXT
+;DEBUGPRINTFORML Calculating health for %CALLNAME:C_ID%
+FOR D_INDEX,0,HediffCount
+;hediff effects
+H_ID = HediffList:D_INDEX
+H_PART = DT_CELL_GET(@"Hediff", H_ID, "part", 1)
+H_STAGE = GetHediffStage(C_ID,H_ID)
+IF H_ID
+	H_DEF = DT_CELL_GET(@"Hediff", H_ID, "type", 1)
+	SELECTCASE GET_STR(C_ID, "Hediff", H_DEF, "Hediff Type")
+		CASE "Bionic"
+			SELECTCASE H_DEF
+				CASE 25
+					;cloaca
+					SETBIT HealthFlags:C_ID:0,3
+				CASE 161
+					;painstopper
+					SETBIT HealthFlags:C_ID:0,HealthFlags_HasPainStopper
+				CASE 168
+					;collagulator
+					SETBIT HealthFlags:C_ID:0,2
+			ENDSELECT
+			SELECTCASE H_PART
+				CASE 63
+					SETBIT HealthFlags:C_ID:0,HealthFlags_HasVagina
+					H_GENITAL:1 = H_DEF
+				CASE 68
+					SETBIT HealthFlags:C_ID:0,HealthFlags_HasPenis
+					H_GENITAL:0 = H_DEF
+			ENDSELECT
+			;IsBionicPart(ARG,63,0)
+		CASE "Drug"
+		CASE "Disease"
+			SETBIT HealthFlags:C_ID:0,HealthFlags_UnwellHediff
+		CASEELSE
+			;assume Damage
+			DamageOffset:(H_PART) += DT_CELL_GET(@"Hediff", H_ID, "severity", 1)
+			TempBloodLoss = DT_CELL_GET(@"Hediff", H_ID, "bleeding", 1)
+			SIF DT_CELL_GET(@"Hediff", H_ID, "tended", 1)
+				TempBloodLoss = 0
+			TCVAR:C_ID:Bleeding += TempBloodLoss
+			SIF C_ID == MASTER
+				CALL INTERACTIVE_TUTORIAL_GET(102,203,"Bleeding",2)
+			SETBIT HealthFlags:C_ID:0,HealthFlags_UnwellHediff
+			;DamageOffset:(DT_CELL_GET(@"Hediff", H_ID, "part", 1)) += DT_CELL_GET(@"Hediff", H_ID, "severity", 1)
+	ENDSELECT
+	SELECTCASE GET_STR(C_ID, "Hediff", H_DEF, "Hediff Type")
+		CASE "Bionic", "Drug"
+			;base increases
+			FOR D_INDEX:1,0,VARSIZE("BionicBASE")
+			SIF GET_INT(C_ID, "Hediff", H_DEF, @"Base{D_INDEX:1}")
+				BionicBASE:C_ID:(D_INDEX:1) += GET_INT(C_ID, "Hediff", H_DEF, @"Base{D_INDEX:1}")
+			NEXT
+		CASE "Disease"
+	ENDSELECT
+	IF GET_INT(C_ID, "Hediff", H_DEF, "Efficiency")
+		SIF !EfficiencyMult:H_PART
+			EfficiencyMult:H_PART = 100
+		EfficiencyMult:H_PART = (EfficiencyMult:H_PART*GET_INT(C_ID, "Hediff", H_DEF, "Efficiency"))/100
+	ENDIF
+	CapacityOffset:10 += GET_INT(C_ID, "Hediff", H_DEF, "Pee Holding")
+	CapacityOffset:11 += GET_INT(C_ID, "Hediff", H_DEF, "Poo Holding")
+	SIF H_DEF == 41
+		DEBUGPRINTFORML 과다복용. 스테이지 {H_STAGE} ID {H_ID}
+	IF GET_INT(C_ID, "Hediff", (H_DEF), TOSTR(H_STAGE)+"/Fatal")
+		;should kill
+		SETBIT HealthFlags:C_ID:0,HealthFlags_WillDieAfterCheck
+	ENDIF
+	;agony
+	IF !(BodyPartRemoved:C_ID:(DT_CELL_GET(@"Hediff", H_ID, "part", 1))) && !(PartOrChildIsBionic(C_ID,DT_CELL_GET(@"Hediff", H_ID, "part", 1)))
+		LOCALS '= @"{H_STAGE}/고통"
+		;DEBUGPRINTFORML hediff {H_ID}: def {H_DEF} - stage {H_STAGE} - %LOCALS%
+		SIF GROUPMATCH(GET_STR(C_ID,"Hediff", H_DEF, "Hediff Type"),"Damage")
+			BASE:C_ID:Agony += (DT_CELL_GET(@"Hediff", H_ID, "severity", 1)*GET_INT(C_ID,"Hediff", H_DEF, "Pain Multiplier"))
+		IF GET_INT(C_ID, "Hediff", (H_DEF), LOCALS+"/Max"); max
+			;get lowest max
+			A_MAX = MIN(A_MAX,GET_INT(C_ID, "Hediff", (H_DEF), LOCALS+"/Max"))
+		ELSEIF GET_INT(C_ID, "Hediff", (H_DEF), LOCALS+"/Mult") && A_MULT > 0; multiply
+			A_MULT = (A_MULT*GET_INT(C_ID, "Hediff", (H_DEF), LOCALS+"/Mult"))/100
+		ELSEIF GET_INT(C_ID, "Hediff", (H_DEF), LOCALS+"/Add"); add
+			A_ADD = (A_ADD+GET_INT(C_ID, "Hediff", (H_DEF), LOCALS+"/Add"))
+		ENDIF
+	ENDIF
+	;capacity
+	FOR D_INDEX:1,0,VARSIZE("CapacityStats")
+	LOCALS '= @"{H_STAGE}/%ERDName(CapacityStats,D_INDEX:1)%"
+	IF GET_INT(C_ID, "Hediff", (H_DEF), LOCALS+"/Max"); max
+		;get lowest max
+		IF !CapacityMax
+			CapacityMax:(D_INDEX:1) = GET_INT(C_ID, "Hediff", (H_DEF), LOCALS+"/Max")
+		ELSE
+			CapacityMax:(D_INDEX:1) = MIN(CapacityMax:(D_INDEX:1),GET_INT(C_ID, "Hediff", (H_DEF), LOCALS+"/Max"))
+		ENDIF
+	ELSEIF GET_INT(C_ID, "Hediff", (H_DEF), LOCALS+"/Mult"); multiply
+		CapacityMult:(D_INDEX:1) = (CapacityMult:(D_INDEX:1)*GET_INT(C_ID, "Hediff", (H_DEF), LOCALS+"/Mult"))/100
+	ELSEIF GET_INT(C_ID, "Hediff", (H_DEF), LOCALS+"/Add"); add
+		CapacityOffset:(D_INDEX:1) = (CapacityOffset:(D_INDEX:1)+GET_INT(C_ID, "Hediff", (H_DEF), LOCALS+"/Add"))
+	ENDIF
+	NEXT
+ENDIF
+NEXT
+;after hediff effects
+FOR D_INDEX,0,100
+;base buffs
+SELECTCASE D_INDEX
+	CASE 0 TO VARSIZE("BionicBASE")-1
+		MAXBASE:C_ID:D_INDEX += BionicBASE:C_ID:D_INDEX
+		BUFF:C_ID:D_INDEX += BionicBASE:C_ID:D_INDEX
+		;add base
+		SIF BionicBase:C_ID:D_INDEX > BaseWasBuffed:D_INDEX
+			BASE:C_ID:D_INDEX = MIN(MAXBASE:C_ID:D_INDEX,BASE:C_ID:D_INDEX+(BionicBASE:C_ID:D_INDEX-BaseWasBuffed:D_INDEX))
+ENDSELECT
+SIF BDY_PART_NAME(D_INDEX) == ""
+	CONTINUE
+;make body part health
+IF BDY_PART_NAME(D_INDEX) != "" && D_INDEX < 100
+	;set body part health at max
+	BodyPartHealth:C_ID:D_INDEX:1 = MAXBASE:C_ID:0
+	SIF BodyPartHealth_0(D_INDEX)
+		BodyPartHealth:C_ID:D_INDEX:1 = (BodyPartHealth:C_ID:D_INDEX:1)*BodyPartHealth_0(D_INDEX)/100
+	BodyPartHealth:C_ID:D_INDEX:1 = BodyPartHealth:C_ID:D_INDEX:1*CharaBodySize(C_ID)/100
+	BodyPartHealth:C_ID:D_INDEX:0 = BodyPartHealth:C_ID:D_INDEX:1
+ENDIF
+BodyPartHealth:C_ID:(D_INDEX):0 -= DamageOffset:(D_INDEX)
+IF IsPartDestroyed(C_ID,D_INDEX)
+	BodyPartRemoved:C_ID:D_INDEX = 1
+	EfficiencyStats:C_ID:D_INDEX = 0
+	SIF GROUPMATCH(D_INDEX,1,11,40)
+		SETBIT HealthFlags:C_ID:0,HealthFlags_WillDieAfterCheck
+ELSEIF BodyPartHealth:C_ID:(D_INDEX):0 <= 0 && BodyPartHealth:C_ID:(D_INDEX):1
+	;crippled part counter
+	SIF !IsDead:C_ID:0
+		CrippledParts++
+ENDIF
+IF EfficiencyMult:D_INDEX
+	EfficiencyStats:C_ID:D_INDEX = LIMIT(((BodyPartHealth:C_ID:D_INDEX:0*100)/MAX(1,BodyPartHealth:C_ID:D_INDEX:1)),0,100)*EfficiencyMult:D_INDEX/100
+ELSE
+	EfficiencyStats:C_ID:D_INDEX = LIMIT(((BodyPartHealth:C_ID:D_INDEX:0*100)/MAX(1,BodyPartHealth:C_ID:D_INDEX:1)),0,100)
+ENDIF
+NEXT
+SIF GETBIT(HealthFlags:C_ID:0,2)
+	TCVAR:C_ID:Bleeding /= 2
+$BypassHediffs
+SIF BleedTimeout:C_ID:0 <= 0
+	BleedTimeout:C_ID:0 = 60
+;agony
+;add, then multiply, then set max after all modifiers
+SIF A_ADD
+	BASE:C_ID:Agony = (BASE:C_ID:Agony+A_ADD)
+IF A_MULT
+	IF A_MULT <= 0
+		BASE:C_ID:Agony = 0
+	ELSE
+		BASE:C_ID:Agony = (BASE:C_ID:Agony*A_MULT)/100
+	ENDIF
+ENDIF
+SIF A_MAX
+	BASE:C_ID:Agony = MIN(BASE:C_ID:Agony,A_MAX)
+IF GETBIT(C_ID,HealthFlags_HasPainStopper)
+	BASE:C_ID:Agony = 0
+ENDIF
+; ;reinit capacities here
+; yes the ids are confusing because id 0 on the cap stats is consciousness but its not here.
+FOR A_LOOP,0,VARSIZE("CapacityStats")
+; CapacityMax:A_ID = 0
+; CapacityMult:A_ID = 0
+; CapacityOffset:A_ID = 0
+VARSET nValue
+VARSET nInfluence
+A_ID = -1
+SELECTCASE A_LOOP
+	CASE 0
+		;Breathing
+		A_ID = 6
+		IF IsPartDestroyed(C_ID,45) && IsPartDestroyed(C_ID,46) ;destroyed lungs
+			CapacityStats:C_ID:6 = 0
+			CONTINUE
+		ENDIF
+		nValue = EfficiencyStats:C_ID:11 ;Neck
+		nValue:1 = EfficiencyStats:C_ID:45 ;Left lung
+		nValue:2 = EfficiencyStats:C_ID:46 ;Right lung
+		nInfluence = (100 + (nValue:1-100) * 50/100)
+		nInfluence:1 = (100 + (nValue:2-100) * 50/100)
+		CapacityStats:C_ID:A_ID = nValue * nInfluence/100 * nInfluence:1/100
+	CASE 1
+		;Blood Filtration
+		A_ID = 7
+		nValue = EfficiencyStats:C_ID:77 ;Liver
+		nValue:1 = EfficiencyStats:C_ID:75 ;L kidney
+		nValue:2 = EfficiencyStats:C_ID:76 ;R kidney
+		nInfluence = (100 + (nValue:1-100) * 50/100)
+		nInfluence:1 = (100 + (nValue:2-100) * 50/100)
+		CapacityStats:C_ID:A_ID = nValue * nInfluence/100 * nInfluence:1/100
+	CASE 2
+		;Blood pumping
+		A_ID = 8
+		CapacityStats:C_ID:A_ID = EfficiencyStats:C_ID:47 ; Heart
+	CASE 3
+		;Consciousness
+		A_ID = 0
+		IF IsDead:C_ID:0
+			;dead
+			CapacityStats:C_ID:A_ID = 0
+			CONTINUE
+		ENDIF
+		; nValue = GetPartEfficiency(C_ID,1) ;base
+		; nInfluence = GetPartEfficiency(C_ID,12) ;brain
+		; nValue = nValue * nInfluence/100
+		nValue = EfficiencyStats:C_ID:12 ;base (brain)
+		nInfluence = (100 + (MIN(CapacityStats:C_ID:8,100)-100) * 20/100) ;blood pumping
+		nInfluence:1 = (100 + (MIN(CapacityStats:C_ID:6,100)-100) * 20/100) ;breathing
+		nInfluence:2 = (100 + (MIN(CapacityStats:C_ID:7,100)-100) * 10/100) ;blood filtration
+		IF Base:C_ID:Agony < MaxBase:C_ID:Agony/10 ;agony
+			nInfluence:5 = 0
+		ELSE
+			;nInfluence:5 = (Base:C_ID:Agony-(MaxBase:C_ID:Agony/10))/225
+			nInfluence:5 = (((Base:C_ID:Agony*10000)/MaxBase:C_ID:Agony)-(1000))/225
+		ENDIF
+		nValue = (nValue * nInfluence/100 * nInfluence:1/100 * nInfluence:2/100) - nInfluence:5
+		CapacityStats:C_ID:A_ID = nValue
+	CASE 4
+		;Sight
+		A_ID = 1
+		CapacityStats:C_ID:A_ID = EfficiencyStats:C_ID:4
+	CASE 5
+		;Hearing
+		A_ID = 2
+		nValue = EfficiencyStats:C_ID:5
+		nValue:1 = EfficiencyStats:C_ID:6
+		nInfluence = MAX(nValue,nValue:1)*75/100
+		nInfluence:1 = MIN(nValue,nValue:1)*25/100
+		;DEBUGPRINTFORML Left Ear: {nInfluence}\%
+		;DEBUGPRINTFORML Right Ear: {nInfluence:1}\%
+		CapacityStats:C_ID:A_ID = nInfluence + nInfluence:1
+	CASE 6
+		;Moving
+		A_ID = 3
+		;no moving until 3, or if legs are bound
+		IF CharaAge:C_ID:0 < 3 || LEGS_BOUND(C_ID)
+			CapacityStats:C_ID:A_ID = 0
+			CONTINUE
+		ENDIF
+		nValue = LIMIT(CapacityStats:C_ID:0,0,100) ;Consciousness
+		nValue:1 = EfficiencyStats:C_ID:81 ;Left Thigh
+		nValue:2 = EfficiencyStats:C_ID:82 ;Left Knee
+		nValue:3 = EfficiencyStats:C_ID:83 ;Left Foot
+		nValue:4 = EfficiencyStats:C_ID:91 ;Right Thigh
+		nValue:5 = EfficiencyStats:C_ID:92 ;Right Knee
+		nValue:6 = EfficiencyStats:C_ID:93 ;Right Foot
+		nValue:7 = EfficiencyStats:C_ID:60 ;Hip
+		nValue:8 = EfficiencyStats:C_ID:55 ;Spine
+		nInfluence = nValue:1 * nValue:2/100 * nValue:3/100
+		nInfluence:1 = nValue:4 * nValue:5/100 * nValue:6/100
+		;;#; DEBUGPRINTFORML Left Leg: {nInfluence}\%
+		;;#; DEBUGPRINTFORML Right Leg: {nInfluence:1}\%
+		nInfluence:2 = (nInfluence/2) + (nInfluence:1/2) * nValue:7/100 * nValue:8/100
+		;;#; DEBUGPRINTFORML Leg efficiency: {nInfluence:2}\%
+		nInfluence:3 = (100 + (CapacityStats:C_ID:8-100) * 20/100)
+		;;#; DEBUGPRINTFORML Blood Pumping Offset: {nInfluence:3}\%
+		nInfluence:4 = (100 + (CapacityStats:C_ID:6-100) * 20/100)
+		;;#; DEBUGPRINTFORML Breathing Offset: {nInfluence:4}\%
+		CapacityStats:C_ID:A_ID = nValue * nInfluence:3/100 * nInfluence:4/100 * nInfluence:2/100
+	CASE 7
+		;Manipulation
+		A_ID = 4
+		IF ARMS_BOUND(C_ID) ;bound arms
+			CapacityStats:C_ID:A_ID = 0
+			CONTINUE
+		ENDIF
+		nValue = MAX(CapacityStats:C_ID:0,0) ;Consciousness
+		nValue:1 = EfficiencyStats:C_ID:20 ;Left Arm
+		nValue:2 = EfficiencyStats:C_ID:21 ;Left Armpit
+		nValue:3 = EfficiencyStats:C_ID:22 ;Left Elbow
+		nValue:4 = EfficiencyStats:C_ID:23 ;Left Hand
+		nValue:5 = EfficiencyStats:C_ID:30 ;Right Arm
+		nValue:6 = EfficiencyStats:C_ID:31 ;Right Armpit
+		nValue:7 = EfficiencyStats:C_ID:32 ;Right Elbow
+		nValue:8 = EfficiencyStats:C_ID:33 ;Right Hand
+		nInfluence = nValue:1 * nValue:2/100 * nValue:3/100 * nValue:4/100
+		nInfluence:1 = nValue:5 * nValue:6/100 * nValue:7/100 * nValue:8/100
+		;;#; DEBUGPRINTFORML Left Arm: {nInfluence}\%
+		;;#; DEBUGPRINTFORML Right Arm: {nInfluence:1}\%
+		CapacityStats:C_ID:A_ID = nValue * ((nInfluence/2) + (nInfluence:1/2))/100
+	CASE 8
+		;Talking
+		A_ID = 5
+		nValue = MAX(CapacityStats:C_ID:0,0) ;Consciousness
+		nValue:1 = EfficiencyStats:C_ID:8 ;Mouth
+		nValue:2 = EfficiencyStats:C_ID:9 ;Tongue
+		CapacityStats:C_ID:A_ID = nValue * nValue:1/100 * nValue:2/100
+	CASE 9
+		;Fertility
+		A_ID = 9
+		VARSET nValue
+		IF HAS_PENIS(C_ID)
+			;Penis
+			nValue:1 = EfficiencyStats:C_ID:68 ;Penis
+			nValue:2 = EfficiencyStats:C_ID:69 ;Gland
+			nValue:3 = EfficiencyStats:C_ID:70 ;Shaft
+			nValue:4 = EfficiencyStats:C_ID:71 ;Balls
+		ENDIF
+		IF HAS_VAGINA(C_ID)
+			;Vagina
+			nValue:5 = EfficiencyStats:C_ID:63 ;Vagina
+			nValue:6 = EfficiencyStats:C_ID:64 ;Womb
+		ENDIF
+		nInfluence = nValue:1 * nValue:2/100 * nValue:3/100 * nValue:4/100
+		nInfluence:1 = nValue:5 * nValue:6/100
+		CapacityStats:C_ID:A_ID = MAX(nInfluence,nInfluence:1)
+		SIF !임신가부(C_ID)
+			CapacityStats:C_ID:A_ID = 0
+	CASE 10
+		;Pee Con
+		A_ID = 10
+		nValue = 0 ;base
+		;always return incon if bladder is crippled
+		IF IsPartCrippled(C_ID,74)
+			$NoBladder
+			CapacityStats:C_ID:A_ID = -99
+			CONTINUE
+		ELSEIF GETBIT(YoujutsuEffects:C_ID:18,22) || DT_SELECT("Hediff", @"chara = {C_ID} and type = 53")
+			;incontinent
+			$Incontinent
+			CapacityStats:C_ID:A_ID = -10
+			CONTINUE
+		ELSEIF GETBIT(HealthFlags:C_ID:0,3)
+			;cloaca = incontinent
+			GOTO NoBladder
+		ENDIF
+		IF C_ID == MASTER
+			SIF DAILY_Lucid_Stats:3 == 3 && GETBIT(LUCID_EV3_Hold,3)
+				nInfluence += 2
+			SIF AL_IS_CLAIMED("lucidEV3BeatNoSoil")
+				nInfluence += 2
+		ENDIF
+		nInfluence += TCVAR:C_ID:HypnoContinence
+		nValue += nInfluence
+		CapacityStats:C_ID:A_ID = nValue
+	CASE 11
+		;Poo Con
+		A_ID = 11
+		nValue = 0 ;base
+		;always return incon if bladder is crippled
+		IF IsPartCrippled(C_ID,53)
+			GOTO NoBladder
+		ELSEIF GETBIT(YoujutsuEffects:C_ID:18,22) || DT_SELECT("Hediff", @"chara = {C_ID} and type = 53")
+			;incontinent
+			GOTO Incontinent
+		ELSEIF GETBIT(HealthFlags:C_ID:0,3)
+			;cloaca = incontinent
+			GOTO NoBladder
+		ENDIF
+		IF C_ID == MASTER
+			SIF DAILY_Lucid_Stats:3 == 3 && GETBIT(LUCID_EV3_Hold,3)
+				nInfluence += 2
+			SIF AL_IS_CLAIMED("lucidEV3BeatNoSoil")
+				nInfluence += 2
+		ENDIF
+		nInfluence += TCVAR:C_ID:HypnoContinence
+		nValue += nInfluence
+		CapacityStats:C_ID:A_ID = nValue
+ENDSELECT
+;set capacities here.
+IF CapacityMult:A_ID; multiply
+	CapacityStats:C_ID:A_ID = (CapacityStats:C_ID:A_ID*CapacityMult:A_ID)/100
+ENDIF
+IF CapacityOffset:A_ID; add
+	CapacityStats:C_ID:A_ID = (CapacityStats:C_ID:A_ID+CapacityOffset:A_ID)
+ENDIF
+;set max after all modifiers, this way a hediff early in the list that sets max low won't be fatal with other hediffs that set cons.
+SIF CapacityMax:A_ID
+	CapacityStats:C_ID:A_ID = MIN(CapacityStats:C_ID:A_ID,CapacityMax:A_ID)
+; DEBUGPRINTFORML chara {C_ID} | cap {A_ID} is 0!
+NEXT
+;if consciousness, breathing, blood filter/pump is at 0
+SIF CapacityStats:C_ID:0 <= 0 || CapacityStats:C_ID:6 <= 0 || CapacityStats:C_ID:7 <= 0 || CapacityStats:C_ID:8 <= 0
+	SETBIT HealthFlags:C_ID:0,HealthFlags_WillDieAfterCheck
+;torso overkilled
+SIF BODY_PARTS_HEALTH(C_ID, 40) <= -250
+	CFLAG:C_ID:300 = 1100
+;and other shit
+IF GETBIT(HealthFlags:C_ID:0,HealthFlags_WillDieAfterCheck)
+	CALL SET_HISTORY_DEATH(C_ID)
+ELSEIF CapacityStats:C_ID:0 < 30
+	IF C_ID == MASTER
+		PRINTL (<30% 의식)
+		PRINTFORMW 너의 몸이 더 이상 지속되지 못해 기절하게 된다.
+		PRINTFORML 
+		CALL OYASUMI
+	ELSE
+		SIF CFLAG:C_ID:300 == CFLAG:MASTER:300 && SHIRAHU(C_ID)
+			PRINTFORML %CALLNAME:C_ID%은(는) 낮은 의식으로 기절한다.
+	ENDIF
+	CFLAG:C_ID:衰弱 = 60
+	CALL CHARA_ACTION_FAINT(C_ID)
+ENDIF
+CALL CrippledHandDisarm(C_ID)
+; IF HasBionicPart(C_ID,61)
+; PALAM:C_ID:苦痛 = 0
+; ENDIF
+; ;Pain
+IF BASE:C_ID:Agony && SHIRAHU(C_ID)
+	SELECTCASE AGONY_STAGE(C_ID)
+		CASE 5
+			CFLAG:C_ID:衰弱 = 60
+			IF C_ID == MASTER
+				SETCOLOR C_RED
+				PRINTFORML 감당할 수 없는 고통에 당신은 기절하여 고통 쇼크에 빠진다.
+				RESETCOLOR
+			ELSEIF CFLAG:MASTER:現在位置 == CFLAG:C_ID:現在位置
+				SETCOLOR C_RED
+				PRINTFORML %CALLNAME:C_ID%는 너무 많은 고통으로 인한 통증 충격에 빠진다.
+				RESETCOLOR
+			ENDIF
+			CALL CHARA_ACTION_FAINT(C_ID)
+		CASE 4
+			IF C_ID == MASTER
+				SETCOLOR C_RED
+				PRINTFORML 당신의 격렬한 고통은 당신의 연약한 몸이 감당하기에는 너무 크다.
+				PRINTFORML 신음하고 눈물이 나는 것조차 어렵게 느껴진다.
+				RESETCOLOR
+			ELSE
+				SETCOLOR C_RED
+				PRINTFORML %CALLNAME:C_ID%은(는) 고통으로 신음하며 눈물을 글썽인다.
+				RESETCOLOR
+			ENDIF
+		CASE 3
+			IF C_ID == MASTER
+				SETCOLOR C_ORANGE
+				PRINTFORML 당신이 경험하는 고통의 양이 몸에 부담을 준다.
+				PRINTFORML 어떤 것도 하기 더 힘들게 느껴진다.
+				RESETCOLOR
+			ELSE
+				SETCOLOR C_ORANGE
+				PRINTFORML %CALLNAME:C_ID%는(은) 부상당한 신체 부위를 잡으며 얼굴을 찡그린다.
+				RESETCOLOR
+			ENDIF
+		CASE 2
+			IF C_ID == MASTER
+				SETCOLOR C_YELLOW
+				PRINTFORML 당신의 몸은 고통으로 아파하며, 당신이 하는 모든 일에서 주의를 분산시킨다.
+				RESETCOLOR
+			ENDIF
+		CASE 1
+			IF C_ID == MASTER
+				PRINTFORML 당신의 몸에 약한 고통이 남아있다.
+			ENDIF
+	ENDSELECT
+ENDIF
+;bleeding
+IF TCVAR:C_ID:Bleeding
+	LOCAL:3 = Lapse*(1*TCVAR:C_ID:Bleeding)
+	BASE:C_ID:Blood -= LOCAL:3
+	IF C_ID == MASTER
+		SETCOLOR C_RED
+		PRINTFORML 당신은 %TOSTR(LOCAL:3)%ml의 피를 흘린다...
+		RESETCOLOR
+	ENDIF
+	SIF BASE:C_ID:Blood <= 0
+		CALL SET_HISTORY_DEATH(C_ID,KilledBy:C_ID:0,"Bleeding")
+ENDIF
+PeeHold:C_ID:1 = CapacityStats:C_ID:10
+PooHold:C_ID:1 = CapacityStats:C_ID:11
+PeeHold:C_ID:2 = MAX(PeeHold:C_ID:0 + PeeHold:C_ID:1,-5)
+PooHold:C_ID:2 = MAX(PooHold:C_ID:0 + PooHold:C_ID:1,-5)
+;checks if the character will die due to injury
+
+@CharWillDieAfterCheck(ARG)
+#FUNCTION
+FOR LOCAL,0,100
+SIF BDY_PART_NAME(LOCAL) == ""
+	CONTINUE
+;check them hediffs
+LOCAL:1 = DT_SELECT(@"Hediff", @"chara = {ARG} and part = {LOCAL}",, tempHediffList)
+IF LOCAL:1
+	FOR LOCAL:2, 0, LOCAL:1
+	LOCAL:3 = DT_CELL_GET(@"Hediff", tempHediffList:(LOCAL:2), "type",1)
+	LOCAL:4 = GetHediffStage(ARG,tempHediffList:(LOCAL:2))
+	SIF GET_INT(ARG, "Hediff", (LOCAL:3), TOSTR(LOCAL:4)+"/Fatal")
+		RETURNF 1
+	NEXT
+ELSE
+	CONTINUE
+ENDIF
+IF IsPartDestroyed(ARG,LOCAL)
+	;head, heart or torso
+	SIF GROUPMATCH(LOCAL,1,11,40)
+		RETURNF 1
+ENDIF
+NEXT
+;if consciousness, breathing, blood filter/pump is at 0
+SIF CapacityStats:ARG:0 <= 0 || CapacityStats:ARG:6 <= 0 || CapacityStats:ARG:7 <= 0 || CapacityStats:ARG:8 <= 0
+	RETURNF 3
+;
+SIF MAX(((5*(TCVAR:ARG:Bleeding))-120),0)
+	RETURNF 2
+RETURNF 0
+
+@ARM_SUCCESS_RATE(ARG = -1)
+#FUNCTION
+SIF ARG == -1
+	ARG = MASTER
+LOCAL = GET_SUCCESS_RATE()
+LOCAL = LOCAL*CapacityStats:ARG:4/100
+RETURNF LOCAL
+
+@LEG_SUCCESS_RATE(ARG = -1)
+#FUNCTION
+SIF ARG == -1
+	ARG = MASTER
+LOCAL = GET_SUCCESS_RATE()
+LOCAL = LOCAL*CapacityStats:ARG:3/100
+RETURNF LOCAL
+
+@MOUTH_SUCCESS_RATE(ARG = -1)
+#FUNCTION
+SIF ARG == -1
+	ARG = MASTER
+LOCAL = GET_SUCCESS_RATE()
+LOCAL = LOCAL * CapacityStats:ARG:5/100
+RETURNF LOCAL
+
+@ToxicInmunity(ARG)
+#FUNCTION
+SIF TALENT:ARG:妖怪
+	RETURNF 1
+SIF TALENT:ARG:人間 == 5
+	RETURNF 1
+SIF EQUIP:ARG:1 == 61
+	RETURNF 1
+
+@CapibilitityNames(ARG)
+#FUNCTIONS
+SELECTCASE ARG
+	CASE 0
+		RETURNF "Consciousness"
+	CASE 1
+		RETURNF "Sight"
+	CASE 2
+		RETURNF "Hearing"
+	CASE 3
+		RETURNF "Moving"
+	CASE 4
+		RETURNF "Manipulation"
+	CASE 5
+		RETURNF "Talking"
+	CASE 6
+		RETURNF "Breathing"
+	CASE 7
+		RETURNF "Blood Filtration"
+	CASE 8
+		RETURNF "Blood Pumping"
+	CASE 9
+		RETURNF "Fertility"
+	CASE 10
+		RETURNF "Urinary Continence"
+	CASE 11
+		RETURNF "Bowel Continence"
+ENDSELECT
+;Initalize all character capacities
+; @ReinitAllCharaCapacity(C_ID)
+; #FUNCTION
+; #DIM C_ID
+; CALLF RecalculatePain(C_ID)
+; CALLF InitCharaCapacity(C_ID,8)
+; CALLF InitCharaCapacity(C_ID,6)
+; CALLF InitCharaCapacity(C_ID,7)
+; FOR LOCAL,0,VARSIZE("CapacityStats")
+;     SELECTCASE LOCAL
+;     CASE 8,7,6
+;         CONTINUE
+;     ENDSELECT
+;     CALLF InitCharaCapacity(C_ID,LOCAL)
+; NEXT
+;Initalize character capacity
+;We can save capacities to CapacityStats
+
+@InitCharaCapacity(C_ID,A_ID)
+#FUNCTION
+#DIM C_ID; character
+#DIM A_ID; capacity
+#DIM B_ID; body type
+#DIM nValue, 10
+#DIM DYNAMIC nInfluence, 10
+; IF (CFLAG:MASTER:睡眠 && inTrain == 1) ;optimizations
+;     CapacityStats:C_ID:A_ID = 100
+;     RETURNF CapacityStats:C_ID:A_ID
+; ENDIF
+$END
+;check all hediffs again
+VARSET LOCAL
+FOR LOCAL:3,0,DT_SELECT(@"Hediff", @"chara = {C_ID}", "", tempHediffList)
+LOCAL:4 = DT_CELL_GET(@"Hediff", tempHediffList:(LOCAL:3), "type", 1)
+LOCAL:5 = GetHediffStage(C_ID,tempHediffList:(LOCAL:3))
+LOCALS '= @"{LOCAL:5}/%ERDName(CapacityStats,A_ID)%"
+IF GET_INT(C_ID, "Hediff", (LOCAL:4), LOCALS+"/Max"); max
+	;get lowest max
+	LOCAL:6 = MIN(LOCAL:6,GET_INT(C_ID, "Hediff", (LOCAL:4), LOCALS+"/Max"))
+ELSEIF GET_INT(C_ID, "Hediff", (LOCAL:4), LOCALS+"/Mult"); multiply
+	CapacityStats:C_ID:A_ID = (CapacityStats:C_ID:A_ID*GET_INT(C_ID, "Hediff", (LOCAL:4), LOCALS+"/Mult"))/100
+ELSEIF GET_INT(C_ID, "Hediff", (LOCAL:4), LOCALS+"/Add"); add
+	CapacityStats:C_ID:A_ID = (CapacityStats:C_ID:A_ID+GET_INT(C_ID, "Hediff", (LOCAL:4), LOCALS+"/Add"))
+ENDIF
+NEXT
+;set max after all modifiers, this way a hediff early in the list that sets max low won't be fatal with other hediffs that set cons.
+SIF LOCAL:6
+	CapacityStats:C_ID:A_ID = MIN(CapacityStats:C_ID:A_ID,LOCAL:6)
+RETURNF CapacityStats:C_ID:A_ID
+
+@LogicalHarvestPart(ARG)
+#FUNCTION
+SIF GROUPMATCH(ARG,0,1,2,3,9,10,11,12,21,22,31,32,40,42,44,51,52,54,61,62,64,66,69,70,71,72,82,92)
+	RETURNF 0
+RETURNF 1
+
+@GetPureAccuracy(ARG, nSkill = -1)
+#FUNCTION
+#DIM nSkill
+LOADGLOBAL
+SIF nSkill == -1
+	nSkill = GetCombatAbility(ARG)
+; SIF !nLevelRework
+nSkill *= 5
+;RETURNF nSkill + ((100 + MIN((CapacityStats:ARG:1-100),100) * 1200/100)/100) + ((100 + MIN((CapacityStats:ARG:4-100),0) * 800/100)/100)
+RETURNF nSkill + ((100 + (CapacityStats:ARG:1-100) * 1200/100)/100) + ((100 + (CapacityStats:ARG:4-100) * 800/100)/100)
+
+@GetShootingAccuracy(ARG)
+#FUNCTION
+#DIM nWeap
+IF lcIsLethal
+	nWeap = charaWeaponInts:ARG:WeaponInventory ? charaWeaponInts:ARG:WeaponInventory # EQUIP:(ARG):Weapon
+ELSE
+	nWeap = 0
+ENDIF
+CALLF COM_WEAPSTATS(ARG,nWeap,1)
+LOCAL = charaWeaponInts:(ARG):Accuracy * (MAX(GetPureAccuracy(ARG)*10,0))/100
+IF DT_EXIST("lcCombatants")
+	LOCAL = MIN(400,LOCAL*BUFF_MULTIPLIER(DT_CELL_GET("lcCombatants", GetCombatant(ARG), "accuracyBuff", 1))/100)
+ENDIF
+RETURNF LOCAL
+
+@GetDodgeChance(ARG)
+#FUNCTION
+; L = nLevelRework ? GetCombatAbility(ARG) # GetCombatAbility(ARG)*5
+L = GetCombatAbility(ARG)*5
+LOCAL =  L + ((100 + (CapacityStats:ARG:3-100) * 1800/100)/100) + ((100 + MIN((CapacityStats:ARG:1-100),40) * 800/100)/100)
+LOCAL =  MIN(100, MAX(0, (LOCAL-5) * 2 - MAX(0, (LOCAL-20) * 3 / 2)))
+IF DT_EXIST("lcCombatants")
+	SIF DT_CELL_GET("lcCombatants", GetCombatant(ARG), "freezeAilment", 1) || DT_CELL_GET("lcCombatants", GetCombatant(ARG), "sleepAilment", 1)
+		RETURNF 0
+	LOCAL = MIN(100,LOCAL*BUFF_MULTIPLIER(DT_CELL_GET("lcCombatants", GetCombatant(ARG), "evasionBuff", 1))/100)
+ENDIF
+RETURNF LOCAL
+
+@GetShootingAccuracyAgainstOther(ARG,ARG:1)
+#FUNCTION
+#DIM nAccuracy
+nAccuracy = GetShootingAccuracy(ARG)
+;placeholder
+RETURNF nAccuracy
+;calculate critical hit chance.
+;combat, luck and medical skill
+;Head: Brain, Neck
+; Thorax: Heart, Lungs, Spine
+; Stomach: Stomach (duh), Liver, Kidneys, Spine
+; Crotch:  Genitals, Bladder, Colon, Spine
+; Limbs: Double or triple bleeding
+
+@GetCriticalAccuracy(ARG)
+#FUNCTION
+#DIM nAccuracy
+;an eighth of the PURE accuracy
+;min 4%
+nAccuracy = MAX(4,GetPureAccuracy(ARG)/2)
+;each RANK in medical increases chance by another 4*
+nAccuracy += (LEVEL_TO_RANK(ABL:ARG:Medical)*4)
+RETURNF nAccuracy
+;thank you enter for DATA TABLES!
+;WE ARE SAFE FROM LOOP HELL!
+;examples on how to make a hediff
+;DT_ROW_ADD @"Hediff_{ARG}", "part", 40, "type", 1, "severity", 300, "tended", 0, "bleeding", 2, "owner", MASTER, "cause", "42", "permanent", 0,
+;DT_ROW_ADD @"Hediff_{ARG}", "part", 1, "type", 1, "severity", 1800, "tended", 300, "bleeding", 2, "owner", 97, "cause", "Debug", "permanent", 0,
+
+@InitNewHediff(ARG,customChar=0)
+#DIM customChar
+#DIMS nTableName
+#FUNCTION
+SELECTCASE customChar
+	CASE 1
+		nTableName '= @"Hediff_CC"
+	CASE 2
+		nTableName '= @"Hediff_CC2"
+	CASE 3
+		nTableName '= @"TempMobHediff"
+	CASE 0
+		nTableName '= @"Hediff"
+ENDSELECT
+DT_CREATE nTableName
+DT_COLUMN_ADD nTableName, "chara", "int16"
+DT_COLUMN_ADD nTableName, "part", "int8"
+DT_COLUMN_ADD nTableName, "type", "int16"
+DT_COLUMN_ADD nTableName, "severity", "int32"
+DT_COLUMN_ADD nTableName, "tended", "int16"
+;DT_COLUMN_ADD nTableName, "tendedTime", "int64"
+DT_COLUMN_ADD nTableName, "bleeding", "int16"
+DT_COLUMN_ADD nTableName, "owner", "int16"
+DT_COLUMN_ADD nTableName, "cause"
+DT_COLUMN_ADD nTableName, "permanent", "int16"
+;DT_COLUMN_ADD nTableName, "time", "int64"
+
+@CopyHediffs(nDonner, nReceiver)
+#FUNCTION
+#DIM nDonner
+#DIM nReceiver
+#DIM DYNAMIC nHediff
+CALLF ClearAllHediffs(nReceiver, 1)
+VARSET tempHediffList
+LOCAL:6 = DT_SELECT("Hediff", @"chara = {nDonner}",,tempHediffList)
+FOR nHediff, 0, LOCAL:6
+DT_ROW_ADD @"Hediff", "chara", DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "character",1), "part", DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "part",1), "type", DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "type",1), "severity", DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "severity",1), "tended", DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "tended",1), "bleeding", DT_CELL_GET(@"Hediff", RESULT:nHediff, "bleeding",1), "owner", DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "owner",1), "cause", DT_CELL_GETS(@"Hediff", tempHediffList:nHediff, "cause",1), "permanent", DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "permanent",1),
+NEXT
+
+@CopyHediffsCC(nReceiver, paste = 0)
+#FUNCTION
+#DIM nReceiver
+#DIM DYNAMIC nHediff
+#DIM DYNAMIC paste
+IF paste
+	CALLF ClearAllHediffs(nReceiver, 1)
+	FOR nHediff, 0, DT_ROW_LENGTH(@"Hediff_CC")
+	DT_ROW_ADD @"Hediff", "chara", nReceiver, "part", DT_CELL_GET(@"Hediff_CC", nHediff, "part"), "type", DT_CELL_GET(@"Hediff_CC", nHediff, "type"), "severity", DT_CELL_GET(@"Hediff_CC", nHediff, "severity"), "tended", DT_CELL_GET(@"Hediff_CC", nHediff, "tended"), "bleeding", DT_CELL_GET(@"Hediff_CC", nHediff, "bleeding"), "owner", DT_CELL_GET(@"Hediff_CC", nHediff, "owner"), "cause", DT_CELL_GETS(@"Hediff_CC", nHediff, "cause"), "permanent", DT_CELL_GET(@"Hediff_CC", nHediff, "permanent"),
+	NEXT
+ELSE
+	DT_RELEASE @"Hediff_CC"
+	CALLF InitNewHediff(nReceiver, 1)
+	VARSET tempHediffList
+	LOCAL:6 = DT_SELECT("Hediff", @"chara = {nReceiver}",,tempHediffList)
+	FOR nHediff, 0, LOCAL:6
+	DT_ROW_ADD @"Hediff_CC", "chara", nReceiver, "part", DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "part",1), "type", DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "type",1), "severity", DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "severity",1), "tended", DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "tended",1), "bleeding", DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "bleeding",1), "owner", DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "owner",1), "cause", DT_CELL_GETS(@"Hediff", tempHediffList:nHediff, "cause",1), "permanent", DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "permanent",1),
+	NEXT
+ENDIF
+;copy of the copy hediff function
+
+@CopyHediffsCC2(nReceiver, paste = 0)
+#FUNCTION
+#DIM nReceiver
+#DIM DYNAMIC nHediff
+#DIM DYNAMIC paste
+IF paste
+	CALLF ClearAllHediffs(nReceiver, 1)
+	FOR nHediff, 0, DT_ROW_LENGTH(@"Hediff_CC2")
+	DT_ROW_ADD @"Hediff", "chara", nReceiver, "part", DT_CELL_GET(@"Hediff_CC2", nHediff, "part"), "type", DT_CELL_GET(@"Hediff_CC2", nHediff, "type"), "severity", DT_CELL_GET(@"Hediff_CC2", nHediff, "severity"), "tended", DT_CELL_GET(@"Hediff_CC2", nHediff, "tended"), "bleeding", DT_CELL_GET(@"Hediff_CC2", nHediff, "bleeding"), "owner", DT_CELL_GET(@"Hediff_CC2", nHediff, "owner"), "cause", DT_CELL_GETS(@"Hediff_CC2", nHediff, "cause"), "permanent", DT_CELL_GET(@"Hediff_CC2", nHediff, "permanent"),
+	NEXT
+ELSE
+	DT_RELEASE @"Hediff_CC2"
+	CALLF InitNewHediff(nReceiver, 2)
+	VARSET tempHediffList
+	LOCAL:6 = DT_SELECT("Hediff", @"chara = {nReceiver}",,tempHediffList)
+	FOR nHediff, 0, LOCAL:6
+	DT_ROW_ADD @"Hediff_CC2", "chara", nReceiver, "part", DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "part",1), "type", DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "type",1), "severity", DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "severity",1), "tended", DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "tended",1), "bleeding", DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "bleeding",1), "owner", DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "owner",1), "cause", DT_CELL_GETS(@"Hediff", tempHediffList:nHediff, "cause",1), "permanent", DT_CELL_GET(@"Hediff", tempHediffList:nHediff, "permanent",1),
+	NEXT
+ENDIF
+
+@HAS_LEGS(ARG)
+#FUNCTION
+RETURNF 1
+
+@HAS_ANUS(ARG)
+#FUNCTION
+RETURNF DT_SELECT(@"Hediff", @"chara = {ARG} and part = 67 and type > 100") && !IsPartCrippled(ARG,66)
+
+@HAS_BLADDER(ARG)
+#FUNCTION
+RETURNF DT_SELECT(@"Hediff", @"chara = {ARG} and part = 74 and type > 100") && !IsPartCrippled(ARG,74)
+
+@HAS_CLIT(ARG)
+#FUNCTION
+RETURNF HAS_PENIS(ARG) || (DT_SELECT(@"Hediff", @"chara = {ARG} and part = 63 and type > 100") && !IsPartCrippled(ARG,62))
+
+@HAS_MOUTH(ARG)
+#FUNCTION
+RETURNF !IsPartCrippled(ARG,8)
+
+@HAS_BREASTS(ARG, ARG:1 = 2)
+#FUNCTION
+IF ARG:1 == 2
+	RETURNF !IsPartCrippled(ARG,41) && !IsPartCrippled(ARG,43)
+ELSE
+	RETURNF !IsPartCrippled(ARG,41) || !IsPartCrippled(ARG,43)
+ENDIF
+
+@HAS_BUTT(ARG)
+#FUNCTION
+RETURNF !IsPartCrippled(ARG,65)
+;cloaca = incontinent
+
+@HAS_CLOACA(ARG)
+#FUNCTION
+RETURNF GETBIT(HealthFlags:ARG:0,3)
+;get stage of hediffs
+
+@GetHediffStage(C_ID,H_ID)
+#FUNCTION
+#DIM C_ID
+#DIM H_ID
+#DIM H_DEF
+#DIM H_STAGE
+#DIM H_MAX
+#DIM H_SCALE
+H_DEF = DT_CELL_GET(@"Hediff", H_ID, "type",1)
+H_MAX = GET_INT(C_ID, "Hediff", H_DEF, @"규모") ? GET_INT(C_ID, "Hediff", H_DEF, @"규모") # 100
+;10 is a pretty moderate limit
+FOR H_STAGE, 0, 10
+IF !GET_INT(C_ID, "Hediff", H_DEF, @"{H_STAGE+1}/Level")
+	H_STAGE--
+	RETURNF MAX(0,H_STAGE)
+ELSEIF (DT_CELL_GET(@"Hediff", H_ID, "severity", 1)*100)/H_MAX < GET_INT(C_ID, "Hediff", H_DEF, @"{H_STAGE+1}/Level")
+	; H_STAGE--
+	RETURNF MAX(0,H_STAGE)
+ENDIF
+H_STAGE++
+NEXT
+
+@HealingSpeedFactor
+;Adds overdose strength by power of drug.
+;100 is FATAL
+
+@AddOverdoseGain(ARG,drugPower,drugGiver=-1,drugName)
+#FUNCTION
+#DIM DYNAMIC drugPower
+#DIM DYNAMIC drugGiver
+#DIMS DYNAMIC drugName
+SIF drugGiver == -1
+	drugGiver = ARG
+drugPower = 950
+DEBUGPRINTFORML %CALLNAME:ARG%이 약을 복용하여 그들의 과다복용 이득을 {drugPower}\%만큼 증가시켰다.
+IF DT_SELECT(@"Hediff", @"chara = {ARG} and type = 41")
+	LOCAL = RESULT:1
+	DT_CELL_SET @"Hediff", LOCAL, "severity", DT_CELL_GET(@"Hediff", LOCAL, "severity",1)+drugPower, 1
+	DT_CELL_SET @"Hediff", LOCAL, "owner", drugGiver, 1
+	DT_CELL_SET @"Hediff", LOCAL, "cause", drugName, 1
+	SIF DT_CELL_GET(@"Hediff", LOCAL, "severity",1) <= 0
+		DT_ROW_REMOVE "Hediff", LOCAL
+ELSE
+	SIF drugPower < 0
+		RETURNF
+	DT_ROW_ADD @"Hediff", "chara", ARG, "part", 0, "type", 41, "severity", drugPower, "tended", 0, "bleeding", 0, "owner", drugGiver, "cause", drugName, "permanent", 0,
+ENDIF
+SIF drugPower <= 0
+	RETURNF
+KilledBy:ARG:0 = drugGiver
+KilledWith:ARG:0 = %drugName%
+LastHediff:ARG = 41
+;HediffName(MASTER,0,0,,1)
+;trimmed down variant of DamageBodyPart
+
+@AddDrugGain(ARG = -1,BodyPart,DMG,DMG_TYPE,nDealer,nItem, nPerm = 0)
+#FUNCTION
+#DIM DYNAMIC BodyPart
+#DIM DYNAMIC DMG
+#DIM DYNAMIC DMG_TYPE
+#DIM DYNAMIC nHediff
+#DIM DYNAMIC nDealer
+#DIM DYNAMIC nPerm
+#DIMS DYNAMIC nItem
+;no damage
+SIF DMG <= 0
+	RETURNF
+$BYPASS
+SIF !DMG_TYPE
+	THROW @"{ARG}가 유효하지 않은 피해 유형인 {DMG_TYPE}을 가진 헤드프를 %NAME:ARG%에게 주려고 시도했다!"
+;first we get the hediff
+IF DT_SELECT("Hediff", @"chara = {ARG} and type = {DMG_TYPE}")
+	;already exists, stack it instead
+	nHediff = RESULT:1
+	DT_CELL_SET @"Hediff", nHediff, "severity", DT_CELL_GET(@"Hediff", nHediff, "severity",1)+DMG, 1
+	DT_CELL_SET @"Hediff", nHediff, "owner", nDealer, 1
+	DT_CELL_SET @"Hediff", nHediff, "cause", nItem, 1
+ELSE
+	;create new hediff
+	DT_ROW_ADD @"Hediff", "chara", ARG, "part", BodyPart, "type", DMG_TYPE, "severity", DMG, "tended", 0, "bleeding", 0, "owner", nDealer, "cause", nItem, "permanent", nPerm,
+	nHediff = RESULT
+ENDIF

@@ -1,0 +1,242 @@
+﻿; Modular ERB: COMF/日常系/COMF406 日記を読む.ERB
+;-------------------------------------------------
+;日記を読む
+;日常系コマンド
+;-------------------------------------------------
+
+@COM406
+#DIM 同棲
+#DIM OWNER
+IF TARGET != MASTER && CFLAG:TARGET:初期位置 == CFLAG:MASTER:初期位置
+	同棲 = 1
+ELSE
+	同棲 = 0
+ENDIF
+OWNER = COM406_CHECK_OWNER()
+LOCAL = 50 + ABL:MASTER:話術技能 * 5 + ABL:TARGET:親密 * 2
+SIF BASE:TARGET:酒気 > MAXBASE:TARGET:酒気 / 2
+	LOCAL -= 15
+SELECTCASE TFLAG:192
+	;通常
+	CASE 0
+		SELECTCASE RAND:LOCAL
+			CASE IS < 20
+				TFLAG:193 = 1
+			CASE 20 TO 50
+				TFLAG:193 = 2
+			CASEELSE
+				TFLAG:193 = 3
+		ENDSELECT
+		;強制成功or大成功
+	CASE 1
+		SELECTCASE RAND:LOCAL
+			CASE IS < 50
+				TFLAG:193 = 2
+			CASEELSE
+				TFLAG:193 = 3
+		ENDSELECT
+		;強制失敗
+	CASE -1
+		TFLAG:193 = 1
+		;コマンド終了
+	CASE -2
+		TFLAG:193 = -1
+		RETURN 0
+ENDSELECT
+TFLAG:194 = OWNER
+IF CFLAG:MASTER:現在位置 == CFLAG:MASTER:初期位置
+	$START
+	PRINTFORML 거기에 \@ 同棲 ? 두 권의 일기장 # 책상 위에 일기장이 있다 \@.
+	PRINTFORML 행동을 선택한다.
+	VARSET LOCALS, "？？？？"
+	IF TARGET != MASTER
+		LOCALS:0 = %조사처리(CALLNAME:TARGET,"의")% 일기를 읽어라
+		LOCALS:1 = %조사처리(CALLNAME:TARGET,"의")% 일기를 읽는다.
+	ENDIF
+	;qol custom code, added reset button
+	CALL ASK_M("기록한다.",1,"읽는다",1,@"%LOCALS:0%", TARGET != MASTER && SHIRAHU(TARGET), @"%LOCALS:1%", 同棲 && (!SHIRAHU(TARGET) || TALENT:TARGET:恋慕 ), "일기 저장",1, "일지 불러오기",1, "일지 초기화",STRCOUNT(SAVESTR:1,"//"), "아무것도 없다.",1)
+	SELECTCASE RESULT
+		CASE 0
+			IF STRCOUNT(SAVESTR:1,"//") >= 100
+				PRINTFORML 이 일지는 이미 가득 찼다.
+				PRINTFORMW 다른 일지로 교체한다.
+			ELSE
+				PRINTFORML 일기에 내용을 직접 입력해 주십시오. 새 줄을 시작하려면 <br>을 쓰세요.
+				PRINTFORML 날짜는 자동으로 기록되므로 쓸 필요가 없습니다.
+				PRINTL
+				CALL MASTER_DIARY_INPUT
+				SIF RESULTS != ""
+					CALL MASTER_DIARY_WRITE,RESULTS
+				PRINTL
+			ENDIF
+		CASE 1
+			CALL READ_MASTER_DIARY
+		CASE 2
+			SIF !SHIRAHU(TARGET) ;bug fix
+				GOTO SKIP
+			IF ABL:TARGET:親密 >= 5
+				PRINTFORMW %조사처리(CALLNAME:TARGET,"가")%(가) 당신의 일기를 집는다...
+				CALL SHARE_MASTER_DIARY
+			ELSE
+				PRINTFORMW %조사처리(CALLNAME:TARGET,"는")%(는) 관심이 없는 것 같다...
+			ENDIF
+		CASE 3
+			CALL CHARA_DIARY_COM(TARGET)
+		CASE 4
+			CALL WRITE_MASTER_DIARY_FILE
+		CASE 5
+			CALL READ_MASTER_DIARY_FILE
+		CASE 6 ;qol custom code
+			CALL RESET_MASTER_DIARY_FILE
+		CASE 7
+			;qol custom code
+			GOTO SKIP
+	ENDSELECT
+	;qol custom code
+	GOTO START
+ELSEIF TALENT:OWNER:恋慕 && CFLAG:MASTER:現在位置 != CFLAG:MASTER:初期位置
+	PRINTFORML 베개 옆에 일기가 있다.
+	PRINTFORML %CALLNAME:OWNER%는 그 내용을 공유할 의향이 있는 듯하다.
+	PRINTFORML 행동을 선택한다.
+	CALL ASK_YN("일기를 읽는다","읽지 마라")
+	IF !RESULT
+		CALL CHARA_DIARY_COM(OWNER)
+	ELSE
+		RETURN -1
+	ENDIF
+ELSEIF CFLAG:OWNER:現在位置 != CFLAG:MASTER:現在位置 && TARGET && !(FLAG:70 || !SHIRAHU(TARGET))
+	PRINTFORML %CALLNAME:OWNER%의 베개 아래에 일기가 있는 것 같다.
+	PRINTFORML 하지만... %조사처리(CALLNAME:TARGET,"가")% 여기 있다...
+	PRINTFORML 살짝 들여다볼까?
+	CALL ASK_YN("함께 읽는다","그것을 읽지 마라")
+	IF !RESULT && TFLAG:193 > 0
+		CALL CHARA_DIARY_COM(OWNER)
+	ELSE
+		PRINTFORML 포기하기로 했다...
+		RETURN -1
+	ENDIF
+ELSE
+	PRINTFORML 베개 밑에 일기장이 있는 것 같다.
+	PRINTFORML 행동을 선택한다.
+	CALL ASK_YN("살짝 엿보다","읽지 마라")
+	IF !RESULT
+		CALL CHARA_DIARY_COM(OWNER)
+	ELSE
+		RETURN -1
+	ENDIF
+ENDIF
+$SKIP
+IF !FLAG:70
+	TIME += 5
+ELSE
+	BASE:MASTER:TSP -= 10
+ENDIF
+IF SHIRAHU(TARGET) && TARGET != MASTER
+	;固定で獲得するソース
+	SOURCE:歓楽 = 200
+	;ABL:親密をみる
+	IF ABL:親密 <= 1
+		SOURCE:歓楽 += (ABL:親密 * 30)
+	ELSEIF ABL:親密 <= 3
+		SOURCE:歓楽 += 200 + (ABL:親密 * 30)
+	ELSEIF ABL:親密 <= 5
+		SOURCE:歓楽 += 500 + (ABL:親密 * 30)
+	ELSEIF ABL:親密 <= 8
+		SOURCE:歓楽 += 750 + (ABL:親密 * 50)
+	ELSEIF ABL:親密 <= 10
+		SOURCE:歓楽 += 1000 + (ABL:親密 * 50)
+	ELSE
+		SOURCE:歓楽 += 1600 + (ABL:親密 * 30)
+	ENDIF
+	SOURCE:歓楽 = LIMIT(SOURCE:歓楽,0,5000)
+	SOURCE:受動 = 100 + 100 * ABL:従順
+	SOURCE:征服 = 100 + 100 * ABL:サドっ気
+	IF TFLAG:193 == -1 || TFLAG:193 == -2
+		TIMES SOURCE:歓楽 , 0.10
+		TIMES SOURCE:征服 , 0.50
+		TIMES SOURCE:受動 , 0.50
+	ELSEIF TFLAG:193 == 0
+		TIMES SOURCE:歓楽 , 1.00
+		TIMES SOURCE:征服 , 1.00
+		TIMES SOURCE:受動 , 1.00
+	ELSE
+		TIMES SOURCE:歓楽 , 2.00
+		TIMES SOURCE:征服 , 2.00
+		TIMES SOURCE:受動 , 2.00
+	ENDIF
+	SELECTCASE ABL:MASTER:話術技能
+		CASE 0
+			TIMES SOURCE:歓楽 , 0.20
+			TIMES SOURCE:征服 , 0.20
+			TIMES SOURCE:受動 , 0.20
+		CASE 1
+			TIMES SOURCE:歓楽 , 0.40
+			TIMES SOURCE:征服 , 0.40
+			TIMES SOURCE:受動 , 0.40
+		CASE 2
+			TIMES SOURCE:歓楽 , 0.70
+			TIMES SOURCE:征服 , 0.70
+			TIMES SOURCE:受動 , 0.70
+		CASE 3
+			TIMES SOURCE:歓楽 , 1.00
+			TIMES SOURCE:征服 , 1.00
+			TIMES SOURCE:受動 , 1.00
+		CASE 4
+			TIMES SOURCE:歓楽 , 1.20
+			TIMES SOURCE:征服 , 1.20
+			TIMES SOURCE:受動 , 1.20
+		CASEELSE
+			TIMES SOURCE:歓楽 , 1.50
+			TIMES SOURCE:征服 , 1.50
+			TIMES SOURCE:受動 , 1.50
+	ENDSELECT
+ENDIF
+RETURN 1
+;-------------------------------------------------
+;実行判定
+;-------------------------------------------------
+
+@COM_ABLE406
+#DIM OWNER
+OWNER = COM406_CHECK_OWNER()
+;移動実行判定
+SIF !TFLAG:100
+	RETURN 0
+;イタズラかウフフ中
+SIF CFLAG:MASTER:イタズラ
+	RETURN 0
+SIF CFLAG:MASTER:うふふ
+	RETURN 0
+;拠点にいる時かお招き部屋のみ
+SIF !AT_HOME(MASTER) && CFLAG:MASTER:現在位置 != OMANEKIBEYA()
+	RETURN 0
+SIF CFLAG:MASTER:現在位置 == CFLAG:MASTER:初期位置 && OWNER == MASTER ;qol custom code - let you read your diary even if someone else is there
+	RETURN 1
+SIF CFLAG:MASTER:現在位置 != CFLAG:MASTER:初期位置 && OWNER != MASTER
+	RETURN 0
+SIF !TALENT:OWNER:恋慕 && ABL:MASTER:教養 < ABL:OWNER:教養 && OWNER != MASTER
+	RETURN 0
+SIF !TALENT:OWNER:恋慕 && CFLAG:OWNER:現在位置 == CFLAG:OWNER:初期位置 && !(FLAG:70 || !SHIRAHU(OWNER)) && OWNER != MASTER
+	RETURN 0
+SIF !TALENT:TARGET:恋慕 && !(FLAG:70 || !SHIRAHU(TARGET)) && TARGET != MASTER
+	RETURN 0
+RETURN 1
+
+@MESSAGE_COM406
+#DIM OWNER
+OWNER = COM406_CHECK_OWNER()
+IF (!TALENT:OWNER:恋慕 && !(FLAG:70 || !SHIRAHU(OWNER))) && !(CFLAG:MASTER:現在位置 == CFLAG:MASTER:初期位置)
+	PRINTFORML 다 읽고 나서, 조용히 일기를 제자리에 두었다.
+ELSE
+ENDIF
+;日記の著者チェッカー
+
+@COM406_CHECK_OWNER
+#FUNCTION
+IF TARGET != MASTER && CFLAG:TARGET:初期位置 == CFLAG:MASTER:初期位置 && CFLAG:MASTER:現在位置 == CFLAG:MASTER:初期位置
+	RETURNF TARGET
+ELSEIF TARGET == CFLAG:MASTER:お招き && CFLAG:MASTER:現在位置 == OMANEKIBEYA()
+	RETURNF CFLAG:MASTER:お招き
+ELSE
+	RETURNF PRIVATEROOM:(CFLAG:MASTER:現在位置 % 100)
+ENDIF

@@ -1,0 +1,125 @@
+﻿; Modular ERB: Addition/Add_Rand_Hanting.ERB
+;revised function to determine target for danmaku request
+
+@RAND_HANTING_TR(ARG)
+#FUNCTION
+#DIM CHARACTERS, キャラクタ数上限
+VARSET CHARACTERS
+FOR LOCAL, 0, CHARANUM - 1
+SIF CFLAG:LOCAL:出禁 ;disabled
+	CONTINUE
+SIF (GetCombatAbility(MASTER) < UniversalRank("D")) ;noncombatant
+	CONTINUE
+SIF ARG == LOCAL ;themselves
+	CONTINUE
+SIF LOCAL == MASTER ;you
+	CONTINUE
+SIF LEVEL_TO_RANK(GetCombatAbility(LOCAL)) >= LEVEL_TO_RANK(GetCombatAbility(MASTER)) + 3 ;more than three stages above player, too much to handle
+	CONTINUE
+SIF IsDead:LOCAL:0 ; dead
+	CONTINUE
+CHARACTERS:LOCAL = RAND_HANTING_TR_UNIQUE(ARG, LOCAL)
+SIF CHARACTERS:LOCAL != -1
+	CONTINUE
+CHARACTERS:LOCAL = 10 ;default value
+IF RELATION:ARG:LOCAL > 0 && RELATION:ARG:LOCAL != 100 ;special checks for established relationship
+	IF RELATION:ARG:LOCAL >= 150 ;very positive relationship, don't fight
+		CHARACTERS:LOCAL = 0
+	ELSEIF RELATION:ARG:LOCAL > 100 ;positive, less conflict
+		CHARACTERS:LOCAL -= ((RELATION:ARG:LOCAL - 100) * 2 / 10)
+	ELSE
+		CHARACTERS:LOCAL += ((100 - RELATION:ARG:LOCAL) * 500 / 10)
+	ENDIF
+ELSEIF HostileAffinity(LOCAL,ARG) && RESULT:1
+	CHARACTERS:LOCAL += ((50) * 500 / 10)
+ELSE
+	;Lunarians(non-Hourai)>Fairies
+	IF CHECK_CHARA(ARG, "月人")
+		;Lunarians(non-Hourai)>Fairies
+		SIF !CHECK_CHARA(ARG, "蓬莱人") && CHECK_CHARA(LOCAL, "妖精")
+			CHARACTERS:LOCAL += 200 ;almost inevitably halved by the difficulty check
+		;Lunarians>Youkai
+		SIF CHECK_CHARA(LOCAL, "妖怪")
+			CHARACTERS:LOCAL += 50
+		SIF CHECK_CHARA(LOCAL, "月人") ;not hostile to other lunarians
+			CHARACTERS:LOCAL = 0
+		;Divine Spirits, Celestials, Hermits > Youkai and Ghosts
+	ELSEIF CHECK_CHARA(ARG, "神霊") || CHECK_CHARA(ARG, "天人") || CHECK_CHARA(ARG, "仙人")
+		SIF CHECK_CHARA(LOCAL, "妖怪") || CHECK_CHARA(LOCAL, "幽霊")
+			CHARACTERS:LOCAL += 50
+		;not very hostile to each other or lunarians
+		SIF CHECK_CHARA(LOCAL, "神霊") || CHECK_CHARA(LOCAL, "天人") || CHECK_CHARA(LOCAL, "仙人") || CHECK_CHARA(LOCAL, "月人")
+			CHARACTERS:LOCAL /= 2
+		;Humans>Fairies, Youkai, Ghosts
+	ELSEIF CHECK_CHARA(ARG, "人間")
+		SIF CHECK_CHARA(LOCAL, "妖精") || CHECK_CHARA(LOCAL, "妖怪") || CHECK_CHARA(LOCAL, "幽霊")
+			CHARACTERS:LOCAL += 50
+		SIF CHECK_CHARA(LOCAL, "人間") ;humans don't generally attack other humans
+			CHARACTERS:LOCAL = 0
+		;Fairy>Humans, Youkai, Tsukumogami, Dolls
+	ELSEIF CHECK_CHARA(ARG, "妖精")
+		SIF CHECK_CHARA(LOCAL, "人間") || CHECK_CHARA(LOCAL, "妖怪") || CHECK_CHARA(LOCAL, "付喪神") || CHECK_CHARA(LOCAL, "人形")
+			CHARACTERS:LOCAL += 50
+		;Youkai> Humans, Dolls, Divine Spirits, Hermits. Celestials, Lunarians even more so.
+	ELSEIF CHECK_CHARA(ARG, "妖怪")
+		SIF CHECK_CHARA(LOCAL, "人間") || CHECK_CHARA(LOCAL, "人形") || CHECK_CHARA(LOCAL, "神霊") || CHECK_CHARA(LOCAL, "仙人")
+			CHARACTERS:LOCAL += 50
+		SIF CHECK_CHARA(LOCAL, "天人") || CHECK_CHARA(LOCAL, "月人")
+			CHARACTERS:LOCAL += 80
+		;Ghosts> Humans, Dolls
+	ELSEIF CHECK_CHARA(ARG, "幽霊")
+		SIF CHECK_CHARA(LOCAL, "人間") || CHECK_CHARA(LOCAL, "人形")
+			CHARACTERS:LOCAL += 50
+		;Tsukumogami, Dolls>Youkai, Fairies
+	ELSE
+		SIF CHECK_CHARA(LOCAL, "妖精") || CHECK_CHARA(LOCAL, "妖怪")
+			CHARACTERS:LOCAL += 50
+	ENDIF
+ENDIF
+SIF LEVEL_TO_RANK(GetCombatAbility(LOCAL)) < (LEVEL_TO_RANK(GetCombatAbility(MASTER)) - 2) ;not worthy as your opponent
+	CHARACTERS:LOCAL /= 2
+SIF CHARACTERS:LOCAL < 0
+	CHARACTERS:LOCAL = 0
+NEXT
+SIF SUMARRAY(CHARACTERS, 0, CHARANUM - 1) == 0
+	RETURNF ARG ;no valid results, somehow. try to fight the request giver instead
+DEBUGPRINTFORML %CALLNAME:ARG%의 유효한 대상들:
+FOR LOCAL, 0, CHARANUM - 1
+SIF CHARACTERS:LOCAL
+	DEBUGPRINTFORML %TOSTR(LOCAL), 3, RIGHT% %CALLNAME:LOCAL, 15, LEFT%: {CHARACTERS:LOCAL}
+NEXT
+RETURNF ARRAY_HIT(CHARACTERS, CHARANUM - 1)
+;character-specific checks
+;ARG   issuer
+;ARG:1 target
+
+@RAND_HANTING_TR_UNIQUE(ARG, ARG:1)
+#FUNCTION
+IF ARG == [[輝夜]]
+	SIF ARG:1 == [[妹紅]]
+		RETURNF 2000
+ELSEIF ARG == [[妹紅]]
+	SIF ARG:1 == [[輝夜]]
+		RETURNF 2000
+ELSEIF ARG == [[純狐]] ;junko vs moonies
+	SIF CHECK_CHARA(ARG:1, "月人")
+		RETURNF 3000
+ELSEIF ARG == [[ヘカーティア]] ;heca-chan vs moonies
+	SIF CHECK_CHARA(ARG:1, "月人")
+		RETURNF 1500
+ELSEIF ARG == [[レミリア]] ;remilia likes to watch meiling fight people
+	SIF ARG:1 == [[美鈴]]
+		RETURNF 500
+ELSEIF ARG == [[布都]] ;futo vs Buddhists, sans ichirin
+	SIF GROUPMATCH(ARG:1, [[ナズーリン]], [[ぬえ]], [[白蓮]], [[マミゾウ]], [[ムラサ]], [[星]], [[響子]])
+		RETURNF 250
+	;myouren group are genuinely on good terms with each other
+ELSEIF GROUPMATCH(ARG, [[ナズーリン]], [[ぬえ]], [[白蓮]], [[マミゾウ]], [[一輪]], [[ムラサ]], [[星]], [[響子]]) && GROUPMATCH(ARG:1, [[ナズーリン]], [[ぬえ]], [[白蓮]], [[マミゾウ]], [[一輪]], [[ムラサ]], [[星]], [[響子]])
+	RETURNF 0
+	;chireiden also on good terms
+ELSEIF GROUPMATCH(ARG, [[お燐]], [[お空]], [[こいし]], [[さとり]]) && GROUPMATCH(ARG:1, [[お燐]], [[お空]], [[こいし]], [[さとり]])
+	RETURNF 0
+ELSEIF ARG == [[正邪]] && ARG:1 != [[針妙丸]];the amanojaku hates the powerful, but makes an exception for the princess
+	RETURNF 100 * ABL:(ARG:1):戦闘能力
+ENDIF
+RETURNF -1

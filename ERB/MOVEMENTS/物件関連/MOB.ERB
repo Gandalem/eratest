@@ -1,0 +1,543 @@
+﻿; Modular ERB: 物件関連/MOB.ERB
+;-------------------------------------------------
+;モブのいるマップを返す
+;ARG=MAPID
+;-------------------------------------------------
+
+@GET_EXISTMOB(ARG)
+#FUNCTION
+SIF GROUPMATCH(ARG, 3, 4, 9, 10)
+	RETURNF 1
+;-------------------------------------------------
+;お出かけ時のモブ判定
+;ARG=場所ID
+;-------------------------------------------------
+
+@DATE_HITOGOMI(ARG)
+#FUNCTION
+SIF !ARG
+	ARG = CFLAG:MASTER:現在位置
+IF IN_HOME(ARG)
+	RETURNF 0
+ELSE
+	SIF ODEKAKEMAP_SETTING(ARG, "モブ")
+		RETURNF 1
+ENDIF
+RETURNF 0
+;-------------------------------------------------
+;MASTERが在宅中かつモブと同じ位置にいるならMAIN_MAPを返す
+;-------------------------------------------------
+
+@WITH_MOB()
+#FUNCTION
+SIF AT_HOME(MASTER) && ROOMDATA:(CFLAG:MASTER:現在位置 % 100) & 場所_モブ
+	RETURNF MAIN_MAP
+;-------------------------------------------------
+;モブの与える汚れ値（掃除値）
+;ARG=MAPID
+;-------------------------------------------------
+
+@MOB_YOGORE(ARG)
+#FUNCTION
+SELECTCASE ARG
+	CASE 3
+		RETURNF -3
+	CASE 4
+		SIF !GROUPMATCH(TIME:2,1,6,7)
+			RETURNF 1
+	CASE 9
+		SIF !GROUPMATCH(TIME:2,1,6,7)
+			RETURNF 2
+	CASE 10
+		;玉兎はプラスマイナスゼロ
+ENDSELECT
+;-------------------------------------------------
+;モブの基本名
+;ARG=MAPID
+;-------------------------------------------------
+
+@MOB_NAME(ARG)
+#FUNCTIONS
+SIF !ARG
+	ARG = MAIN_MAP
+SELECTCASE ARG
+	CASE 3
+		LOCALS = hobgoblin
+	CASE 4
+		LOCALS = youkai rabbit
+	CASE 9
+		LOCALS = %ANIMALNAME()%
+	CASE 10
+		LOCALS = moon rabbit
+ENDSELECT
+RETURNF LOCALS
+;-------------------------------------------------
+;お出かけ中のモブ名
+;ARG=場所ID
+;-------------------------------------------------
+
+@DATE_HITOGOMI_SYUBETU(ARG)
+#FUNCTIONS
+VARSET LOCALS
+SIF !ARG
+	ARG = CFLAG:PLAYER:現在位置
+SELECTCASE GET_MAPID(ARG)
+	;モブの種類
+	;月
+	CASE 10
+		IF ARG == 月の都
+			LOCALS += "Lunarian"
+		ELSE
+			LOCALS += "Moon Rabbit"
+		ENDIF
+		;地底（街道と温泉では鬼も出てくる）
+	CASE 9
+		IF ARG != 地霊殿 && !RAND:3
+			LOCALS += "Oni"
+		ELSE
+			LOCALS += "Youkai"
+		ENDIF
+		;妖怪の山山頂（守矢神社境内のみ希に人間）
+	CASE 8
+		IF ARG == 守矢神社境内 && !RAND:5
+			LOCALS += "Human"
+		ELSE
+			LOCALS += "Youkai"
+		ENDIF
+		;妖怪の山山麓
+	CASE 7
+		;三途の川～冥界（死神、妖怪、希に人間）
+	CASE 6
+		IF !RAND:5
+			LOCALS += "Human"
+		ELSEIF !RAND:3
+			LOCALS += "Youkai"
+		ELSE
+			LOCALS += "Shinigami"
+		ENDIF
+		;魔法の森
+	CASE 5
+		;迷いの竹林（妖怪ウサギ、希に人間(患者)）
+	CASE 4
+		IF RAND:5
+			LOCALS += "Youkai Rabbit"
+		ELSE
+			LOCALS += "Human"
+		ENDIF
+		;紅魔館（お出かけ中のモブは全員少女なのでホフさんはお休み）
+	CASE 3
+		LOCALS += "Fairy Maid"
+		;人間の里（基本人間、希に妖怪）
+	CASE 2
+		IF ARG == 寺子屋 ;addition custom code, when in school
+			LOCALS += "child"
+		ELSEIF RAND:5
+			LOCALS += "Human"
+		ELSE
+			LOCALS += "Youkai"
+		ENDIF
+		;命蓮寺（人間と妖怪）
+	CASE 1
+		IF !RAND:2
+			LOCALS += "Human"
+		ELSE
+			LOCALS += "Youkai"
+		ENDIF
+		;博麗神社
+	CASE 0
+ENDSELECT
+LOCALS = young %LOCALS% girl
+RETURNF LOCALS
+;-------------------------------------------------
+;まかないイベント処理
+;-------------------------------------------------
+
+@MAKANAI
+#DIM 気力回復量
+#DIM 体力回復量
+VARSET LOCAL
+IF DISH_NAME == "" && !TFLAG:まかない && TIME:2 == 3
+	;食事できない人がいるかをチェック
+	FOR LOCAL, 0, CHARANUM
+	SIF TCVAR:LOCAL:空腹時刻 - TIME:1 > 0 && CFLAG:LOCAL:現在位置 == CFLAG:MASTER:現在位置
+		LOCAL:1 ++
+	NEXT
+	IF !LOCAL:1 && !RAND:5
+		TFLAG:まかない = 1
+		PRINTFORML %CAPITALIZE(ARTICLE(MOB_NAME()))%이 음식을 제공했다.
+		PRINTFORML 먹을까?
+		CALL ASK_YN
+		IF RESULT
+			PRINTFORML 당신은 정중하게 거절한다.
+		ELSE
+			SELECTCASE RAND:5
+				CASE 0, 1
+					PRINTFORML 괜찮았다.
+					体力回復量 = 100
+					気力回復量 = 300
+				CASE 2, 3
+					PRINTFORML 꽤 맛있다.
+					体力回復量 = 150
+					気力回復量 = 400
+				CASE 4
+					PRINTFORML 이거 맛있다!
+					体力回復量 = 300
+					気力回復量 = 500
+			ENDSELECT
+			PRINTFORMW 너%COND_STR(" and the others",GET_TARGETNUM())% 간식을 먹었다.
+			TIME += 15
+			FOR LOCAL, 0, CHARANUM
+			IF CFLAG:LOCAL:現在位置 == CFLAG:MASTER:現在位置
+				CALL RECOVER(LOCAL, 体力回復量, "体力")
+				CALL RECOVER(LOCAL, 気力回復量, "気力")
+				CALL 満腹度上昇(LOCAL, "軽食")
+			ENDIF
+			NEXT
+		ENDIF
+	ENDIF
+ENDIF
+;＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
+;紅魔館のモブ設定（ホフゴブリン）
+;＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
+;-------------------------------------------------
+;モブのいる場所
+;-------------------------------------------------
+
+@MOB_PLACE_3
+#DIM ROOM
+FOR LOCAL, MINROOM(), MAXROOM
+ROOM = LOCAL % 100
+ROOMDATA:ROOM &= ~場所_モブ
+SELECTCASE TIME:2
+	CASE 2
+		SIF GROUPMATCH(LOCAL, P302庭, P306裏庭, P307東テラス, P308西テラス)
+			ROOMDATA:ROOM |= 場所_モブ
+	CASE 3
+		SIF GROUPMATCH(LOCAL, P313厨房, P314食堂, P315応接間)
+			ROOMDATA:ROOM |= 場所_モブ
+	CASE 4
+		SIF GROUPMATCH(LOCAL, P309広間, P319二階廊下)
+			ROOMDATA:ROOM |= 場所_モブ
+	CASE 5
+		SIF GROUPMATCH(LOCAL, P324大バルコニー, P327小バルコニー)
+			ROOMDATA:ROOM |= 場所_モブ
+	CASE 6
+		SIF GROUPMATCH(LOCAL, P306裏庭, P328地下廊下, P329倉庫, P330使用人部屋)
+			ROOMDATA:ROOM |= 場所_モブ
+ENDSELECT
+NEXT
+;-------------------------------------------------
+;モブのメッセージ
+;-------------------------------------------------
+
+@MOB_MESSAGE_3
+IF FLAG:時間停止
+	PRINTFORML 호그블린들이 얼어붙었다...
+ELSEIF CFLAG:MASTER:現在位置 == P329倉庫
+	PRINTFORML 호그밥린이 고양이를 돌보고 있다...
+ELSE
+	PRINTFORML 호그블린들이 일하고 있다...
+ENDIF
+;-------------------------------------------------
+;モブのイベント
+;-------------------------------------------------
+
+@MOB_TURNENDEVENT_3
+IF !FLAG:時間停止
+	SIF LS_RESTRICTION("Map mob interrupt") ;Custom code, restrict interrupting sex during Lunatic Survival.
+		RETURN 0
+	CALL Add_SeedOfUnknownForm("mobsex") ;addition custom code - nue's special item lets you stay hidden
+	SIF RESULT
+		RETURN 0
+	IF CFLAG:MASTER:うふふ
+		PRINTFORML 호그불린들은 친절하게 %SPLIT_G("tell you that this is a public space and such behavior is not permitted:ask you to refrain from engaging in such actions in a public area")%했다.
+		PRINTFORML 너는 그것에 대해 기분이 나쁘다.
+		BASE:TARGET:ムード = 0
+		CALL ENDUFUFU_ALL
+	ELSEIF CFLAG:MASTER:現在位置 == P313厨房
+		CALL MAKANAI
+	ENDIF
+ENDIF
+;＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
+;永遠亭のモブ設定（イナバ）
+;＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
+;-------------------------------------------------
+;モブのいる場所
+;-------------------------------------------------
+
+@MOB_PLACE_4
+#DIM ROOM
+FOR LOCAL, MINROOM(), MAXROOM
+ROOM = LOCAL % 100
+ROOMDATA:ROOM &= ~場所_モブ
+SELECTCASE TIME:2
+	CASE 1 TO 7
+		SIF GROUPMATCH(LOCAL, P407廊下, P408中廊下, P409縁側, P421庭, P422裏庭, P431兎の洞穴)
+			ROOMDATA:ROOM |= 場所_モブ
+ENDSELECT
+NEXT
+;-------------------------------------------------
+;モブのメッセージ
+;-------------------------------------------------
+
+@MOB_MESSAGE_4
+IF FLAG:時間停止
+	PRINTFORML 토끼들이 얼어버렸다...
+ELSEIF GROUPMATCH(TIME:2, 1, 6, 7)
+	PRINTFORML 토끼들은 자고 있다...
+ELSEIF !DAY:3 % 10
+	IF !TALENT:MASTER:性別 & 2
+		PRINTFORML 토끼들은 발정 때문에 안절부절못한다.
+	ELSE
+		PRINTFORML 발정 중인 토끼들에게서 강렬한 시선을 느낀다...
+	ENDIF
+ELSE
+	SELECTCASE RAND:5
+		CASE 0
+			PRINTFORML 토끼들은 %SPLIT_G("wandering aimlessly:loitering around")%...
+		CASE 1
+			PRINTFORML 토끼들이 놀고 있다...
+		CASE 2
+			PRINTFORML 토끼들이 무언가에 대해 이야기하고 있다...
+		CASE 3
+			PRINTFORML 토끼들은 %SPLIT_G("huddling together:bumping into each other")%이다...
+		CASE 4
+			PRINTFORML 토끼들이 서로 쌓이고 있다...
+	ENDSELECT
+ENDIF
+;-------------------------------------------------
+;モブのイベント
+;-------------------------------------------------
+
+@MOB_TURNENDEVENT_4
+IF !FLAG:時間停止
+	CALL Add_SeedOfUnknownForm("mobsex") ;addition custom code - nue's special item lets you stay hidden
+	SIF RESULT
+		RETURN 0
+	IF CFLAG:MASTER:うふふ
+		PRINTFORML 당신과 파트너를 보고 토끼들이 소란을 피우며 더 많은 구경꾼이 모이자 비명을 지른다.
+		PRINTFORML 기분이 완전히 망가진다...
+		BASE:TARGET:ムード = 0
+		CALL ENDUFUFU_ALL
+	ENDIF
+ENDIF
+;＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
+;地霊殿のモブ設定（ペット＆怨霊＆鬼）
+;＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
+;-------------------------------------------------
+;モブのいる場所
+;-------------------------------------------------
+
+@MOB_PLACE_9
+#DIM ROOM
+FOR LOCAL, MINROOM(), MAXROOM
+ROOM = LOCAL % 100
+ROOMDATA:ROOM &= ~場所_モブ
+SIF GROUPMATCH(LOCAL, P904大広間, P905一階廊下, P913食堂, P914二階廊下, P915バルコニー, P923裏庭, P926中庭)
+	ROOMDATA:ROOM |= 場所_モブ
+SIF GROUPMATCH(LOCAL, P931大通り, P932裏通り, P933酒場, P938鬼の溜まり場)
+	ROOMDATA:ROOM |= 場所_モブ
+SIF GROUPMATCH(LOCAL, P928灼熱地獄跡, P929地獄の人工太陽, P930旧血の池地獄)
+	ROOMDATA:ROOM |= 場所_モブ
+NEXT
+;-------------------------------------------------
+;モブのメッセージ
+;-------------------------------------------------
+
+@MOB_MESSAGE_9
+IF INRANGE(CFLAG:MASTER:現在位置, P928灼熱地獄跡, P930旧血の池地獄)
+	IF FLAG:時間停止
+		PRINTFORML 복수심에 찬 영혼들이 얼어붙었다...
+	ELSE
+		IF CFLAG:うふふ
+			PRINTFORML 복수심에 찬 영혼들이 분위기를 망치고 있다...
+		ELSEIF !RAND:2
+			PRINTFORML 원한을 품은 영혼들은 %SPLIT_G("wandering aimlessly:loitering around")%...
+		ELSE
+			PRINTFORML 복수심에 찬 영혼들이 %SPLIT_G("hanging in the air:floating around:hovering back and forth")%...
+		ENDIF
+	ENDIF
+ELSEIF INRANGE(CFLAG:MASTER:現在位置, P931大通り, P939路地裏)
+	IF FLAG:時間停止
+		PRINTFORML 오니들이 얼어붙었다...
+	ELSEIF GROUPMATCH(TIME:2, 1, 6, 7)
+		PRINTFORML 오니들은 잠들어 있다...
+	ELSEIF CFLAG:MASTER:うふふ ;addition custom code
+		CALL Add_Mob_Oni_Message
+	ELSE
+		SELECTCASE RAND:6
+			CASE 0
+				PRINTFORML 오니들이 술판을 벌이고 있다...
+			CASE 1
+				PRINTFORML 오니들이 함께 어울리고 있다...
+			CASE 2
+				PRINTFORML 오니들이 싸우고 있다...
+			CASE 3
+				PRINTFORML 오니들은 %SPLIT_G("wandering aimlessly:loitering around")%...
+			CASE 4
+				PRINTFORML 오니들은 %SPLIT_G("making a racket:stirring up a frenzy:being noisy")%...
+			CASE 5
+				PRINTFORML 오니 한 마리가 길을 가로질러 쓰러져 있다... 성가시군.
+		ENDSELECT
+	ENDIF
+ELSE
+	IF FLAG:時間停止
+		PRINTFORML %ANIMALNAME()%은(는) 얼어버렸다...
+	ELSEIF GROUPMATCH(TIME:2, 1, 6, 7)
+		PRINTFORML %ANIMALNAME()%는 잠들어 있다...
+	ELSEIF CFLAG:MASTER:現在位置 == P923裏庭
+		IF !RAND:2
+			PRINTFORML 물속의 %ANIMALNAME()% %SPLIT_G("takes a dip:bathes")%가...
+		ELSE
+			PRINTFORML %ANIMALNAME()%은(는) 물속을 헤엄친다...
+		ENDIF
+	ELSE
+		IF !RAND:2
+			PRINTFORML The %ANIMALNAME()% %SPLIT_G("wanders aimlessly:loiters around")%...
+		ELSE
+			PRINTFORML %ANIMALNAME()%가 길을 막고 쓰러져 있다... 성가시네.
+		ENDIF
+	ENDIF
+ENDIF
+;-------------------------------------------------
+;ペットの名前
+;-------------------------------------------------
+
+@ANIMALNAME()
+#FUNCTIONS
+SELECTCASE TIME:1 % 25
+	;小型哺乳類
+	CASE 0
+		LOCALS = dog
+	CASE 1
+		LOCALS = cat
+	CASE 2
+		LOCALS = koala
+	CASE 3
+		LOCALS = gorilla
+	CASE 4
+		LOCALS = Jersey Devil
+	CASE 5
+		LOCALS = armadillo
+	CASE 6
+		LOCALS = boar piglet
+	CASE 7
+		LOCALS = capybara
+		;大型哺乳類
+	CASE 8
+		LOCALS = anteater
+	CASE 9
+		LOCALS = horse
+	CASE 10
+		LOCALS = cow
+	CASE 11
+		LOCALS = sheep
+	CASE 12
+		LOCALS = alpaca
+	CASE 13
+		LOCALS = seal
+		;超大型哺乳類
+	CASE 14
+		LOCALS = elephant
+	CASE 15
+		LOCALS = giraffe
+		;鳥類
+	CASE 16
+		LOCALS = chicken
+	CASE 17
+		LOCALS = penguin
+	CASE 18
+		LOCALS = shoebill
+	CASE 19
+		;LOCALS = ゾンビフェアリー
+		LOCALS = peacock
+	CASE 20
+		LOCALS = ostrich
+		;爬虫類
+	CASE 21
+		LOCALS = crocodile
+	CASE 22
+		LOCALS = Komodo dragon
+	CASE 23
+		LOCALS = Burmese python
+	CASE 24
+		LOCALS = giant tortoise
+ENDSELECT
+RETURNF LOCALS
+;＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
+;月都のモブ設定（玉兎）
+;＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
+
+@MOB_PLACE_10
+#DIM ROOM
+FOR LOCAL, MINROOM(), MAXROOM
+ROOM = LOCAL % 100
+ROOMDATA:ROOM &= ~場所_モブ
+SELECTCASE TIME:2
+	CASE 2
+		SIF GROUPMATCH(LOCAL, P1003玉兎街, P1004広場, P1014桃林, P1020綿月亭・門, P1023門番詰め所, P1025玉兎詰め所)
+			ROOMDATA:ROOM |= 場所_モブ
+	CASE 3
+		SIF GROUPMATCH(LOCAL, P1003玉兎街, P1004広場, P1020綿月亭・門, P1024玉兎食堂)
+			ROOMDATA:ROOM |= 場所_モブ
+	CASE 4
+		SIF GROUPMATCH(LOCAL, P1003玉兎街, P1004広場, P1014桃林, P1020綿月亭・門, P1023門番詰め所, P1025玉兎詰め所)
+			ROOMDATA:ROOM |= 場所_モブ
+	CASE 5
+		SIF GROUPMATCH(LOCAL, P1003玉兎街, P1004広場, P1020綿月亭・門, P1024玉兎食堂)
+			ROOMDATA:ROOM |= 場所_モブ
+	CASE 6
+		SIF GROUPMATCH(LOCAL, P1003玉兎街, P1004広場, P1020綿月亭・門, P1023門番詰め所, P1024玉兎食堂, P1025玉兎詰め所)
+			ROOMDATA:ROOM |= 場所_モブ
+	CASEELSE
+		SIF GROUPMATCH(LOCAL, P1020綿月亭・門)
+			ROOMDATA:ROOM |= 場所_モブ
+ENDSELECT
+NEXT
+;-------------------------------------------------
+;モブのメッセージ
+;-------------------------------------------------
+
+@MOB_MESSAGE_10
+IF FLAG:時間停止
+	IF GROUPMATCH(CFLAG:MASTER:現在位置, P1020綿月亭・門, P1023門番詰め所)
+		PRINTFORML 문지기들이 얼어붙었다...
+	ELSE
+		PRINTFORML 달 토끼들은 얼어있다...
+	ENDIF
+ELSE
+	SELECTCASE CFLAG:MASTER:現在位置
+		CASE P1003玉兎街, P1004広場
+			PRINTFORML 그곳은 달 토끼들로 가득하다...
+		CASE P1014桃林
+			PRINTFORML 달 토끼들은 훈련하고 있다.
+		CASE P1020綿月亭・門
+			PRINTFORML 문지기들이 경비를 서고 있다...
+		CASE P1023門番詰め所
+			PRINTFORML 문지기들이 쉬고 있다...
+		CASE P1024玉兎食堂
+			PRINTFORML 달토끼들이 식사 중이다...
+		CASE P1025玉兎詰め所
+			PRINTFORML 달 토끼들이 쉬고 있다...
+	ENDSELECT
+ENDIF
+;-------------------------------------------------
+;モブのイベント
+;-------------------------------------------------
+
+@MOB_TURNENDEVENT_10
+IF !FLAG:時間停止
+	CALL Add_SeedOfUnknownForm("mobsex") ;addition custom code - nue's special item lets you stay hidden
+	SIF RESULT
+		RETURN 0
+	IF CFLAG:MASTER:うふふ
+		IF GROUPMATCH(CFLAG:MASTER:現在位置, P1020綿月亭・門, P1023門番詰め所)
+			PRINTFORML 문지기들이 소란을 피우며 무슨 일인지 확인하러 달려왔다.
+		ELSE
+			PRINTFORML 당신과 파트너를 본 달 토끼들이 소란을 일으키며 더 많은 구경꾼이 모이자 비명을 지른다.
+		ENDIF
+		PRINTFORML 그것은 분위기를 완전히 망친다.
+		BASE:TARGET:ムード = 0
+		CALL ENDUFUFU_ALL
+	ENDIF
+ENDIF

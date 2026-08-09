@@ -1,0 +1,89 @@
+﻿; Modular ERB: OMOGATARI/COM/ADD_CUSTOM_COM476 Get Recruited.ERB
+
+@ADD_CUSTOM_COM476
+PRINTFORML 당신은 %조사처리(CALLNAME:TARGET,"에게")% 당신의 진영 관계에 대해 묻는다.
+CALL FACTION_RECRUITING((TALENT:TARGET:Recruiter-1))
+
+@FACTION_RECRUITING(ARG,nRecruiter = -1)
+#DIM nRecruiter
+;no recruiter
+IF nRecruiter == -1
+	nRecruiter = FACTION_RECRUITER(ARG)
+ENDIF
+IF !FactionRank:MASTER:(ARG)
+	; CALL FACTION_UIARG
+	CALL SINGLE_LIST_FACTION_STATE(MASTER, ARG, (!FactionRank:MASTER:ARG ? "「Confirmation」" # "「Faction Status」"))
+	IF RESULT && !FactionRank:MASTER:ARG
+		TRYCCALLFORM FACTION_APPLYING_{ARG}
+		CATCH
+		PRINTFORMW 당신은 지원서를 작성하고 %CALLNAME:nRecruiter%에게 보낸다.
+		ENDCATCH
+		PRINTFORMW ・
+		PRINTFORMW ・・
+		PRINTFORMW ・・・
+		IF FACTION_JOIN_ELEGIBLE(MASTER,ARG)
+			;accepted
+			CALL JoinFaction(MASTER,ARG,0)
+			TRYCCALLFORM FACTION_APPLYING_{ARG}_ACCEPT
+			CATCH
+			PRINTFORML 당신은 %FactionName(ARG)%의 %FACTION_RANK_STRING(MASTER,ARG)%로 받아들여졌다!
+			PRINTFORML 당신의 시작 일일 급여는 하루에 %金額表示(FACTION_SALARY(ARG,FactionRank:MASTER:ARG))%이다.
+			WAIT
+			ENDCATCH
+		ELSE
+			;denied
+			TRYCCALLFORM FACTION_APPLYING_{ARG}_DENY
+			CATCH
+			PRINTFORMW 유감스럽게도 당신의 지원은 거절되었다.
+			ENDCATCH
+		ENDIF
+	ENDIF
+	RETURN
+ENDIF
+;joined
+CALL SINGLE_LIST_FACTION_STATE(MASTER, ARG, "「Faction Status」")
+
+@ADD_CUSTOM_COM_PRINT476
+#DIM CONST COM_ID = 476
+SIF !TALENT:TARGET:Recruiter
+	RETURN 0
+IF !FactionRank:MASTER:(TALENT:TARGET:Recruiter-1)
+	PRINTFORMC %FactionAbriv((TALENT:TARGET:Recruiter-1))%에게 [{Add_Custom_COM_To_Number(COM_ID),3}]을 신청한다.
+ELSE
+	PRINTFORMC %FactionAbriv((TALENT:TARGET:Recruiter-1))%상태[{Add_Custom_COM_To_Number(COM_ID),3}]
+ENDIF
+RESETCOLOR
+RETURN 1
+
+@FactionRankLevelingUp(ARG,nFaction,ignoreAsso=0)
+#DIM nFaction
+#DIM ignoreAsso
+SIF !FactionRank:ARG:nFaction
+	RETURN
+WHILE FactionExperience:ARG:nFaction >= EXP_DEMAND_FACTION_RANK(FactionRank:ARG:nFaction+1)
+SIF FactionRank:ARG:nFaction >= 6
+	BREAK
+SIF !ignoreAsso
+	CALLF StoreFactionTitles(ARG,nFaction)
+FactionRank:ARG:nFaction ++
+PRINTFORML %PARSE("You have",,,ARG)%이/가 %FactionName(nFaction)%의 %FACTION_RANK_STRING(ARG,nFaction)%으로 승급했다.
+PRINTFORMW 당신의 일일 수입은 이제 하루에 %金額表示(FACTION_SALARY(nFaction,FactionRank:MASTER:nFaction))%이다!
+SIF !ignoreAsso
+	CALL CheckForFacitonTitleChanges(ARG,@"%PARSE("your",,,ARG)%의 %FactionAbriv(nFaction)% 상위 직책으로의 승진")
+WEND
+
+@ADD_CUSTOM_COM_ABLE476
+;押し倒す実行判定
+SIF !TFLAG:100
+	RETURN 0
+SIF SaveIsEZB
+	RETURN 0
+SIF !TALENT:TARGET:Recruiter
+	RETURN 0
+SIF !SHIRAHU(TARGET)
+	RETURN 0
+SIF CFLAG:TARGET:うふふ
+	RETURN 0
+SIF !nFactions
+	RETURN 0
+RETURN 1

@@ -1,0 +1,1117 @@
+﻿; Modular ERB: Addition/Add_HypnosisRework.ERB
+
+@催眠発動_TR
+
+@PROCESS_HYPNOSIS_COMMAND(ARG, HYPNO_TARGET)
+#DIM HYPNO_TARGET
+#DIM 催眠タイプ
+#DIM 催眠判定
+#DIM 催眠結果
+#DIM Strength
+#DIM C_ID
+#DIM CanTakePanties
+催眠タイプ = ARG + 1
+;NAS: Replaced
+CALL PROCESS_YOUJUTSU_COMMAND(MASTER,HYPNO_TARGET,19,ARG)
+RETURN RESULT
+IF !DISPELLING_HYPNO(催眠タイプ)
+	CALL CHECK_HYPNOSIS_COMMAND_SUCCESS(催眠タイプ, MASTER, HYPNO_TARGET)
+	TCVAR:Hypno_Attempts++
+	SIF RESULT == 99
+		RETURN 99
+ENDIF
+催眠結果 = RESULT:0
+Strength = RESULT:1
+SIF nSpoilerMode
+	PRINTFORMDL 명령의 강도는 {Strength}이다.
+IF 催眠結果 > 0
+	CALL 催眠発動の呪文(催眠結果)
+	SELECTCASE 催眠タイプ
+		CASE 1 ;Suppress Hostility
+			TALENT:反発抑制 = 1
+			IF 催眠判定 > 0
+				TALENT:機嫌 = 1
+				MARK:反発刻印 = 0
+			ELSE
+				SIF TALENT:機嫌 < 0
+					TALENT:機嫌 = 0
+				SIF MARK:反発刻印 > 0
+					MARK:反発刻印 -= 1
+			ENDIF
+			BASE:怒り = 0
+			CFLAG:不機嫌 = 0
+			CFLAG:ブチギレ = 0
+			TCVAR:挿入拒絶 = 0
+			PALAM:反感 = 0
+			PALAM:不快 = 0
+			PALAM:抑鬱 = 0
+		CASE 2 ;Fake Consent
+			TALENT:合意誤認 = 1
+			BASE:ムード = MAX(300 + 100 * 催眠判定, BASE:ムード)
+			BASE:理性 = MIN(300 - 100 * 催眠判定, BASE:理性)
+		CASE 3 ;Sexual Excitation/Inhibition
+			IF TCVAR:発情 == 1
+				TCVAR:発情 = 0
+				BASE:ムード = MIN(200, BASE:ムード)
+				BASE:理性 = MAX(400, BASE:理性)
+				IF 催眠判定 > 0
+					CFLAG:溜まってる度 = CFLAG:溜まってる度 / 3
+					SIF PALAM:欲情 >= 30000
+						PALAM:欲情 -= 30000
+				ELSE
+					CFLAG:溜まってる度 = CFLAG:溜まってる度 / 2
+					SIF PALAM:欲情 >= 10000
+						PALAM:欲情 -= 10000
+				ENDIF
+			ELSE
+				TCVAR:発情 = 1
+				BASE:ムード = MAX(MAXBASE:ムード * (2 + 催眠判定 * 2) / 4, BASE:ムード)
+				BASE:理性 = MIN(250 * (2 - 催眠判定), BASE:理性)
+				IF 催眠判定 > 0
+					CFLAG:溜まってる度 = CFLAG:溜まってる度 * 3
+					SIF PALAM:欲情 < 30000
+						PALAM:欲情 += 30000
+				ELSE
+					CFLAG:溜まってる度 = CFLAG:溜まってる度 * 2
+					SIF PALAM:欲情 < 10000
+						PALAM:欲情 += 10000
+				ENDIF
+			ENDIF
+		CASE 4
+			IF TCVAR:Common_Sense_Alteration_Status
+				TCVAR:Common_Sense_Alteration_Status = 0
+				SIF !EQUIP:0 && TCVAR:HYPNO_TARGET:Exhibitionist_Nudist_Sense != 2
+					CALL EXHIBITIONIST_NUDIST_DISPELLED_TEXT(2, 0)
+			ELSE
+				SIF Strength < 0
+					STRENGTH = 0
+				TCVAR:Common_Sense_Alteration_Status = Strength + 催眠結果
+				; IF TCVAR:Common_Sense_Alteration_Status
+				; 	CFLAG:うふふ = 1
+				; 	CFLAG:MASTER:うふふ = 1
+				; ENDIF
+			ENDIF
+		CASE 5 ;Erogenous Zones
+			TALENT:敏感な身体 = !TALENT:敏感な身体
+		CASE 6
+			SELECTCASE TCVAR:HYPNO_TARGET:Exhibitionist_Nudist_Sense
+				CASE 0
+					PRINTFORMDL %CALLNAME:HYPNO_TARGET%는 %HE_SHE(HYPNO_TARGET)%가 옷을 입고 있는 것에 혼란스러워하는 것 같다.
+					PRINTFORMDW %HE_SHE(HYPNO_TARGET,1)%은/는 만족스러운 듯 빠르게 %HIS_HER(HYPNO_TARGET)%의 속옷만 남기고 벗으며 씨익 웃는다.
+					FOR LOCAL,0,40
+					EQUIP:HYPNO_TARGET:LOCAL = 0
+					CFLAG:HYPNO_TARGET:(200 + LOCAL) = EQUIP:HYPNO_TARGET:LOCAL
+					NEXT
+					SIF !TCVAR:HYPNO_TARGET:本来の服装
+						TCVAR:HYPNO_TARGET:本来の服装 = CFLAG:HYPNO_TARGET:基本服装セット
+					CFLAG:HYPNO_TARGET:基本服装セット = 301
+					TCVAR:HYPNO_TARGET:Exhibitionist_Nudist_Sense = 1
+					CFLAG:Times_Made_Exhibitionist ++
+				CASE 1
+					CALL EXHIBITIONIST_NUDIST_DISPELLED_TEXT(1, 0)
+					TCVAR:HYPNO_TARGET:Exhibitionist_Nudist_Sense = 0
+				CASE 2
+					CALL EXHIBITIONIST_NUDIST_DISPELLED_TEXT(2, 0)
+					TCVAR:HYPNO_TARGET:Exhibitionist_Nudist_Sense = 1
+					CFLAG:Times_Made_Exhibitionist ++
+			ENDSELECT
+		CASE 7
+			SELECTCASE TCVAR:HYPNO_TARGET:Exhibitionist_Nudist_Sense
+				CASE 0, 1
+					CanTakePanties = 0
+					IF EQUIP:HYPNO_TARGET:下半身下着２ && CFLAG:HYPNO_TARGET:ノーパン == 0
+						CanTakePanties = 1
+						LOCALS '= PANTSNAME(EQUIP:HYPNO_TARGET:下半身下着２, HYPNO_TARGET)
+					ENDIF
+					PRINTFORMDL %CALLNAME:HYPNO_TARGET%는 %HE_SHE(HYPNO_TARGET)%가 옷을 입고 있는 것에 혼란스러워 보인다.
+					PRINTFORMDW %HE_SHE(HYPNO_TARGET,1)%은(는) %HIMSELF_HERSELF(HYPNO_TARGET)%를 재빨리 벗어버리고 만족스러운 듯 미소 짓는다.
+					IF CanTakePanties
+						SIF !PANTS_ALREADY_COLLECTED()
+							SETCOLOR C_PINK
+						PRINTFORM 당신은 %HIS_HER(HYPNO_TARGET)%에게 %LOCALS%를 받아도 괜찮겠습니까?
+						IF !PANTS_ALREADY_COLLECTED()
+							PRINTFORML  수집 목록에 없음
+						ELSE
+							PRINTFORML
+						ENDIF
+						RESETCOLOR
+						CALL ASK_YN
+						IF !RESULT
+							PRINTFORML 당신은 %CALLNAME:HYPNO_TARGET%의 %LOCALS%를 집는다.
+							CALL PANTS_GET(HYPNO_TARGET)
+						ELSE
+							CFLAG:HYPNO_TARGET:きょうのぱんつ = 0
+						ENDIF
+					ENDIF
+					;Hack: move the clothes removal code down here because PANTS_ALREADY_COLLECTED and PANTS_GET won't work if the character isn't wearing panties
+					FOR LOCAL,0,40
+					EQUIP:HYPNO_TARGET:LOCAL = 0
+					CFLAG:HYPNO_TARGET:(200 + LOCAL) = EQUIP:HYPNO_TARGET:LOCAL
+					NEXT
+					SIF !TCVAR:HYPNO_TARGET:本来の服装
+						TCVAR:HYPNO_TARGET:本来の服装 = CFLAG:HYPNO_TARGET:基本服装セット
+					CFLAG:HYPNO_TARGET:基本服装セット = 300
+					CFLAG:HYPNO_TARGET:ノーパン = 1
+					CFLAG:HYPNO_TARGET:きょうのブラ = 0
+					TCVAR:HYPNO_TARGET:Exhibitionist_Nudist_Sense = 2
+					CFLAG:Times_Made_Nudist ++
+				CASE 2
+					CALL EXHIBITIONIST_NUDIST_DISPELLED_TEXT(2, 0)
+					TCVAR:HYPNO_TARGET:Exhibitionist_Nudist_Sense = 0
+			ENDSELECT
+		CASE 8
+			IF CFLAG:HYPNO_TARGET:行動
+				BASE:ARG:仕事量 = 0
+				CFLAG:ARG:行動 = 0
+				PRINTFORMDW %CALLNAME:HYPNO_TARGET%은(는) 오늘 %HE_SHE(HYPNO_TARGET)%가 조금 일찍 퇴근해도 괜찮다고 결정한다.
+			ENDIF
+			PRINTFORMDW %CALLNAME:HYPNO_TARGET%는 약간 혼란스러워 보이지만 너와 데이트하러 가는 것에 동의한다.
+			FLAG:催眠デート相手 = HYPNO_TARGET
+			CALLF DATEME(HYPNO_TARGET)
+		CASE 9
+			IF CFLAG:Hypno_Orgasm_Denial && (PALAM:快Ｃ >= PALAMLV:3 || PALAM:快Ｖ >= PALAMLV:3 || PALAM:快Ａ >= PALAMLV:3 || PALAM:快Ｂ >= PALAMLV:3 || PALAM:快Ｍ >= PALAMLV:3)
+				PRINTFORMDW %CALLNAME:HYPNO_TARGET%의 몸이 이완되고, %HE_SHE(HYPNO_TARGET)%은 안도하며 신음한다.
+				CFLAG:Hypno_Orgasm_Denial = 0
+			ELSEIF !CFLAG:Hypno_Orgasm_Denial && (PALAM:快Ｃ >= PALAMLV:3 || PALAM:快Ｖ >= PALAMLV:3 || PALAM:快Ａ >= PALAMLV:3 || PALAM:快Ｂ >= PALAMLV:3 || PALAM:快Ｍ >= PALAMLV:3)
+				PRINTFORMDW %CALLNAME:HYPNO_TARGET%의 몸이 긴장하고, %HE_SHE(HYPNO_TARGET)%은 좌절하며 신음한다.
+				CFLAG:Hypno_Orgasm_Denial = 1
+			ELSEIF CFLAG:Hypno_Orgasm_Denial
+				PRINTFORMDW %CALLNAME:HYPNO_TARGET%의 몸이 이완된다. %HE_SHE(HYPNO_TARGET,1)%는 혼란스러워 보인다...
+				CFLAG:Hypno_Orgasm_Denial = 0
+			ELSE
+				PRINTFORMDW %CALLNAME:HYPNO_TARGET%의 몸이 경직된다. %HE_SHE(HYPNO_TARGET,1)%는 혼란스러워 보인다...
+				CFLAG:Hypno_Orgasm_Denial = 1
+			ENDIF
+		CASE 10
+			CALL HYPNO_TALENT_REASSIGN
+	ENDSELECT
+ENDIF
+PRINTL 
+;Display images
+IF 顔絵付きメッセージ
+	RESULTS =
+	キャラ画像表示サイズ比 = 100
+	IF RESULT == 0
+		CALL GET_BASE_RESOURCE(HYPNO_TARGET, "顔絵", , "笑顔")
+		SIF !RESULT
+			CALL GET_BASE_RESOURCE(HYPNO_TARGET, "顔絵", , "通常")
+	ELSEIF RESULT == 1 || RESULT == 2
+		CALL GET_BASE_RESOURCE(HYPNO_TARGET, "顔絵", , "発情")
+		SIF !RESULT
+			CALL GET_BASE_RESOURCE(HYPNO_TARGET, "顔絵", , "通常")
+	ELSEIF RESULT == 2
+		IF TCVAR:発情 == 1
+			CALL GET_BASE_RESOURCE(HYPNO_TARGET, "顔絵", "裸", "発情")
+			SIF !RESULT
+				CALL GET_BASE_RESOURCE(HYPNO_TARGET, "顔絵", , "通常")
+		ELSE
+			CALL GET_BASE_RESOURCE(HYPNO_TARGET, "顔絵", , "発情")
+		ENDIF
+	ENDIF
+	SIF FLAG:マルチサイズ
+		デフォルトキャラ画像横幅 = SPRITEHEIGHT(RESULTS)
+	CALL IMAGE_SET(RESULTS, 0, 0, キャラ画像表示サイズ比, 0)
+	CALL SIMULTANEOUS_IMAGE_DISPLAY(0, 0, 1, -1)
+ENDIF
+;#; PRINTFORMDL Sending message with type {催眠タイプ} and status {催眠結果}
+CALL KOJO_MESSAGE_SEND("EVENT",666,HYPNO_TARGET,催眠タイプ,催眠結果)
+IF RESULT > 0
+	PRINTL 
+ELSEIF 顔絵付きメッセージ
+	PRINTW 
+ENDIF
+催眠判定 = 0
+RETURN 催眠結果
+
+@CHECK_HYPNOSIS_COMMAND_SUCCESS(催眠タイプ, HYPNOTIST, HYPNO_TARGET)
+#DIM DYNAMIC 催眠タイプ
+#DIM DYNAMIC 催眠判定
+#DIM DYNAMIC 催眠結果
+#DIM DYNAMIC C_ID
+#DIM DYNAMIC HYPNOTIST
+#DIM DYNAMIC HYPNO_TARGET
+#DIM DYNAMIC HYPNOTIST_ROLL
+#DIM DYNAMIC HYPNO_TARGET_ROLL
+#DIM DYNAMIC HYPNOTIST_BONUS
+#DIM DYNAMIC HYPNO_TARGET_BONUS
+#DIM DYNAMIC HYPNOTIST_TOTAL_SCORE
+#DIM DYNAMIC HYPNO_TARGET_TOTAL_SCORE
+#DIM DYNAMIC HYPNOTIST_BASE_ROLL
+#DIMS DYNAMIC EFFECTIVENESS_MULTIPLIER_TEXT
+#DIMS DYNAMIC RESISTANCE_MULTIPLIER_TEXT
+;NAS REPLACED WITH MAGIC SYSTEM IN
+CALL CHECK_COMMAND_SUCCESS_YOUJUTSU_19(MASTER,TARGET,催眠タイプ)
+RETURN RESULT,RESULT:1
+;NAS edits, already covered by Youjutsu system
+IF GROUPMATCH(催眠タイプ, 6, 7)
+	BASE:HYPNOTIST:TSP -= 1000
+ELSEIF 催眠タイプ == 10
+	BASE:HYPNOTIST:TSP -= 2000
+ELSE
+	BASE:HYPNOTIST:TSP -= 500
+ENDIF
+催眠判定 = 0
+IF !CFLAG:HYPNO_TARGET:睡眠
+	;対抗
+	$HYPNO_CHECK
+	CALL HANDLE_SPECIAL_HYPNOSIS_CASES(催眠タイプ)
+	IF RESULT == 99
+		RESETCOLOR
+		RETURN 99
+	ENDIF
+	;HYPNOTIST_ROLL = 1 + RAND:(MAX(1, (30 + TALENT:HYPNOTIST:催眠技能Lv*20)))
+	[IF_DEBUG]
+	; HYPNOTIST_ROLL += 9999
+	[ENDIF]
+	HYPNO_TARGET_ROLL = 1 + RAND:(MAX(1, ((100 - (ABL:HYPNO_TARGET:催眠奴隷*10)) + (10 * TCVAR:HYPNO_TARGET:Hypno_Attempts))))
+	HYPNOTIST_BONUS = 0
+	HYPNO_TARGET_BONUS = 0
+	SIF TALENT:HYPNOTIST:禁断の知識
+		HYPNOTIST_BONUS += 20
+	SIF CFLAG:HYPNO_TARGET:うふふ
+		HYPNOTIST_BONUS += 30
+	SIF TALENT:HYPNO_TARGET:禁断の知識
+		HYPNO_TARGET_BONUS += 20
+	SIF TALENT:HYPNO_TARGET:淫乱
+		HYPNO_TARGET_BONUS -= 20
+	SIF TALENT:HYPNO_TARGET:服従
+		HYPNO_TARGET_BONUS -= 20
+	SIF TALENT:HYPNO_TARGET:妄信
+		HYPNO_TARGET_BONUS -= 20
+	SIF TALENT:HYPNO_TARGET:妄想の産物
+		HYPNO_TARGET_BONUS -= 100
+	SELECTCASE TALENT:HYPNO_TARGET:人間
+		;仙人
+		CASE 2
+			HYPNO_TARGET_BONUS += 30
+			;天人
+		CASE 3
+			HYPNO_TARGET_BONUS += 30
+			;月人
+		CASE 4
+			HYPNO_TARGET_BONUS += 20
+			;魔界人
+		CASE 5
+			HYPNO_TARGET_BONUS += 10
+	ENDSELECT
+	SIF TALENT:HYPNO_TARGET:妖怪
+		HYPNO_TARGET_BONUS += 30
+	SIF TALENT:HYPNO_TARGET:妖精
+		HYPNO_TARGET_BONUS += 10
+	SIF TALENT:HYPNO_TARGET:神霊
+		HYPNO_TARGET_BONUS += 50
+	SIF TALENT:HYPNO_TARGET:幽霊
+		HYPNO_TARGET_BONUS += 30
+	SIF TALENT:HYPNO_TARGET:付喪神
+		HYPNO_TARGET_BONUS += 30
+	SIF TALENT:HYPNO_TARGET:人形
+		HYPNO_TARGET_BONUS += 30
+	SELECTCASE TALENT:HYPNO_TARGET:追加種族
+		;巫女
+		CASE 1
+			HYPNO_TARGET_BONUS += 20
+			;蓬莱人
+		CASE 4
+			HYPNO_TARGET_BONUS += 20
+	ENDSELECT
+	HYPNOTIST_BONUS = MAX(0, HYPNOTIST_BONUS + (15 * BASE:HYPNOTIST:体力) / MAXBASE:HYPNOTIST:体力 + (25 * BASE:HYPNOTIST:気力) / MAXBASE:HYPNOTIST:気力 - (100 * BASE:HYPNOTIST:酒気) / MAXBASE:HYPNOTIST:酒気 + ABL:HYPNOTIST:技巧 * 15 + ABL:HYPNOTIST:教養 * 15)
+	HYPNO_TARGET_BONUS = MAX(0, HYPNO_TARGET_BONUS + MARK:HYPNO_TARGET:反発刻印 * 30 + (50 * BASE:HYPNO_TARGET:体力) / MAXBASE:HYPNO_TARGET:体力 + (75 * BASE:HYPNO_TARGET:気力) / MAXBASE:HYPNO_TARGET:気力 - (75 * BASE:HYPNO_TARGET:ムード) / MAXBASE:HYPNO_TARGET:ムード + (100 * BASE:HYPNO_TARGET:理性) / MAXBASE:HYPNO_TARGET:理性 + (100 * BASE:HYPNO_TARGET:怒り) / MAXBASE:HYPNO_TARGET:怒り - (100 * BASE:HYPNO_TARGET:酒気) / MAXBASE:HYPNO_TARGET:酒気 - CFLAG:HYPNO_TARGET:信頼度 / 10 - ABL:HYPNO_TARGET:親密 * 3 - ABL:HYPNO_TARGET:従順 * 5 - ABL:HYPNO_TARGET:欲望 * 7 + MIN(ABL:HYPNO_TARGET:技巧, 10) * 10 + ABL:HYPNO_TARGET:教養 * 15)
+	;This is so characters with higher levels of hypno resistance aren't always getting Critical Successes from the bonuses to their base resistance rolls
+	HYPNOTIST_BASE_ROLL = HYPNO_TARGET_ROLL
+	;added
+	SELECTCASE TALENT:HYPNOTIST:催眠耐性
+		CASE -2
+			TIMES HYPNOTIST_ROLL , 0.50
+			EFFECTIVENESS_MULTIPLIER_TEXT = %" "%/ 2
+		CASE -1
+			TIMES HYPNOTIST_ROLL , 0.75
+			EFFECTIVENESS_MULTIPLIER_TEXT = %" "%* 3/4
+		CASE 1
+			TIMES HYPNOTIST_ROLL , 1.5
+			EFFECTIVENESS_MULTIPLIER_TEXT = %" "%* 1.5
+		CASE 2
+			HYPNOTIST_ROLL *= 2
+			EFFECTIVENESS_MULTIPLIER_TEXT = %" "%* 2
+		CASE 3
+			HYPNOTIST_ROLL *= 3
+			EFFECTIVENESS_MULTIPLIER_TEXT = %" "%* 3
+		CASE 4
+			HYPNOTIST_ROLL *= 10
+			EFFECTIVENESS_MULTIPLIER_TEXT = %" "%* 10
+	ENDSELECT
+	;added
+	SELECTCASE TALENT:HYPNO_TARGET:催眠耐性
+		CASE -2
+			TIMES HYPNO_TARGET_ROLL , 0.50
+			RESISTANCE_MULTIPLIER_TEXT = %" "%/ 2
+		CASE -1
+			TIMES HYPNO_TARGET_ROLL , 0.75
+			RESISTANCE_MULTIPLIER_TEXT = %" "%* 3/4
+		CASE 1
+			TIMES HYPNO_TARGET_ROLL , 1.5
+			RESISTANCE_MULTIPLIER_TEXT = %" "%* 1.5
+		CASE 2
+			HYPNO_TARGET_ROLL *= 2
+			RESISTANCE_MULTIPLIER_TEXT = %" "%* 2
+		CASE 3
+			HYPNO_TARGET_ROLL *= 3
+			RESISTANCE_MULTIPLIER_TEXT = %" "%* 3
+		CASE 4
+			HYPNO_TARGET_ROLL *= 10
+			RESISTANCE_MULTIPLIER_TEXT = %" "%* 10
+	ENDSELECT
+	;Special case: Sekibanki (has multiple heads, so randomize her resistance to represent you hitting more/fewer of them)
+	IF HYPNO_TARGET == [[蛮奇]]
+		SELECTCASE RAND:3
+			CASE 0
+				PRINTFORML 
+			CASE 1
+				TIMES HYPNO_TARGET_ROLL , 1.5
+			CASE 2
+				HYPNO_TARGET_ROLL *= 2
+		ENDSELECT
+	ENDIF
+	;Special case: Hisami (becomes obsessed with you when fallen and already obsessed with Zanmu, so she becomes easy to hypnotize)
+	SIF HYPNO_TARGET == [[日狭美]] && (FLAG:なりきり == [[残無]] || IS_FALLEN([[日狭美]]))
+		TALENT:[[日狭美]]:催眠耐性 = -2
+	HYPNOTIST_TOTAL_SCORE = HYPNOTIST_ROLL + HYPNOTIST_BONUS
+	HYPNO_TARGET_TOTAL_SCORE = HYPNO_TARGET_ROLL + HYPNO_TARGET_BONUS
+	SIF GETBIT(CFLAG:HYPNO_TARGET:既成事実,6)
+		HYPNO_TARGET_TOTAL_SCORE = HYPNO_TARGET_TOTAL_SCORE / 2
+	PRINTFORM %CALLNAME:HYPNOTIST%의 능력:
+	;PRINTFORM 1D{30 + TALENT:HYPNOTIST:催眠技能Lv*20}%EFFECTIVENESS_MULTIPLIER_TEXT% + {HYPNOTIST_BONUS} = {HYPNOTIST_ROLL} + {HYPNOTIST_BONUS} =
+	SIF HYPNOTIST_TOTAL_SCORE > HYPNO_TARGET_TOTAL_SCORE && (HYPNOTIST_ROLL >= 5 || HYPNO_TARGET_ROLL < 5)
+		FONTBOLD
+	PRINTFORM {HYPNOTIST_TOTAL_SCORE}
+	FONTREGULAR
+	IF HYPNOTIST_ROLL > 95
+		FONTBOLD
+		SETCOLOR C_AQUA
+		PRINTL   치명적인 성공! 
+		RESETCOLOR
+		FONTREGULAR
+		催眠判定 += 1
+	ELSEIF HYPNOTIST_ROLL < 5
+		FONTBOLD
+		SETCOLOR 255,0,0
+		PRINTL   치명적인 실패! 
+		RESETCOLOR
+		FONTREGULAR
+		催眠判定 -= 1
+	ELSE
+		PRINTL 
+	ENDIF
+	IF 催眠判定 == 0
+		PRINTFORM %CALLNAME:HYPNO_TARGET%의 저항력:
+		PRINTFORM 1D{(100 - (ABL:HYPNO_TARGET:催眠奴隷*10)) + (10 * TCVAR:HYPNO_TARGET:Hypno_Attempts)}%RESISTANCE_MULTIPLIER_TEXT% + {HYPNO_TARGET_BONUS} = {HYPNO_TARGET_ROLL} + {HYPNO_TARGET_BONUS} = 
+		SIF HYPNO_TARGET_TOTAL_SCORE > HYPNOTIST_TOTAL_SCORE && (HYPNO_TARGET_ROLL >= 5 || HYPNOTIST_ROLL < 5)
+			FONTBOLD
+		PRINTFORM {HYPNO_TARGET_TOTAL_SCORE}
+	ENDIF
+	FONTREGULAR
+	IF HYPNOTIST_BASE_ROLL > 95
+		IF 催眠判定 == 0
+			FONTBOLD
+			SETCOLOR C_AQUA
+			PRINTL   치명적인 성공이다! 
+			RESETCOLOR
+			FONTREGULAR
+			催眠判定 -= 1
+		ENDIF
+	ELSEIF HYPNOTIST_BASE_ROLL < 5
+		IF 催眠判定 == 0
+			FONTBOLD
+			SETCOLOR 255,0,0
+			PRINTL   치명적인 실패! 
+			RESETCOLOR
+			FONTREGULAR
+			催眠判定 += 1
+		ENDIF
+	ELSE
+		PRINTL 
+	ENDIF
+	IF 催眠判定 > 0
+		IF 催眠判定 > 1
+			PRINT 결과:
+			FONTBOLD
+			SETCOLOR C_AQUA
+			PRINTW 더블 크리티컬 성공! 
+			RESETCOLOR
+			FONTREGULAR
+			催眠判定 = 1
+			催眠結果 = 3
+			EXP:HYPNOTIST:催眠経験 += 5
+			EXP:HYPNO_TARGET:催眠奴隷経験 += 5
+			SOURCE:HYPNO_TARGET:欲情 += 3000
+			SOURCE:HYPNO_TARGET:屈従 += 6000
+			SOURCE:HYPNO_TARGET:恭順 += 1500
+		ELSE
+			PRINT 결과:
+			FONTBOLD
+			SETCOLOR C_AQUA
+			PRINTW 치명적인 성공! 
+			RESETCOLOR
+			FONTREGULAR
+			催眠判定 = 0
+			催眠結果 = 2
+			EXP:HYPNOTIST:催眠経験 += 3
+			EXP:HYPNO_TARGET:催眠奴隷経験 += 3
+			SOURCE:HYPNO_TARGET:欲情 += 2000
+			SOURCE:HYPNO_TARGET:屈従 += 4000
+			SOURCE:HYPNO_TARGET:恭順 += 1000
+		ENDIF
+	ELSEIF 催眠判定 < 0
+		IF 催眠判定 < -1
+			PRINT 결과:
+			FONTBOLD
+			SETCOLOR 255,0,0
+			PRINTW 두 번의 치명적인 실패! 
+			RESETCOLOR
+			FONTREGULAR
+			PRINTL 
+			PRINTW 최면 실패했다.
+			PRINTL 
+			催眠結果 = -3
+			IF HYPNO_TARGET != MASTER && !GETBIT(CFLAG:HYPNO_TARGET:既成事実,6)
+				SIF CFLAG:HYPNO_TARGET:2 >= 20
+					CALL CHANGE_CFLAG(2,HYPNO_TARGET,MAX(CFLAG:HYPNO_TARGET:2 / 20 * -1, -80) )
+				SIF CFLAG:HYPNO_TARGET:4 >= 5
+					CALL CHANGE_CFLAG(4,HYPNO_TARGET,MAX(CFLAG:HYPNO_TARGET:4 /  5 * -1, -40) )
+			ENDIF
+			BASE:HYPNO_TARGET:怒り += 400
+			EXP:HYPNOTIST:催眠経験 += 2
+			EXP:HYPNO_TARGET:催眠奴隷経験 += 1
+		ELSE
+			PRINT 결과:
+			FONTBOLD
+			SETCOLOR 255,0,0
+			PRINTW 치명적인 실패! 
+			RESETCOLOR
+			FONTREGULAR
+			PRINTL 
+			PRINTW 최면 실패했다.
+			PRINTL 
+			催眠結果 = -2
+			IF HYPNO_TARGET != MASTER && !GETBIT(CFLAG:HYPNO_TARGET:既成事実,6)
+				SIF CFLAG:HYPNO_TARGET:2 >= 30
+					CALL CHANGE_CFLAG(2,HYPNO_TARGET,MAX(CFLAG:HYPNO_TARGET:2 / 30 * -1, -50) )
+				SIF CFLAG:HYPNO_TARGET:4 >= 10
+					CALL CHANGE_CFLAG(4,HYPNO_TARGET,MAX(CFLAG:HYPNO_TARGET:4 / 10 * -1, -20) )
+			ENDIF
+			BASE:HYPNO_TARGET:怒り += 200
+			EXP:HYPNOTIST:催眠経験 += 2
+			EXP:HYPNO_TARGET:催眠奴隷経験 += 1
+		ENDIF
+		催眠判定 = 0
+		TFLAG:Info表示中 = 0
+		RETURN 催眠結果, HYPNOTIST_TOTAL_SCORE - HYPNO_TARGET_TOTAL_SCORE
+	ELSEIF HYPNOTIST_TOTAL_SCORE > HYPNO_TARGET_TOTAL_SCORE
+		FONTBOLD
+		PRINTFORM {HYPNOTIST_TOTAL_SCORE}
+		FONTREGULAR
+		PRINTFORMW  > {HYPNO_TARGET_TOTAL_SCORE}
+		催眠結果 = 1
+		EXP:HYPNOTIST:催眠経験 += 2
+		EXP:HYPNO_TARGET:催眠奴隷経験 += 2
+		SOURCE:HYPNO_TARGET:欲情 += 1000
+		SOURCE:HYPNO_TARGET:屈従 += 2000
+		SOURCE:HYPNO_TARGET:恭順 += 500
+	ELSEIF HYPNOTIST_TOTAL_SCORE == HYPNO_TARGET_TOTAL_SCORE
+		PRINTFORMW {HYPNOTIST_TOTAL_SCORE} = {HYPNO_TARGET_TOTAL_SCORE}
+		PRINTL 
+		GOTO HYPNO_CHECK
+	ELSE
+		PRINTFORM {HYPNOTIST_TOTAL_SCORE} < 
+		FONTBOLD
+		PRINTFORMW {HYPNO_TARGET_TOTAL_SCORE}
+		FONTREGULAR
+		PRINTL 
+		PRINTW 최면 실패했다.
+		PRINTL 
+		催眠結果 = -1
+		IF HYPNO_TARGET != MASTER && !GETBIT(CFLAG:HYPNO_TARGET:既成事実,6)
+			SIF CFLAG:HYPNO_TARGET:2 >= 30
+				CALL CHANGE_CFLAG(2,HYPNO_TARGET,MAX(CFLAG:HYPNO_TARGET:2 / 30 * -1, -50) )
+			SIF CFLAG:HYPNO_TARGET:4 >= 10
+				CALL CHANGE_CFLAG(4,HYPNO_TARGET,MAX(CFLAG:HYPNO_TARGET:4 / 10 * -1, -20) )
+		ENDIF
+		催眠判定 = 0
+		TFLAG:Info表示中 = 0
+		EXP:HYPNOTIST:催眠経験 += 2
+		EXP:HYPNO_TARGET:催眠奴隷経験 += 1
+		RETURN 催眠結果, HYPNOTIST_TOTAL_SCORE - HYPNO_TARGET_TOTAL_SCORE
+	ENDIF
+	PRINTL 
+	RETURN 催眠結果, HYPNOTIST_TOTAL_SCORE - HYPNO_TARGET_TOTAL_SCORE
+ENDIF
+
+@EXHIBITIONIST_NUDIST_DISPELLED_TEXT(ARG, ARG:1)
+IF ARG:1
+	PRINTFORMDL %CALLNAME:TARGET%갑자기 깨닫는다 %HES_SHES(TARGET)% \@ ARG == 2 ? 벌거벗은 # %HIS_HER(TARGET)%의 속옷 안에 \@.
+ELSE
+	PRINTFORMDL 최면이 풀리자, %조사처리(CALLNAME:TARGET,"는")% 갑자기 자신이 %HES_SHES(TARGET)% \@ ARG ? 나체 # %HIS_HER(TARGET)% 속 옷을 입고 있음을 깨달았다 \@.
+ENDIF
+PRINTFORMDW 「\@ TARGET == 57 && !TALENT:恋慕 ? A Shishi-guchi mask가 주변에 떠다닌다 %HIM_HER(TARGET)% 반면 %HE_SHE(TARGET)%는 %HIMSELF_HERSELF(TARGET)%를 가리려 하고 # %HE_SHE(TARGET,1)%는 진홍색으로 변하며 %HIMSELF_HERSELF(TARGET)%를 %HIS_HER(TARGET)%의 손으로 가리려 한다 \@」
+SELECTCASE CFLAG:TARGET:性格傾向
+	;気弱系 / Timid
+	CASE 1
+		PRINTFORMDL %TEXTR(@"%CALLNAME:TARGET% ~처럼 보인다 %HES_SHES(TARGET)% 울기 직전%조사처리(CALLNAME:TARGET,"의")% 입술이 떨리며 %HE_SHE(TARGET)% 숨을 곳을 찾으려 한다/%CALLNAME:TARGET%주변을 미친 듯이 두리번거리며 숨을 곳을 찾는다")%...
+		;強気系 / Confident
+	CASE 2
+		PRINTFORMDL %CALLNAME:TARGET%갈아댄다 %HIS_HER(TARGET)% 이빨로 %HE_SHE(TARGET)% %TEXTR(@"looks around for %HIS_HER(TARGET)% missing clothes/%HE_SHE(TARGET,1)% tries to find something else to cover %HIMSELF_HERSELF(TARGET)% with/tries to salvage some of %HIS_HER(TARGET)% dignity")%...
+		;素直系 / Upfront
+	CASE 3
+		SIF !TARGET == 57 || TALENT:恋慕
+			PRINTFORMDL %TEXTR(@"%CALLNAME:TARGET%무언가로 가릴 것을 찾으며 태연한 척하려고 애쓴다 %HIMSELF_HERSELF(TARGET)% ~로 덮을%CALLNAME:TARGET%깊게 숨을 들이쉬며 침착함을 유지하려 한다%CALLNAME:TARGET%쑥스럽게 미소 짓는다 ~하면서 %HE_SHE(TARGET)% 슬쩍 빠져나가려고 한다")%...
+		;真面目系 / Serious
+	CASE 4
+		PRINTFORMDL %TEXTR(@"%조사처리(CALLNAME:TARGET,"는")% 충격받고 굴욕감을 느낀다/%조사처리(CALLNAME:TARGET,"는")%(는) %HIMSELF_HERSELF(TARGET)%를 가릴 다른 것을 찾으며/ %조사처리(CALLNAME:TARGET,"는")%(는) 주변을 둘러보며 %HIM_HER(TARGET)%에게 무슨 일이 일어났는지 파악하려고 노력한다")%...
+		;その他 / Other
+	CASEELSE
+		;Nothing (unless someone else can think of something)
+ENDSELECT
+IF CFLAG:TARGET:初期位置 == CFLAG:TARGET:現在位置 || CFLAG:TARGET:自宅位置 == CFLAG:TARGET:現在位置
+	PRINTFORMDW %HE_SHE(TARGET,1)%은 옷을 좀 찾아 재빨리 %HIMSELF_HERSELF(TARGET)%를 입는다.
+	CALL OKIGAE(TARGET, 100 + TARGET)
+ELSEIF CFLAG:MASTER:初期位置 == CFLAG:TARGET:現在位置 || CFLAG:MASTER:自宅位置 == CFLAG:TARGET:現在位置
+	IF ABS(TALENT:TARGET:体型 - TALENT:MASTER:体型) <= 2
+		PRINTFORMDW %HE_SHE(TARGET,1)%이 당신의 옷을 좀 훔쳐서 재빨리 %HIMSELF_HERSELF(TARGET)%를 입는다.
+		IF CFLAG:MASTER:基本服装セット == 100
+			IF IS_MALE(MASTER)
+				CALL OKIGAE(TARGET, 1)
+			ELSE
+				CALL OKIGAE(TARGET, 2)
+			ENDIF
+		ELSE
+			CALL OKIGAE(TARGET, CFLAG:MASTER:基本服装セット)
+		ENDIF
+	ELSE
+		PRINTFORMDW %HE_SHE(TARGET,1)%이 네 옷을 좀 훔쳐 입으려고 하지만, 그건 %HIM_HER(TARGET)%에게 맞지 않는다.
+	ENDIF
+ELSE
+	FOR LOCAL,1,CHARANUM
+	IF CFLAG:LOCAL:初期位置 == CFLAG:TARGET:現在位置 || CFLAG:LOCAL:自宅位置 == CFLAG:TARGET:現在位置
+		IF ABS(TALENT:TARGET:体型 - TALENT:LOCAL:体型) <= 2
+			PRINTFORMDW %HE_SHE(TARGET,1)%은(는) %CALLNAME:LOCAL%의 옷을 좀 훔쳐서 재빨리 %HIMSELF_HERSELF(TARGET)%을 입는다.
+			CALL OKIGAE(TARGET, 100 + LOCAL)
+			BREAK
+		ELSE
+			PRINTFORMDW %HE_SHE(TARGET,1)%은/는 %CALLNAME:LOCAL%의 옷을 좀 훔쳐 입어보려 하지만, 그 옷들은 %HIM_HER(TARGET)%에게 맞지 않는다.
+		ENDIF
+	ENDIF
+	NEXT
+ENDIF
+
+@DISPELLING_HYPNO(ARG)
+#FUNCTION
+SIF ARG == 4 && TCVAR:Common_Sense_Alteration_Status
+	RETURNF 1
+SIF ARG == 5 && TALENT:敏感な身体
+	RETURNF 1
+SIF ARG == 6 && TCVAR:Exhibitionist_Nudist_Sense == 1
+	RETURNF 1
+SIF ARG == 7 && TCVAR:Exhibitionist_Nudist_Sense == 2
+	RETURNF 1
+RETURNF 0
+
+@NON_HYPNOTIZED_EYEWITNESSES
+#FUNCTION
+SIF GETBIT(FLAG:潜伏,0) && BASE:MASTER:潜伏率 > 0
+	RETURNF 0
+FOR LOCAL, 0, CHARANUM
+SIF LOCAL == MASTER
+	CONTINUE
+SIF (CFLAG:LOCAL:現在位置 == CFLAG:MASTER:現在位置 || CAN_MOVE(CFLAG:LOCAL:現在位置, CFLAG:MASTER:現在位置) & 2) && TCVAR:LOCAL:Common_Sense_Alteration_Status < 75 && FLAG:催眠強度 < 75 && LOCAL != TARGET
+	RETURNF 1
+NEXT
+RETURNF 0
+
+@EXHIBITIONIST_NUDIST_REACTION(ARG)
+#DIM TARGETNUM
+#DIM CHARA
+SIF TCVAR:ARG:Exhibitionist_Nudist_Sense || TCVAR:ARG:Common_Sense_Alteration_Status >= 75 || FLAG:催眠強度 > 75
+	RETURN 0
+TARGETNUM = GET_TARGETNUM()
+;部屋に映姫様一人なら当然0
+SIF TARGETNUM == 1
+	RETURN 0
+FOR COUNT,1, TARGETNUM + 1
+CHARA = TARGET:COUNT
+;地獄の断頭台withジェロニモ状態を防ぐため口上主はスキップ
+SIF CHARA == ARG
+	CONTINUE
+IF (TCVAR:CHARA:Exhibitionist_Nudist_Sense || TCVAR:CHARA:Subconscious_Exhibitionist_Nudist_Sense) && ((CFLAG:現在位置 != 連れ込み宿 && CFLAG:現在位置 != ラブホ && CFLAG:現在位置 != OMANEKIBEYA()) && !特殊うふふ条件(CHARA))
+	IF ONCE(@"ExhibitionistNudistReaction_{ARG}_{CHARA}_{TCVAR:CHARA:Exhibitionist_Nudist_Sense}")
+		;todo diff reactions based on traits (perverted + opposite sex / same sex if bi/misogynist and exhibitionist is male/misandris and exhibitionist is female, slut, ignorant, etc.)
+		PRINTFORMDL %CALLNAME:ARG%는 충격을 받는다 %CALLNAME:CHARA% \@ TCVAR:CHARA:Exhibitionist_Nudist_Sense == 2 ? 벌거벗은 # %HIS_HER(CHARA)%의 속옷을 입고 \@ 공개적으로
+		CALL KOJO_MESSAGE_SEND("EVENT",1,ARG,667,CHARA)
+		IF TCVAR:CHARA:Subconscious_Exhibitionist_Nudist_Sense
+			CALL EXHIBITIONIST_NUDIST_DISPELLED_TEXT(TCVAR:CHARA:Subconscious_Exhibitionist_Nudist_Sense, 1)
+			TCVAR:CHARA:Subconscious_Exhibitionist_Nudist_Sense = 0
+		ENDIF
+		PRINTFORMDL 
+	ENDIF
+ENDIF
+NEXT
+;Remove temp talents at the end of the day
+
+@EVENTEND
+#PRI
+#DIM TEMP_CHARA
+#DIM TEMP_TRAIT
+#DIM TEMP_OLD
+#DIM TEMP_NEW
+FOR LOCAL, CHARANUM-1, 0, -1
+SIF TALENT:LOCAL:敏感な身体
+	TALENT:LOCAL:敏感な身体 = 0
+IF TALENT:LOCAL:合意誤認
+	TALENT:LOCAL:合意誤認 = 0
+	CFLAG:LOCAL:Morning_Event_Guaranteed = 1
+ENDIF
+NEXT
+; ;#;PRINTFORMDL Length is {DT_ROW_LENGTH("TempHypnoTraits")}
+; WHILE FLAG:TEMP_HYPNO_COUNT > 0
+; 	FLAG:TEMP_HYPNO_COUNT --
+; 	;#;PRINTFORMDL FLAG:TEMP_HYPNO_COUNT is {FLAG:TEMP_HYPNO_COUNT}
+; 	TEMP_CHARA = DT_CELL_GET("TempHypnoTraits", FLAG:TEMP_HYPNO_COUNT, "chara")
+; 	TEMP_TRAIT = DT_CELL_GET("TempHypnoTraits", FLAG:TEMP_HYPNO_COUNT, "talent")
+; 	TEMP_OLD = DT_CELL_GET("TempHypnoTraits", FLAG:TEMP_HYPNO_COUNT, "old")
+; 	TEMP_NEW = DT_CELL_GET("TempHypnoTraits", FLAG:TEMP_HYPNO_COUNT, "new")
+; 	;#;PRINTFORMDL Checking to see if TALENT:{TEMP_CHARA}:{TEMP_TRAIT} == {TEMP_NEW}
+; 	IF TALENT:TEMP_CHARA:TEMP_TRAIT == TEMP_NEW
+; 		TALENT:TEMP_CHARA:TEMP_TRAIT = TEMP_OLD
+; 		;#;PRINTFORMDL Changed TALENT:{TEMP_CHARA}:{TEMP_TRAIT} to {TEMP_OLD}
+; 	ENDIF
+; WEND
+; DT_CLEAR "TempHypnoTraits"
+
+@HANDLE_SPECIAL_HYPNOSIS_CASES(ARG)
+;Special cases
+SELECTCASE TARGET
+	CASE [[さとり]] ;Satori
+		IF TALENT:49:恋人
+			PRINTFORMDW %CALLNAME:[[さとり]]%은(는) 당신을 향해 빙긋 웃는다.
+			CALL M_KOJO_COLOR_K49
+			PRINTFORMW 「%SPLIT_G(@"음... 딱 한 번만 네 뜻대로 해줄 수 있을 것 같아. 최면이라니, 응? 나도 저항하는 연습이 좀 필요할지도 모르겠네... 사랑하게 만들려고 날 최면 걸 필요 없어, 바보야! 하지만 정말 원한다면... 오, 최면술 훈련하고 있었어? 네 실력을 보여줘!: 안 돼에... 내 정신이 하얗게 변하는 게 느껴져～!: 좋아, 대신 다음엔 내가 너한테 최면 거는 걸 허락해 줘야 해!: 날 최면에 걸리게 하고 싶다고-?\n세상에, 당신이 그렇게 음란한 줄은 몰랐어...\”:정말 많이 사랑해, %CHAN_KUN(49)%... 온 밤을 함께 사랑할 수 있게 나를 엄청 흥분하게 만들고 싶어서 최면을 걸고 싶어?\”\nM-\@ IS_MALE(MASTER) ? Master # Mistress \@, 정말 음란하네～: 내가 최면에 걸리는 걸 저항해 볼래, 아니면 그냥 내버려 둘까?")%」
+			RESETCOLOR
+			RETURN 98
+		ELSE
+			IF TALENT:TARGET:恋慕 || TALENT:TARGET:愛欲 || TALENT:TARGET:セフレ
+				LOCAL = 50
+			ELSE
+				LOCAL = 80
+			ENDIF
+			IF PERCENT(LOCAL)
+				PRINTFORMDW %CALLNAME:[[さとり]]%는 %HIS_HER(TARGET)%의 귀를 가리고 당신에게서 시선을 돌린다.
+				CALL M_KOJO_COLOR_K49
+				PRINTFORMW 「%SPLIT_G(@"I know what you're trying to do, and I'm not going to let you.:Do you really think you can hypnotize a %PRINT_MALE("man", 49)% who can read your mind?:How about I teach you a lesson and hypnotize you instead?:Don't be such a pervert!:If you even dream of trying to hypnotize %CALLNAME:38%...:Urgh... I wish I hadn't seen what you were fantasizing about doing to me.:Try that again and I'll wipe your mind!")%」
+				CALL GET_ANGRY(49)
+				SIF CFLAG:49:2 >= 20
+					CALL CHANGE_CFLAG(2,49,MAX(CFLAG:49:2 / 20 * -1, -80) )
+				SIF CFLAG:49:4 >= 5
+					CALL CHANGE_CFLAG(4,49,MAX(CFLAG:49:4 /  5 * -1, -40) )
+				RETURN 99
+			ENDIF
+		ENDIF
+	CASE [[正邪]] ;Seija
+		[IF_DEBUG]
+		; GOTO REVERSE
+		[ENDIF]
+		IF PERCENT(20 + (TCVAR:97:Hypno_Attempts*20)) && !(ARG == 9 && CFLAG:97:Hypno_Orgasm_Denial)
+			$REVERSE
+			CALL M_KOJO_COLOR_K97
+			PRINTFORMW 「Gh..」
+			PRINTFORMDW %CALLNAME:[[正邪]]%는(은) %HIS_HER(TARGET)%의 머리를 흔들며 당신을 노려본다.
+			PRINTFORMW 「도대체 뭘 하는 거냐, %K97_IDIOT_RUDE()%?!」
+			PRINTFORMDW 갑자기 모든 것이... 다르게 느껴진다.
+			PRINTFORMDL
+			SELECTCASE ARG
+				CASE 1 ;Suppress Hostility
+					PRINTFORMDW 당신은 %CALLNAME:[[正邪]]%에게 따뜻한 미소를 준다.
+					PRINTFORMDW %HE_SHE(TARGET,1)%는 너에게 시들어가는 듯한 눈빛을 보낸다.
+					PRINTFORMW 「...나를 지능이 떨어지게 하려고 최면 걸려던 거야?」
+					PRINTFORMW 「아, 뭐 상관없어. 별로 신경 안 써.」
+				CASE 2 ;Fake Consent
+					IF !GETBIT(CFLAG:97:既成事実, 1)
+						PRINTFORMDW 당신은 %CALLNAME:[[正邪]]%의 눈을 응시한다.
+						PRINTFORMDW 당신은 \@ IS_MALE(TARGET) ? 잘생긴 # 예쁜 \@ %HE_SHE(TARGET)%가 얼마나 매력적인지 몰랐다.
+						PRINTFORMDW 아니, \@ IS_MALE(TARGET) ? 잘생긴 # 예쁜 \@ 것이 아니라... 섹시하다.
+						PRINTFORMDW 당신은 %CALLNAME:[[正邪]]%에게 장난기 가득한 미소를 건넨다. %HE_SHE(TARGET,1)%는 그 미소에 화답하지 않는다.
+						PRINTFORMW 「꺼져, %K97_PERV()%. 네가 이 세계의 마지막 %PRINT_MALE("man", MASTER)%라 해도 난 너랑 자지 않을 거야.」
+						PRINTFORMDW %HE_SHE(TARGET,1)%는 당신에게 욕을 하며 성을 내고 가버린다.
+						CALL RUNOFF(97)
+						SIF CFLAG:97:2 >= 20
+							CALL CHANGE_CFLAG(2,97,MAX(CFLAG:97:2 / 20 * -1, -80) )
+						SIF CFLAG:97:4 >= 5
+							CALL CHANGE_CFLAG(4,97,MAX(CFLAG:97:4 /  5 * -1, -40) )
+						EXP:MASTER:催眠経験 += 2
+						EXP:97:催眠奴隷経験 += 1
+						RETURN 99
+					ELSE
+						$NOTHING_HAPPENS
+						PRINTFORMDW %CALLNAME:[[正邪]]%가 당신을 비웃지만... 아무 일도 일어나지 않자, %HIS_HER(TARGET)%의 표정이 찌푸려진다.
+						PRINTFORMW 「흥. 네가 최면술에 소질이 없나 보네.」
+						SIF CFLAG:97:2 >= 20
+							CALL CHANGE_CFLAG(2,97,MAX(CFLAG:97:2 / 20 * -1, -80) )
+						SIF CFLAG:97:4 >= 5
+							CALL CHANGE_CFLAG(4,97,MAX(CFLAG:97:4 /  5 * -1, -40) )
+						EXP:MASTER:催眠経験 += 2
+						EXP:97:催眠奴隷経験 += 1
+						RETURN 99
+					ENDIF
+				CASE 3 ;Sexual Excitation
+					TCVAR:MASTER:Master_Sexual_Excitation = 1
+					TCVAR:MASTER:発情 = 1
+					CFLAG:MASTER:溜まってる度 = CFLAG:MASTER:溜まってる度 * 3
+					SIF PALAM:MASTER:欲情 < 30000
+						PALAM:MASTER:欲情 += 30000
+					PRINTFORMDW 너무 흥분해서 생각조차 할 수 없었다.
+					PRINTFORMDW %CALLNAME:[[正邪]]%. 너는 %CALLNAME:[[正邪]]%와 섹스해야 한다. 그렇지 않으면 미쳐버릴 것이다.
+					PRINTFORMDW 욕망으로 가득 찬 몽롱함 속에서 %HIM_HER(TARGET)%를 향해 비틀거리며 다가갔고, 정신을 차려보니 %HES_SHES(TARGET)%는 사라지고 당신은 %HE_SHE(TARGET)%가 있던 곳을 응시하고 있었다.
+					IF !THINKS_IS_VIRGIN(97) && CFLAG:97:溜まってる度 >= 500 && !MARK:97:反発刻印
+						PRINTFORMW 「여기야, %K97_IDIOT()%.」
+						PRINTFORMDW 당신이 돌아본다. %CALLNAME:[[正邪]]%가 당신을 비웃고 있다.
+						PRINTFORMW 「흥. 나를 아주 흥분시키려고 했나 보네. 안타깝게도 네게 역효과가 났군.」
+						PRINTFORMDW %HIS_HER(TARGET,1)%의 미소가 넓어진다.
+						PRINTFORMW 「운이 좋았지, 난 기분이 좋으니까.」
+						PRINTFORMDW 그러자마자 당신은 등을 대고 누워 있게 된다.
+						CFLAG:97:溜まってる度 = 1000 ;Make Seija horny so she actually fucks you
+						CFLAG:MASTER:うふふ = 2
+						CFLAG:97:うふふ = 2
+						IF !UFUFU_START_TIME
+							UFUFU_START_TIME = TIME
+							UFUFU_START_DAY = DAY
+						ENDIF
+						CFLAG:97:LAST_SEX_DAY = DAY
+						TFLAG:102 = 3
+						TFLAG:抱きつきモード = 0
+						TFLAG:押し倒され開始時間 = TIME + DAY * 1440
+						TFLAG:COMABLE管理 = 3
+						TCVAR:好きにして = 1
+						CFLAG:ヤラせちゃった = 1
+						TCVAR:馴れ合い = 3
+						TCVAR:PLAYER:馴れ合い = 3
+						RETURN 99
+					ELSE
+						PRINTFORMW 「아니, 그럴 것 같지 않아.」
+						PRINTFORMDW 당신은 빙글 돌았다. %CALLNAME:[[正邪]]%가 당신을 향해 비웃고 있다.
+						$SEIJA_BLUEBALL_TAUNT
+						PRINTFORMW 「당신의 푸른 \@ HAS_PENIS(MASTER) ? 공 # 꽃잎을 즐겨라 \@, %K97_PERV()%.」
+						PRINTFORMDW %HE_SHE(TARGET,1)%은/는 당신에게 욕을 하며 떠난다.
+						CALL RUNOFF(97)
+						SIF CFLAG:97:2 >= 20
+							CALL CHANGE_CFLAG(2,97,MAX(CFLAG:97:2 / 20 * -1, -80) )
+						SIF CFLAG:97:4 >= 5
+							CALL CHANGE_CFLAG(4,97,MAX(CFLAG:97:4 /  5 * -1, -40) )
+						EXP:MASTER:催眠経験 += 2
+						EXP:97:催眠奴隷経験 += 1
+						RETURN 99
+					ENDIF
+				CASE 4 ;Common Sense Modification
+					PRINTFORMDW 당신은 %CALLNAME:[[正邪]]%을 경건하게 응시했다.
+					PRINTFORMDW 『네 명령이 무엇이냐, \@ IS_MALE([[正邪]]) ? Master # Mistress \@?』
+					PRINTFORMDW %CALLNAME:[[正邪]]%은 잠시 동안 당신을 바라봤다. 그러자 %HIS_HER(TARGET)%의 얼굴에 미소가 번졌다.
+					PRINTFORMW 「오, 이거 재미있어지겠군...」
+					PRINTFORMDW %HE_SHE(TARGET,1)%은 잠시 생각했다.
+					PRINTFORMW 「너. 닭처럼 행동해라.」
+					PRINTFORMDW 『꾸왁 꾸왁-꽥!』
+					PRINTFORMDW 당신은 무릎을 꿇고 땅을 향해 코를 찍는 것처럼 발길질하기 시작한다.
+					PRINTFORMDW 당신은 또한 팔을 날개처럼 접고 그것들을 퍼덕이기 시작한다.
+					PRINTFORMW 「좋아, 좋아, 그만둬. 다른 걸 하자.」
+					PRINTFORMW 「손과 무릎으로 기어와서 나를 최면 걸려고 했던 것에 대해 사죄해라.」
+					PRINTFORMDW 당신은 손과 무릎으로 기어가 %CALLNAME:[[正邪]]%의 발치까지 납작하게 기었다.
+					PRINTFORMDW 그러자 말들이 폭포처럼 쏟아져 나왔다.
+					PRINTFORMDW 당신은 눈물이 흐를 때까지 %HIM_HER(TARGET)%에게 최면을 걸려고 했던 것에 대해 거듭 사과했다.
+					PRINTFORMDW 왜 %HE_SHE(TARGET)%는 네 사과를 받아들이지 않는 거지?! 뭐가 잘못된 거야?
+					PRINTFORMW 「좋아, 좋아, 용서해 주겠다!」
+					PRINTFORMW (젠장... 만약 %K97_PERV()%가 %HIS_HER(MASTER)%의 주문을 되돌리지 않았더라면 내 머리가 타버렸을 거야.)
+					PRINTFORMW 「음, 거의 다 됐어. 하나 더 해야 할 게 있어...」
+					PRINTFORMDW %CALLNAME:[[正邪]]%은 %HIS_HER(TARGET)% %PANTS_DESCRIPTION_TR(TARGET)%를 잡아내고, 그 안에서 걸어 나와 %HIS_HER(TARGET)%의 치맛자락을 들어 올렸다.
+					IF HAS_PENIS(97)
+						PRINTFORMW 「오럴로 해줘.」
+						PRINTFORMDW 당신은 %HIS_HER(TARGET)%의 페니스를 본다.
+						SELECTCASE TALENT:97:形状
+							CASE 1
+								PRINTFORMDW 너무 작네... 입에 충분히 넣을 수 있을까?
+							CASE 5
+								PRINTFORMDW 그것은 사마귀로 뒤덮여 있다. 보기만 해도 속이 메스꺼워진다.
+							CASE 6
+								PRINTFORMDW 너무 거대해서 사실상 세 번째 다리 같아! 그걸 입에 넣을 수 있겠어?
+							CASEELSE
+								PRINTFORMDW 놀라울 정도로 평범해 보인다. 아마노자쿠의 거시기에는 사마귀 같은 게 뒤덮여 있을 거라고 예상했으니까.
+						ENDSELECT
+						PRINTFORMW 「야, 왜 이렇게 지연하는 거야?」
+						PRINTFORMDW %CALLNAME:[[正邪]]%이 당신을 찌푸리고 있다.
+						PRINTFORMW 「내 거 스스로 빨아지진 않아, 알잖아.」
+						PRINTFORMDW %HES_SHES(97,1)% 맞다. 오늘 네가 \@ IS_MALE(97) ? 주인 # 안주인 \@에게 충분히 실망시켰어.
+						PRINTFORMDW 당신은 %CALLNAME:[[正邪]]%의 %FSYN("penis")%를 아래에서 위로 핥기 시작한다.
+						PRINTFORMW 「%MOAN("l")%...」
+						PRINTFORMDW 당신이 %HIS_HER(TARGET)%의 샤프트를 혀로 쓸어 올리자 %HIM_HER(TARGET)%이 단단해지는 것을 느낄 수 있다.
+						PRINTFORMDW 정상에 도달했을 때, %HES_SHES(TARGET)% 완전히 발기한다.
+						PRINTFORMDW 당신은 입을 벌리고 앞으로 몸을 숙여 %CALLNAME:[[正邪]]%의 %FSYN("penis")%를 입에 넣는다.
+						IF ABL:MASTER:Ｍ感覚 >= 4
+							PRINTFORMDW 당신은 %HIS_HER(TARGET)%의 신음 소리에 주의를 기울이며 %HIS_HER(TARGET)%의 %FSYN("penis")%를 핥았으므로 모든 %HIS_HER(TARGET)%의 민감한 부위가 어디에 있는지 정확히 알고 있다.
+							PRINTFORMDW 당신은 머리를 %CALLNAME:[[正邪]]%의 샤프트 끝까지 움직여 밑부분을 빠르게 핥는다.
+							PRINTFORMDW 그리고는 머리를 뒤로 옮겨 %HIS_HER(TARGET)%의 페니스의 아랫부분을 혀로 쓸어내린 후, 그 끝에 혀를 대고 톡 친다.
+						ELSEIF ABL:MASTER:Ｍ感覚 >= 2
+							PRINTFORMDW 당신은 입안을 침으로 채우고, %HIS_HER(TARGET)%의 몸통 주위를 입술로 단단히 감싼 후 머리를 움직이기 시작한다.
+						ELSE
+							PRINTFORMDL 좋아... 이제 뭘 하지? 더 핥을 거야, 아니면 그냥 빨기 시작할 거야, 아니면-
+							PRINTFORMW 「나 혼자 모든 걸 다 해야 할 것 같네, 응?」
+							PRINTFORMDW %CALLNAME:[[正邪]]%가 네 머리를 잡고 %HIS_HER(TARGET)%의 성기를 네 목구멍에 박기 시작한다.
+							PRINTFORMDW 너는 기침하고 구역질을 하지만 %HE_SHE(TARGET)%는 멈추지 않는다. 오히려 %HES_SHES(TARGET)%가 지금 더 세게 밀어붙인다.
+							PRINTFORMW 「살아있는 오나홀로 쓰이고 싶지 않았다면, 나를 제대로 빨았어야지.」
+							PRINTFORMDW 사실이다. 만약 %CALLNAME:[[正邪]]%가 그것을 그렇게 단단히 붙잡고 있지 않다면 너는 수치심에 고개를 숙였을 것이다.
+							PRINTFORMDW 너는 위장의 내용물을 내려보내려고 집중하려 하지만, 집중하기 어렵다.
+							PRINTFORMDW 말라붙은 아마노자쿠의 정액과 땀의 시큼한 냄새, %CALLNAME:[[正邪]]%가 네 얼굴로 박을 때 나는 음탕한 질퍽거리는 소리, %HIS_HER(TARGET)% 성기의 쓰디쓴 짠맛...
+							PRINTFORMDW 그리고 %HE_SHE(TARGET)%가 밀어붙일 때마다 %HIS_HER(TARGET)%의 골반이 네 이마에 부딪히는 느낌.
+							PRINTFORMW 「젠장, 내 거에 입을 대니 기분이 좋네...」
+							PRINTFORMW 「사람들을 최면 걸 줄 알아야 하나. 너를 나만의 개인적인 성기 슬리브로 만들 수도 있을 텐데...」
+							PRINTFORMDW %HE_SHE(TARGET)%가 무슨 소리를 하는 거지? 네 \@ IS_MALE(97) ? 마스터 # 미스트리스 \@는 너를 %HIM_HER(TARGET)%에게 복종하고 싶도록 최면 걸 필요가 없어!
+							PRINTFORMDW %CALLNAME:[[正邪]]%가 네 얼굴로 박을 때, 목구멍으로 무언가가 흘러내리는 것이 느껴진다. 쿠퍼액인가?
+							PRINTFORMDW 잘됐다. 이대로 얼마나 더 할 수 있을지 너는 모른다.
+							PRINTFORML 「%MOAN(,,4, "rand")%...!!!」
+							PRINTFORMW 「드디어 왔다! 한 방울도 놓치지 않는 게 좋을 거다, 멍청아!」
+							PRINTFORMDW %CALLNAME:[[正邪]]%은(는) 마지막으로 %HIS_HER(TARGET)%의 골반을 뒤로 빼더니 당신에게 머리가 울릴 정도로 세게 박는다.
+							PRINTFORMDW 잠시 후, 두껍고 뜨거운 액체가 목구멍을 타고 흘러내린다.
+							PRINTFORMDW 그것을 모두 삼키려고 노력할 필요조차 없다. %CALLNAME:[[正邪]]%의 거기는 최대한 당신의 목구멍 깊숙이 박혀 있다.
+							PRINTFORMW 「하아, 하아, 휴...」
+							PRINTFORMDW %CALLNAME:[[正邪]]%은(는) 당신의 목구멍에서 %HIS_HER(TARGET)%의 것을 빼낸다.
+							PRINTFORMW 「청소해 주는 구강 성교를 부탁하고 싶지만, 토할 것 같아 보이네.」
+							PRINTFORMW 「그리고 이렇게 세게 사정했으니, 관대하게 해주지. 그러니 자유롭게 가라, 멍청아.」
+							PRINTFORMDW 당신은 입을 닦고 떨리는 다리로 일어선다.
+							PRINTFORMDW 『고맙습니다, \@ IS_MALE(97) ? 마스터 # 마님 \@...』
+							GOTO SEIJA_SCENE_END_2
+						ENDIF
+						PRINTFORMDW 처음에는 보통 속도로 시작하지만 곧 속도를 높인다. 당신은 이전의 지연을 만회하기 위해 \@ IS_MALE(97) ? 마스터 # 미스트리스 \@가 가능한 한 빨리 사정하기를 원한다.
+						PRINTFORMW 「%SLUR(MOAN("m"), -2)%... 젠장, 너 이거 잘하는구나...」
+						PRINTFORMW 「어쩌면 사람들을 최면 걸 줄 배워야 할지도 몰라. 나만의 개인적인 거들로 만들 수도 있는데...」
+						PRINTFORMDW %HE_SHE(TARGET)%는 무슨 소리를 하는 거지? 당신의 \@ IS_MALE(97) ? 마스터 # 미스트리스 \@가 당신을 %HIM_HER(TARGET)%를 섬기고 싶게 최면 걸 필요는 없어!
+						PRINTFORMDW 짭짤한 것이 입안으로 흘러들어 온다. 전희?
+						PRINTFORMDW 좋아. 네가 하는 일이 효과가 있는 것 같군.
+						PRINTFORMDW 당신은 뒤로 물러나 %CALLNAME:[[正邪]]%'의 성기 끝을 핥는다. 당신은 \@ IS_MALE(97) ? 마스터 # 미스트리스 \@의 사정 한 방울도 놓치고 싶지 않다.
+						PRINTFORMW 「야! 속도를 늦추라고 말 안 했잖아!」
+						PRINTFORMW 「일이나 계속해, %K97_IDIOT()%이놈아!」
+						PRINTFORMDW 제기랄! 당신은 또 \@ IS_MALE(97) ? 마스터 # 미스트리스 \@를 실망시켰어!
+						PRINTFORMDW 당신은 머리를 다시 아래로 박고, 마치 사정액을 전부 짜내려는 것처럼 %HIS_HER(TARGET)%의 성기를 빨아들인다.
+						PRINTFORMDW 위아래로, 위아래로, 점점 더 빠르게. 당신은 %CALLNAME:[[正邪]]%를 또 실망시키지 않을 거야.
+						PRINTFORMW 「%SLUR(MOAN("m"), -2)%... %SLUR(MOAN("m"), -2)%...」
+						PRINTFORMDW 조금 느려지고 %HIS_HER(TARGET)%의 것을 목구멍에 넣지 않도록 집중한다. 조금 맛보지도 못한 채 %HIS_HER(TARGET)%의 것을 삼키고 싶지는 않다.
+						PRINTFORMDL %CALLNAME:[[正邪]]%의 것이 목구멍에서 움찔거리고, 또 한 번의 전립액이 입안을 가득 채운다. 거의 다 왔다-
+						PRINTFORML 「%MOAN(,,4, "rand")%...!!!」
+						PRINTFORMDW %CALLNAME:[[正邪]]%이 당신의 입속으로 박아 넣었고, 당신은 %HIM_HER(TARGET)%가 그의 거시기를 목구멍 깊숙이 박는 것을 막기 위해 뒤로 움찔했다.
+						PRINTFORMDW 잠시 후, 뜨겁고 짠 정액 한 줄기가 당신의 입안을 가득 채웠다. 그리고 또 다른 것. 또 다른 것.
+						PRINTFORMDW 당신은 \@ IS_MALE(97) ? master # mistress \@의 정액을 음미하고 싶었지만, 너무 많았다. 지금 삼키지 않으면 일부를 낭비하게 된다.
+						PRINTFORMDW 그리고 당신의 \@ IS_MALE(97) ? master # mistress \@는 그렇게 한다면 결코 용서하지 않을 것이다.
+						PRINTFORMDW 당신은 최대한 빨리 그것을 꿀꺽 삼켰다.
+						PRINTFORMW 「하아, 하아... 후우...」
+						PRINTFORMDW %CALLNAME:[[正邪]]%이 한숨을 쉬었고 %HIS_HER(TARGET)%의 몸이 이완되었다.
+						PRINTFORMDW 당신은 열렬하게 %CALLNAME:[[正邪]]%의 거시기를 깨끗하게 핥았다.
+						PRINTFORMDW 그 위에 정액이 너무 많지는 않았지만, 간신히 얻은 조금이 천상의 맛이었다.
+						PRINTFORMDW 다 마친 후, 당신은 %HIS_HER(TARGET)%의 거시기를 입에서 빼고 잇몸을 핥아 아무것도 놓치지 않았는지 확인했다.
+						PRINTFORMW 「젠장, %CALLNAME:MASTER%... 너는 원래 이렇게 거시기(cock)를 갈구하는 걸레였어, 아니면 그저 최면이 네 머리를 망치는 건가?」
+						PRINTFORMDW %CALLNAME:[[正邪]]%이 %HIS_HER(TARGET)%의 %PANTS_DESCRIPTION_TR(TARGET)%를 다시 끌어올리고 기지개를 켰다.
+						GOTO SEIJA_SCENE_END
+					ELSE
+						PRINTFORMW 「나를 먹어줘.」
+						PRINTFORMDW %HE_SHE(TARGET,1)%은 땅에 주저앉아 %HIS_HER(TARGET)%의 다리를 벌린다.
+						PRINTFORMDW 당신은 %HIM_HER(TARGET)%(을)에게 더 가까이 다가가, %HIS_HER(TARGET)%의 다리를 이용해 몸을 지탱하고, %HIS_HER(TARGET)%의 보지를 핥아준다.
+						PRINTFORMDW 쓰다. 정말 써서 당신은 뒤로 물러나 살짝 얼굴을 찡그렸다.
+						PRINTFORMW 「음? 뭔가 잘못됐어?」
+						PRINTFORMDW %CALLNAME:[[正邪]]%이 당신의 머리를 잡아 일으키며, 새드하게 미소 짓는다.
+						PRINTFORMW 「나는 아마노자쿠야, %K97_IDIOT()%. 내가 무슨 맛일 거라고 기대했지? 사탕 같은 거?」
+						PRINTFORMW 「이제 다시 일해, 그리고 내가 오르기 전까지 멈추지 마.」
+						PRINTFORMDW %HE_SHE(TARGET,1)%은 당신의 머리를 땅으로 다시 밀어 넣는다. 당신은 몸을 일으켜 %HIS_HER(TARGET)%의 다리 사이로 돌아가 핥기 시작한다.
+						IF ABL:MASTER:Ｍ感覚 >= 4
+							PRINTFORMDW 당신은 %CALLNAME:[[正邪]]%의 클리토스를 핥는 것으로 시작하지만, %HE_SHE(TARGET)%는 그것을 좋아하지 않는 것 같다.
+							PRINTFORMDW 그러고는 좀 더 아래쪽을 핥아보지만, 거기에서도 별다른 응답을 얻지 못한다.
+							PRINTFORMDW 당신은 모든 것을 시도한다. 좌우로 핥고, 손가락으로 %HIS_HER(TARGET)%의 클리토스를 문지르면서 %HIM_HER(TARGET)%를 빨아먹는다...
+							PRINTFORMDW 하지만 당신이 %HIS_HER(TARGET)%의 보지에 혀를 박고 이리저리 움직일 때까지야 비로소 %HIM_HER(TARGET)%가 신음하는 것을 듣게 된다.
+						ELSEIF ABL:MASTER:Ｍ感覚 >= 2
+							PRINTFORMDW 당신은 %HIS_HER(TARGET)%의 질 밑바닥에서 시작해 천천히 %HIS_HER(TARGET)%의 클리토스로 올라가며 핥는다.
+							PRINTFORMDW 당신은 그것을 몇 번 혀로 건드린 후, 다시 아래로 내려가며 핥기 시작한다.
+							PRINTFORMDW %HE_SHE(TARGET)%는 당신이 %HIS_HER(TARGET)%의 질 밑부분을 핥아줄 때 좋아하는 것 같다.
+						ELSE
+							PRINTFORMDW 너는 뭘 해야 할지 정확히 모르겠지만 계속 빠르고 세게 핥기만 하면 결국 %HES_SHES(TARGET)%은 사정할 거야, 맞지?
+							PRINTFORMDW %HE_SHE(TARGET)%도 그것을 좋아하는 것 같다.
+							PRINTFORMDW 혀로 핥을 때 %HIS_HER(TARGET)% 숨이 거친 숨으로 바뀌고 신음하며 얼굴은 곧 축축해진다 %FSYN("juice")%.
+						ENDIF
+						PRINTFORMW 「좋아... 좋아! 계속 그렇게 해!」
+						PRINTFORMDW %CALLNAME:[[正邪]]%이 당신의 머리 뒤에 손을 대고 %HIS_HER(TARGET)%의 사타구니 쪽으로 더 깊숙이 밀어 넣는다.
+						PRINTFORMDW 이제 %HIS_HER(TARGET)%의 보지 냄새가 거의 압도적이지만, 당신은 멈추지 않는다. 멈출 수 없다. 당신의 \@ IS_MALE(97) ? 마스터 # 마님 \@이 이것을 필요로 한다.
+						PRINTFORMDW 당신의 얼굴은 이제 %FSYN("juice")%로 완전히 뒤덮였고, %CALLNAME:[[正邪]]%이 당신의 얼굴에 비비기 시작한다.
+						PRINTFORMW 「젠장... 거의 다 왔어! 감히 멈추지 마!」
+						PRINTFORMDL 꿈도 꾸지 못할 것이다. 당신은 속도를 높이고, %CALLNAME:[[正邪]]%의 신음 소리는 더욱 커지고-
+						PRINTFORMW 「%MOAN(,,4, "rand")%...!!!」
+						PRINTFORMDW %HIS_HER(TARGET,1)%의 허벅지가 당신의 머리를 감싸 안고, %HE_SHE(TARGET)%는 당신의 얼굴을 %HIS_HER(TARGET)%의 보지에 너무 세게 밀어 넣어 숨쉬기조차 힘들어한다.
+						PRINTFORMW 「%SLUR(MOAN("m"), -2)%... %MOAN("l")%...」
+						PRINTFORMDW 당신의 폐가 불타고 있다. 머리를 빼내려고 노력하지만 %CALLNAME:[[正邪]]%의 허벅지는 집게와 같다.
+						PRINTFORMDL 시야의 가장자리가 검게 변하기 시작한다. 필사적으로 숨을 들이마시려 한다-
+						PRINTFORMDW 그러자 %HE_SHE(TARGET)%이 당신의 머리카락을 잡아 다시 끌어올린다.
+						PRINTFORMDW 공기. 공기! 다시 숨을 쉴 수 있다!
+						PRINTFORMDW 당신은 탐욕스럽게 한 모금씩 들이마시며, 그 과정에서 %CALLNAME:[[正邪]]%의 %FSYN("juice")%를 함께 들이마시고 있다는 사실 따위는 신경 쓰지 않는다.
+						IF TALENT:TARGET:恋慕 || TALENT:TARGET:愛欲 || TALENT:TARGET:セフレ
+							PRINTFORMW 「젠장! 괜찮아, %CALLNAME:MASTER%?」
+							PRINTFORMDW 당신은 힘없이 미소 지으며 %HIM_HER(TARGET)%에게 엄지손가락을 치켜든다.
+							PRINTFORMDW %HE_SHE(TARGET,1)%이 당신을 앞으로 끌어당기며 포옹한다.
+							PRINTFORMW 「젠장... 그저 가르치려 했을 뿐이지, 죽일 생각은 아니었어!」
+						ELSE
+							PRINTFORMW 「괜찮아?」
+							PRINTFORMDW 당신은 힘없이 미소 지으며 %HIM_HER(TARGET)%에게 엄지손가락을 치켜세운다.
+							PRINTFORMW 「좋아. 너처럼 씨를 잘 먹는 사람을 내가 질식시키고도 나 자신을 용서할 수 있을 리 없으니까.」
+						ENDIF
+					ENDIF
+				CASE 5 ;Make All Erogenous Zones Sensitive
+					IF TALENT:MASTER:敏感な身体
+						GOTO NOTHING_HAPPENS
+						RETURN 99
+					ELSE
+						PRINTFORMDW 당신의 몸은 믿을 수 없을 정도로 민감해지고, 신음 소리를 참기 위해 입술을 깨문다.
+						PRINTFORMDW 마치 \@ !(EQUIP:MASTER:上半身下着１ || EQUIP:MASTER:上半身下着２ || EQUIP:MASTER:レオタード || EQUIP:MASTER:ボディースーツ) ? 당신의 옷이 # 공기가 \@ 모든 민감한 부분을 어루만지는 것 같다.
+						PRINTFORMDW %CALLNAME:[[正邪]]%가 킥킥거린다.
+						TALENT:MASTER:敏感な身体 = 1
+					ENDIF
+				CASE 6 ;Exhibitionist Sense Modification
+					IF TCVAR:MASTER:Exhibitionist_Nudist_Sense == 2
+						PRINTFORMDW 뭐?! 왜 옷을 다 벗고 있는 거야?!
+						PRINTFORMDW 얼굴이 새빨개지며 허둥지둥 몸을 가리려고 했다.
+						PRINTFORMDW 속옷! 속옷이 필요해!
+						PRINTFORMDW %CALLNAME:[[正邪]]%가 비웃었다.
+						PRINTFORMW 「이제 환상향의 누구든 네 \@ HAS_PENIS(MASTER) ? 거시기 # 보지 \@ 모양을 알게 됐어.」
+					ELSEIF EQUIP:MASTER:上半身下着１
+						PRINTFORMDW 당신은 미간을 찌푸렸다.
+						PRINTFORMDW 왜 이렇게 많은 옷을 입고 있는 거야? 필요 없어.
+						PRINTFORMDW 당신은 서둘러 \@ STRLENS(ADD_CHECK_CLOTHES(MASTER, "BRA")) ? %ADD_CHECK_CLOTHES(MASTER, "BRA")%와 #  \@ %ADD_CHECK_CLOTHES(MASTER, "PANTIES")%로 벗는다.
+						PRINTFORMDW 아. 훨씬 낫네.
+						FOR LOCAL,0,40
+						EQUIP:MASTER:LOCAL = 0
+						CFLAG:MASTER:(200 + LOCAL) = EQUIP:MASTER:LOCAL
+						NEXT
+						SIF !TCVAR:MASTER:本来の服装
+							TCVAR:MASTER:本来の服装 = CFLAG:MASTER:基本服装セット
+						CFLAG:MASTER:基本服装セット = 301
+						TCVAR:MASTER:Exhibitionist_Nudist_Sense = 1
+						PRINTFORMDW %CALLNAME:[[正邪]]%가 키득거린다.
+						PRINTFORMW 「인연의 모든 이들에게 속옷을 보여주는 재미를 느껴보라고, %K97_IDIOT()%.」
+					ELSE
+						GOTO NOTHING_HAPPENS
+					ENDIF
+				CASE 7 ;Nudist Sense Modification
+					PRINTFORMDL 당신은 미간을 찌푸린다.
+					PRINTFORMDW 왜 이 많은 옷을 입고 있는 거야? 너는 그게 필요 없어.
+					PRINTFORMDW 당신은 재빨리 벌거벗는다.
+					PRINTFORMDW 아. 훨씬 낫군.
+					FOR LOCAL,0,40
+					EQUIP:MASTER:LOCAL = 0
+					CFLAG:MASTER:(200 + LOCAL) = EQUIP:MASTER:LOCAL
+					NEXT
+					SIF !TCVAR:MASTER:本来の服装
+						TCVAR:MASTER:本来の服装 = CFLAG:MASTER:基本服装セット
+					CFLAG:MASTER:基本服装セット = 300
+					CFLAG:MASTER:ノーパン = 1
+					CFLAG:MASTER:きょうのブラ = 0
+					TCVAR:MASTER:Exhibitionist_Nudist_Sense = 2
+					PRINTFORMDW %CALLNAME:[[正邪]]%는 키득거렸다.
+					PRINTFORMW 「인과쿄에서 모두에게 번쩍거리며 즐거운 시간 보내라, %K97_IDIOT()%.」
+				CASE 8 ;Hypno-Date
+					PRINTFORMDW 당신은 %CALLNAME:[[正邪]]%를 향해 미소 지으며 %HIS_HER(TARGET)%의 손을 잡으려고 한다.
+					IF TALENT:TARGET:恋慕 || TALENT:TARGET:愛欲 || TALENT:TARGET:セフレ
+						PRINTFORMDW %CALLNAME:[[正邪]]%가 그것을 가져가며 미소 지었다.
+						PRINTFORMW 「바보... 나를 네가 좋게 느끼도록 최면 걸려고 진심이었어?」
+						CALLF DATEME(97)
+						RETURN 99
+					ELSE
+						PRINTFORMW 「도대체 뭐 하는 거야, %K97_PERV()%?!」
+						PRINTFORMDW %CALLNAME:[[正邪]]%는 네 손을 뿌리치고 너를 노려본다.
+						PRINTFORMDW 응? 네 데이트가 그렇게 안 될 줄은 몰랐네.
+						PRINTFORMW 「데이트? 우린... 그런 사이가 아니잖아...」
+						PRINTFORMDW %CALLNAME:[[正邪]]%는 잠시 너를 응시한다. 그러더니 %HE_SHE(TARGET)%가 폭소하기 시작한다.
+						PRINTFORMW 「세상에... 얼마나 필사적인 거야?!」
+						PRINTFORMW 「이걸 %CALLNAME:[[ぬえ]]%에게 말해보고 싶어...」
+						PRINTFORMDW 뭘 잘못한 거지? 네가 한 말이 문제였을까?
+					ENDIF
+				CASE 9 ;Hypno-Orgasm Denial
+					IF CFLAG:MASTER:Hypno_Orgasm_Denial
+						IF (PALAM:MASTER:快Ｃ >= PALAMLV:3 || PALAM:MASTER:快Ｖ >= PALAMLV:3 || PALAM:MASTER:快Ａ >= PALAMLV:3 || PALAM:MASTER:快Ｂ >= PALAMLV:3 || PALAM:MASTER:快Ｍ >= PALAMLV:3)
+							PRINTFORMDW 당신 안의 무언가가 지금 오르셔도 된다고 말한다.
+							PRINTFORMDW 당신은 \@ !(EQUIP:MASTER:上半身下着１ || EQUIP:MASTER:上半身下着２ || EQUIP:MASTER:レオタード || EQUIP:MASTER:ボディースーツ) ? 속옷 안에 손을 넣고 # 미친 듯이 스스로 자극하기 시작한다 \@.
+							PRINTFORMW 「개같은 변태 같으니.」
+							PRINTFORMDW %CALLNAME:[[正邪]]%는 얼굴을 일그러뜨린다.
+						ELSE
+							GOTO NOTHING_HAPPENS
+						ENDIF
+					ELSE
+						CFLAG:MASTER:Hypno_Orgasm_Denial = 1
+						IF (PALAM:MASTER:快Ｃ >= PALAMLV:3 || PALAM:MASTER:快Ｖ >= PALAMLV:3 || PALAM:MASTER:快Ａ >= PALAMLV:3 || PALAM:MASTER:快Ｂ >= PALAMLV:3 || PALAM:MASTER:快Ｍ >= PALAMLV:3)
+							PRINTFORMDW 당신은 절정에 다다르기 직전이었다... 하지만 지금 몸이 오르지 않게 한다.
+							PRINTFORMDW 스스로를 만지며 좌절감에 신음하지만, 그 모든 것이 당신을 더 흥분시킬 뿐이다.
+							PRINTFORMDW %CALLNAME:[[正邪]]%가 당신을 비웃는다.
+							SIF !(TALENT:TARGET:恋慕 || TALENT:TARGET:愛欲 || TALENT:TARGET:セフレ)
+								GOTO SEIJA_BLUEBALL_TAUNT
+						ELSE
+							GOTO NOTHING_HAPPENS
+						ENDIF
+					ENDIF
+				CASE 10 ;Hypno Trait Alteration
+					GOTO NOTHING_HAPPENS
+			ENDSELECT
+			PRINTFORMDL
+			$SEIJA_SCENE_END
+			PRINTFORML 「좋아, 네가 교훈을 얻은 것 같네.」
+			$SEIJA_SCENE_END_2
+			IF TALENT:TARGET:恋慕 || TALENT:TARGET:愛欲 || TALENT:TARGET:セフレ
+				PRINTFORMW 「하지만 다시 그런 짓 하려고 하지 않는 게 좋을 거야. 알겠지?」
+				PRINTFORMDW 고개를 끄덕인다.
+				PRINTFORMW 「좋아 %PRINT_MALE("boy", MASTER)%.」
+				PRINTFORMDW %CALLNAME:[[正邪]]%는 희미하게 웃으며 당신의 머리를 토닥여준다.
+			ELSE
+				PRINTFORMW 「나중에 보자, 패배자!」
+				PRINTFORMDW %CALLNAME:[[正邪]]%는 비웃으며, 당신에게 손가락을 올리고 떠난다.
+				CALL RUNOFF(97)
+			ENDIF
+			SIF CFLAG:97:2 >= 20
+				CALL CHANGE_CFLAG(2,97,MAX(CFLAG:97:2 / 20 * -1, -80) )
+			SIF CFLAG:97:4 >= 5
+				CALL CHANGE_CFLAG(4,97,MAX(CFLAG:97:4 /  5 * -1, -40) )
+			EXP:MASTER:催眠経験 += 2
+			EXP:97:催眠奴隷経験 += 1
+			RETURN 99
+		ENDIF
+	CASE [[クラウンピース]] ;Clownpiece
+		IF PERCENT(5)
+			PRINTFORMDW %CALLNAME:[[クラウンピース]]%을 최면 걸려고 하다가 실수로 %HIS_HER(TARGET)%의 토치를 응시했다.
+			PRINTFORMDW 당신은 %HIM_HER(TARGET)%에게서 움찔하며, 거친 에너지가 내면에서 치솟자 머리를 감싸 쥐었다.
+			PRINTFORMDW 당신이 정신을 붙잡으려고 애쓰는 동안 %CALLNAME:[[クラウンピース]]%이 순진하게 웃는다.
+			IF PERCENT(25)
+				PRINTFORMDW 효과가 없다. 그 야생의 에너지가 너무 강하다.
+				PRINTFORMDW 시야가 흐려지고 정신이 하얘진다...
+				PRINTFORML
+				PRINTFORMDW ......
+				PRINTFORMDW ...
+				PRINTFORML
+				PRINTFORMDW 당신은 몇 시간 후에 제정신을 되찾았다.
+				PRINTFORMDW 당신의 옷은 찢겨 있고 진흙으로 얼룩져 있으며, 몸에는 이전에 없던 몇 개의 상처와 멍이 있었다.
+				PRINTFORMDW 광기에 빠져 무슨 짓을 한 거지...?
+				TIME += 120
+				CALL RECOVER(MASTER, -500, "体力", "광란의 난동")
+				CALL RECOVER(MASTER, -500, "気力", "광란의 난동")
+			ELSE
+				PRINTFORMDW 당신은 이를 악물고 집중한다.
+				PRINTFORMDW 잠시 후, 당신 안에서 치솟던 에너지가 사그라든다.
+			ENDIF
+			RETURN 99
+		ENDIF
+ENDSELECT
+
+@FREE_USE_ACTIVE
+#FUNCTION
+RETURNF (MAX(FLAG:催眠強度,TCVAR:Common_Sense_Alteration_Status) >= 85 && !NON_HYPNOTIZED_EYEWITNESSES() || TFLAG:PublicToyPlay) && CFLAG:うふふ == 0 && SHIRAHU(TARGET)
+
+@HYPNO_DATE_RESET()
+IF FLAG:催眠デート相手
+	CFLAG:(FLAG:催眠デート相手):来訪時間 = CSVCFLAG(NO:(FLAG:催眠デート相手),352)
+	CFLAG:(FLAG:催眠デート相手):帰宅時間 = CSVCFLAG(NO:(FLAG:催眠デート相手),353)
+	CFLAG:(FLAG:催眠デート相手):就寝時間 = CSVCFLAG(NO:(FLAG:催眠デート相手),354)
+	CFLAG:(FLAG:催眠デート相手):起床時間 = CSVCFLAG(NO:(FLAG:催眠デート相手),355)
+	FLAG:催眠デート相手 = 0
+ENDIF

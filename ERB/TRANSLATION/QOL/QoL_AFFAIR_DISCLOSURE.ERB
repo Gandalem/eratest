@@ -1,0 +1,1086 @@
+﻿; Modular ERB: QOL/QoL_AFFAIR_DISCLOSURE.ERB
+
+@QOL_LANDLORD_AT_HOME(ARG)
+#FUNCTION
+#DIM CHARA_ROOM_MAP
+;only valid on main_map
+SIF MAIN_MAP != GET_MAPID(CFLAG:ARG:現在位置)
+	RETURNF 0
+CHARA_ROOM_MAP = MAP_AREASELECT(MAIN_MAP, CFLAG:ARG:神社在住)
+;special cases
+SELECTCASE ARG
+	;reimu/marisa is not marked as landlord because they're the default for their maps
+	CASE [[霊夢]], [[魔理沙]]
+		RETURNF MAP_AREASELECT(MAIN_MAP, CFLAG:ARG:現在位置) == CHARA_ROOM_MAP
+		;sunny, luna, and star all count as landlord
+	CASE [[サニー]], [[ルナ]], [[スター]]
+		RETURNF MAP_AREASELECT(MAIN_MAP, CFLAG:ARG:現在位置) == CHARA_ROOM_MAP
+		;akyuu only counts as owner of the hieda residence
+	CASE [[阿求]]
+		RETURNF GROUPMATCH(CFLAG:ARG:現在位置, P221稗田邸, P229阿求私室)
+	CASE [[レミリア]] ;SDM is split into two maps
+		RETURNF GROUPMATCH(MAP_AREASELECT(MAIN_MAP, CFLAG:ARG:現在位置), 2, 3)
+		;prismrivers share ownership
+	CASE [[リリカ]], [[メルラン]], [[ルナサ]]
+		RETURNF MAP_AREASELECT(MAIN_MAP, CFLAG:ARG:現在位置) == CHARA_ROOM_MAP
+		;kasen's home is split into two maps (3,4)
+	CASE [[華扇]]
+		RETURNF GROUPMATCH(MAP_AREASELECT(MAIN_MAP, CFLAG:ARG:現在位置), 3, 4)
+		;aki sisters share ownership
+	CASE [[静葉]], [[穣子]]
+		RETURNF MAP_AREASELECT(MAIN_MAP, CFLAG:ARG:現在位置) == CHARA_ROOM_MAP
+		;both watatsuki sisters count
+	CASE [[依姫]], [[豊姫]]
+		RETURNF MAP_AREASELECT(MAIN_MAP, CFLAG:ARG:現在位置) == CHARA_ROOM_MAP
+		;eiki does not have so much authority over the ministry
+	CASE [[映姫]]
+		RETURNF 0
+		;animal matriarchs in their homes
+	CASE [[八千慧]]
+		RETURNF GROUPMATCH(CFLAG:ARG:現在位置, P646八千慧宅の風呂, P647八千慧宅のリビング, P648八千慧宅の寝室)
+	CASE [[早鬼]]
+		RETURNF GROUPMATCH(CFLAG:ARG:現在位置, P650早鬼宅のリビング, P651早鬼宅の寝室, P652早鬼宅の風呂)
+	CASE [[尤魔]]
+		RETURNF GROUPMATCH(CFLAG:ARG:現在位置, P653尤魔宅のリビング, P654尤魔宅の寝室, P655尤魔宅の風呂)
+	CASE [[袿姫]]
+		RETURNF INRANGE(CFLAG:ARG:現在位置, P642霊長園, P645磨弓の部屋)
+	CASEELSE
+		;must be landlord
+		SIF !CFLAG:ARG:大家候補
+			RETURNF 0
+		;is on home submap
+		RETURNF MAP_AREASELECT(MAIN_MAP, CFLAG:ARG:現在位置) == CHARA_ROOM_MAP
+ENDSELECT
+RETURNF 0
+
+@QOL_ANY_HAS_LANDLORD_PRIVILEGE(CHARACTERS, CHARACTER_COUNT)
+#FUNCTION
+#DIM REF CHARACTERS
+#DIM CHARACTER_COUNT
+FOR LOCAL, 0, CHARACTER_COUNT
+SIF QOL_LANDLORD_AT_HOME(CHARACTERS:LOCAL)
+	RETURNF 1
+NEXT
+RETURNF 0
+
+@QOL_ACCEPTS_SLEEP_RAPE(ARG)
+#FUNCTION
+SIF TALENT:ARG:ヤリマン || TALENT:ARG:淫乱
+	RETURNF 1
+RETURNF 0
+
+@QOL_ALL_ACCEPTS_SLEEP_RAPE(CHARACTERS, CHARACTER_COUNT)
+#FUNCTION
+#DIM REF CHARACTERS
+#DIM CHARACTER_COUNT
+FOR LOCAL, 0, CHARACTER_COUNT
+SIF !QOL_ACCEPTS_SLEEP_RAPE(CHARACTERS:LOCAL)
+	RETURNF 0
+NEXT
+RETURNF 1
+;returns 0 if all conscious, 1 if only drunkards, 2 if only sleeping, and 3 if both
+
+@QOL_ANY_DRUNK_OR_SLEEPING(CHARACTERS, CHARACTER_COUNT)
+#FUNCTION
+#DIM REF CHARACTERS
+#DIM CHARACTER_COUNT
+LOCAL:1 = 0
+FOR LOCAL, 0, CHARACTER_COUNT
+SIF TCVAR:(CHARACTERS:LOCAL):泥酔
+	LOCAL:1 |= 1p0
+SIF CFLAG:(CHARACTERS:LOCAL):睡眠
+	LOCAL:1 |= 1p1
+NEXT
+RETURNF LOCAL:1
+
+@QOL_KICK_OUT_VOYEUR(ARG)
+IF CFLAG:ARG:現在位置 == CFLAG:ARG:前ターン位置
+	CALL GETOUT(ARG)
+ELSE
+	CFLAG:ARG:現在位置 = CFLAG:ARG:前ターン位置
+ENDIF
+CALL TARGETSET_CHACK
+CFLAG:ARG:同室 = 0
+
+@QOL_SEX_IN_MEMBERS_BEDROOM(CHARACTERS, CHARACTER_COUNT)
+#FUNCTION
+#DIM REF CHARACTERS
+#DIM CHARACTER_COUNT
+SIF CFLAG:MASTER:現在位置 == CFLAG:MASTER:初期位置
+	RETURNF 1
+FOR LOCAL, 0, CHARACTER_COUNT
+SIF CFLAG:MASTER:現在位置 == CFLAG:(CHARACTERS:LOCAL):初期位置
+	RETURNF 1
+NEXT
+RETURNF 0
+
+@QOL_HOME_BATHROOM(ARG)
+#FUNCTION
+#DIM CHARA_ROOM_MAP
+#DIM CURRENT_MAP
+;must be a bathroom
+SIF !BATHROOM(CFLAG:ARG:現在位置)
+	RETURNF 0
+CHARA_ROOM_MAP = MAP_AREASELECT(MAIN_MAP, CFLAG:ARG:神社在住)
+CURRENT_MAP = MAP_AREASELECT(MAIN_MAP, CFLAG:ARG:現在位置)
+SELECTCASE MAIN_MAP ;special cases
+	CASE 3 ;sdm has two floors
+		SIF GROUPMATCH(CHARA_ROOM_MAP, 2, 3) && GROUPMATCH(CURRENT_MAP, 2, 3)
+			RETURNF 1
+	CASE 7 ;kasen's home has two floors
+		SIF GROUPMATCH(CHARA_ROOM_MAP, 3, 4) && GROUPMATCH(CURRENT_MAP, 3, 4)
+			RETURNF 1
+	CASEELSE
+		SIF CHARA_ROOM_MAP == CURRENT_MAP
+			RETURNF 1
+ENDSELECT
+RETURNF 0
+;sex in a bathroom is accepted if any of your partners lives in that area, unless it's the landlord walking in
+
+@QOL_SEX_IN_LOCAL_BATHROOM(CHARACTERS, CHARACTER_COUNT, VOYEUR)
+#FUNCTION
+#DIM REF CHARACTERS
+#DIM CHARACTER_COUNT
+#DIM VOYEUR
+SIF CFLAG:MASTER:現在位置 == P228貸切浴場 ;rented bath is okay
+	RETURNF 1
+SIF QOL_ANY_HAS_LANDLORD_PRIVILEGE(CHARACTERS, CHARACTER_COUNT) ;owner says it's okay
+	RETURNF 1
+SIF QOL_LANDLORD_AT_HOME(VOYEUR) ;landlord isn't happy with you making a mess out of her bathroom
+	RETURNF 0
+SIF GROUPMATCH(CFLAG:MASTER:現在位置, P24温泉, P223銭湯, P441温泉, P735水浴び場, P934温泉) ;not in public baths
+	RETURNF 0
+FOR LOCAL, 0, CHARACTER_COUNT
+SIF QOL_HOME_BATHROOM(CHARACTERS:LOCAL)
+	RETURNF 1
+NEXT
+RETURNF 0
+
+@QOL_ALL_LOVERS(CHARACTERS, CHARACTER_COUNT)
+#FUNCTION
+#DIM REF CHARACTERS
+#DIM CHARACTER_COUNT
+FOR LOCAL, 0, CHARACTER_COUNT
+SIF !TALENT:(CHARACTERS:LOCAL):恋人
+	RETURNF 0
+NEXT
+RETURNF 1
+
+@QOL_DISLIKES_ANY_PARTNER(CHARA, CHARACTERS, CHARACTER_COUNT)
+#FUNCTION
+#DIM CHARA
+#DIM REF CHARACTERS
+#DIM CHARACTER_COUNT
+FOR LOCAL, 0, CHARACTER_COUNT
+SIF RELATION:CHARA:(CHARACTERS:LOCAL) && RELATION:CHARA:(CHARACTERS:LOCAL) < 100
+	RETURNF 1
+NEXT
+RETURNF 0
+
+@QOL_ANY_PARTNER_DISLIKES(CHARA, CHARACTERS, CHARACTER_COUNT)
+#FUNCTION
+#DIM CHARA
+#DIM REF CHARACTERS
+#DIM CHARACTER_COUNT
+FOR LOCAL, 0, CHARACTER_COUNT
+SIF RELATION:(CHARACTERS:LOCAL):CHARA && RELATION:(CHARACTERS:LOCAL):CHARA < 100
+	RETURNF 1
+NEXT
+RETURNF 0
+
+@QOL_LIKES_ANY_PARTNER(CHARA, CHARACTERS, CHARACTER_COUNT)
+#FUNCTION
+#DIM CHARA
+#DIM REF CHARACTERS
+#DIM CHARACTER_COUNT
+FOR LOCAL, 0, CHARACTER_COUNT
+SIF RELATION:CHARA:(CHARACTERS:LOCAL) && RELATION:CHARA:(CHARACTERS:LOCAL) > 100
+	RETURNF 1
+NEXT
+RETURNF 0
+
+@QOL_ANY_PARTNER_LIKES(CHARA, CHARACTERS, CHARACTER_COUNT)
+#FUNCTION
+#DIM CHARA
+#DIM REF CHARACTERS
+#DIM CHARACTER_COUNT
+FOR LOCAL, 0, CHARACTER_COUNT
+SIF RELATION:(CHARACTERS:LOCAL):CHARA && RELATION:(CHARACTERS:LOCAL):CHARA > 100
+	RETURNF 1
+NEXT
+RETURNF 0
+
+@QOL_ACCEPTS_ALL_PARTNERS(CHARA, CHARACTERS, CHARACTER_COUNT)
+#FUNCTION
+#DIM CHARA
+#DIM REF CHARACTERS
+#DIM CHARACTER_COUNT
+FOR LOCAL, 0, CHARACTER_COUNT
+SIF GET_UWAKI_HISTORY(CHARA, CHARACTERS:LOCAL) < 2
+	RETURNF 0
+NEXT
+RETURNF 1
+;NAS custom code
+;returns 1 if ANYONE is being raped
+
+@QOL_ANY_RAPE(CHARACTERS, CHARACTER_COUNT)
+#FUNCTION
+#DIM REF CHARACTERS
+#DIM CHARACTER_COUNT
+LOCAL:1 = 0
+FOR LOCAL, 0, CHARACTER_COUNT
+SIF TCVAR:(CHARACTERS:LOCAL):無理矢理
+	LOCAL:1 |= 1p0
+NEXT
+RETURNF LOCAL:1
+;1=leaves
+;2=ends sex
+;3=joins in
+;4=joins in (involuntary)
+;5=can be invited
+;6=rejected by existing participant
+;7=existing participant breaks it up
+
+@QOL_VOYEUR_JOINS(CHARA, CHARACTERS, CHARACTER_COUNT)
+#FUNCTION
+#DIM CHARA
+#DIM REF CHARACTERS
+#DIM CHARACTER_COUNT
+#DIM ONLY_LOVERS
+#DIM PROPER_ROOM
+#DIM ACCEPTS_ALL
+#DIM DISLIKES_ANY
+#DIM DISLIKED_BY_ANY
+#DIM LIKES_ANY
+#DIM LIKED_BY_ANY
+#DIM FRUSTRATION_REQUIREMENT
+#DIM DAYS_SINCE_LAST_HAD_SEX
+#DIM MASTURBATING ; NAS, masturbation
+;in heat will always join in if they've already had sex
+SIF TCVAR:CHARA:発情 && CFLAG:CHARA:既成事実 & 合意_うふふ
+	RETURNF 3
+;triple hate mark or anger will end sex if lover or you're not screwing in one of the participants' bedroom, even landlords can't get away with it
+IF MARK:CHARA:反発刻印 >= 3 || CFLAG:CHARA:ブチギレ
+	SIF TALENT:CHARA:恋人 || !QOL_SEX_IN_MEMBERS_BEDROOM(CHARACTERS, CHARACTER_COUNT)
+		RETURNF 2
+	RETURNF 1
+ENDIF
+PROPER_ROOM = QOL_SEX_IN_MEMBERS_BEDROOM(CHARACTERS, CHARACTER_COUNT) || QOL_ANY_HAS_LANDLORD_PRIVILEGE(CHARACTERS, CHARACTER_COUNT) || QOL_SEX_IN_LOCAL_BATHROOM(CHARACTERS, CHARACTER_COUNT, CHARA)
+ONLY_LOVERS = QOL_ALL_LOVERS(CHARACTERS, CHARACTER_COUNT)
+ACCEPTS_ALL = QOL_ACCEPTS_ALL_PARTNERS(CHARA, CHARACTERS, CHARACTER_COUNT)
+DISLIKES_ANY = QOL_DISLIKES_ANY_PARTNER(CHARA, CHARACTERS, CHARACTER_COUNT)
+DISLIKED_BY_ANY = QOL_ANY_PARTNER_DISLIKES(CHARA, CHARACTERS, CHARACTER_COUNT)
+LIKES_ANY = QOL_LIKES_ANY_PARTNER(CHARA, CHARACTERS, CHARACTER_COUNT)
+LIKED_BY_ANY = QOL_ANY_PARTNER_LIKES(CHARA, CHARACTERS, CHARACTER_COUNT)
+DAYS_SINCE_LAST_HAD_SEX = MAX(DAY - CFLAG:CHARA:LAST_SEX_DAY, 0) ;shouldn't go below zero, but just in case
+MASTURBATING = CFLAG:MASTER:今忙しくて手が離せない
+IF TALENT:CHARA:恋人 ;lover branch
+	IF !(CFLAG:CHARA:既成事実 & 合意_うふふ) ;hasn't had sex with you yet
+		SIF ONLY_LOVERS ;you're with other lovers only, they'll join in to not be left behind
+			RETURNF 3
+		;if you're with any non-lover, they'll break it up
+		RETURNF 2
+	ELSE
+		IF !QoL_BypassCheck(CHARA) ;can join in
+			SIF DAYS_SINCE_LAST_HAD_SEX >= 7 ;hasn't had sex for a week, joins in automatically
+				RETURNF 3
+			FRUSTRATION_REQUIREMENT = 500 - (DAYS_SINCE_LAST_HAD_SEX * 100)
+			SIF CFLAG:CHARA:溜まってる度 >= FRUSTRATION_REQUIREMENT && BASE:CHARA:気力 > 500 ;sufficiently horny and enough energy, joins in automatically
+				RETURNF 3
+			IF ONLY_LOVERS
+				;if it's her room
+				IF CFLAG:MASTER:現在位置 == CFLAG:CHARA:初期位置
+					;not also your room or one of her enemies and not incredibly high intimacy, breaks it up
+					SIF ABL:CHARA:親密 < 50 && (CFLAG:MASTER:初期位置 != CFLAG:CHARA:初期位置 || DISLIKES_ANY)
+						RETURNF 2
+					;satisfied but enough energy, can join in on player decision
+					SIF BASE:CHARA:気力 > 500
+						RETURNF 5
+					;not enough energy, fairly high intimacy, lets you have your fun
+					SIF ABL:CHARA:親密 > 20
+						RETURNF 1
+					;otherwies breaks it up
+					RETURNF 2
+				ELSE
+					;satisfied but enough energy, can join in on player decision
+					SIF BASE:CHARA:気力 > 500
+						RETURNF 5
+					RETURNF 1 ;leaves quietly
+				ENDIF
+			ELSE
+				;with skanks
+				;if she's in a bad mood and you're with non-lovers, she breaks it up
+				SIF TALENT:CHARA:機嫌 < 0
+					RETURNF 2
+				;if it's her room
+				IF CFLAG:MASTER:現在位置 == CFLAG:CHARA:初期位置
+					;not also your room, breaks it up
+					SIF CFLAG:MASTER:初期位置 != CFLAG:CHARA:初期位置
+						RETURNF 2
+					;screwing one of her enemies in your shared room, not very high intimacy, breaks it up
+					SIF ABL:CHARA:親密 < 50 && DISLIKES_ANY
+						RETURNF 2
+					;satisfied (check for last sex date?) but enough energy, can join in on player decision
+					SIF BASE:CHARA:気力 > 500
+						RETURNF 5
+					;not enough energy, high intimacy, lets you have your fun
+					SIF ABL:CHARA:親密 > 35
+						RETURNF 1
+					;otherwise breaks it up
+					RETURNF 2
+				ELSE
+					;screwing one of her enemies out in the open, not high intimacy, breaks it up
+					SIF DISLIKES_ANY && !PROPER_ROOM && ABL:CHARA:親密 < 30
+						RETURNF 2
+					;screwing one of her enemies in a proper room, low intimacy, breaks it up
+					SIF DISLIKES_ANY && PROPER_ROOM && ABL:CHARA:親密 < 15
+						RETURNF 2
+					;satisfied (check for last sex date?) but enough energy, can join in on player decision
+					SIF BASE:CHARA:気力 > 500
+						RETURNF 5
+					RETURNF 1 ;leaves quietly
+				ENDIF
+			ENDIF
+		ELSE
+			SIF ONLY_LOVERS ;you're with other lovers only, they'll leave quietly
+				RETURNF 1
+			;screwing one of her enemies, low intimacy, breaks it up
+			SIF DISLIKES_ANY && ABL:CHARA:親密 < 30
+				RETURNF 2
+			RETURNF 1 ;accepts her lover's needs that she cannot currently fulfill
+		ENDIF
+	ENDIF
+ELSEIF TALENT:CHARA:恋慕 ;love branch
+	SIF QoL_BypassCheck(CHARA) ;cannot join in, leaves
+		RETURNF 1
+	IF ONLY_LOVERS
+		;if it's her room
+		IF CFLAG:MASTER:現在位置 == CFLAG:CHARA:初期位置
+			FRUSTRATION_REQUIREMENT = MAX(500 - (DAYS_SINCE_LAST_HAD_SEX * 100), 100)
+			SIF CFLAG:CHARA:溜まってる度 >= FRUSTRATION_REQUIREMENT && BASE:CHARA:気力 > 500 ;sufficiently horny and enough energy, joins in automatically
+				RETURNF 3
+			;not also your room or one of her enemies and not high intimacy, breaks it up
+			SIF ABL:CHARA:親密 < 25 && (CFLAG:MASTER:初期位置 != CFLAG:CHARA:初期位置 || DISLIKES_ANY)
+				RETURNF 2
+			;satisfied (check for last sex date?) but enough energy, can join in on player decision
+			SIF BASE:CHARA:気力 > 500
+				RETURNF 5
+			;leaves quietly
+			RETURNF 1
+		ELSE
+			FRUSTRATION_REQUIREMENT = MAX(800 - (DAYS_SINCE_LAST_HAD_SEX * 50), 200)
+			SIF CFLAG:CHARA:溜まってる度 >= FRUSTRATION_REQUIREMENT && BASE:CHARA:気力 > 500 ;needs to be pretty horny to forcefully join a lover's session
+				RETURNF 3
+			;disliked by any participant, won't join in
+			SIF DISLIKED_BY_ANY
+				RETURNF 1
+			SIF CFLAG:CHARA:溜まってる度 >= ((FRUSTRATION_REQUIREMENT / 2) - (LIKED_BY_ANY * 200)) && BASE:CHARA:気力 > 500 ;can be invited
+				RETURNF 5
+			RETURNF 1 ;leaves quietly
+		ENDIF
+	ELSE
+		FRUSTRATION_REQUIREMENT = MAX(500 - (DAYS_SINCE_LAST_HAD_SEX * 100), 100)
+		SIF CFLAG:CHARA:溜まってる度 >= FRUSTRATION_REQUIREMENT && BASE:CHARA:気力 > 500 ;sufficiently horny and enough energy, joins in automatically
+			RETURNF 3
+		;if it's her room
+		IF CFLAG:MASTER:現在位置 == CFLAG:CHARA:初期位置
+			;not also your room or one of her enemies and not high intimacy, breaks it up
+			SIF ABL:CHARA:親密 < 25 && (CFLAG:MASTER:初期位置 != CFLAG:CHARA:初期位置 || DISLIKES_ANY)
+				RETURNF 2
+			;satisfied but enough energy, can join in on player decision
+			SIF BASE:CHARA:気力 > 500
+				RETURNF 5
+			;not enough energy, high intimacy, lets you have your fun
+			SIF ABL:CHARA:親密 > 25
+				RETURNF 1
+			;otherwies breaks it up
+			RETURNF 2
+		ELSE
+			;satisfied but enough energy, can join in on player decision
+			SIF BASE:CHARA:気力 > 500
+				RETURNF 5
+			RETURNF 1 ;leaves quietly
+		ENDIF
+	ENDIF
+ELSEIF TALENT:CHARA:愛欲 || TALENT:CHARA:セフレ ;lust branch
+	SIF QoL_BypassCheck(CHARA) ;cannot join in, leaves
+		RETURNF 1
+	FRUSTRATION_REQUIREMENT = MAX(300 - (DAYS_SINCE_LAST_HAD_SEX * 100), 100)
+	SIF CFLAG:CHARA:溜まってる度 >= FRUSTRATION_REQUIREMENT && BASE:CHARA:気力 > 500 ;sufficiently horny and enough energy, joins in automatically
+		RETURNF 3
+	;her room, not your room, doesn't accept at least one, breaks it up
+	SIF CFLAG:MASTER:現在位置 == CFLAG:CHARA:初期位置 && CFLAG:MASTER:初期位置 != CFLAG:CHARA:初期位置 && !ACCEPTS_ALL
+		RETURNF 2
+	;otherwise can be invited
+	RETURNF 5
+ELSE
+	;her room, breaks it up
+	SIF CFLAG:MASTER:現在位置 == CFLAG:CHARA:初期位置
+		RETURNF 2
+	SIF QoL_BypassCheck(CHARA) ;cannot join in, leaves
+		RETURNF 1
+	;hasn't given consent
+	IF !(CFLAG:CHARA:既成事実 & 合意_うふふ)
+		;ENDURE will always return 0 with low mood, so we cheat a little to make use of it
+		LOCAL:1 = BASE:CHARA:ムード
+		LOCAL:2 = BASE:CHARA:理性
+		BASE:CHARA:ムード = MAX(750, BASE:CHARA:ムード)
+		BASE:CHARA:理性 = MIN(500, BASE:CHARA:理性)
+		LOCAL = ENDURE(CHARA)
+		BASE:CHARA:ムード = LOCAL:1
+		BASE:CHARA:理性 = LOCAL:2
+		IF LOCAL >= (RAND:300 + 400 - (PROPER_ROOM * 100) - (LIKES_ANY * 100) + (DISLIKES_ANY * 100))
+			SIF TCVAR:CHARA:発情 || TCVAR:CHARA:媚薬 ;altered mental state
+				RETURNF 4
+			;can join in
+			RETURNF 5
+		ELSE
+			IF !PROPER_ROOM && !LIKES_ANY ;breaks it up if in improper room and not involving friends
+				RETURNF 2
+			ELSE
+				RETURNF 1 ;walks away
+			ENDIF
+		ENDIF
+	ELSE
+		FRUSTRATION_REQUIREMENT = 600 - (DAYS_SINCE_LAST_HAD_SEX * 50) - (LIKES_ANY * 200) + (DISLIKES_ANY * 200)
+		IF CFLAG:CHARA:溜まってる度 >= FRUSTRATION_REQUIREMENT && BASE:CHARA:気力 > 500 ;sufficiently horny and enough energy, joins in
+			RETURNF 3
+		ELSEIF !PROPER_ROOM && !LIKES_ANY ;breaks it up if in improper room and not involving friends
+			RETURNF 2
+		ELSEIF BASE:CHARA:気力 > 500
+			RETURNF 5 ;can be invited if enough energy
+		ELSE
+			RETURNF 1 ;walks away
+		ENDIF
+	ENDIF
+ENDIF
+
+@AFFAIR_DISCLOSURE_TR(ARG, NOZOKI)
+#DIM PREV_TARGET
+#DIM IRAI_ABLE
+#DIM NOZOKI
+#DIM FORCE_STOP
+#DIM FORCE_GETOUT
+#DIM WITNESSED
+#DIM WITNESSED_ALL, キャラクタ数上限
+#DIM WITNESSED_COUNT
+#DIMS WITNESSED_TEXT
+#DIM HAPPENING_TYPE
+#DIM VICTIMS_STATE
+#DIM MOLESTATION_TYPE
+#DIM JOIN_RESULT
+#DIM DYNAMIC REACTING_PARTICIPANT
+#DIM DYNAMIC FORCE_GETOUT_SPARE_MASTER ;Custom code, flag for sparing the player when others are ejected.
+SIF NO:ARG == MASTER ;addition custom code
+	RETURN
+WITNESSED_COUNT = 0
+VARSET LOCALS
+FOR LOCAL, 1, GET_TARGETNUM() + 1
+SIF TARGET:LOCAL == ARG
+	CONTINUE
+IF (CFLAG:(TARGET:LOCAL):うふふ || CFLAG:(TARGET:LOCAL):イタズラ) && !GETBIT(FLAG:潜伏,0)
+	WITNESSED_ALL:(WITNESSED_COUNT++) = TARGET:LOCAL
+	LOCALS += @"%CALLNAME:(TARGET:LOCAL)%、"
+ENDIF
+NEXT
+IF CFLAG:MASTER:今忙しくて手が離せない
+	WITNESSED_ALL:(WITNESSED_COUNT++) = MASTER
+	LOCALS += @"당신은"
+ENDIF
+WITNESSED_TEXT '= LIST_IN_STRING(LOCALS)
+VARSET LOCAL
+FORCE_STOP = 0
+FORCE_GETOUT = 0
+HAPPENING_TYPE = 0
+WITNESSED = TFLAG:現在のTARGET
+SIF CFLAG:MASTER:イタズラ
+	WITNESSED = TARGET
+IF WITNESSED_COUNT > 0 && !FLAG:70 ;bugfix, don't do this if time is stopped
+	VICTIMS_STATE = QOL_ANY_DRUNK_OR_SLEEPING(WITNESSED_ALL, WITNESSED_COUNT)
+	DRAWLINE
+	;NAS: masturbating
+	IF CFLAG:MASTER:今忙しくて手が離せない
+		PRINTFORML %CALLNAME:ARG%가 당신이 자위하는 것을 목격했다!
+		JOIN_RESULT = QOL_VOYEUR_JOINS(ARG, WITNESSED_ALL, WITNESSED_COUNT)
+		SELECTCASE JOIN_RESULT
+			CASE 1
+				IF TALENT:ARG:SexKnow == -1
+					PRINTFORML %CALLNAME:ARG%은 당신의 자위를 본다 \@ TALENT:ARG:羞恥心 > 0 ? 숨기고 있음에도 %HIS_HER(ARG)%의 홍당무 같은 얼굴 # 호기심으로 가득 찬 \@...
+					PRINTFORMW 당신은 혼란스러운 %CALLNAME:ARG%를 지나쳐 간다.
+					CALL GETOUT(ARG)
+					CALL TARGETSET_CHACK
+					CFLAG:ARG:同室 = 0
+					RETURN 1
+				ENDIF
+				PRINTFORMW %CALLNAME:ARG%는 역겹다는 듯한 표정을 짓는다.
+				GOTO VOYEUR_LEAVES
+			CASE 2
+				IF CharaDiaperChecker(ARG)
+					PRINTFORML %CALLNAME:ARG%은(는) 일이 끝나기 전에 자위를 했다고 당신을 비난한다 %AT_IN_ON(CFLAG:MASTER:現在位置)%
+					CALL PunishmentPointChange(MASTER,CHASITY_PU_POINT_GAIN(MASTER,ARG),"chastity",1)
+					CALL SET_REP(ARG,10,1,1)
+					DRAWLINE
+					FORCE_STOP = 1
+				ELSEIF TALENT:ARG:30 > 0 || GET_INT(ARG, "Religion", TALENT:ARG:Religion, "Masturbation") < 0
+					PRINTFORML %CALLNAME:ARG%은 당신이 그런 행동을 한 것을 비난하며, 그것이 %HIS_HER(ARG)%의 종교를 위반한다고 말한 뒤 상황을 끝낸다.
+					PRINTFORMW %HE_SHE(ARG,1)%는 이것을 이용해 당신을 협박할 수 있다.
+					CFLAG:ARG:弱み握り += 10
+					CALL SET_REP(ARG,10,,1)
+					DRAWLINE
+					FORCE_STOP = 1
+				ELSEIF !QOL_SEX_IN_MEMBERS_BEDROOM(WITNESSED_ALL, WITNESSED_COUNT)
+					PRINTFORML %CALLNAME:ARG%은/는 그런 행동을 한 것에 대해 비난한다 %AT_IN_ON(CFLAG:MASTER:現在位置)%에서 일을 끝내기 전에.
+					PRINTFORMW %HE_SHE(ARG,1)%은/는 이것으로 당신을 협박할 수 있다.
+					CFLAG:ARG:弱み握り += 5
+					CALL SET_REP(ARG,10,,1)
+					DRAWLINE
+					FORCE_STOP = 1
+				ENDIF
+			CASE 3
+				PRINTFORMW %CALLNAME:ARG%은(는) 저항할 수 없어 자위 세션을 섹스 세션으로 바꾼다.
+				CFLAG:MASTER:今忙しくて手が離せない = 0
+				CFLAG:MASTER:うふふ = 1
+				GOTO VOYEUR_JOINS
+			CASE 4
+				PRINTFORMW %CALLNAME:ARG%는 %HIS_HER(ARG)%의 충동을 거부하지 못하고 자위 세션을 섹스로 바꾼다. 비록 %HE_SHE(ARG)%는 그것에 대해 여전히 다소 주저하는 듯 보이지만.
+				CFLAG:MASTER:今忙しくて手が離せない = 0
+				CFLAG:MASTER:うふふ = 1
+				GOTO VOYEUR_JOINS_INVOL
+			CASE 5
+				GOTO VOYEUR_INVITES
+		ENDSELECT
+		;=====================================
+	ELSEIF VICTIMS_STATE || QOL_ANY_RAPE(WITNESSED_ALL, WITNESSED_COUNT)
+		MOLESTATION_TYPE = 0
+		FOR LOCAL, 0, WITNESSED_COUNT
+		MOLESTATION_TYPE = MAX(MOLESTATION_TYPE, CFLAG:(WITNESSED_ALL:LOCAL):イタズラ)
+		NEXT
+		;rape is conscious, we use flag 3.
+		SIF QOL_ANY_RAPE(WITNESSED_ALL, WITNESSED_COUNT)
+			MOLESTATION_TYPE = 3
+		LOCALS:1 = 
+		SELECTCASE VICTIMS_STATE
+			CASE 3
+				LOCALS:1 = 술에 취하거나 혹은 자고 있는
+			CASE 2
+				LOCALS:1 = 잠든
+			CASE 1
+				LOCALS:1 = 취한 자
+		ENDSELECT
+		PRINTFORMW %CALLNAME:ARG%은(는) 너를 범한다 \@ MOLESTATION_TYPE >= 2 ? 강간 # 성추행 \@%LOCALS:1% %WITNESSED_TEXT%!
+		;if sleeping and lewd, victim wakes up and calms interloper down, though sex still ends
+		IF VICTIMS_STATE == 2 && QOL_ALL_ACCEPTS_SLEEP_RAPE(WITNESSED_ALL, WITNESSED_COUNT)
+			FOR LOCAL, 0, WITNESSED_COUNT
+			CALL CHARA_AWAKE(WITNESSED_ALL:LOCAL,1,1)
+			CALL SET_PRANK(0,WITNESSED_ALL:LOCAL,2)
+			NEXT
+			PRINTFORML 소동 중에 %WITNESSED_TEXT% 깨다%COND_STR("s",WITNESSED_COUNT==1)% 깨어나고 \@ WITNESSED_COUNT==1 ? 시도한다 # 시도한다 \@ to calm %CALLNAME:ARG% down, explaining that \@ WITNESSED_COUNT==1 ? %HE_SHE(WITNESSED_ALL)%은 # 그들은 괜찮다고 말한다. \@ 완전히 괜찮다고
+			IF QOL_ACCEPTS_SLEEP_RAPE(ARG)
+				PRINTFORML %CALLNAME:ARG%는 한숨을 쉬며 조용히 떠난다.
+			ELSE
+				PRINTFORML %CALLNAME:ARG%는 역겨운 표정을 짓지만 조용히 떠나기로 결정한다.
+			ENDIF
+			CALL QOL_KICK_OUT_VOYEUR(ARG)
+			;custom code: is conscious
+		ELSEIF MOLESTATION_TYPE == 3
+			;ignore (doesnt care), ignore (fear), ignore (blackmail), fight or join
+			IF QOL_ALL_ACCEPTS_SLEEP_RAPE(WITNESSED_ALL, WITNESSED_COUNT)
+				;it's fine (everyone must be Slut or Lewd)
+				PRINTFORML 소동 중에, %WITNESSED_TEXT%은(는) \@ WITNESSED_COUNT==1 ? 진정시키려 한다 # 노력한다 \@ to calm %CALLNAME:ARG% down, explaining that \@ WITNESSED_COUNT==1 ? %HE_SHE(WITNESSED_ALL)%가 # 그들이 \@ 완전히 괜찮다고.
+				IF QOL_ACCEPTS_SLEEP_RAPE(ARG)
+					PRINTFORML %CALLNAME:ARG%은/는 한숨을 쉬며 조용히 떠난다.
+				ELSE
+					PRINTFORML %CALLNAME:ARG%는 역겨운 표정을 짓지만 조용히 떠나기로 결정한다.
+				ENDIF
+				CALL QOL_KICK_OUT_VOYEUR(ARG)
+				RETURN 1
+			ELSE
+				IF QOL_ACCEPTS_SLEEP_RAPE(ARG) || QOL_VOYEUR_JOINS(ARG, WITNESSED_ALL, WITNESSED_COUNT) == 2
+					;accepts rape
+					GOTO VOYEUR_JOINS
+				ELSEIF QOL_VOYEUR_JOINS(ARG, WITNESSED_ALL, WITNESSED_COUNT) == 3
+					;too horny or in heat, joins
+					GOTO VOYEUR_JOINS_INVOL
+				ELSEIF TALENT:ARG:度胸 < 0
+					;ignore (fear)
+					PRINTFORMW %HE_SHE(ARG,1)%이(가) 눈에 눈물을 머금고 당신에게 그만두라고 애원한다...
+					PRINTFORMW 아무것도 할 수 없었던 %CALLNAME:ARG%은 떠난다.
+					CALL QOL_KICK_OUT_VOYEUR(ARG)
+					RETURN 1
+				ELSEIF (TALENT:ARG:7 || TALENT:ARG:3) && !QOL_ALL_LOVERS(WITNESSED_ALL, WITNESSED_COUNT)
+					;Fight (cheating on lover, instantly breaks up with lover)
+					PRINTFORMW %HE_SHE(ARG,1)%은(는) 당신이 다른 사람을 강간하여 %HIM_HER(ARG)%에게 외도하는 것을 보고, %HE_SHE(ARG)%가 이전에 가졌던 것보다 더 격분한다.
+					PRINTFORMW %HIS_HER(ARG,1)%의 눈이 붉게 물들면서 그 자리에서 싸우기 시작한다.
+					TARGET = ARG
+					CALL KNIFE_FIGHT(ARG,MASTER,1,1)
+					;+20K source
+					SOURCE:ARG:反感 += 20000
+				ELSE
+					PRINTFORMW %HE_SHE(ARG,1)%은(는) 당신을 폭력적으로 끌어당기면서 %HE_SHE(ARG)%은 모든 것을 끝낸다.
+				ENDIF
+				;End Rape (blackmail)
+				PRINTFORMW %HE_SHE(ARG,1)%그/그녀는 이것을 이용해 당신을 협박할 수 있다.
+				CFLAG:ARG:弱み握り += 50
+				SOURCE:ARG:反感 += 10000
+				TARGET = ARG
+				; IF MARK:ARG:反発刻印 < (EXISTVAR("NAS_VERSION") ? 5 # 3)
+				; 	CALL GET_ANGRY(ARG,3)
+				; 	SETCOLOR 247,171,166
+				; 	PRINTFORML %CALLNAME:ARG% hurls a litany of curses at you as %HIS_HER(ARG)% face darkens with resentment...
+				; 	PRINTFORML %CALLNAME:ARG% got Hate Mark Lv{MARK:ARG:3}!
+				; 	RESETCOLOR
+				; 	FORCEWAIT
+				; ENDIF
+				;hostility checking
+				CALL SOURCE_反感(ARG)
+				CALL MARK_GOT_CHECK(TARGET)
+				CALL KOJO_MESSAGE_SEND("MARK",-1,TARGET,-1,-1)
+			ENDIF
+			;===============================
+		ELSEIF MOLESTATION_TYPE == 2
+			PRINTFORMW %CALLNAME:ARG%은(는) 이것으로 당신을 협박할 수 있다.
+			CFLAG:ARG:弱み握り += 10
+		ELSE
+			PRINTFORMW %CALLNAME:ARG%는 %HE_SHE(ARG)%이 일을 끝내자 역겹다는 듯 바라본다.
+		ENDIF
+		CALL TOUCH_SET(0,0,0,1)
+		DRAWLINE
+		FORCE_STOP = 1
+	ELSEIF TFLAG:102 == 3 && TFLAG:抱きつきモード
+		PRINTFORMW %CALLNAME:ARG%이 너의 %WITNESSED_TEXT%에게 추파 던지는 것을 목격한다!
+		PRINTFORMW %WITNESSED_TEXT% 보이다%COND_STR("s",WITNESSED_COUNT==1)% 후회스러운 듯이 %WITNESSED_TEXT% 떨어져%COND_STR("s",WITNESSED_COUNT==1)% 너에게서 멀어져...
+		FOR LOCAL, 0, WITNESSED_COUNT
+		CALL UWAKI_RECORD(ARG,0,WITNESSED_ALL:LOCAL)
+		NEXT
+		;TFLAG:抱きつきモード = 0
+		;TFLAG:102 = 1
+		FORCE_STOP = 1
+		;CALL 押し倒され終了
+	ELSE
+		IF NOZOKI
+			PRINTFORMW ~로부터%LOC_THE(CFLAG:ARG:現在位置, 0, 1)%【%NAME_FROM_PLACE(CFLAG:ARG:現在位置)%】%CALLNAME:ARG%당신과 ~ 사이의 연결을 발견한다! %WITNESSED_TEXT%!
+		ELSE
+			PRINTFORMW %CALLNAME:ARG%은(는) 당신과 %WITNESSED_TEXT% 사이의 밀회를 목격한다!
+		ENDIF
+		IF RESULT:10 == 99
+			FOR LOCAL, 0, WITNESSED_COUNT
+			CALL UWAKI_RECORD(ARG,0,WITNESSED_ALL:LOCAL)
+			NEXT
+		ELSE
+			CALL UWAKI_RECORD(ARG)
+		ENDIF
+		;Custom code, only "safe" characters can break up instead of joining sex in Lunatic Survival.
+		IF CFLAG:ARG:行動 == 5 && CFLAG:MASTER:現在位置 == CFLAG:ARG:職場 && LS_INTERRUPT()
+			PRINTFORML %CALLNAME:ARG%은(는) 당신이 그런 짓을 %HIS_HER(ARG)%의 직장에서 했다고 비난한 뒤에 너를 내쫓았다.
+			CALL GET_ANGRY(ARG)
+			FORCE_STOP = 1
+			FORCE_GETOUT = 1
+			;can't blackmail the landlord, or during Lunatic Survival.
+			IF !QOL_ANY_HAS_LANDLORD_PRIVILEGE(WITNESSED_ALL, WITNESSED_COUNT) && LS_ACTIVE() == ""
+				PRINTFORMW %HE_SHE(ARG,1)%그/그녀는 이것을 이용해 당신을 협박할 수 있다.
+				CFLAG:ARG:弱み握り += 20
+			ENDIF
+			DRAWLINE
+		ELSE
+			IF !NOZOKI
+				JOIN_RESULT = QOL_VOYEUR_JOINS(ARG, WITNESSED_ALL, WITNESSED_COUNT)
+				CALL KOJO_CHECK(ARG, "JOIN_SEX", "JOINING", JOIN_RESULT)
+				SIF INRANGE(RESULT, 1, 5)
+					JOIN_RESULT = RESULT
+				IF GROUPMATCH(JOIN_RESULT, 3, 4, 5) ;existing members can reject new joiners if desired
+					FOR LOCAL, 0, WITNESSED_COUNT
+					CALL KOJO_CHECK(WITNESSED_ALL:LOCAL, "JOIN_SEX", "CURRENT", JOIN_RESULT, ARG)
+					IF INRANGE(RESULT, 1, 7)
+						REACTING_PARTICIPANT = WITNESSED_ALL:LOCAL
+						JOIN_RESULT = RESULT
+					ENDIF
+					SIF GROUPMATCH(JOIN_RESULT, 1, 2, 6, 7) ;once someone vetoes it, stop checking
+						BREAK
+					NEXT
+				ENDIF
+				;------------------------------------------------------------------------------------------------------
+				;Custom code, only "safe" characters can break up instead of joining sex in Lunatic Survival.
+				IF LS_ACTIVE() != ""
+					IF IS_LS_SAFE(ARG)
+						JOIN_RESULT = -1
+						CALL LS_INTERRUPT_MESSAGE(ARG,WITNESSED_ALL:0,WITNESSED_COUNT)
+						WAIT
+						FORCE_STOP = 1
+						FORCE_GETOUT = 1
+						FORCE_GETOUT_SPARE_MASTER = 1
+						DRAWLINE
+					ELSE
+						JOIN_RESULT = 3
+					ENDIF
+				ENDIF
+				;------------------------------------------------------------------------------------------------------
+				SELECTCASE JOIN_RESULT
+					CASE 1 ;leaves
+						IF TALENT:ARG:SexKnow == -1 && !(CFLAG:ARG:既成事実 & 合意_うふふ)
+							PRINTFORML %CALLNAME:ARG%은(는) 당신의 연인을 바라본다 \@ TALENT:ARG:羞恥心 > 0 ? 숨기면서 # 호기심으로 가득 찬 %HIS_HER(ARG)%의 홍당무한 얼굴을 \@...
+							PRINTFORMW 당신은 혼란스러운 %CALLNAME:ARG%를 데리고 떠난다.
+							CALL GETOUT(ARG)
+							CALL TARGETSET_CHACK
+							CFLAG:ARG:同室 = 0
+							RETURN 1
+						ENDIF
+						PRINTFORMW %CALLNAME:ARG%은(는) \@ TALENT:ARG:恋慕 ? 실망한 듯 보인다 # 당황해서 돌아선다 \@ 그리고 서둘러 떠난다...
+						$VOYEUR_LEAVES
+						;voyeur
+						CALL KOJO_MESSAGE_SEND("EVENT",6,ARG,WITNESSED,3)
+						;enjoy your heaps of dialogue
+						FOR LOCAL, 0, WITNESSED_COUNT
+						CALL KOJO_MESSAGE_SEND("EVENT",7,(WITNESSED_ALL:LOCAL),ARG,3)
+						NEXT
+						IF CFLAG:ARG:現在位置 == CFLAG:ARG:前ターン位置
+							CALL GETOUT(ARG)
+						ELSE
+							CFLAG:ARG:現在位置 = CFLAG:ARG:前ターン位置
+						ENDIF
+						CALL TARGETSET_CHACK
+						CFLAG:ARG:同室 = 0
+						IF TALENT:ARG:恋慕
+							TALENT:ARG:機嫌 = MIN(TALENT:ARG:機嫌, 0)
+							BASE:ARG:怒り += MAXBASE:ARG:怒り / 2
+						ENDIF
+						SIF !QOL_SEX_IN_MEMBERS_BEDROOM(WITNESSED_ALL, WITNESSED_COUNT) || TALENT:ARG:恋慕
+							CFLAG:ARG:情事目撃 = WITNESSED
+						RETURN 1
+					CASE 2 ;breaks up
+						IF CFLAG:MASTER:現在位置 == CFLAG:ARG:初期位置 ;their own bedroom
+							PRINTFORML %CALLNAME:ARG%은(는) 당신이 %HIS_HER(ARG)%의 방에서 그런 행동을 한 것에 대해 비난한 후 당신을 내쫓는다.
+							PRINTFORMW %HE_SHE(ARG,1)%은(는) 이것을 가지고 당신을 협박할 수 있다.
+							CALL GET_ANGRY(ARG)
+							FORCE_STOP = 1
+							FORCE_GETOUT = 1
+							CFLAG:ARG:弱み握り += 20
+							DRAWLINE
+						ELSEIF PRIVATEROOM:(CFLAG:MASTER:現在位置 % 100) && !QOL_SEX_IN_MEMBERS_BEDROOM(WITNESSED_ALL, WITNESSED_COUNT) ;improper bedroom
+							PRINTFORML %CALLNAME:ARG%는 당신이 %CALLNAME:(PRIVATEROOM:(CFLAG:MASTER:現在位置 % 100))%의 방에서 그런 짓을 했다고 비난하며 당신을 내쫓는다.
+							PRINTFORMW %HE_SHE(ARG,1)%은 이것으로 당신을 협박할 수 있다.
+							CALL GET_ANGRY(ARG)
+							FORCE_STOP = 1
+							FORCE_GETOUT = 1
+							CFLAG:ARG:弱み握り += 10
+							DRAWLINE
+						ELSEIF !QOL_SEX_IN_MEMBERS_BEDROOM(WITNESSED_ALL, WITNESSED_COUNT) ;improper location
+							PRINTFORML %CALLNAME:ARG%은(는) 모든 것을 끝내기 전에 그런 짓을 했다고 당신을 비난한다 %AT_IN_ON(CFLAG:MASTER:現在位置)%.
+							CALL GET_ANGRY(ARG)
+							FORCE_STOP = 1
+							;can't blackmail the landlord
+							IF !QOL_ANY_HAS_LANDLORD_PRIVILEGE(WITNESSED_ALL, WITNESSED_COUNT)
+								PRINTFORMW %HE_SHE(ARG,1)%그/그녀는 이것을 이용해 당신을 협박할 수 있다.
+								CFLAG:ARG:弱み握り += 5
+							ENDIF
+							DRAWLINE
+						ELSE
+							PRINTFORML %CALLNAME:ARG%은/는 당신이 일을 끝내기도 전에 %WITNESSED_TEXT%와 잠자리를 가졌다고 비난한다.
+							PRINTFORMW %HE_SHE(ARG,1)%은/는 이것을 이용해 당신을 협박할 수 있다.
+							CALL GET_ANGRY(ARG)
+							FORCE_STOP = 1
+							CFLAG:ARG:弱み握り += 10
+							DRAWLINE
+						ENDIF
+						;voyeur
+						CALL KOJO_MESSAGE_SEND("EVENT",6,ARG,WITNESSED,1)
+						;enjoy your heaps of dialogue
+						FOR LOCAL, 0, WITNESSED_COUNT
+						CALL KOJO_MESSAGE_SEND("EVENT",7,(WITNESSED_ALL:LOCAL),ARG,1)
+						NEXT
+					CASE 3 ;joins in
+						PRINTFORMW %CALLNAME:ARG%은(는) 참지 못하고 합류한다.
+						$VOYEUR_JOINS
+						;give consent
+						IF !(CFLAG:ARG:既成事実 & 合意_うふふ)
+							TCVAR:ARG:抱き寄せ初回 = 99
+							SETBIT CFLAG:ARG:既成事実 , 1
+							CALL COLORMESSAGE(@"당신은 %CALLNAME:ARG%의 동의를 받는다.",C_YELLOW,2)
+						ENDIF
+						CFLAG:ARG:うふふ = CFLAG:(WITNESSED):うふふ
+						BASE:ARG:ムード = MAX(BASE:ARG:ムード, 300)
+						BASE:ARG:理性 = MIN(BASE:ARG:理性, 300)
+						CFLAG:ARG:LAST_SEX_DAY = DAY
+						;new participant
+						CALL KOJO_MESSAGE_SEND("EVENT",6,ARG,WITNESSED,2)
+						FOR LOCAL, 0, WITNESSED_COUNT
+						CALL UWAKI_RECORD(ARG,1,WITNESSED_ALL:LOCAL)
+						CALL UWAKI_RECORD(WITNESSED_ALL:LOCAL,1,ARG)
+						CALL KOJO_MESSAGE_SEND("EVENT",7,WITNESSED_ALL:LOCAL,ARG,2) ;current participants
+						NEXT
+						DRAWLINE
+						RETURN 0
+					CASE 4 ;joins in (involuntary)
+						PRINTFORMW %CALLNAME:ARG%은 %HIS_HER(ARG)%의 충동을 이기지 못하고 합류하지만, %HE_SHE(ARG)%는 여전히 그것에 대해 다소 망설이는 듯 보인다.
+						$VOYEUR_JOINS_INVOL
+						CFLAG:ARG:うふふ = CFLAG:(WITNESSED):うふふ
+						BASE:ARG:ムード = MAX(BASE:ARG:ムード, 300)
+						BASE:ARG:理性 = MIN(BASE:ARG:理性, 300)
+						CFLAG:ARG:ヤラせちゃった = 1
+						CFLAG:ARG:LAST_SEX_DAY = DAY
+						;new participant
+						CALL KOJO_MESSAGE_SEND("EVENT",6,ARG,WITNESSED,2)
+						FOR LOCAL, 0, WITNESSED_COUNT
+						;doesn't fully accept them
+						CALL UWAKI_RECORD(ARG,0,WITNESSED_ALL:LOCAL)
+						CALL UWAKI_RECORD(WITNESSED_ALL:LOCAL,0,ARG)
+						CALL KOJO_MESSAGE_SEND("EVENT",7,WITNESSED_ALL:LOCAL,ARG,2) ;current participants
+						NEXT
+						DRAWLINE
+						RETURN 0
+					CASE 5 ;can be invited
+						$VOYEUR_INVITES
+						CALL ASK_YN(@"%CALLNAME:ARG%을(를) 당신과 합류하도록 초대한다", "아무 말도 하지 않는다")
+						IF !RESULT
+							PRINTFORMW 당신은 %CALLNAME:ARG%을 불러들이고 %HE_SHE(ARG)%는 기꺼이 합류한다.
+							CFLAG:ARG:うふふ = CFLAG:(WITNESSED):うふふ
+							BASE:ARG:ムード = MAX(BASE:ARG:ムード, 300)
+							BASE:ARG:理性 = MIN(BASE:ARG:理性, 300)
+							CFLAG:ARG:同室 = 1
+							CFLAG:ARG:LAST_SEX_DAY = DAY
+							;most characters won't have dialogue scripted for this, sadly
+							CALL KOJO_MESSAGE_SEND("EVENT",6,ARG,WITNESSED,4) ;new participant
+							FOR LOCAL, 0, WITNESSED_COUNT
+							CALL UWAKI_RECORD(ARG,1,WITNESSED_ALL:LOCAL)
+							CALL UWAKI_RECORD(WITNESSED_ALL:LOCAL,1,ARG)
+							CALL KOJO_MESSAGE_SEND("EVENT",7,WITNESSED_ALL:LOCAL,ARG,4) ;current participants
+							NEXT
+							DRAWLINE
+							RETURN 0
+						ELSE
+							PRINTFORMW %CALLNAME:ARG%은(는) 당신에게 정중하게 손을 흔든다, %HE_SHE(ARG)%이 떠나면서.
+							GOTO VOYEUR_LEAVES
+						ENDIF
+					CASE 6 ;rejected by participant
+						PRINTFORMW %CALLNAME:ARG%은(는) %CALLNAME:REACTING_PARTICIPANT%에게 쫓겨 서둘러 떠난다...
+						;participant
+						CALL KOJO_MESSAGE_SEND("EVENT",7,REACTING_PARTICIPANT,ARG,90)
+						;voyeur
+						CALL KOJO_MESSAGE_SEND("EVENT",6,ARG,REACTING_PARTICIPANT,90)
+						IF CFLAG:ARG:現在位置 == CFLAG:ARG:前ターン位置
+							CALL GETOUT(ARG)
+						ELSE
+							CFLAG:ARG:現在位置 = CFLAG:ARG:前ターン位置
+						ENDIF
+						CALL TARGETSET_CHACK
+						CFLAG:ARG:同室 = 0
+						IF TALENT:ARG:恋慕
+							TALENT:ARG:機嫌 = MIN(TALENT:ARG:機嫌, 0)
+						ENDIF
+						RETURN 1
+					CASE 7 ;participant breaks it up
+						PRINTFORML %CALLNAME:REACTING_PARTICIPANT%가 난동을 부려 분위기를 망쳐 더 이상 진행할 수 없게 된다.
+						FORCE_STOP = 1
+						FORCE_GETOUT = 1
+						DRAWLINE
+						;participant
+						CALL KOJO_MESSAGE_SEND("EVENT",7,REACTING_PARTICIPANT,ARG,91)
+						;voyeur
+						CALL KOJO_MESSAGE_SEND("EVENT",6,ARG,REACTING_PARTICIPANT,91)
+				ENDSELECT
+				;Custom code, distant witnesses are forced to watch during Lunatic Time.
+			ELSEIF (TALENT:ARG:SexKnow == -1 && !(CFLAG:ARG:既成事実 & 合意_うふふ)) || LS_LUNATIC_TIME()
+				PRINTFORMW %NAME_FROM_PLACE_THE(CFLAG:ARG:現在位置)% %CALLNAME:ARG%가 당신의 불륜을 바라본다 \@ TALENT:ARG:羞恥心 > 0 ? 숨기면서 %HIS_HER(ARG)%의 홍당무 같은 얼굴 # 호기심으로 가득 찬 \@...
+			ELSE
+				PRINTFORMW %CALLNAME:ARG%은(는) \@ TALENT:ARG:恋慕 ? 실망한다 # 부끄러워하며 외면한다 \@...
+				IF TALENT:ARG:恋慕 && !CFLAG:ARG:情事目撃
+					IF TCVAR:ARG:馴れ合い < 3
+						TALENT:ARG:機嫌 = MIN(TALENT:ARG:機嫌, 0)
+						BASE:ARG:怒り += MAXBASE:ARG:怒り / 4
+					ENDIF
+					CFLAG:ARG:情事目撃 = WITNESSED ;can sadly only set this to one target
+				ENDIF
+			ENDIF
+		ENDIF
+	ENDIF
+ENDIF
+IF FORCE_STOP
+	SIF CFLAG:MASTER:イタズラ
+		CALL SET_PRANK(0,TARGET,2)
+	CALL ENDUFUFU_ALL
+	TARGET = TARGET:1
+	IF FORCE_GETOUT
+		SIF !FORCE_GETOUT_SPARE_MASTER ;Custom code, spare the player from ejection.
+			CALL GETOUT(MASTER)
+		FOR LOCAL, 0, WITNESSED_COUNT
+		CALL GETOUT(WITNESSED_ALL:LOCAL)
+		NEXT
+		CALL TARGETSET_CHACK
+	ENDIF
+	CFLAG:MASTER:今忙しくて手が離せない = 0
+	TFLAG:106 = 0
+	RETURN 0
+ENDIF
+;通常遭遇
+;experimental bug fix: modified below, TIME != TIME:3 removed because girls won't greet you right after waking up with tsp movement enabled (time doesn't change therefore this gets ignored)
+IF !CFLAG:ARG:睡眠 && (!NOZOKI || CFLAG:ARG:現在位置 == CFLAG:MASTER:現在位置) && !FLAG:時間停止 && !CHK_DATENOW(CFLAG:ARG:デート中) && !GETBIT(FLAG:潜伏,0)
+	;デート中に偶然遭遇
+	IF CHK_DATENOW(CFLAG:MASTER:デート中)
+		CALL PRINT_FACE, ARG, "通常"
+		IF !CFLAG:(NO:ARG):面識 && TALENT:ARG:行きずり
+			PRINTFORMW 당신은 %CALLNAME:ARG%에게 부른다.
+		ELSEIF CFLAG:TARGET:同室 ;custom code, don't "come across" someone if you resumed time with them
+			PRINTFORMW %CALLNAME:ARG%가 여기 있다.
+		ELSE
+			IF !TCVAR:ARG:今日会ったか && !cMorningGreeting:ARG:0 ;custom code, hide the line if the morning event was seen
+				PRINTFORMW 당신은 %CALLNAME:ARG%를 마주친다.
+			ELSE
+				PRINTFORMW 당신은 다시 %CALLNAME:ARG%을(를) 마주친다.
+			ENDIF
+		ENDIF
+		IF CFLAG:(NO:ARG):面識 == 0
+			CALL SYOTAIMEN(ARG)
+		ELSE
+			;IF MOREDATE && NumberOfDates > 1 && !IS_IN_GROUP_DATE(ARG) ; If seen while dating more than one person
+			;	IF !TCVAR:ARG:今日会ったか
+			;		CALL KOJO_MESSAGE_SEND("EVENT",1,ARG,9,GET_RANDOM_DATE)
+			;	ENDIF
+			;	CALL KOJO_MESSAGE_SEND("EVENT",1,ARG,1007,GET_RANDOM_DATE)
+			;ELSE
+			FOR LOCAL:4,1,CHARANUM
+			IF CHK_DATENOW(CFLAG:(LOCAL:4):デート中)
+				IF !TCVAR:ARG:今日会ったか
+					CALL KOJO_MESSAGE_SEND("EVENT",1,ARG,9,LOCAL:4)
+				ENDIF
+				CALL KOJO_MESSAGE_SEND("EVENT",1,ARG,7,LOCAL:4)
+				BREAK
+			ELSEIF LOCAL:4 == CHARANUM - 1
+				IF !TCVAR:ARG:今日会ったか
+					CALL KOJO_MESSAGE_SEND("EVENT",1,ARG,9,0)
+				ENDIF
+				CALL KOJO_MESSAGE_SEND("EVENT",1,ARG,6,0)
+			ENDIF
+			NEXT
+		ENDIF
+		;さっきから居るのは分かっていたか否か
+	ELSEIF CFLAG:ARG:前ターン位置 == CFLAG:ARG:現在位置
+		CALL PRINT_FACE, ARG
+		IF CFLAG:TARGET:同室 ;custom code, if you've already seen them while time is stopped or they're asleep
+			PRINTFORMW %CALLNAME:ARG%가 여기에 있다.
+			SIF !TCVAR:ARG:今日会ったか && !cMorningGreeting:ARG:0
+				PRINTFORML 당신은 오늘 %HIM_HER(ARG)%에게 인사하지 않았다는 것을 깨닫는다.
+		ELSE
+			PRINTFORMW %CALLNAME:ARG%은(는) \@ CAN_MOVE(CFLAG:MASTER:前ターン位置, CFLAG:ARG:現在位置) == 2 ? 이다 # 이었다 \@%AT_IN_ON(CFLAG:ARG:現在位置)%에서.
+			SIF !TCVAR:ARG:今日会ったか && !cMorningGreeting:ARG:0 ;custom code, hide the line if the morning event was seen
+				PRINTFORML %CALLNAME:ARG%를 본 당신은 오늘 %HIM_HER(ARG)%에게 인사하지 않았다는 것을 깨닫는다.
+		ENDIF
+		HAPPENING_TYPE = 1
+		;風呂に入ってきた場合
+	ELSEIF CAN_MOVE(CFLAG:MASTER:前ターン位置, CFLAG:ARG:前ターン位置) < 2 && CFLAG:ARG:前ターン位置 != CFLAG:MASTER:前ターン位置 && BATHCHECK(CFLAG:MASTER:現在位置)
+		CALL PRINT_FACE, ARG, "通常" ;custom code, apply proper clothes
+		PRINTFORMW %CALLNAME:ARG%은(는) 욕실에 들어간다...
+		IF BATH_REMOVE_COND(ARG)
+			IF CFLAG:ARG:弱み握り && HETEROSEX(MASTER,ARG)
+				PRINTFORMW %CALLNAME:ARG%이/가 당신을 내쫓는다...
+				CFLAG:MASTER:現在位置 = KICKOUT()
+				HAPPENING_TYPE = 5
+				CALL TARGETSET_CHACK
+				CFLAG:ARG:同室 = 0
+			ELSE
+				PRINTFORMW 당신의 눈이 잠시 마주치지만, 그 후 %CALLNAME:ARG%은(는) 달려간다...
+				CFLAG:ARG:現在位置 = CFLAG:ARG:前ターン位置
+				CALL TARGETSET_CHACK
+				CFLAG:ARG:同室 = 0
+				HAPPENING_TYPE = 4
+			ENDIF
+		ELSE
+			PRINTFORMW %CALLNAME:ARG%가 당신과 함께하고 싶어 하는 것 같다.
+			SIF !TCVAR:ARG:今日会ったか && !cMorningGreeting:ARG:0 ;custom code, hide the line if the morning event was seen
+				PRINTFORML 당신은 오늘 %HIM_HER(ARG)%에게 인사하지 않았다는 것을 깨닫는다.
+			HAPPENING_TYPE = 3
+		ENDIF
+		;トイレに入ってきた場合
+	ELSEIF CAN_MOVE(CFLAG:MASTER:前ターン位置, CFLAG:ARG:前ターン位置) < 2 && CFLAG:ARG:前ターン位置 != CFLAG:MASTER:前ターン位置 && IN_TOILET(CFLAG:MASTER:現在位置)
+		PRINTW 누군가 화장실 문을 두드린다.
+		$TOILET_INPUT_LOOP
+		PRINTL [0]그곳이 사용 중이라고 말해라 [1]들어가게 해라
+		INPUT
+		IF RESULT == 1
+			PRINTFORM %CALLNAME:ARG%은(는) ~에 들어간다 
+			PRINTFORMS NAME_FROM_PLACE(CFLAG:ARG:現在位置)
+			PRINTFORMW .
+			HAPPENING_TYPE = 2
+		ELSEIF RESULT == 0
+			PRINTW 발소리가 조용해진다.
+			CFLAG:ARG:現在位置 = CFLAG:ARG:前ターン位置
+			CALL TARGETSET_CHACK
+			CFLAG:ARG:同室 = 0
+			HAPPENING_TYPE = -1
+		ELSE
+			GOTO TOILET_INPUT_LOOP
+		ENDIF
+		;addition custom code, if door is locked, and it's not target's place either they knock on the door or leave
+	ELSEIF FLAG:自室施錠 && CAN_MOVE(CFLAG:MASTER:前ターン位置, CFLAG:ARG:前ターン位置) < 2 && CFLAG:ARG:前ターン位置 != CFLAG:MASTER:前ターン位置 && CFLAG:MASTER:現在位置 != CFLAG:ARG:初期位置
+		IF CFLAG:ARG:2 >= 500
+			PRINTFORML 누군가 문을 두드린다.
+			IF CFLAG:ARG:2 >= 1000
+				PRINTFORML 당신은 그것이 %CALLNAME:ARG%의 목소리라는 것을 알 수 있다...
+			ELSE
+				PRINTFORML 당신은 잠시 누군지를 본다... 그것은 %CALLNAME:ARG%다.
+			ENDIF
+			CALL ASK_YN("열지 마라", @"%HIM_HER(ARG)%이/가 안에 있다")
+			IF RESULT
+				PRINTFORM %CALLNAME:ARG%이(가) 들어간다 
+				PRINTFORMS NAME_FROM_PLACE(CFLAG:ARG:現在位置)
+				PRINTFORMW .
+				HAPPENING_TYPE = 2
+				GOTO CAMEIN
+			ELSE
+				PRINTW 발소리가 조용해진다.
+			ENDIF
+		ELSE
+			PRINTFORML %CALLNAME:ARG%은 들어오려 하지만 문이 잠겨 있어서 %HE_SHE(ARG)%는 떠난다.
+		ENDIF
+		CFLAG:ARG:現在位置 = CFLAG:ARG:前ターン位置
+		CALL TARGETSET_CHACK
+		CFLAG:ARG:同室 = 0
+		HAPPENING_TYPE = -1
+		$CAMEIN
+		;---------------------------------------------------------------------------------------------------------------
+		;ELSEIF CAN_MOVE(CFLAG:MASTER:前ターン位置, CFLAG:ARG:前ターン位置) < 2 && CFLAG:ARG:前ターン位置 != CFLAG:MASTER:前ターン位置
+		;↑の条件では来訪時に初対面口上が出ない場合があるので変更
+	ELSEIF CFLAG:ARG:前ターン位置 != CFLAG:MASTER:前ターン位置
+		;bugfix custom code, apply proper clothes
+		CALL CHANGE_CLOTHES(ARG, "衣装リセット")
+		CALL CLOTHES_SETTING_TRAIN(ARG)
+		CALL PRINT_FACE, ARG, "通常"
+		IF CFLAG:ARG:前ターン位置 != MAXROOM && CFLAG:ARG:前ターン位置 != OMANEKIBEYA()
+			;Custom code
+			PRINTFORMW %CALLNAME:ARG%은(는) %NAME_FROM_PLACE_THE(CFLAG:ARG:現在位置, 1)%에 온다.
+		ENDIF
+		SIF !TCVAR:ARG:今日会ったか && !cMorningGreeting:ARG:0 ;custom code, hide the line if the morning event was seen
+			PRINTFORML 당신은 오늘 %HIM_HER(ARG)%에게 인사하지 않았다는 것을 깨닫는다.
+		HAPPENING_TYPE = 2
+	ENDIF
+	IF !FLAG:70 && CFLAG:ARG:現在位置 == CFLAG:MASTER:現在位置
+		IF !NOZOKI && HAPPENING_TYPE >= 0
+			;初対面
+			IF CFLAG:(NO:ARG):面識 == 0
+				CALL SYOTAIMEN(ARG)
+			ELSEIF CFLAG:ARG:情事目撃 && CFLAG:(CFLAG:ARG:情事目撃):現在位置 != CFLAG:ARG:現在位置
+				PRINTFORMW %CALLNAME:ARG%은(는) 당신이 아까 %CALLNAME:(CFLAG:ARG:情事目撃)%와 했던 일에 대해 추궁한다.
+				;CALL KOJO_EVENT(0, ARG, 2)
+				CALL KOJO_MESSAGE_SEND("EVENT",8,ARG,CFLAG:ARG:情事目撃,1)
+				CFLAG:ARG:情事目撃 = 0
+			ELSEIF CFLAG:ARG:情事目撃 && CFLAG:(CFLAG:ARG:情事目撃):現在位置 == CFLAG:ARG:現在位置
+				PRINTFORMW %CALLNAME:ARG%은(는) 당신에게 그리고 %CALLNAME:(CFLAG:ARG:情事目撃)%에게 아까 한 일에 대해 꾸짖는다...
+				CALL KOJO_MESSAGE_SEND("EVENT",8,ARG,CFLAG:ARG:情事目撃,2)
+				CFLAG:ARG:情事目撃 = 0
+			ELSE
+				IF !TCVAR:ARG:今日会ったか && CFLAG:ARG:同室
+					CALL KOJO_MESSAGE_SEND("EVENT",1,ARG,8,0)
+				ENDIF
+				;通常遭遇口上
+				CALL KOJO_MESSAGE_SEND("EVENT",1,ARG,HAPPENING_TYPE,0)
+			ENDIF
+		ENDIF
+		CALL FirstMeetToday(ARG)
+		SIF GROUPMATCH(HAPPENING_TYPE, 2, 3, 6, 7, 8)
+			CALL EXHIBITIONIST_NUDIST_REACTION(ARG) ;custom code
+	ENDIF
+ENDIF
+IF (WORKING(ARG, 1) && !GROUPMATCH(CFLAG:ARG:職種, JOB_宴会参加, JOB_酔いつぶれる)) || GROUPMATCH(CFLAG:ARG:職種, JOB_宴会準備, JOB_宴会の片づけ) && !CFLAG:ARG:同室 ;qol custom code, show if they're working when you see them
+	CALL 仕事情景描写(ARG)
+	SIF FLAG:70
+		PRINTFORMW 적어도, 시간 정지 상태에서는 그렇게 보인다.
+	PRINTFORML
+ENDIF

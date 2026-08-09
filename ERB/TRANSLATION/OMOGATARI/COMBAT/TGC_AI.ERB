@@ -1,0 +1,77 @@
+﻿; Modular ERB: OMOGATARI/COMBAT/TGC_AI.ERB
+
+@TGC_AI(ARG)
+#DIM aiIsTargeting
+#DIM aiBiggestTarget
+#DIM aiCombatantID
+#DIM aiGrid
+#DIM aiMovementSlots
+#DIM nSide
+#DIM targetGrid
+#DIM targetLocation
+#DIM targetDistance
+aiCombatantID = GetCombatant(ARG)
+aiGrid = TGC_CurrentGridSpace(ARG)
+aiMovementSlots:0 = TGC_CharacterMoveRadius(ARG)
+nSide = DT_CELL_GET("lcCombatants",aiCombatantID,"side",1)
+aiBiggestTarget = AI_GET_TARGET(ARG, nSide)
+aiIsTargeting = aiBiggestTarget
+;reload
+IF charaWeaponInts:(TGC_CurrentAttacker):MagSize && charaWeaponInts:(TGC_CurrentAttacker):Ammo <= 0
+	TGC_CurrentAction '= "reload"
+	RETURN
+ENDIF
+;check for enemies in range
+;dekaja if buff level gets to 4 or higher
+;attack enemy
+IF aiBiggestTarget > -1
+	targetGrid = TGC_CurrentGridSpace(aiIsTargeting)
+	;check distance between ai and target
+	targetDistance = TGC_RangeDifference(DT_CELL_GET("TGC_Map", aiGrid, "x", 1),DT_CELL_GET("TGC_Map", aiGrid, "y", 1),DT_CELL_GET("TGC_Map", targetGrid, "x", 1),DT_CELL_GET("TGC_Map", targetGrid, "y", 1))
+	IF charaWeaponInts:ARG:Range >= targetDistance
+		;attack
+		CALLF TGC_ClearRadius(0)
+		CALLF ClearAttackRadiuses
+		TGC_CurrentAction '= "attack_S1"
+		TGC_AITArget = aiIsTargeting
+		CALL TGC_GetDamageType(1)
+		RETURN
+	ELSE
+		;else move to that enemy
+		TGC_CurrentAction '= "turnEnd"
+		;prioritize moving horizontally unless they are at the same X position
+		IF DT_CELL_GET("TGC_Map", aiGrid, "x", 1) != DT_CELL_GET("TGC_Map", targetGrid, "x", 1)
+			LOCAL:1 = DT_CELL_GET("TGC_Map", aiGrid, "y", 1)
+			IF DT_CELL_GET("TGC_Map", aiGrid, "x", 1) < DT_CELL_GET("TGC_Map", targetGrid, "x", 1)
+				;to the left
+				LOCAL = DT_CELL_GET("TGC_Map", aiGrid, "x", 1)+aiMovementSlots
+				SIF LOCAL > DT_CELL_GET("TGC_Map", targetGrid, "x", 1)
+					LOCAL = DT_CELL_GET("TGC_Map", targetGrid, "x", 1)
+			ELSE
+				;to the right
+				LOCAL = DT_CELL_GET("TGC_Map", aiGrid, "x", 1)-aiMovementSlots
+				SIF LOCAL < DT_CELL_GET("TGC_Map", targetGrid, "x", 1)
+					LOCAL = DT_CELL_GET("TGC_Map", targetGrid, "x", 1)
+			ENDIF
+		ELSE
+			;vertical movement
+			LOCAL = DT_CELL_GET("TGC_Map", aiGrid, "x", 1)
+			IF DT_CELL_GET("TGC_Map", aiGrid, "y", 1) < DT_CELL_GET("TGC_Map", targetGrid, "y", 1)
+				;to the left
+				LOCAL:1 = DT_CELL_GET("TGC_Map", aiGrid, "y", 1)+aiMovementSlots
+				SIF LOCAL:1 > DT_CELL_GET("TGC_Map", targetGrid, "y", 1)
+					LOCAL:1 = DT_CELL_GET("TGC_Map", targetGrid, "y", 1)
+			ELSE
+				;to the right
+				LOCAL:1 = DT_CELL_GET("TGC_Map", aiGrid, "y", 1)-aiMovementSlots
+				SIF LOCAL:1 < DT_CELL_GET("TGC_Map", targetGrid, "y", 1)
+					LOCAL:1 = DT_CELL_GET("TGC_Map", targetGrid, "y", 1)
+			ENDIF
+		ENDIF
+		CALL TGC_MoveChara(ARG,LOCAL,LOCAL:1)
+		CALL TGC_LogAdd(@"%PARSE("You move",,,ARG)%에게, {LOCAL}를, {LOCAL:1}")
+		RETURN
+	ENDIF
+ENDIF
+;have literally nothing to do
+TGC_CurrentAction '= "wait"

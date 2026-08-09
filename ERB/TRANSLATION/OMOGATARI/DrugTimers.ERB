@@ -1,0 +1,145 @@
+﻿; Modular ERB: OMOGATARI/DrugTimers.ERB
+
+@NAS_TimerActs_Chara(nChara)
+#DIM nChara
+#DIM DYNAMIC Lapse
+#DIM DYNAMIC loopCount
+Lapse = TIME_PROGRESS(TIME:1)
+;pee and poo gain
+CALL TimeBladderGain(nChara)
+;Hypnosis
+BASE:nChara:Hypno = LIMIT(BASE:nChara:Hypno-(10*Lapse), 0, MAXBASE:nChara:Hypno)
+;Hediff system
+CALLF HealAllHediffs(nChara,Lapse/5)
+CALLF LapseDrugHediffs(nChara,Lapse)
+;Diarrhea
+IF TCVAR:nChara:BowelState > 0
+	TCVAR:nChara:BowelState = MAX(TCVAR:nChara:BowelState - Lapse,0)
+ELSE
+	TCVAR:nChara:BowelState = MIN(TCVAR:nChara:BowelState + Lapse,0)
+ENDIF
+TCVAR:nChara:DiaperCheckImmunity = MAX(0,TCVAR:nChara:DiaperCheckImmunity-Lapse)
+;NAS drug Stats
+;Controls diuretic stats loss from time
+FOR loopCount,0, VARSIZE("DrugStats")
+CONTINUE
+SELECTCASE loopCount
+	CASE 3
+		;don't change EnemaStrength
+		CONTINUE
+	CASE 4
+		;change enema time
+		DrugStats:nChara:EnemaTime = MAX(DrugStats:nChara:EnemaTime - Lapse,0)
+		SIF DrugStats:nChara:EnemaTime <= 0 && DrugStats:nChara:EnemaStrength
+			DrugStats:nChara:EnemaStrength = 0
+	CASE 9
+		; Fluvoxamine Cycle
+		SIF DrugStats:nChara:FluvoxamineTime
+			DrugStats:nChara:FluvoxamineCycle = MAX(DrugStats:nChara:FluvoxamineCycle + Lapse,0)
+		IF DrugStats:nChara:FluvoxamineCycle >= 60
+			LOCAL:74 = DrugStats:nChara:FluvoxamineCycle/60
+			CALLF ChangeEndurance(nChara,"charatrauma",(-30)*LOCAL:74)
+			DrugStats:nChara:FluvoxamineCycle = MAX(DrugStats:nChara:FluvoxamineCycle - (60*LOCAL:74),0)
+		ENDIF
+	CASE 10
+		;it gives you food poisoning and makes you dizzy, but also give you the laxative effect
+	CASEELSE
+		;other timer stats
+		SIF DrugStats:nChara:loopCount > 0
+			TRYCALLFORM DrugEffect_{loopCount}(nChara)
+		DrugStats:nChara:loopCount = MAX(DrugStats:nChara:loopCount - Lapse,0)
+ENDSELECT
+NEXT
+;magic diapees
+SELECTCASE DiapeMagicAttunement:nChara:0
+	CASE "aphro"
+		LOCAL:0 = 欲求不満素質補正(nChara,Lapse)
+		CFLAG:nChara:溜まってる度 = LIMIT(CFLAG:nChara:溜まってる度 + LOCAL:0, 0, 1000)
+ENDSELECT
+;Quest Related Things
+IF CHARANUM > 170
+	SIF GETBIT(CharaQuestline:102:0:2,0) && IsPadded(MASTER) && nChara == MASTER
+		K102_DiaperTime += Lapse
+ENDIF
+
+@NAS_TimerActs_Chara_Part2(nChara)
+#DIM nChara
+#DIM DYNAMIC Lapse
+#DIM DYNAMIC loopCount
+#DIM BaseRecovery, 10
+Lapse = TIME_PROGRESS(TIME:1)
+;NAS: No sexual frustration for 2hus too young
+SIF TooYoungForSex(nChara)
+	CFLAG:nChara:溜まってる度 = 0
+;NAS: Player Housing
+SIF RAND:2000 == 0
+	PlayerLandComfort:0 = LIMIT(PlayerLandComfort-1,0,PlayerLandComfort:1)
+;NAS: Anaphrodisiac
+SIF DrugStats:nChara:AnaphrodisiacTime || DrugStats:nChara:FluvoxamineTime
+	CFLAG:nChara:溜まってる度 = LIMIT(CFLAG:nChara:溜まってる度, 0, 300)
+IF !CFLAG:nChara:うふふ && CFLAG:nChara:行動 != 5 && Lapse >= 10 && nChara && !IsDead:nChara:0 && DT_SELECT(@"Hediff", @"chara = {nChara} and type = 49")
+	BaseRecovery:0 = (30 + TALENT:nChara:回復速度) * Lapse / 10
+	BaseRecovery:7 = (30 + TALENT:nChara:回復速度) * Lapse / 10
+	BaseRecovery:8 = (30 + TALENT:nChara:回復速度) * Lapse / 10
+	;回復量が100未満の場合は非表示
+	CALL RECOVER(nChara,BaseRecovery:0,BaseName:0, BaseRecovery:0 < 100 ? "" # "KyuuKyuu-Un recovery")
+	CALL RECOVER(nChara,BaseRecovery:7,BASENAME:7, BaseRecovery:7 < 100 ? "" # "KyuuKyuu-Un recovery")
+	CALL RECOVER(nChara,BaseRecovery:8,BASENAME:8, BaseRecovery:8 < 100 ? "" # "KyuuKyuu-Un recovery")
+ENDIF
+
+@DrugStatsDisplay(ARG)
+#DIM DYNAMIC loopCount
+FOR loopCount,0, VARSIZE("DrugStats")
+SELECTCASE loopCount
+	CASE 3, 9
+		;don't display EnemaStrength
+		CONTINUE
+	CASE 4
+		SIF DrugStats:ARG:loopCount
+			PRINTFORM <%DrugStatsTranslate_Name(loopCount)% STR {DrugStats:ARG:3} ({DrugStats:ARG:loopCount}m)>
+	CASEELSE
+		;other timer stats
+		SIF DrugStats:ARG:loopCount
+			PRINTFORM <%DrugStatsTranslate_Name(loopCount)% ({DrugStats:ARG:loopCount}m)>
+ENDSELECT
+NEXT
+
+@DrugStatsTranslate_Name(ARG)
+#FUNCTIONS
+SELECTCASE ARG
+	CASE 0
+		RETURNF "Laxative"
+	CASE 1
+		RETURNF "KyuuKyuu-Nyo"
+	CASE 2
+		RETURNF "KyuuKyuu-Un"
+	CASE 4
+		RETURNF "Enema"
+	CASE 5
+		RETURNF "Olive Oil"
+	CASE 6
+		RETURNF "Castor Oil"
+	CASE 7
+		RETURNF "Anaphrodisiac"
+	CASE 8
+		RETURNF "Fluvoxamine"
+	CASE 10
+		RETURNF "Counterfeit Laxative"
+	CASE 11
+		RETURNF "Antidiarrheal"
+	CASE 12
+		RETURNF "Antidiuretic"
+ENDSELECT
+;Fluvoxamine
+
+@DrugEffect_9(ARG)
+LOCAL:74 = DrugStats:ARG:FluvoxamineCycle/60
+CALLF ChangeEndurance(ARG,"charatrauma",(-30)*LOCAL:74)
+DrugStats:ARG:FluvoxamineCycle = MAX(DrugStats:ARG:FluvoxamineCycle - (60*LOCAL:74),0)
+
+@CharacterPukes(ARG)
+;You can't hold it in any longer.
+;You bend over, hands on your tummy, and open your mouth.
+;A considerable amount of bile exits your mouth and hits the floor
+;You look up and try to avoid the accident that you just made.
+;You really don't feel that great.

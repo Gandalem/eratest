@@ -1,0 +1,330 @@
+﻿; Modular ERB: 妊娠関連/BIRTH.ERB
+
+@BIRTH(ARG)
+#DIM CHILDNUM
+#DIM DYNAMIC INITCHILDNUM
+#DIM DYNAMIC CHILDCOUNT
+CALL BIRTH_NAS(ARG); NAS: REPLACED
+RETURN RESULT
+;Custom code, make sure pregnancy is at least 1, set variables.
+CFLAG:ARG:WithChildCount = MAX(CFLAG:ARG:WithChildCount,1)
+PregnancyProgress:ARG:0 = MAX(PregnancyProgress:ARG:0,101)
+INITCHILDNUM = (CFLAG:ARG:子供人数+1) % MAXCHILD
+CHILDCOUNT = CFLAG:ARG:子供人数
+CFLAG:ARG:LatestChildCount = COUNT_BIRTH_MATES(ARG)
+CFLAG:ARG:BirthEventsCount++
+DRAWLINE
+$LOOP
+;妊娠消去、出産経験、性別の決定、誕生日決定
+;Custom code, reduce with child count and remove a pregnancy tracker once for each child.
+CFLAG:ARG:WithChildCount -= 1
+CALL REMOVE_PREGNANCY_PROGRESS(ARG)
+EXP:ARG:出産経験 += 1
+;Moved.
+CFLAG:ARG:子供人数 ++
+CFLAG:MASTER:子供人数 ++
+CFLAG:ARG:育児人数 ++
+CFLAG:MASTER:育児人数 ++
+Qol_Info_Count_Array:ARG:Qol_Count_Birth ++ ;qol custom code
+CHILDNUM = CFLAG:ARG:子供人数 % MAXCHILD
+SIF !CHILDNUM
+	CHILDNUM = MAXCHILD
+IF FLAG:子供の性別
+	CHILD_SEX:ARG:CHILDNUM = FLAG:子供の性別
+ELSE
+	CHILD_SEX:ARG:CHILDNUM = RAND:2 + 1
+ENDIF
+CHILD_BIRTHDAY:ARG:CHILDNUM = DAY
+CHILD_BIRTHDATE:ARG:CHILDNUM = (DAY / 124 + (DAY % 124 ? 1 # 0)) * 1000
+CHILD_BIRTHDATE:ARG:CHILDNUM += DAY:2 * 100 + DAY:3
+CHILD_WEATHER:ARG:CHILDNUM = %GET_WEATHER()%
+;Custom code, skip sending KOJO event here.
+IF CFLAG:ARG:無自覚妊娠
+	CHILD_LOVE:ARG:CHILDNUM = -100
+ELSEIF TALENT:ARG:恋慕
+	CHILD_LOVE:ARG:CHILDNUM = 300
+ELSEIF TALENT:ARG:思慕
+	CHILD_LOVE:ARG:CHILDNUM = 200
+ELSE
+	CHILD_LOVE:ARG:CHILDNUM = 100
+ENDIF
+SIF !CFLAG:ARG:無自覚妊娠 && ITEM:私達だけが知る哀嘆 == 1
+	CHILD_LOVE:ARG:CHILDNUM += 150
+;Custom code, loop again if there are more children to be born.
+SIF CFLAG:ARG:WithChildCount && PregnancyProgress:ARG:0 > 100
+	GOTO LOOP
+;Custom code, only send KOJO event once, differentiate live birth and hatching, and pass the number of the first child being born as ARG:1.
+IF CFLAG:ARG:無自覚妊娠
+	LOCAL:1 = 4
+ELSEIF TALENT:ARG:恋慕
+	LOCAL:1 = 1
+ELSEIF TALENT:ARG:思慕
+	LOCAL:1 = 2
+ELSE
+	LOCAL:1 = 3
+ENDIF
+IF TALENT:ARG:NESTING
+	CALL KOJO_MESSAGE_SEND("EVENT",0,ARG,LOCAL:1,INITCHILDNUM,"HATCHING")
+ELSE
+	CALL KOJO_MESSAGE_SEND("EVENT",25,ARG,LOCAL:1,INITCHILDNUM)
+ENDIF
+;Custom code, separate loop to name all children, set CHILDNUM according to LOCAL, account for pregnancy types.
+FOR LOCAL,INITCHILDNUM,INITCHILDNUM+CFLAG:ARG:LatestChildCount
+CHILDNUM = LOCAL % MAXCHILD
+SIF !CHILDNUM
+	CHILDNUM = MAXCHILD
+;あらかじめ自立先を決めちゃう（自立するときにもっかい決める）
+CALL 自立先選定(ARG, CHILDNUM)
+IF FLAG:EGGNANCY && GROUPMATCH(TALENT:ARG:PREGNANCY_TYPE, PREGNANCY_EGGS, PREGNANCY_CLUTCH)
+	PRINTFORMW 부화한 지 얼마 지나지 않아 당신의 아이가 알에서 무사히 깨어난다.
+ELSE
+	PRINTFORMW \@ TALENT:ARG:NESTING ? 당신의 아이는 %CALLNAME:ARG%의 보살핌 속에서 안전하게 부화했다. # %CALLNAME:ARG%가 당신의 아이를 안전하게 출산했다. \@
+ENDIF
+PRINTFORMW \@ CHILD_SEX:ARG:CHILDNUM == 1 ? 그녀는 어머니를 닮았다 %CALLNAME:ARG% # 그는 아버지를 조금 닮았다 \@.
+PRINTFORMW %CALLNAME:ARG%은(는) 태어난 아기를 안고, %HE_SHE(ARG)%이/가 %HIM_HER_CHILD(ARG,,CHILDNUM)%에게 젖을 물릴 때 부드럽게 품는다...
+IF TALENT:ARG:母性 == 0
+	PRINTFORMW %CALLNAME:ARG%의 [모성]이 깨어났다!
+	;Moved.
+	TALENT:ARG:母性 = 1
+ENDIF
+PRINTL ******************************************************************
+;bug fix custom code
+CHILDCOUNT++
+PRINTFORML %ORDINAL(CHILDCOUNT)% 아이\@ CHILDCOUNT > MAXCHILD ? %" "% (재정의 %ORDINAL(CHILDNUM)%) #  \@　어머니: %NAME:ARG%　아버지: %NAME:MASTER%
+PRINTFORML 　성별: \@ CHILD_SEX:ARG:CHILDNUM == 1 ? ♀ # ♂ \@
+PRINTFORML 생일: %PRINT_DATE_F(DAY)%
+PRINTFORML  %FESTIVAL_TR()% -%GET_WEATHER_TR()%-
+;PRINTFORML 　身長：
+;PRINTFORML 　体重：
+;PRINTFORML 　種族：
+;PRINTFORML 髪の色：
+;PRINTFORML 目の色：
+PRINTL ******************************************************************
+;Moved.
+CALL CHILD_NAME(ARG, CHILDNUM)
+NEXT
+;育児中・母性追加
+CFLAG:ARG:出産経過日 = 1 + FLAG:妊娠日程倍率
+CFLAG:ARG:無自覚妊娠 = 0
+CFLAG:ARG:身に覚え_母 = 0
+CFLAG:ARG:身に覚え_父 = 0
+CFLAG:ARG:妊娠自覚状態 = 0
+CFLAG:ARG:産休中 = 0
+;Custom code, set pregnancy or nesting progress to the next due child (if any) instead of zero.
+IF GROUPMATCH(TALENT:ARG:PREGNANCY_TYPE, PREGNANCY_EGGS, PREGNANCY_CLUTCH) && !FLAG:EGGNANCY
+	TALENT:ARG:NESTING = PregnancyProgress:ARG:0
+	CFLAG:ARG:妊娠経過日数 = 0
+ELSE
+	CFLAG:ARG:妊娠経過日数 = PregnancyProgress:ARG:0
+	TALENT:ARG:NESTING = 0
+	;Only unset pregnancy talent if progress is below 20.
+	SIF CFLAG:ARG:妊娠経過日数 < 20
+		TALENT:ARG:妊娠 = 0
+ENDIF
+EXP:ARG:愛情経験 += 10
+;Custom Code
+IF FLAG:甲斐性無 && !FLAG:LUSTMODE && !LS_RESTRICTION("Incompetent mode")
+	PRINTFORML 당신의 \@ CFLAG:ARG:LatestChildCount > 1 ? 아이들이었다 # 아이가 \@ 방금 태어났다는 사실을 깨닫는다.
+	CALL ASK_YN("책임감이 안에서부터 솟아오른다.","미래에 대한 불안이 당신을 두려움으로 가득 채운다")
+	IF !RESULT
+		PRINTFORMW 당신은 더 이상 무능력하지 않다.
+		;Custom code, only set the flag if it's turned off.
+		FLAG:甲斐性無 = 0
+	ELSE
+		PRINTFORMW 만약 인간의 본성이 그렇게 쉽게 변할 수 있었다면, 갈등이란 존재하지 않았을 것이다.
+		PRINTFORMW 언제나 그랬듯 %CALLNAME:ARG%는 \@ CFLAG:ARG:LatestChildCount > 1 ? 아이들 # 아이 를 돌보는 일이 남았다. \@
+	ENDIF
+ENDIF
+
+@CHILD_NAME(YOME, CHILDNUM, ChildFather)
+#DIM YOME
+#DIM ChildFather
+#DIM CHILDNUM
+#DIMS PROPOSED_NAME, MAXCHILD ;custom code
+;bug fix
+;CHILDNUM = EXP:YOME:出産経験 % MAXCHILD
+;SIF !EXP:YOME:出産経験 % MAXCHILD
+;	CHILDNUM = MAXCHILD
+PROPOSED_NAME:0 = %ランダムキャラ_命名()%
+;Custom code, disabled as it's untranslated
+;IF CHILD_SEX:YOME:CHILDNUM == 1
+;	PROPOSED_NAME:0 = %ランダムキャラ_命名(YOME)%
+;ELSE
+;	PROPOSED_NAME:0 = %男の子_命名(YOME, CHILDNUM)%
+;ENDIF
+$LOOP0
+LOCALS:1 =
+;auto name if it's not your child
+IF ChildFather != MASTER && YOME != MASTER
+	PRINTFORML 이 아이는 당신의 가족이 아니었기에 %CALLNAME:YOME%은(는) 자신의 이름을 지었다.
+	;western
+	LOCALS:2 = %nameArray:YOME:na_LastName%
+	IF nameArray:YOME:na_NameType == "Western"
+		IF IS_MALE(CHILDNUM)
+			CALL GENERATE_FIRST_NAME_KM()
+			LOCALS:1 = %RESULTS%
+		ELSE
+			CALL GENERATE_FIRST_NAME_KF()
+			LOCALS:1 = %RESULTS%
+		ENDIF
+	ELSE
+		IF IS_MALE(CHILDNUM)
+			CALL GENERATE_FIRST_NAME_JM()
+			LOCALS:1 = %RESULTS%
+		ELSE
+			CALL GENERATE_FIRST_NAME_JF()
+			LOCALS:1 = %RESULTS%
+		ENDIF
+	ENDIF
+	SIF !STRLENS(LOCALS:1)
+		GOTO LOOP0
+	nameArray:CHILDNUM:na_FirstName '= LOCALS:1
+	CALLNAME:CHILDNUM '= nameArray:LOCAL:na_FirstName
+	NAME:CHILDNUM '= nameChecker(CHILDNUM)
+	GOTO BYPASS
+ENDIF
+PRINTL 아이에게 이름을 지어주자.
+PRINTFORML 
+CALL ASK_M("직접 입력한다",1,"무작위 목록",1,"「멕시코를 가로지르는 뜨거운 바람」 후에 자연스럽게 이름이 「산타나」였다.",YOME != ChildFather,"너무 게을러서 그냥 「베이비」로 두었다.",1)
+SELECTCASE RESULT
+	CASE 0
+		$LOOP1
+		PRINTL 아이의 이름을 입력해 주세요.
+		INPUTS
+		IF RESULTS == ""
+			GOTO LOOP1
+		ELSE
+			PROPOSED_NAME:0 = %RESULTS%
+			CALL CHK_CHILDNAME_DUPLICATION(PROPOSED_NAME:0)
+			PRINTFORML %PROPOSED_NAME:0%가 괜찮아?
+			CALL ASK_YN
+			IF RESULT
+				GOTO LOOP1
+			ELSE
+				nameArray:CHILDNUM:na_FirstName = %PROPOSED_NAME:0%
+			ENDIF
+		ENDIF
+	CASE 1
+		$LOOP2
+		FOR LOCAL,1,MAXCHILD
+		IF nameArray:YOME:na_NameType == "Western"
+			IF IS_MALE(CHILDNUM)
+				CALL GENERATE_FIRST_NAME_KM()
+				LOCALS:1 = %RESULTS%
+			ELSE
+				CALL GENERATE_FIRST_NAME_KF()
+				LOCALS:1 = %RESULTS%
+			ENDIF
+		ELSE
+			IF IS_MALE(CHILDNUM)
+				CALL GENERATE_FIRST_NAME_JM()
+				LOCALS:1 = %RESULTS%
+			ELSE
+				CALL GENERATE_FIRST_NAME_JF()
+				LOCALS:1 = %RESULTS%
+			ENDIF
+		ENDIF
+		PROPOSED_NAME:LOCAL = %RESULTS%
+		;Custom code, disabled as it's untranslated
+		;IF CHILD_SEX:YOME:CHILDNUM == 1
+		;	PROPOSED_NAME:LOCAL = %ランダムキャラ_命名(YOME)%
+		;ELSE
+		;	PROPOSED_NAME:LOCAL = %男の子_命名(YOME, CHILDNUM)%
+		;ENDIF
+		PRINTFORML [{LOCAL}] - %PROPOSED_NAME:LOCAL%
+		NEXT
+		DRAWLINE
+		PRINTFORML [99] - 새 리스트
+		PRINTFORML [100] - 반환
+		$LOOP3
+		INPUT
+		SELECTCASE RESULT
+			CASE 1 TO MAXCHILD - 1
+				LOCAL = RESULT
+				CALL CHK_CHILDNAME_DUPLICATION(PROPOSED_NAME:LOCAL)
+				PRINTFORML %PROPOSED_NAME:LOCAL%은(는) 괜찮아?
+				CALL ASK_YN
+				IF RESULT
+					GOTO LOOP0
+				ELSE
+					nameArray:CHILDNUM:na_FirstName = %PROPOSED_NAME:LOCAL%
+				ENDIF
+			CASE 99
+				GOTO LOOP2
+			CASE 100
+				GOTO LOOP0
+			CASEELSE
+				GOTO LOOP3
+		ENDSELECT
+	CASE 2
+		PRINTFORML 분노한 \@ PreggoWith:YOME:0 == MASTER ? %CALLNAME:YOME% # %CALLNAME:(PreggoWith:YOME:0)% \@가 %PARSE("you")%의 이름을 정한다...
+		nameArray:CHILDNUM:na_FirstName = %ランダムキャラ_命名()%
+		;Custom code, disabled as it's untranslated
+		;CHILDNAME:YOME:CHILDNUM = %PROPOSED_NAME:0%
+	CASE 3
+ENDSELECT
+$BYPASS
+PRINTFORML 아이의 이름은 %nameArray:CHILDNUM:na_FirstName%가 되었다.
+TALENT:YOME:育児中 = CHILDNUM
+CALLNAME:CHILDNUM '= nameArray:CHILDNUM:na_FirstName
+NAME:CHILDNUM '= nameChecker(CHILDNUM)
+CALL ASK_DIARY(@"%PARSE("You",,,YOME)%은(는) %nameArray:CHILDNUM:na_FirstName%이라는 이름을 가진 아기(%PRINT_MALE("boy",CHILDNUM)%)를 낳았다.")
+;----------------------------------------------------
+;そのキャラに特定の年齢の子供がいたら返す関数
+;----------------------------------------------------
+
+@CHK_HAVE_CHILD(ARG,ARG:1,ARG:2)
+#FUNCTION
+#DIM 年齢
+SIF !CFLAG:ARG:子供人数
+	RETURNF 0
+FOR LOCAL, 1, MAXCHILD + 1
+SIF CHILDNAME:ARG:LOCAL == ""
+	CONTINUE
+年齢 = DAY - CHILD_BIRTHDAY:ARG:LOCAL
+SIF INRANGE(年齢,ARG:1,ARG:2-1)
+	RETURNF LOCAL
+NEXT
+RETURNF 0
+;----------------------------------------------------
+;誕生日の子供がいるか返す関数
+;eraTW4.570proto_bugfix_m05での仕様変更
+;・REFを使用し、配列を書き換えるF関数にした（引数を全て渡さないとエラーになる）
+;・仕様上、配列の想定最大要素数は10*キャラクタ数上限となる（＝RESULTの要素数を突破してエラーが出たので仕様変更）
+;・BREAKやCONTINUEを使用して処理を効率化
+;----------------------------------------------------
+
+@CHILD_HAPPY_BIRTHDAY(CNT_BIRTHDAY, NAME_CHILD, AGE_CHILD)
+#FUNCTION
+#DIM CHARA
+#DIM CHILDNUM
+#DIM  REF CNT_BIRTHDAY
+#DIMS REF NAME_CHILD
+#DIM  REF AGE_CHILD
+FOR CHARA, 1, CHARANUM
+SIF !CFLAG:CHARA:子供人数
+	CONTINUE
+FOR CHILDNUM, 1, MIN(MAXCHILD + 1, CFLAG:CHARA:子供人数 + 1)
+;名無し≒未登録なら次のキャラへ
+SIF !STRLENS(CHILDNAME:CHARA:CHILDNUM)
+	BREAK
+;誕生日以外はスキップ
+SIF (DAY - CHILD_BIRTHDAY:CHARA:CHILDNUM) % 124
+	CONTINUE
+CNT_BIRTHDAY ++
+NAME_CHILD:CNT_BIRTHDAY = %CHILDNAME:CHARA:CHILDNUM%
+AGE_CHILD:CNT_BIRTHDAY = (DAY - CHILD_BIRTHDAY:CHARA:CHILDNUM) / 124
+NEXT
+NEXT
+RETURNF CNT_BIRTHDAY
+;子供の名前被りチェック
+
+@CHK_CHILDNAME_DUPLICATION(ARGS)
+#DIM C_ID
+FOR C_ID,1,CHARANUM
+;"FOR LOCAL,0,10"から修正
+FOR LOCAL,1, MAXCHILD + 1
+SIF CHILDNAME:C_ID:LOCAL == ARGS
+	CALL COLORMESSAGE(@"%CALLNAME:C_ID%는 이미 그 이름의 자식을 가지고 있다.",C_YELLOW,1)
+NEXT
+NEXT

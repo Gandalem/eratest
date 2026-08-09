@@ -1,0 +1,439 @@
+﻿; Modular ERB: OMOGATARI/SaveDataTransfer.ERB
+;Allows you to transfer saves from one branch to another
+
+@SaveTransferMenu()
+;CLEARLINE LINECOUNT-1
+gLineCount = LINECOUNT
+DO
+CLEARLINE LINECOUNT - gLineCount
+DRAWLINE
+PRINTFORML 데이터 전송 저장:
+SETCOLOR C_RED
+PRINTFORML 일부 데이터 전송은 세이브에 파괴적일 수 있음을 이해해 주십시오.
+PRINTFORML 현재는 %SaveTypeSTR(10)%, %SaveTypeSTR(21)%, 그리고 %SaveTypeSTR(22)%으로만 전송할 수 있습니다.
+RESETCOLOR
+DRAWLINE
+PRINTFORML 감지된 저장 타입: %SaveTypeSTR(GetSaveType())%
+CALL ASK_M(@"%SaveTypeSTR(SAVE_TRANSFER_CURRENT_BRANCH())%로 전송", GetSaveType() != SAVE_TRANSFER_CURRENT_BRANCH(), "다른 분기로 전송", 1, "취소", 1)
+SELECTCASE RESULT
+	CASE 0
+		CALL SAVE_TRANSFER_PROCESS(GetSaveType(),SAVE_TRANSFER_CURRENT_BRANCH())
+	CASE 1
+		PRINTFORML 전송할 분기(branch)를 선택해 주십시오:
+		FOR LOCAL,0,50
+		;detected save type
+		SIF GetSaveType() == LOCAL
+			CONTINUE
+		;ineligible
+		SIF GROUPMATCH(LOCAL, 1, 20, 13, 12, 11, 23)
+			CONTINUE
+		IF STRLENS(SaveTypeSTR(LOCAL))
+			;found a title
+			PRINTBUTTON @"[%SaveTypeSTR(LOCAL)%%COND_STR(" (This Branch)", LOCAL == SAVE_TRANSFER_CURRENT_BRANCH())%]", LOCAL
+			PRINTL
+		ENDIF
+		NEXT
+		PRINTFORML [-1] 취소
+		INPUT
+		SELECTCASE RESULT
+			CASE -1
+				CONTINUE
+			CASEELSE
+				IF !STRLENS(SaveTypeSTR(RESULT))
+					PRINTFORMW 유효하지 않은 분기입니다.
+					CONTINUE
+				ENDIF
+				CALL SAVE_TRANSFER_PROCESS(GetSaveType(),RESULT)
+		ENDSELECT
+	CASE 2
+		LOADGLOBAL
+		inSaveTransfer = 0
+		SAVEGLOBAL
+		RETURN
+ENDSELECT
+IF RESULT == -1
+	LOADGLOBAL
+	inSaveTransfer = 0
+	SAVEGLOBAL
+	RETURN
+ENDIF
+LOOP 1
+
+@SAVE_TRANSFER_PROCESS(branchFrom,branchTo)
+#DIM branchFrom
+#DIM branchTo
+DRAWLINE
+;Non-0 MASTER check for NAS
+IF MASTER && !GROUPMATCH(branchTo,10,11,12)
+	PRINTFORML ・・・
+	PRINTFORML 비-0 ID 플레이어가 감지되었다. MASTER를 ID 0으로 복사한다.
+	COPYCHARA MASTER, 0
+	MASTER = 0
+	PLAYER = 0
+ENDIF
+CALL SAVE_TRANSFER_TOGGLES(branchFrom, branchTo)
+CALL SAVE_TRANSFER_CHARA_MOVE(branchFrom, branchTo)
+SELECTCASE branchFrom
+	;NAS
+	CASE 10, 11, 12
+		SELECTCASE branchTo
+			CASE 20
+				GOTO NASToATW2
+			CASE 21
+				GOTO NASToATW2
+			CASE 22
+				$NASToATW2
+				;clean NAS savedata values
+				SAVESTR:NAS_SAVE_VER '= ""
+				; PRINTFORML ・・・
+				; PRINTFORML Moving 【Red Thread】, 【Panty Sense】, 【Art of Lovemaking】, 【Spouse】, 【Concubine】, and other talents
+				; FOR LOCAL,0, CHARANUM
+				; 	TALENT:LOCAL:177 = TALENT:LOCAL:221
+				; 	TALENT:LOCAL:178 = TALENT:LOCAL:222
+				; 	TALENT:LOCAL:179 = TALENT:LOCAL:223
+				; 	TALENT:LOCAL:180 = TALENT:LOCAL:224
+				; 	TALENT:LOCAL:223 = TALENT:LOCAL:244
+				; NEXT
+				IF MAIN_MAP > 10
+					PRINTFORML 메인 지도가 %SaveTypeSTR(branchTo)%에서 유효하지 않습니다.
+					PRINTFORML %조사처리(CALLNAME:MASTER,"를")% 학혈 신사로 이동합니다.
+					MAIN_MAP = 0
+					CALL MAP_DEFAULTRESIDENT(MAIN_MAP,0)
+					CFLAG:MASTER:初期位置 = 53
+					CFLAG:MASTER:現在位置 = 53
+					CALL ROOMSETTING
+				ENDIF
+				PRINTFORML ・・・
+				PRINTFORML 레벨을 바닐라 시스템으로 되돌리고 있다.
+				MaxNonHLevel = 6
+				FOR LOCAL,0,CHARANUM
+				FOR LOCAL:1,40,75
+				SELECTCASE LOCAL:1
+					CASE 40 TO 60, 50 TO 56, 66 TO 69, 71, 72
+					CASEELSE
+						CONTINUE
+				ENDSELECT
+				TRYCALLF REVERT_TO_6_SYSTEM(LOCAL,LOCAL:1,0)
+				NEXT
+				FOR LOCAL:1 ,46, 50
+				TRYCALLF REVERT_TO_6_SYSTEM(LOCAL,LOCAL:1,1)
+				NEXT
+				NEXT
+				PRINTFORML ・・・
+				PRINTFORML 최면 술법 레벨을 최면 레벨로 변환한다.
+				PRINTFORML 정신병 저항 레벨을 최면 저항으로 변환한다.
+				FOR LOCAL, 0, CHARANUM
+				TALENT:LOCAL:催眠耐性 = LIMIT(DamageResist:LOCAL:36:0,-2,4)
+				TALENT:LOCAL:催眠技能Lv = YoujutsuLevel:LOCAL:19
+				SIF YoujutsuLevel:LOCAL:19
+					TALENT:LOCAL:催眠耐性 = 4
+				NEXT
+				PRINTFORML ・・・
+				PRINTFORML 오줌 참기, 알코올 및 약물 중독 수치를 초기화한다.
+				PRINTFORML Touhous가 【Leaky Legend】를 가지고 있다면 ATW에서 【Peeing Habit】을 받게 된다.
+				FOR LOCAL,0,CHARANUM
+				TALENT:LOCAL:57 = GETBIT(TALENT:LOCAL:OmoGuardian,0) ? 1 # 0
+				TALENT:LOCAL:56 = DrugAddict:LOCAL:0 >= 6 ? 1 # 0
+				SELECTCASE AlcoholAddict:LOCAL:0
+					CASE IS <= -5
+						;non
+						TALENT:LOCAL:121 = -2
+					CASE IS <= -2
+						;weak
+						TALENT:LOCAL:121 = -1
+					CASE IS <= 0
+						TALENT:LOCAL:121 = 0
+					CASE IS >= 3
+						TALENT:LOCAL:121 = 3
+					CASEELSE
+						TALENT:LOCAL:121 = AlcoholAddict:LOCAL:0
+				ENDSELECT
+				NEXT
+				;PRINTFORML Converting United Fairies reputation to the 【Fairy Friend】 talent.
+		ENDSELECT
+	CASE 21
+		GOTO ATWtoNAS
+	CASE 22
+		SELECTCASE branchTo
+			CASE 10
+				$ATWtoNAS
+				PRINTFORML %조사처리(CALLNAME:MASTER,"에게")% 연령을 주는 것
+				SELECTCASE TALENT:MASTER:17
+					CASE -1
+						CharaAge:MASTER:0 = 7
+					CASE 0
+						CharaAge:MASTER:0 = 21
+					CASE 1
+						CharaAge:MASTER:0 = 35
+					CASE 2
+						CharaAge:MASTER:0 = 60
+				ENDSELECT
+				PRINTFORML ・・・
+				PRINTFORML %NAME:MASTER%의 이름을 변환하는 중
+				;attempt to find name
+				IF STRFIND(nameArray:MASTER:na_Name,CALLNAME:MASTER) > -1
+					;LastName CallName
+					IF STRFIND(nameArray:MASTER:na_Name," "+CALLNAME:MASTER) > -1
+						nameArray:MASTER:na_LastName '= SUBSTRING(nameArray:MASTER:na_Name,0,STRFIND(nameArray:MASTER:na_Name," "+CALLNAME:MASTER))
+						;CallName LastName
+					ELSEIF STRFIND(nameArray:MASTER:na_Name,CALLNAME:MASTER+" ") > -1
+						nameArray:MASTER:na_LastName '= SUBSTRING(nameArray:MASTER:na_Name,STRLENS(CALLNAME:MASTER+" "),STRLENS(nameArray:MASTER:na_Name))
+					ENDIF
+				ENDIF
+				PRINTFORML ・・・
+				PRINTFORML 전투 레벨을 단막 유술 레벨로 변환한다.
+				FOR LOCAL, 0, CHARANUM
+				IF ABL:LOCAL:42
+					CALLF GiveYoujutsu(LOCAL,0,ABL:LOCAL:42)
+					IF LOCAL == MASTER
+						SELECTCASE ABL:LOCAL:42
+							CASE 1
+								MAXBASE:MASTER:7 = 100
+							CASE 2
+								MAXBASE:MASTER:7 = 500
+							CASE 3
+								MAXBASE:MASTER:7 = 1500
+							CASE 4
+								MAXBASE:MASTER:7 = 2500
+							CASE 5
+								MAXBASE:MASTER:7 = 4000
+							CASE IS >= 6
+								MAXBASE:MASTER:7 = 8000
+						ENDSELECT
+						BASE:MASTER:7 = MAXBASE:MASTER:7
+					ENDIF
+				ENDIF
+				NEXT
+				PRINTFORML ・・・
+				PRINTFORML 최면 레벨을 최면 유술 레벨로 변환 중이다.
+				PRINTFORML 최면 저항력을 정신병 저항력으로 변환 중이다.
+				FOR LOCAL, 0, CHARANUM
+				DamageResist:LOCAL:36:0 = TALENT:LOCAL:催眠耐性
+				IF TALENT:LOCAL:催眠耐性 == 4
+					CALLF GiveYoujutsu(LOCAL,19,TALENT:LOCAL:催眠技能Lv)
+				ENDIF
+				NEXT
+				PRINTFORML ・・・
+				PRINTFORML %SaveTypeSTR(branchTo)%을 호출한다.
+				TRYCCALL UPDATE_TR
+				CATCH
+				PRINTFORML %SaveTypeSTR(branchTo)% 업데이트를 실행할 수 없어! (%SaveTypeSTR(branchTo)%에 있어?)
+				PRINTFORML 이 세이브를 %SaveTypeSTR(branchTo)%에서 로드할 때 UPDATE를 실행해!
+				ENDCATCH
+		ENDSELECT
+	CASEELSE
+		;maindev
+		SELECTCASE branchTo
+			CASE 22
+				PRINTFORML 외부 전송은 필요하지 않습니다.
+				PRINTFORMW 하지만 이 세이브를 사용하기 전에 %SaveTypeSTR(branchTo)%에 대해 UPDATE를 실행해 주세요.
+				PRINTL
+			CASE 10 TO 19
+				GOTO ATWtoNAS
+		ENDSELECT
+ENDSELECT
+DRAWLINE
+PRINTFORML 세이브가 %SaveTypeSTR(branchTo)% 사용을 위해 변환되었습니다.
+PRINTFORML 이 세이브를 플레이하기 전에 대상 게임 버전에 대해 업데이트를 실행해 주세요.
+PRINTFORML 데이터는 슬롯 99에 저장되었습니다.
+SAVEDATA 99, @"%SaveTypeSTR(branchTo)% 저장 전송을 %SaveTypeSTR(branchFrom)%에서 시작합니다."
+PRINTW
+$ASK_Loop
+PRINTFORML 다른 세이브를 전송하시겠습니까?
+CALL ASK_YN()
+SELECTCASE RESULT
+	CASE 0
+		CALL LOAD_SAVE(0,1)
+		GOTO ASK_Loop
+	CASE 1
+		CLEARLINE LINECOUNT
+		FORCE_BEGIN TITLE
+		RETURN -1
+ENDSELECT
+
+@SAVE_TRANSFER_TOGGLES(branchFrom, branchTo)
+#DIM REF branchFrom
+#DIM REF branchTo
+#DIM STT_LINECOUNT
+#DIMS STT_CATEGORY = "EXCRETE", "NPC", "SEX", "RAPE"
+#DIM STT_ID = 100, 200, 103, 101
+SELECTCASE branchFrom
+	CASE 10,11,12
+		;NAS
+		SIF !nPee && !nNTR && !nRyona < 2
+			RETURN
+	CASE 22
+		;ATW
+		SIF !HardcoreContentOff:0 && !HardcoreContentOff:1 && !FLAG:おもらし有効 && !FLAG:アナル開発無効 && !FLAG:催眠on && !nContentSwitch:Content_MaleNipple
+			RETURN
+		STT_LINECOUNT = LINECOUNT
+		DO
+		CLEARLINE LINECOUNT - STT_LINECOUNT
+		PRINTFORML ATW 하드코어 콘텐츠 토글이 활성화되었습니다. 어떤 전역 토글을 활성화할지 선택해 주세요:
+		PRINTL
+		FOR LOCAL,0,VARSIZE("STT_CATEGORY")
+		HTML_PRINT @"<button value='%STT_CATEGORY:LOCAL%_{STT_ID:LOCAL}'>%CUSTOM_FETISH_NAME(STT_CATEGORY:LOCAL,STT_ID:LOCAL,"name")%: %CUSTOM_FETISH_NAME(STT_CATEGORY:LOCAL,STT_ID:LOCAL,"enabled")%</button>"
+		NEXT
+		PRINTL
+		HTML_PRINT @"<button value='RETURN_ME'>[돌아가기]</button>"
+		;PRINTFORML More Lovers: Absolute Polygramy
+		INPUTS
+		SELECTCASE RESULTS
+			CASE "RETURN_ME"
+				RETURN
+			CASEELSE
+				TRYCALLFORM CUSTOM_FETISH_RESULT_%RESULTS%
+		ENDSELECT
+		LOOP 1
+ENDSELECT
+;Character setup
+
+@SAVE_TRANSFER_CHARA_MOVE(branchFrom, branchTo)
+#DIM REF branchFrom
+#DIM REF branchTo
+PRINTFORML ・・・
+SELECTCASE branchFrom
+	;NAS
+	CASE 10, 11, 12
+		SELECTCASE branchTo
+			CASE 20
+				;Neodev
+				$ToNeodev
+				PRINTFORML 캐릭터 ID 145 이상을 삭제한다.
+				WHILE CHARANUM > 145+1
+				DELCHARA 145
+				WEND
+			CASE 21
+				;Neodev 4.891
+				$ToNeodev4891
+				PRINTFORML 캐릭터 ID 135 이상을 삭제한다.
+				WHILE CHARANUM > 135+1
+				DELCHARA 135
+				WEND
+			CASE 22
+				;ATW
+				PRINTFORML 캐릭터 ID 159 이상을 삭제한다
+				WHILE CHARANUM > 159+1
+				DELCHARA 159
+				WEND
+		ENDSELECT
+		;Neodev 4.891
+	CASE 21
+		SELECTCASE branchTo
+			CASE 10
+				;NAS
+				$Neodev4891ToNAS
+				PRINTFORML ・・・
+				PRINTFORML 2023.04.15 커밋에서 제거된 캐릭터들을 복원한다
+				FOR LOCAL, 135, 142
+				WHILE GETCHARA(LOCAL) != -1 && EXISTCSV(LOCAL) && NAME:(LOCAL) != nameArray:(LOCAL):na_Name
+				CALL ADDCHARA_INIT(NO:(LOCAL))
+				SWAPCHARA CHARANUM-1, LOCAL
+				DELCHARA CHARANUM-1
+				CALL ADDCHARA_INIT(NO:(LOCAL), 1) ;apply again to init strings
+				IF !EXP:(NO:(LOCAL)):キス経験
+					TALENT:(NO:(LOCAL)):キス未経験 = 1
+				ELSE
+					TALENT:(NO:(LOCAL)):キス未経験 = 0
+				ENDIF
+				WEND
+				NEXT
+			CASE 22
+				;ATW
+				GOTO Neodev4891ToNAS
+		ENDSELECT
+	CASE 22
+		SELECTCASE branchTo
+			CASE 20
+				GOTO ToNeodev
+			CASE 21
+				GOTO ToNeodev4891
+		ENDSELECT
+	CASEELSE
+		SELECTCASE branchTo
+			CASE 21
+				GOTO ToNeodev4891
+		ENDSELECT
+ENDSELECT
+;Moves talents
+
+@SAVE_TRANSFER_TALENT_MOVE(branchFrom, branchTo)
+#DIM REF branchFrom
+#DIM REF branchTo
+;Use various save aspects to detect what branch of TW it's from
+;Gets the current branch from quirks in the save
+
+@GetSaveType()
+#FUNCTION
+;========== NAS
+IF STRLENS(SAVESTR:NAS_SAVE_VER)
+	;OTW
+	SIF CFLAG:16:出禁 && CFLAG:49:出禁
+		RETURNF 11
+	;NAS
+	RETURNF 10
+ENDIF
+; ;Omogatari
+; SIF MAXBASE:1:4
+; 	RETURNF 13
+;========== ATW
+IF STRLENS(SAVESTR:ATW_SAVE_VER) && CHARANUM > 145
+	; ;BBA Saikou
+	; 	SIF NAME:84 == "黑谷 山女"
+	; 		RETURNF 23
+	;ATW
+	RETURNF 22
+ENDIF
+;========== Neodev
+IF CHARANUM > 139
+	;Pedy 4.900+
+	SIF CALLNAME:139 == "Orange" || CALLNAME:141 == "Placeholder7"
+		RETURNF 21
+ENDIF
+;Pedy, dates to parsee dialogue
+SIF CFLAG:60:916
+	RETURNF 20
+;Maindev
+;check reimu's name
+IF NAME:1 == CSVNAME(1)
+	RETURNF 1
+ELSE
+	RETURNF 2
+ENDIF
+;ID the branch is identifying itself as
+
+@SAVE_TRANSFER_CURRENT_BRANCH()
+#FUNCTION
+RETURNF 10
+;Names of the branches
+
+@SaveTypeSTR(ARG)
+#FUNCTIONS
+SELECTCASE ARG
+	;10: eraNAS================================
+	CASE 10
+		RETURNF "eraNAS"
+	CASE 11
+		RETURNF "OmoTheWorld"
+		;20: Neodev================================
+	CASE 21
+		RETURNF "Neodev 4.891+"
+	CASE 20
+		RETURNF "Neodev"
+		;AnonTW==================
+	CASE 23
+		;CN New
+		RETURNF "BBASaikouTW"
+	CASE 22
+		RETURNF "AnonTW"
+		;Upstream==================================
+	CASE 1
+		;JP
+		RETURNF "Japanese Upstream"
+	CASE 2
+		RETURNF "Maindev"
+	CASE 3
+		;KR
+		RETURNF "Korean"
+ENDSELECT
+;LOCALS += "(This Branch)"

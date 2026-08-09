@@ -1,0 +1,336 @@
+﻿; Modular ERB: COMF/日常系/COMF450 酒虫の様子を見る.ERB
+;-------------------------------------------------
+;酒虫の様子を見る
+;日常系コマンド、レベル1
+;-------------------------------------------------
+
+@COM450
+#DIM 醸造量
+#DIM 酒ID
+#DIM START_LINECOUNT
+VARSET LOCAL
+酒ID = ALC_ID()
+醸造量 = GET_INT(0, "酒データ", 酒ID, "醸造数")
+LOCALS '= @"그것을 %VAR_WATER_TR(VAR_WATER)%로 교체한다."
+LOCAL = 1
+IF VAR_WATER == ""
+	IF GETBIT(FLAG:プール, 2) ;addition custom code
+		LOCALS '= "그것을 풀 물로 교체한다"
+	ELSE
+		LOCALS '= "교체품 없이 그냥 꺼낼 수는 없다."
+		LOCAL = 0
+	ENDIF
+ENDIF
+;qol custom code
+CALL QOL_BREWING_GUIDE
+PRINTFORML 당신은 사케 버그가 들어있는 병을 들여다본다.
+IF VAR_FERMENT == "" ;qol custom code failsafe
+	PRINTFORML 허, 비어 있네... 게임을 업데이트하는 게 좋을지도 몰라.
+ELSE
+	;qol custom code
+	CALL PRINT_STRL, @"그것은 HEX{C_YELLOW}%VAR_FERMENT_TR(VAR_FERMENT)% 등으로 가득 차 있다."
+ENDIF
+SIF ABL:MASTER:教養 >= 3 && DAY:10 > 0 && VAR_FERMENT != "" ;qol custom code
+	PRINTFORML 그것이 %PRINT_PLUR("day", DAY:10)% 분량의 숙성 과정을 거쳤다는 것을 알 수 있다.
+DRAWLINE
+;qol custom code: applied tips, item check, backtrack option
+LOCAL:10 = GET_STR(0, "酒データ", ALC_ID(VAR_FERMENT), "ADDITIONS") != ""
+START_LINECOUNT = LINECOUNT
+$CHOOSEOPTION
+CLEARLINE LINECOUNT - START_LINECOUNT
+CALL ASK_M("아무것도 하지 않는다",1,@"%LOCALS%\@ VAR_WATER == "" && !GETBIT(FLAG:プール, 2) ? %" "%(먼저 물을 가져온다) #  \@", LOCAL,"아이템들을 혼합물에 추가한다",LOCAL:10, "시간 조작 양조 (필요 조건:TSP2400)",BASE:MASTER:8 >= 2400 && GET_STR(0, "酒データ", ALC_ID(VAR_FERMENT), "変化先") != "0","「킹 크림슨」이다! (필요 조건:TSP4000&킹 크림슨)", BASE:MASTER:8 >= 4000 && ITEM:キング・クリムゾン && GET_STR(0, "酒データ", ALC_ID(VAR_FERMENT), "変化先") != "0", "내용 덤프", !GROUPMATCH(VAR_FERMENT, "", "ただの水")) ;com custom code, failsafe
+SELECTCASE RESULT
+	CASE 0
+		RETURN -1
+	CASE 1
+		;IF ITEM:酒ID >= 99
+		;	PRINTFORMW Can't carry any more %VAR_FERMENT_TR(VAR_FERMENT)%.
+		;	RETURN -1
+		;ENDIF
+		;qol
+		PRINTFORML 확인?
+		CALL ASK_YN
+		SIF RESULT
+			GOTO CHOOSEOPTION ;qol custom code
+		SIF VAR_WATER == "" && GETBIT(FLAG:プール, 2) ;addition custom code
+			VAR_WATER = ただの水
+		PRINTFORML 병에서 %VAR_FERMENT_TR(VAR_FERMENT)%를 추출하고 %VAR_WATER_TR(VAR_WATER)%로 교체한다.
+		IF 醸造量 > 0
+			;qol custom code, bonus from brewer
+			SIF TALENT:MASTER:酒造家
+				醸造量++
+			CALL GET_ITEM(@"%VAR_FERMENT%", 醸造量, 2)
+		ENDIF
+		;(酒造パッチ)酒粕入手
+		SIF VAR_FERMENT == "吟醸酒" || VAR_FERMENT == "熟成酒" || VAR_FERMENT == "古酒" || VAR_FERMENT == "貴醸酒" || VAR_FERMENT == "貴醸熟成酒" || VAR_FERMENT == "貴醸古酒"
+			CALL GET_ITEM("酒粕", 1, 1)
+		VAR_FERMENT = %VAR_WATER%
+		VAR_WATER =
+		DAY:10 = 0
+		;入れ替え時にエサをやれる
+		IF ITEM:魚粕 || ITEM:肉骨粉
+			PRINTFORML 사케 벌레에게 먹일까? (과정을 가속한다)
+			CALL ASK_M("그것에게 어박(魚粕)을 좀 주어라", ITEM:魚粕, "육골가루를 좀 주어라", ITEM:肉骨粉, "그것에게 먹이지 마라",1)
+			SELECTCASE RESULT
+				CASE 0
+					CALL LOST_ITEM("魚粕", 1, 1)
+					PRINTFORML 사케 벌레가 좀 더 활발해진 것 같다. 생선 가루를 갉아먹고 있다...
+					DAY:10 += 1
+				CASE 1
+					CALL LOST_ITEM("肉骨粉", 1, 1)
+					PRINTFORML 사케 벌레가 더 활발해진 것 같다. 고기뼈 가루를 갉아먹고 있다…
+					DAY:10 += 2
+				CASE 2
+					PRINTFORML 먹이 주기 취소.
+			ENDSELECT
+		ENDIF
+		CALL QOL_BREWING_GUIDE_MAKE_KNOWN(VAR_FERMENT) ;qol custom code
+	CASE 2
+		;qol tip
+		PRINTFORML 혼합물이 발효할 수 있으려면, 아무것도 섞지 않은 물로 채워야 하며 너무 익어서는 안 된다(최대 3일).
+		DRAWLINE
+		PRINTFORML 보유 재료:
+		CALL LIST_ITEM("Ferment")
+		DRAWLINE
+		CALL COM450_1
+		SIF RESULT == -1 ;custom code if canceled
+			GOTO CHOOSEOPTION
+	CASE 3
+		IF GET_STR(0, "酒データ", 酒ID, "変化先") == "0"
+			PRINTFORMW %VAR_FERMENT_TR(VAR_FERMENT)%를 위해 이것을 하는 것은 소용없다.
+			;RETURN -1
+			GOTO CHOOSEOPTION ;qol custom code
+		ENDIF
+		PRINTFORML 당신은 병 안의 시간을 강제로 가속시키기 위해 시간 정지 능력을 사용한다.
+		BASE:MASTER:8 -= 2400
+		CALL 酒造
+	CASE 4
+		IF GET_STR(0, "酒データ", 酒ID, "変化先") == "0"
+			PRINTFORMW %VAR_FERMENT_TR(VAR_FERMENT)%를 위해 이걸 할 의미는 없다.
+			;RETURN -1
+			GOTO CHOOSEOPTION ;qol custom code
+		ENDIF
+		PRINTFORML 당신은 단지 *결과*를 얻기 위해 시간을 지운다.
+		BASE:MASTER:8 -= 4000
+		ITEM:キング・クリムゾン --
+		DAY:10 += 9
+		CALL 酒造
+	CASE 5 ;com custom code, failsafe
+		PRINTFORML 이것은 뭔가 잘못되었을 경우의 비상 옵션이다.
+		CALL COLORMESSAGE(@"모든 병 속 내용물이 사라진다!",C_RED, 1)
+		PRINTFORML 확인?
+		CALL ASK_YN
+		SIF RESULT
+			GOTO CHOOSEOPTION ;qol custom code
+		PRINTFORML 병 안의 모든 것을 완전히 비운 후, 다시 순수한 물로 채워졌다.
+		VAR_FERMENT = ただの水
+		DAY:10 = 0
+ENDSELECT
+TIME += 5
+RETURN 1
+
+@COM450_1
+;qol custom code, replaced
+CALL QOL_BREWING_GUIDE_MIX_MENU
+RETURN RESULT
+IF LOCAL == 0
+	;custom code, translate item names through function for future proofing
+	CALL ASK_M(@"%ITEMNAME_TR(GETNUM(ITEM, "イモ"))%＊10", ITEM:イモ >= 10 && CAN_FERMENT(), @"%ITEMNAME_TR(GETNUM(ITEM, "はちみつ"))%＊10", ITEM:はちみつ >= 10 && CAN_FERMENT(), @"%ITEMNAME_TR(GETNUM(ITEM, "キイチゴ"))%＊20", ITEM:キイチゴ >= 20 && CAN_FERMENT(), @"%ITEMNAME_TR(GETNUM(ITEM, "ヤマブドウ"))%＊20", ITEM:ヤマブドウ >= 20 && CAN_FERMENT(), @"%ITEMNAME_TR(GETNUM(ITEM, "かびたブドウ"))%＊20", ITEM:かびたブドウ >= 20 && CAN_FERMENT(), "다음",1, "취소",1)
+	SELECTCASE RESULT
+		CASE 0
+			CALL LOST_ITEM("イモ", 10, 1)
+			VAR_FERMENT = イモ入り水
+		CASE 1
+			CALL LOST_ITEM("はちみつ", 10, 1)
+			VAR_FERMENT = ハチミツ水
+		CASE 2
+			CALL LOST_ITEM("キイチゴ", 20, 1)
+			VAR_FERMENT = キイチゴ水
+		CASE 3
+			CALL LOST_ITEM("ヤマブドウ", 20, 1)
+			CALL GET_ITEM("ポマース", 1, 1)
+			VAR_FERMENT = ブドウ汁
+		CASE 4
+			CALL LOST_ITEM("かびたブドウ", 20, 1)
+			CALL GET_ITEM("ポマース", 1, 1)
+			VAR_FERMENT = 貴腐ブドウ汁
+		CASE 5
+			LOCAL = 1
+			CLEARLINE 8
+			RESTART
+		CASE 6
+			RETURN -1 ;custom code
+	ENDSELECT
+ENDIF
+IF LOCAL == 1
+	;custom code, translate item names through function for future proofing
+	CALL ASK_M(@"%ITEMNAME_TR(GETNUM(ITEM, "カボチャ"))%＊10", ITEM:カボチャ >= 10 && CAN_FERMENT(), @"%ITEMNAME_TR(GETNUM(ITEM, "イチゴ"))%＊20", ITEM:イチゴ >= 20 && CAN_FERMENT(), @"%ITEMNAME_TR(GETNUM(ITEM, "熟成前フラゴリーノ"))%", ITEM:熟成前フラゴリーノ && CAN_FERMENT(), @"%ITEMNAME_TR(GETNUM(ITEM, "スイカ"))%＊20", ITEM:スイカ >= 20 && CAN_FERMENT(), @"%ITEMNAME_TR(GETNUM(ITEM, "アケビ"))%＊10", ITEM:アケビ >= 10 && CAN_FERMENT(), @"%ITEMNAME_TR(GETNUM(ITEM, "薬草"))%＊20", ITEM:薬草 >= 20 && CAN_FERMENT(), @"%ITEMNAME_TR(GETNUM(ITEM, "高麗人参"))%＊10", ITEM:高麗人参 >= 10 && CAN_FERMENT(), "다음",1, "취소",1)
+	SELECTCASE RESULT
+		CASE 0
+			CALL LOST_ITEM("カボチャ", 10, 1)
+			VAR_FERMENT = カボチャ水
+		CASE 1
+			CALL LOST_ITEM("イチゴ", 20, 1)
+			VAR_FERMENT = イチゴウ汁
+		CASE 2
+			CALL LOST_ITEM("熟成前フラゴリーノ", 1, 1)
+			VAR_FERMENT = 熟成前フラゴリーノ
+		CASE 3
+			CALL LOST_ITEM("スイカ", 20, 1)
+			VAR_FERMENT = スイカ汁
+		CASE 4
+			CALL LOST_ITEM("アケビ", 10, 1)
+			VAR_FERMENT = アケビ水
+		CASE 5
+			CALL LOST_ITEM("薬草", 20, 1)
+			VAR_FERMENT = ハーブ水
+		CASE 6
+			CALL LOST_ITEM("高麗人参", 10, 1)
+			VAR_FERMENT = 高麗人参水
+		CASE 7
+			LOCAL = 2
+			CLEARLINE 10
+			RESTART
+		CASE 8
+			RETURN -1 ;custom code
+	ENDSELECT
+ENDIF
+IF LOCAL == 2
+	;custom code, translate item names through function for future proofing
+	CALL ASK_M(@"%ITEMNAME_TR(GETNUM(ITEM, "大麦"))%＊10", ITEM:大麦 >= 10 && CAN_FERMENT(), @"%ITEMNAME_TR(GETNUM(ITEM, "りんご"))%＊20", ITEM:りんご >= 20 && CAN_FERMENT(), @"%ITEMNAME_TR(GETNUM(ITEM, "梅"))%＊20", ITEM:梅 >= 20 && CAN_FERMENT(), @"%ITEMNAME_TR(GETNUM(ITEM, "ナッツ"))%＊20", ITEM:ナッツ >= 20 && CAN_FERMENT(), @"%ITEMNAME_TR(GETNUM(ITEM, "ミルク瓶"))%＊1", ITEM:ミルク瓶 >= 1 && CAN_FERMENT(), "다음",1, "취소",1)
+	SELECTCASE RESULT
+		CASE 0
+			CALL LOST_ITEM("大麦", 10, 1)
+			VAR_FERMENT = 麦芽
+		CASE 1
+			CALL LOST_ITEM("りんご", 20, 1)
+			VAR_FERMENT = りんご汁
+		CASE 2
+			CALL LOST_ITEM("梅", 20, 1)
+			VAR_FERMENT = 梅の実と井戸水
+		CASE 3
+			CALL LOST_ITEM("ナッツ", 20, 1)
+			VAR_FERMENT = アーモンド水
+		CASE 4
+			CALL LOST_ITEM("ミルク瓶", 1, 1)
+			CALL GET_ITEM("瓶", 1, 1)
+			VAR_FERMENT = ケフィアグレイン
+		CASE 5
+			LOCAL = 3
+			CLEARLINE 8
+			RESTART
+		CASE 6
+			RETURN -1 ;custom code
+	ENDSELECT
+ENDIF
+IF LOCAL == 3
+	;custom code, translate item names through function for future proofing
+	; [AUTO-NEUTRALIZED] CALL ASK_M(@"%ITEMNAME_TR(GETNUM(ITEM, "仙桃"))%＊3\@ VAR_FERMENT != "奇跡の水" ? %" "%(기적의 물로 채워야 함) #  \@", ITEM:仙桃 >= 3 && VAR_FERMENT == "奇跡の水", @"%ITEMNAME_TR(GETNUM(ITEM, "ローター"))%＊10", ITEM:ローター >= 10 && CAN_FERMENT(), @"%ITEMNAME_TR(GETNUM(ITEM, "精米"))%%5\@ VAR_FERMENT != "奇跡の水" ? "%"" %(반드시 기적의 물로 채워야 함) #  \@", ITEM:精米 >= 5 && VAR_FERMENT == "奇跡の水", "다음",1, "취소",1)
+	SELECTCASE RESULT
+		CASE 0
+			CALL LOST_ITEM("仙桃", 3, 1)
+			VAR_FERMENT = 仙桃汁
+		CASE 1
+			CALL LOST_ITEM("ローター", 10, 1)
+			VAR_FERMENT = 液化ローター
+		CASE 2
+			CALL LOST_ITEM("精米", 5, 1)
+			VAR_FERMENT = もろみ(精米)
+		CASE 3
+			LOCAL = 4
+			CLEARLINE 6
+			RESTART
+		CASE 4
+			RETURN -1 ;custom code
+	ENDSELECT
+ENDIF
+IF LOCAL == 4
+	;custom code, translate item names through function for future proofing
+	CALL ASK_M(@"%ITEMNAME_TR(GETNUM(ITEM, "どぶろく"))%*5\@ VAR_FERMENT != "ただの水" ? %" "%(생수/증류수로 채워야 한다) #  \@", ITEM:どぶろく >= 5 && VAR_FERMENT == "ただの水", @"%ITEMNAME_TR(GETNUM(ITEM, "甘味材"))%＊10", ITEM:甘味材 >= 10 && CAN_FERMENT(), @"%ITEMNAME_TR(GETNUM(ITEM, "熟成前ラム"))%", ITEM:熟成前ラム && CAN_FERMENT(), @"%ITEMNAME_TR(GETNUM(ITEM, "熟成前フランボワーズ"))%", ITEM:熟成前フランボワーズ && CAN_FERMENT(), @"%ITEMNAME_TR(GETNUM(ITEM, "蒸留酒"))%\@ VAR_FERMENT != "ブドウ汁" ? %" "%(포도즙으로 채워야 한다) #  \@", ITEM:蒸留酒 && VAR_FERMENT == "ブドウ汁", @"%ITEMNAME_TR(GETNUM(ITEM, "熟成前ブランデー"))%", ITEM:熟成前ブランデー && CAN_FERMENT(), "다음",1, "취소",1)
+	SELECTCASE RESULT
+		CASE 0
+			PRINTFORML 당신은 도부로쿠를 병에 따른다.
+			PRINTFORML 이 방법으로 조금 더 빨리 우러나야 한다...
+			DAY:10 += 3
+			CALL LOST_ITEM("どぶろく", 5, 1)
+		CASE 1
+			CALL LOST_ITEM("甘味材", 10, 1)
+			VAR_FERMENT = 砂糖水
+		CASE 2
+			CALL LOST_ITEM("熟成前ラム", 1, 1)
+			VAR_FERMENT = 熟成前ラム
+		CASE 3
+			CALL LOST_ITEM("熟成前フランボワーズ", 1, 1)
+			VAR_FERMENT = 熟成前フランボワーズ
+		CASE 4
+			CALL LOST_ITEM("蒸留酒", 1, 1)
+			VAR_FERMENT = ブドウ汁(ALC添加)
+		CASE 5
+			CALL LOST_ITEM("熟成前ブランデー", 1, 1)
+			VAR_FERMENT = 熟成前ブランデー
+		CASE 6
+			LOCAL = 5
+			CLEARLINE 9
+			RESTART
+		CASE 7
+			RETURN -1 ;custom code
+	ENDSELECT
+ENDIF
+;(酒造パッチ)吟醸酒・貴醸酒・三増酒を追加
+IF LOCAL == 5
+	;custom code, translate item names through function for future proofing
+	CALL ASK_M(@"%ITEMNAME_TR(GETNUM(ITEM, "上質食材"))%", ITEM:上質食材 && CAN_FERMENT(), @"%ITEMNAME_TR(GETNUM(ITEM, "草木灰"))%은(는) \@ VAR_FERMENT != "どぶろく" ? %" "%(도부로쿠로 채워야 한다) #  \@", ITEM:草木灰 && VAR_FERMENT == "どぶろく", @"%ITEMNAME_TR(GETNUM(ITEM, "米こうじ"))%\@ VAR_FERMENT != "奇跡の水" ? %" "%(기적의 물로 채워야 합니다) #  \@", ITEM:米こうじ && VAR_FERMENT == "奇跡の水", @"%ITEMNAME_TR(GETNUM(ITEM, "米こうじ"))%\@ VAR_FERMENT != "奇跡の水" ? %""%(진조사케로 채워야 함) #  \@", ITEM:米こうじ && VAR_FERMENT == "吟醸酒", @"%ITEMNAME_TR(GETNUM(ITEM, "蒸留酒"))%+%ITEMNAME_TR(GETNUM(ITEM, "甘味材"))%는(은) \@ VAR_FERMENT != "清酒" ? %" "%(정식 청주로 채워야 함) #  \@", (ITEM:蒸留酒 && ITEM:甘味材) && VAR_FERMENT == "清酒", "다음",1, "취소",1)
+	SELECTCASE RESULT
+		CASE 0
+			CALL LOST_ITEM("上質食材", 1, 1)
+			VAR_FERMENT = 米こうじ
+		CASE 1
+			CALL LOST_ITEM("草木灰", 1, 1)
+			VAR_FERMENT = 灰持酒
+		CASE 2
+			CALL LOST_ITEM("米こうじ", 1, 1)
+			VAR_FERMENT = もろみ(米)
+		CASE 3
+			CALL LOST_ITEM("米こうじ", 1, 1)
+			VAR_FERMENT = もろみ(再醸仕込)
+		CASE 4
+			CALL LOST_ITEM("蒸留酒", 1, 1)
+			CALL LOST_ITEM("甘味材", 1, 1)
+			VAR_FERMENT = 三増酒
+		CASE 5
+			LOCAL = 0
+			CLEARLINE 8
+			RESTART
+		CASE 6
+			RETURN -1 ;custom code
+	ENDSELECT
+ENDIF
+RETURN
+;酒虫の様子を見る
+
+@COM_ABLE450
+;停止中は不可
+SIF FLAG:70 == 1
+	RETURN 0
+;移動実行判定
+SIF !TFLAG:100
+	RETURN 0
+;一括管理
+SIF GLOBAL_COMABLE(450)
+	RETURN RESULT
+;台所
+SIF CFLAG:MASTER:現在位置 != 拠点_酒虫
+	RETURN 0
+SIF CFLAG:うふふ
+	RETURN 0
+SIF !KNOW_RESEARCH("Alcohol"); nas research
+	RETURN 0
+RETURN 1
+
+@CAN_FERMENT(ARG)
+#FUNCTION
+SIF DAY:10 >= 3
+	RETURNF 0
+SIF GROUPMATCH(VAR_FERMENT, "ただの水", "霧の湖の水", "地獄温泉の水", "奇跡の水")
+	RETURNF 1
+RETURNF 0

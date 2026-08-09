@@ -1,0 +1,340 @@
+﻿; Modular ERB: CASINO_BJ.ERB
+;簡易ブラックジャック
+;スキルとか使わない完全に運ゲーです, 時間停止でホールカード覗いたりできてもいいかもね
+;勝率はルールが本家と違うんでどうなんでしょう……。テストプレイではゲーム内で195分やって-250とかでした（雑魚）
+;カードの追加が常に１回しかできないのでダブルのデメリットがないのはプレイヤーに有利な気がする
+;P_HAND   ×広域変数化、プレイヤーの手札, 7まであるけど現状3までしか使いません
+;D_HAND   ×広域変数化、ディーラーの手札, 上に同じく
+;DECK     ×広域変数化、52枚のカードをランダムに並べてます, でも使うのは上から6枚だけ, 下のカードを持ってきたりとイカサマに応用できるかも
+;カジノ作者（morph）による改造
+;・HITの可能回数を増やした
+;・カード関連変数の広域変数化＆処理を独立させて汎用化
+;　（判定関連を別関数に任せられるのでこの方が便利、ポーカー実装されたし）
+;・カウンティングを可能に、プレイヤースキルが影響するよ！
+;・仕様上はジョーカーも混ぜられるようになったけど処理側で対応してない（計算めんどいのよ）
+
+@CASINO_BLACKJACK
+#DIM P_BET        ;賭け金
+#DIM ORI_BET      ;最初の賭け金, ダブルを選択するとP_BETが2倍になり、続行すると次のゲームでも2倍になったままなので保存用です
+#DIM INS          ;インシュアランスの保険金, 賭けてると再度インシュアランスできない
+#DIM LPCOUNT      ;ループカウント
+#DIM TOTAL, 3     ;
+;TOTAL:1  賭け金合計, カモは最後にまとめて精算しました
+;TOTAL:2  配当合計
+#DIM P_WIN        ;プレイヤーの勝利判定用
+#DIM CONST DL = 0 ;定数、ディーラーのカードプレイヤー番号
+#DIM CONST PL = 1 ;定数、プレイヤーのカードプレイヤー番号
+;参加プレイヤーはふたり
+NUM_CARD_PL = 2
+PRINTFORML 
+IF MONEY:2 <= 0
+	PRINTFORML 요정 메이드:
+	PRINTFORML 　「고객님께, 죄송하지만 이 카지노에서는 “카리스마”라는 특별한 통화만을 사용합니다.」
+	PRINTFORMW 　「불편을 드려 죄송하지만, 먼저 카리스마를 구매해 주십시오.」
+	RETURN
+ELSE
+	PRINTFORML 요정 메이드:
+	PRINTFORML 　「어서 오세요, 무엇을 도와드릴까요?」
+	PRINTFORML 　「여기는 블랙잭 코너입니다.」
+	PRINTFORML 　「잔재주나 능력 같은 건 여기선 아무 의미가 없어요. 카드의 기술이 필요한 게임이죠.」
+	PRINTFORMW 　「우선, 베팅액을 알려주시겠어요.」
+	PRINTFORML 
+ENDIF
+CALL CASINO_INPUTLOOP("カード賭け金")
+P_BET = RESULT
+ORI_BET = RESULT
+VARSET TOTAL
+IF P_BET
+	CALL CASINO_MONEY("カリスマ", -P_BET)
+	TOTAL:1 += P_BET
+	CALL PLAY_CARDS("SHUFFLE")
+	PRINTFORML 
+	PRINTFORMW 요정 메이드가 새 카드 한 덱을 꺼내 섞었다.
+ENDIF
+WHILE P_BET
+IF NEW_CARD > 44
+	CALL PLAY_CARDS("SHUFFLE")
+	PRINTFORML 
+	PRINTFORML 요정 하녀
+	PRINTFORMW 　「카드가 얼마 남지 않아서, 우리가 섞어줄게.」
+ENDIF
+TIME += 5
+;手札をリセットして2枚ずつ引きます,INSもリセット
+CALLF CARD_PLAYER("CLEAR_BJ_ALL")
+CALL PLAY_CARDS("RESET_HAND")
+CALL PLAY_CARDS("HIT", DL)
+CALL PLAY_CARDS("HIT", PL)
+CALL PLAY_CARDS("HIT", DL)
+CALL PLAY_CARDS("HIT", PL)
+CALLF CARD_PLAYER("RENEW_BJ_POINT_ALL")
+INS = 0
+P_WIN = 0
+SIF CARD_PLAYER("GET_BJ_POINT", PL) == 21 && CARD_CHECK("RANK", CARD_HAND:DL:0) != 1 ;qol custom code, instantly resolve
+	GOTO BLACKJACK_RESOLVE
+;初期盤面, お互い手札は２枚, ホールカード１枚
+DO
+;qol custom code, reset menu state
+LOCAL:10 = LINECOUNT
+$BLACKJACK_INPUT
+CLEARLINE LINECOUNT - LOCAL:10
+CALL CASINO_DISP("BJ_CLOSE")
+SIF NEW_CARD < NUM_CARD && CARD_PLAYER("GET_BJ_POINT", PL) < 21 ;qol custom code, not if blackjack
+	PRINTL [1] - 치기
+PRINTL [2] - 스테이
+SIF NEW_CARD < NUM_CARD && NUM_HAND:PL == 2 && MONEY:2 >= P_BET && CARD_PLAYER("GET_BJ_POINT", PL) < 21 ;qol custom code, not if blackjack
+	PRINTL [3] - 더블
+IF NUM_HAND:PL == 2 && CARD_CHECK("RANK", CARD_HAND:DL:0) == 1
+	IF CARD_PLAYER("GET_BJ_BJ", PL) ;bugfix custom code
+		PRINTL [4] - 이김
+	ELSEIF !INS && MONEY:2 >= P_BET / 2
+		PRINTL [4] - 보험
+	ENDIF
+ENDIF
+SIF CARD_PLAYER("GET_BJ_POINT", PL) < 21 ;qol custom code, not if blackjack
+	PRINTL [0] 포기한다.
+INPUT
+DRAWLINEFORM ━
+SELECTCASE RESULT
+	CASE 1
+		;ヒット枚数を無制限に変更
+		SIF NEW_CARD >= NUM_CARD || CARD_PLAYER("GET_BJ_POINT", PL) >= 21 ;qol custom code, not if blackjack
+			GOTO BLACKJACK_INPUT ;qol custom code
+		PRINTFORML 요정 하녀
+		PRINTFORMW 　「당신의 카드 부탁해요.」
+		CALL PLAY_CARDS("HIT_BJ", PL)
+		SIF CARD_PLAYER("GET_BJ_POINT", PL) >= 21
+			BREAK
+		CONTINUE
+	CASE 2
+		;スタンド, 即勝負します
+	CASE 3
+		;ダブル, 賭け金を２倍にしてカード１枚追加, 賭け金を用意できるときのみ
+		SIF MONEY:2 < P_BET || NUM_HAND:PL > 2 || NEW_CARD >= NUM_CARD || CARD_PLAYER("GET_BJ_POINT", PL) >= 21 ;qol custom code, not if blackjack
+			GOTO BLACKJACK_INPUT ;qol custom code
+		PRINTFORML 요정 메이드
+		PRINTFORML 　「알겠습니다.」
+		PRINTFORML 　「내기 금액은 {P_BET * 2} 카리스마입니다.」
+		PRINTFORMW 　「카드를 내주세요.」
+		CALL PLAY_CARDS("HIT_BJ", PL)
+		TOTAL:1 += P_BET
+		CALL CASINO_MONEY("カリスマ", -P_BET)
+		P_BET = P_BET * 2
+	CASE 4
+		IF NUM_HAND:PL == 2 && CARD_CHECK("RANK", CARD_HAND:DL:0) == 1
+			IF CARD_PLAYER("GET_BJ_BJ", PL)
+				;イーブンマネー, 引き分けが怖いので２倍の配当で我慢する, 気になるのでホールカードを見せてくれる
+				;表のカードがＡであなたの手札が２１点の時のみ
+				PRINTFORML 요정 하녀
+				PRINTFORML 　「알겠습니다.」
+				PRINTFORML 　「당신의 보상인 {P_BET * 2} 카리스마입니다.」
+				PRINTFORMW 　「받으세요.」
+				TOTAL:2 += P_BET * 2
+				CALL CASINO_MONEY("カリスマ", P_BET * 2)
+				PRINTFORMW 　「이제 숨겨진 카드를 공개할 시간이다...」
+				CALL CARD_DISP("CARD", CARD_HAND:DL:1)
+				PRINTW
+				IF CARD_PLAYER("GET_BJ_BJ", DL)
+					PRINTFORMW 　「후후후, 당신의 현명한 결정이었던 것 같군요.」
+				ELSE
+					PRINTFORMW 　「오 이런, 안됐네.」
+				ENDIF
+				GOTO CHECK_NEXTGAME
+			ELSEIF !INS && MONEY:2 >= P_BET / 2
+				;インシュアランス, ブラックジャックが怖いので保険金を追加BETする
+				;表のカードがＡでINSをしておらず保険金分のカリスマが用意できるときのみ
+				;その後再度選択肢を選ぶ
+				PRINTFORML 요정 메이드
+				PRINTFORML 　「알겠습니다.」
+				PRINTFORMW 　「당신의 카리스마 베팅액 중 절반({P_BET / 2})을 보험금으로 추가했습니다.」
+				INS = P_BET / 2
+				TOTAL:1 += P_BET / 2
+				CALL CASINO_MONEY("カリスマ", -P_BET / 2)
+				CONTINUE
+			ELSE
+				GOTO BLACKJACK_INPUT ;qol custom code
+			ENDIF
+		ELSE
+			GOTO BLACKJACK_INPUT ;qol custom code
+		ENDIF
+	CASE 0 ;qol custom code, invalid inputs only return to menu instead of forcing surrender
+		;手入力したりするとサレンダー, ゲームを降りて半額返してもらう
+		SIF CARD_PLAYER("GET_BJ_POINT", PL) == 21 ;qol custom code, not if blackjack
+			GOTO BLACKJACK_INPUT
+		$SURRENDER
+		PRINTFORML 요정 메이드
+		PRINTFORML 　「오, 포기하시나요?」
+		PRINTFORMW 　「그렇다면 {P_BET / 2} 카리스마의 보상을 받으세요.」
+		TOTAL:2 += P_BET / 2
+		CALL CASINO_MONEY("カリスマ", P_BET / 2)
+		GOTO CHECK_NEXTGAME
+	CASEELSE
+		GOTO BLACKJACK_INPUT ;qol custom code
+ENDSELECT
+BREAK
+LOOP 1
+IF NUM_HAND:PL > 2
+	CALL CASINO_DISP("BJ_CLOSE")
+	IF CARD_PLAYER("GET_BJ_BUST", PL)
+		PRINTW 
+		PRINTFORML 요정 메이드
+		PRINTFORML 　「21을 초과한 것 같네요.」
+		GOTO YOULOSE
+	ENDIF
+ENDIF
+$BLACKJACK_RESOLVE ;qol custom code
+;ホールカードを公開して盤面を見る
+PRINTW 
+PRINTFORML 요정 메이드
+PRINTFORMW 　「이제 카드를 보여주겠어요.」
+PRINTFORML 
+WHILE CARD_PLAYER("GET_BJ_POINT", DL) < 17 && !CARD_PLAYER("GET_BJ_BJ", PL) ;qol custom code, dealer doesn't have to draw cards if player has a blackjack
+IF NEW_CARD >= 52
+	PRINTFORML 요정 메이드
+	PRINTFORMW 　「카드 다 떨어졌나 봐.」
+	BREAK
+ENDIF
+CALL CASINO_DISP("BJ_OPEN")
+PRINTFORML 요정 메이드
+PRINTFORMW 　「저는 17점 미만이므로 카드를 한 장 더 추가할게요.」
+CALL PLAY_CARDS("HIT_BJ", DL)
+WEND
+CALL CASINO_DISP("BJ_OPEN")
+;結果の判定
+IF CARD_PLAYER("GET_BJ_BJ", DL)
+	;ディーラーのBJ
+	PRINTFORML 요정 하녀
+	PRINTFORML 　「블랙잭!」
+	IF INS
+		;INSしてたらセーフ
+		PRINTFORMW 　「보험에 베팅했으므로 {P_BET + INS} 카리스마의 보상을 받으십시오.」
+		TOTAL:2 += P_BET + INS
+		CALL CASINO_MONEY("カリスマ", P_BET + INS)
+	ELSEIF CARD_PLAYER("GET_BJ_BJ", PL)
+		PRINTFORML 　「비겼군요.」
+		PRINTFORMW 　「{P_BET} 카리스마를 돌려받으세요.」
+		TOTAL:2 += P_BET
+		CALL CASINO_MONEY("カリスマ", P_BET)
+	ELSEIF CARD_PLAYER("GET_BJ_POINT", PL) == 21
+		;２１でもBJには勝てない
+		PRINTFORML 　「당신이 손해 본 거예요.」
+		PRINTFORMW 　「카지노가 이제 당신의 모든 베팅액을 가져갈 겁니다.」
+	ELSE
+		GOTO YOULOSE
+	ENDIF
+ELSEIF CARD_PLAYER("GET_BJ_BUST", DL)
+	;ディーラーBUST（ここまで来た時点であなたはBUSTしていない）
+	PRINTFORML 요정 메이드
+	PRINTFORML 　「카지노가 21을 초과했으니 당신이 이겼어요!」
+	P_WIN = 1
+ELSE
+	;普通の結果
+	PRINTFORML 요정 메이드
+	IF CARD_PLAYER("GET_BJ_BJ", PL)
+		;21POINTだがPL側のみBJが成立した
+		PRINTFORML 　「당신은 블랙잭을 가지고 있으니 이깁니다!」
+		P_WIN = 1
+	ELSEIF CARD_PLAYER("GET_BJ_POINT", PL) > CARD_PLAYER("GET_BJ_POINT", DL)
+		PRINTFORML 　「축하합니다, 당신이 이겼어요!」
+		P_WIN = 1
+	ELSEIF CARD_PLAYER("GET_BJ_POINT", PL) == CARD_PLAYER("GET_BJ_POINT", DL)
+		;その他の引き分け
+		PRINTFORML 　「무승부인 것 같아.」
+		PRINTFORMW 　「{P_BET} 카리스마를 걸었던 금액을 돌려받으세요.」
+		TOTAL:2 += P_BET
+		CALL CASINO_MONEY("カリスマ", P_BET)
+	ELSE
+		;負けはここ
+		$YOULOSE
+		PRINTFORML 　「죄송하지만 당신은 패배했습니다.」
+		PRINTFORMW 　「카지노는 이제 당신의 모든 베팅액을 가져갑니다.」
+	ENDIF
+ENDIF
+IF P_WIN
+	IF CARD_PLAYER("GET_BJ_BJ", PL)
+		PRINTFORML 　「블랙잭에 도달했으므로 당신의 지급액은 {P_BET * 5 / 2} 카리스마입니다.」
+		PRINTFORMW 　「받아 가세요!」
+		TOTAL:2 += P_BET * 5 / 2
+		CALL CASINO_MONEY("カリスマ", P_BET * 5 / 2)
+	ELSE
+		PRINTFORML 　「당신의 보상은 {P_BET * 2} 카리스마입니다.」
+		PRINTFORMW 　「받아 가세요!」
+		TOTAL:2 += P_BET * 2
+		CALL CASINO_MONEY("カリスマ", P_BET * 2)
+	ENDIF
+ENDIF
+;ゲームの続行判定
+$CHECK_NEXTGAME
+IF NEMUKE() >= 700
+	P_BET = 0
+ELSEIF MONEY:2 <= 0
+	P_BET = 0
+ELSEIF 500000 - FLAG:カリスマ流通 - P_BET * 25 / 10 < 10000
+	;ここだけBREAK
+	BREAK
+ELSE
+	PRINTFORML 　「다시 하시겠습니까?」
+	PRINTFORML 
+	CALL CASINO_INPUTLOOP("カード続行")
+	SELECTCASE RESULT
+		CASE 0
+			P_BET = 0
+		CASE 1
+			IF MONEY:2 < P_BET
+				PRINTFORML 요정 하녀
+				PRINTFORML 　「당신에게는 충분한 매력이 없는 것 같군요...」
+				PRINTFORML 　「다른 양을 걸어야 할 겁니다.」
+				PRINTFORML 
+				CALL CASINO_INPUTLOOP("カード賭け金")
+				P_BET = RESULT
+				ORI_BET = RESULT
+				SIF RESULT
+					PRINTFORML 
+			ELSE
+				P_BET = ORI_BET
+			ENDIF
+		CASE 2
+			PRINTFORML 요정 메이드
+			PRINTFORML 　「내 베팅을 해 주세요.」
+			PRINTFORML 
+			CALL CASINO_INPUTLOOP("カード賭け金")
+			P_BET = RESULT
+			ORI_BET = RESULT
+			SIF RESULT
+				PRINTFORML 
+	ENDSELECT
+ENDIF
+IF P_BET
+	TOTAL:1 += P_BET
+	CALL CASINO_MONEY("カリスマ", -P_BET)
+	PRINTFORML 요정 하녀
+	PRINTFORML 　「네, {P_BET} 카리스마에 건 내기가 받아들여졌다.」
+	PRINTFORMW 　「지속적인 성원에 감사한다.」
+ENDIF
+WEND
+PRINTFORML 
+IF NEMUKE() >= 700
+	PRINTFORML 요정 메이드
+	PRINTFORML 　「어... 손님?」
+	PRINTFORML 　「오늘은 긴 하루였어요.」
+	PRINTFORML 　「지금은 게임을 그만둬야 할 것 같아요.」
+	PRINTFORMW 　「다른 때 다시 뵙기를 고대하겠습니다.」
+ELSEIF MONEY:2 <= 0
+	PRINTFORML 요정 메이드
+	PRINTFORML 　「유감스럽게도, 당신은 매력을 다 써버린 것 같다...」
+	PRINTFORMW 　「다음에 또 만날 수 있기를 기대하겠다.」
+ELSEIF P_BET
+	;払い戻しに店が耐えられない時
+	PRINTFORML 요정 하녀
+	PRINTFORML 　「죄송하지만, 이제 곧 문을 닫는 것 같습니다.」
+	PRINTFORMW 　「다음에 또 뵙기를 기대하겠습니다.」
+ELSE
+	PRINTFORML 요정 메이드
+	PRINTFORML 　「Certainly.」
+	PRINTFORMW 　「We look forward to your continued patronage.」
+ENDIF
+CALLF CARD_PLAYER("CLEAR_BJ_ALL")
+IF TOTAL:1
+	CALL CASINO_MONEY("カモ", TOTAL:1)
+	CALL CASINO_DISP("RESULT", TOTAL:1, TOTAL:2)
+ENDIF
+VARSET TOTAL

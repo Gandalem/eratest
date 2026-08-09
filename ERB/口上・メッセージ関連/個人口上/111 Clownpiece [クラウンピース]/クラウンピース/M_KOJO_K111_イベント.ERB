@@ -1,0 +1,5492 @@
+﻿; Modular ERB: 個人口上/111 Clownpiece [クラウンピース]/クラウンピース/M_KOJO_K111_イベント.ERB
+;-------------------------------------------------
+; eraTheWorld 4.630proto用 クラウンピース口上
+;-------------------------------------------------
+;他者による修正、加筆、改変については、同梱のライセンス条項に従ってください。
+;**** FlagManagement **********************************************************
+;本口上にて使用しているCFLAG・TCVAR等
+;TCVAR:111:350	汗フラグ
+;TCVAR:111:351	押し倒されたフラグ
+;TCVAR:111:352	オナバレ分岐
+;TCVAR:111:353	デート会話
+;TCVAR:111:355	満足フラグ（TCVAR）
+;TCVAR:111:356	ハンバーガー食べたい
+;TCVAR:111:357	料理アレンジ
+;TCVAR:111:358	一日一回挨拶
+;TCVAR:111:359	状況会話（bit）
+;TCVAR:111:360	最初から不機嫌
+;CFLAG:111:1001	満足フラグ
+;CFLAG:111:1002	最後に会った日
+;CFLAG:111:1003	昨日会ってない
+;CFLAG:111:1004	日記用
+;CFLAG:111:1005	プレゼントのお礼
+;CFLAG:111:1006	クリスマスプレゼント
+;CFLAG:111:1007	贈り物を保存した回数
+;CFLAG:111:1010	無自覚出産
+;CFLAG:111:1011～1020	子供の性格
+;CFLAG:111:1021～1030	親が分からない
+;CFLAG:111:1031～1040	与えた玩具
+;CFLAG:111:1041～1050	与えたプレゼント
+;CFLAG:111:1051～1060	手紙イベント進行度
+;CFLAG:111:1091	よちよちベビーの番号
+;CFLAG:111:1100	バージョン
+;Custom code
+;Add flag for how she talks when mentioning Junko or Hecatia, transliterate or translate
+;CFLAG:111:1099 translate/literate
+;******************************************************************************
+;■専用関数
+;不機嫌判定
+
+@M_KOJO_K111_FUKIGEN(ARG)
+#FUNCTION
+SIF TALENT:ARG:機嫌 == -1
+	RETURNF 1
+SIF CFLAG:ARG:ブチギレ
+	RETURNF 1
+SIF MARK:ARG:反発刻印 >= 3
+	RETURNF 1
+RETURNF 0
+;おうち判定
+;1=クラウンピースの部屋,2=純狐邸,3=入り江
+
+@M_KOJO_K111_HOUSE(ARG)
+#FUNCTION
+IF MAIN_MAP == 10
+	IF ARG == CFLAG:[[クラウンピース]]:初期位置
+		RETURNF 1
+	ELSEIF ARG == 1016
+		RETURNF 3
+	ELSEIF INRANGE(ARG, 1060, 1072)
+		RETURNF 2
+	ENDIF
+ELSE
+	SIF ARG == OMANEKIBEYA() || ARG == CFLAG:[[クラウンピース]]:初期位置
+		RETURNF 1
+ENDIF
+;純狐邸に住んでる判定,引数なし
+
+@M_KOJO_K111_JUNKO_KURASHI
+#FUNCTION
+;月じゃないなら×
+SIF MAIN_MAP != 10
+	RETURNF 0
+;一応二段階で設定しておく
+SIF INRANGE(CFLAG:MASTER:初期位置, 1060, 1072)
+	RETURNF 1
+SIF GROUPMATCH(CFLAG:MASTER:初期位置, CFLAG:[[クラウンピース]]:初期位置, CFLAG:[[純狐]]:初期位置, CFLAG:[[ヘカーティア]]:初期位置)
+	RETURNF 1
+;地上判定
+
+@M_KOJO_K111_EARTH(ARG)
+#FUNCTION
+;神社～森
+IF ARG < 600
+	RETURNF 1
+	;冥界
+ELSEIF INRANGE(ARG, 600, 700)
+	IF MAIN_MAP == 6
+		;中有の道～積石塚
+		IF INRANGE(ARG, 601, 603)
+			RETURNF 1
+			;八雲邸
+		ELSEIF INRANGE(ARG, 630, 639)
+			RETURNF 1
+		ENDIF
+	ELSE
+		;中有の道、マヨヒガ
+		SIF GROUPMATCH(ARG, 610, 630)
+			RETURNF 1
+	ENDIF
+	;山麓
+ELSEIF INRANGE(ARG, 700, 800)
+	RETURNF 1
+	;山頂
+ELSEIF INRANGE(ARG, 800, 900)
+	IF MAIN_MAP == 8
+		;入り口～守矢神社
+		SIF INRANGE(ARG, 801, 825)
+			RETURNF 1
+	ELSE
+		;九天の滝～守矢神社本殿
+		SIF INRANGE(ARG, 810, 850)
+			RETURNF 1
+	ENDIF
+	;地底～月
+ELSEIF INRANGE(ARG, 900, 1100)
+	RETURNF 0
+ENDIF
+;あなたの印象
+
+@M_KOJO_K111_MASTER_IMPRESSION
+#FUNCTIONS
+VARSET LOCALS
+VARSET LOCAL
+SIF CFLAG:[[クラウンピース]]:既成事実
+	LOCALS:1 = ロリコン
+SIF TALENT:MASTER:清掃中毒 || ABL:MASTER:清掃技能 >= 6
+	LOCALS:2 = 清掃中毒者
+SIF LEARNED_MENU:[[クラウンピース]] >= 100
+	LOCALS:3 = 料理人
+SIF CFLAG:[[クラウンピース]]:弾幕勝負勝利
+	LOCALS:4 = 弾幕強者
+SIF CFLAG:[[クラウンピース]]:ムシバトル直接勝利
+	LOCALS:5 = 昆虫王
+SIF TALENT:MASTER:恋人 && !GROUPMATCH(TALENT:MASTER:恋人, [[クラウンピース]], [[ヘカーティア]], [[純狐]])
+	LOCALS:6 = モテ男
+SIF ABL:MASTER:教養 >= 4
+	LOCALS:7 = インテリ
+SIF ABL:MASTER:話術技能 >= 5
+	LOCALS:8 = 饒舌
+SIF MONEY >= 1000000
+	LOCALS:9 = 金持ち
+FOR LOCAL, 1, 10
+IF LOCALS:LOCAL != ""
+	LOCAL:1 = 1
+	BREAK
+ENDIF
+NEXT
+;何も特徴が無い
+SIF !LOCAL:1
+	LOCALS:10 = 平凡
+LOCAL = 0
+WHILE LOCALS == ""
+LOCAL = RAND:10 + 1
+SIF LOCALS:LOCAL != ""
+	LOCALS = %LOCALS:LOCAL%
+WEND
+RETURNF LOCALS
+;ランダム台詞,ARGS:1は語尾
+
+@M_KOJO_K111_AUTO(ARGS, ARGS:1)
+#FUNCTIONS
+SELECTCASE ARGS
+	CASE "喘ぎ：小"
+		SELECTCASE RAND:36
+			CASE 1
+				LOCALS = Ahhhn
+			CASE 2
+				LOCALS = Ahn
+			CASE 3
+				LOCALS = Ahhh
+			CASE 4
+				LOCALS = Aaaah
+			CASE 5
+				LOCALS = Kyaa
+			CASE 6
+				LOCALS = Kyahn
+			CASE 7
+				LOCALS = Hyaa
+			CASE 8
+				LOCALS = Hyaahn
+			CASE 9
+				LOCALS = Hwaahn
+			CASE 10
+				LOCALS = Hyau
+			CASE 11
+				LOCALS = Hyafu
+			CASE 12, 29, 30
+				LOCALS = Nhoo
+			CASE 13, 31
+				LOCALS = Yaahn
+			CASE 14
+				LOCALS = Hwahan
+			CASE 15
+				LOCALS = Nyaahn
+			CASE 16
+				LOCALS = Naahn
+			CASE 17
+				LOCALS = Nahhm
+			CASE 18
+				LOCALS = Nyuu
+			CASE 19
+				LOCALS = Nmyuu
+			CASE 20
+				LOCALS = Nmyaah
+			CASE 21
+				LOCALS = Fwaah
+			CASE 22, 32, 33
+				LOCALS = Fueh
+			CASE 23
+				LOCALS = Nmh
+			CASE 24
+				LOCALS = Nnnm
+			CASE 25
+				LOCALS = Nmu
+			CASE 26
+				LOCALS = Nfuu
+			CASE 27, 34
+				LOCALS = Nyaah
+			CASE 28
+				LOCALS = Nyaahan
+			CASEELSE
+				LOCALS = Nyooh
+		ENDSELECT
+ENDSELECT
+RETURNF LOCALS + ARGS:1
+;### 口上存在判定 ###################################
+
+@M_KOJO_K111(ARG)
+;別人版を作成する際はこのテンプレではなく別人版用口上テンプレをご利用ください
+;口上存在判定です、けしてコメントアウトしないでください
+;他の処理は一切行わないように
+RETURN 1
+;### 口上基本フラグ設定 #############################
+
+@M_KOJO_FLAGSETTING_K111
+;基本フラグ設定はここで行ってください
+;共通の口上フラグは必要な箇所のコメントアウトを外してご利用ください
+;口上専用フラグはご自由に
+;Xにはキャラ番号を入れてください
+;眠姦口上有、時間停止口上有、なりきりに1を入れると、それぞれ時間停止時、眠姦時、なりきり時にコマンド口上が読み込まれるように
+;入れないと時間停止時、眠姦時、なりきり時は一切喋りません
+;CFLAG:X:眠姦口上有 = 0
+;Custom code, enabled as she has time-stop text
+CFLAG:111:時間停止口上有 = 1
+;CFLAG:X:なりきり口上有 = 0
+;破瓜キャンセル口上有に1を入れると、@M_KOJO_EVENT_KX_LOST_VIRGIN_STOPでキャンセルの成否を操作できます
+;CFLAG:X:破瓜キャンセル口上有 = 0
+;口上内抱き寄せ判定_初回と口上内抱き寄せ判定_通常に1を入れると、M_KOJO_EVENT_KX_PERMISSIONで押し倒しの成否を操作できます
+CFLAG:111:口上内抱き寄せ判定_初回 = 1
+CFLAG:111:口上内抱き寄せ判定_通常 = 1
+;押し倒し禁止に1を入れると、自分から押し倒してこなくなります
+;以下は恋慕かセフレがつくまで押し倒してこなくなる使用例
+;IF !TALENT:X:恋慕 && !TALENT:X:セフレ
+;	CFLAG:X:押し倒し禁止 = 1
+;ELSE
+;	CFLAG:X:押し倒し禁止 = 0
+;ENDIF
+;来訪不能に1を入れると、来訪してこなくなります
+;以下は面識があるまで来訪してこなくなる使用例
+;IF !CFLAG:X:面識
+;	CFLAG:X:来訪不能 = 1
+;ELSE
+;	CFLAG:X:来訪不能 = 0
+;ENDIF
+;### 口上色判定 ###################################
+
+@M_KOJO_COLOR_K111
+SETCOLOR 0xE86FC7
+
+@M_KOJO_COLOR_K111_HECA
+SETCOLOR 0xc83232
+
+@M_KOJO_COLOR_K111_JUNKO
+SETCOLOR 0xffe100
+
+@M_KOJO_COLOR_K111_CHILD(ARG)
+IF ARG == 1
+	;女の子
+	SETCOLOR 0xFF6D6D
+ELSEIF ARG == 2
+	;男の子
+	SETCOLOR 0x7E6BFF
+ENDIF
+;custom code, profile translation
+
+@CHARA_INFO_KOJO_K111()
+CALL M_KOJO_COLOR_K111
+PRINTFORML %nameArray:111:na_Title%
+RESETCOLOR
+PRINTL 
+PRINTFORML 지옥에 사는 요정이다. 하루 세 끼 먹는 것보다 노는 것을 더 좋아한다.
+PRINTFORML 그녀는 친절하고 배려심 있는 사람들에게 정직하고, 순종적이며, 순수하고, 천진난만하다. 또한 거만하고 자랑하는 것을 좋아한다.
+PRINTFORML 하지만 만약 어려운 사람을 상대하게 되면, 직설적으로 대응한다.
+PRINTFORML 반면에, 존경하는 사람에게는 예의 바른 말투로 말한다.
+PRINTFORML 
+PRINTFORML 헤카티아는 그녀의 주인이며 수호자이다.
+PRINTFORML 지옥에서 태어났기 때문에 대부분의 요정보다 강하고 중학생과 같은 지식과 몸가짐을 가지고 있다.
+PRINTFORML 그녀는 성적인 지식을 가지고 있으며 순결함에 대해서는 많이 모르는 연령이다.
+PRINTFORML 주로 순수한 호기심에서 행동하기 때문에 사랑이나 로맨스라는 개념을 완전히 이해하지 못한다.
+RETURN 1
+;※※※※※※※※※※※※※※※※※※※※※※※※※※
+;"UPDATE判定"
+;※※※※※※※※※※※※※※※※※※※※※※※※※※
+
+@M_KOJO_UPDATE_K111
+#DIM VERSION
+;口上独自のUPDATE用
+;ENCOUNTER専用に独自分岐フラグを仕込んだ場合等にどうぞ
+;UPDATE判定でCFLAGを使う場合、キャラ番号の指定が必要になります
+VERSION = 202
+CALL M_KOJO_COLOR_K111
+IF !TALENT:111:キス未経験 || EXP:111:キス経験
+	SIF FIRSTTIME("ファーストキス", 0, 111)
+		PRINTFORML 클라운피스는 이 데이터에서 키스 경험이 있다.
+ENDIF
+IF EXP:111:精飲経験
+	SIF FIRSTTIME("精液の味", 0, 111)
+		PRINTFORML 클라운피스는 이 데이터에서 정액의 맛을 알고 있다.
+ENDIF
+RESETCOLOR
+IF CFLAG:111:1100 == VERSION
+	CALL M_KOJO_COLOR_K111
+	PRINTFORML 이미 최신 버전이다 (버전.{CFLAG:111:1100 / 100}.{CFLAG:111:1100 % 100})
+	RESETCOLOR
+ELSE
+	CFLAG:111:1100 = VERSION
+	CALL M_KOJO_COLOR_K111
+	PRINTFORML 업데이트 완료! (버전.{CFLAG:111:1100 / 100}.{CFLAG:111:1100 % 100})
+	RESETCOLOR
+ENDIF
+SIF !CFLAG:111:1002
+	CFLAG:111:1002 = DAY
+;FIRSTTIME"お招き"は施しようがないので省略　そこまで重要ではないし
+RETURN 1
+;※※※※※※※※※※※※※※※※※※※※※※※※※※
+;Custom dialogue settings, custom code
+;※※※※※※※※※※※※※※※※※※※※※※※※※※
+;made it as a way to speed up the update process and separate simple flag updates from various customization options
+;note: options start from 1!
+
+@KOJO_OPTION_K111
+CALL KOJO_OPTION_ITEM("Change the way Clownpiece refers to Hecatia and Junko", 1, "status:English:Romaji", CFLAG:111:1099)
+;process the input portion
+
+@KOJO_OPTION_K111_RESULT_1
+PRINTFORML 클라운피스가 헤카티아와 준코를 어떻게 부를지 선택한다.
+CALL ASK_YN("마스터 / 친구 부인", "주인님 / 친구분")
+CFLAG:111:1099 = RESULT
+;※※※※※※※※※※※※※※※※※※※※※※※※※※
+;"ENCOUNTER"系イベント（エクストラ構文）
+;※※※※※※※※※※※※※※※※※※※※※※※※※※
+
+@M_KOJO_ENCOUNTER_K111
+;初対面、挨拶のタイミング
+;TALENTの変更はここでどうぞ。
+;月
+;Custom code
+PRINTFORMW 참고: 클라운피스가 준코와 헤카티아를 어떻게 부를지 선택할 수 있습니다. UPDATE에서 변경 가능합니다.
+PRINTL [0] 마스터 / 친구 부인
+PRINTL [1] 주인님 / 유우진상
+INPUT
+SIF !INRANGE(RESULT,0,1)
+	RESTART
+CFLAG:111:1099 = RESULT
+PRINTFORMW 「뭐야?」
+PRINTFORMW 「너 도대체 누구야?」
+;月に住んでる
+IF MAIN_MAP == 10
+	;初期位置が純狐邸
+	IF M_KOJO_K111_JUNKO_KURASHI()
+		;出会った場所が入り江側
+		IF M_KOJO_K111_HOUSE(CFLAG:[[クラウンピース]]:現在位置)
+			PRINTFORMW 「무단 침입이라도 하러 온 건가?」
+			PRINTFORMW 「좋아! 그럼 내가 너를 두들겨 패기 전에 해치면 상관없지~」
+			PRINTFORML 
+			PRINTFORMDL 새로운 집에 온 것 같군...
+			PRINTFORMDL 화려하게 차려입은 이 요정 하우스메이트를 상대하는 데 꽤 바빠질 것 같다. 저 요정이 곧 폭주할 기세라...
+			PRINTFORMDL 　[0] - 자기소개를 해라
+			INPUT
+		ELSE
+			PRINTFORMW 「저 달나라 사람들은 여기서 뭘 하고 있는 거야?」
+			PRINTFORML 「음, %CFLAG:111:1099?"Goshujinsama"#"Master"%가 싸움을 걸지 말라고 했지만...」
+			PRINTFORMW 「만약 그 토끼 동네에서 온 거라면 아마 괜찮겠지ー」
+			PRINTFORML 
+			PRINTFORMDL 당신이 도착한 이 달의 땅에는...
+			PRINTFORMDL 화려하게 옷을 입은 요정 한 명이 살고 있는데, 그녀가 곧 제정신이 아닌 상태가 될 것 같다.
+			PRINTFORMDL 　[0] - 자신을 소개하라
+			INPUT
+		ENDIF
+		PRINTFORMW 「뭐라고!? 내 집에 살고 있다고!?」
+		PRINTFORMW 「흠, 그렇군, 그러니 너도...」
+		PRINTFORMW 「음, 나는 지옥에서 온 요정 클라운피스야!」
+		PRINTFORMW 「헤이 헤이, %CALLNAME:MASTER%!」
+		PRINTFORMW 「나 방금 시간이 좀 생겨서 말이야...」
+		PRINTFORMW 「잠깐 놀까ー♪」
+	ELSE
+		PRINTFORMW 「저 달나라 사람들은 여기서 뭘 하고 있는 거야?」
+		PRINTFORML 「음, %CFLAG:111:1099?"Goshujinsama"#"Master"%가 싸움을 걸지 말라고 했지만...」
+		PRINTFORMW 「만약 그 토끼 동네에서 온 거라면 아마 괜찮겠지ー」
+		PRINTFORML 
+		PRINTFORMDL 당신이 도착한 이 달의 땅에는...
+		PRINTFORMDL 화려하게 옷을 입은 요정 한 명이 살고 있는데, 그녀가 곧 제정신이 아닌 상태가 될 것 같다.
+		PRINTFORMDL 　[0] - 자신을 소개하라
+		INPUT
+		PRINTFORML 「뭐였지? 정말 지구인이라고?」
+		PRINTFORMW 「아이고, 지루해라~」
+		PRINTFORMW 「음, 나는 지옥에서 온 요정 클라운피스야!」
+		PRINTFORMW 「헤이 헤이, %CALLNAME:MASTER%!」
+		PRINTFORMW 「달까지 올라온 지구인이면 꽤 강할 거라고 생각하는데, 맞지?」
+		PRINTFORMW 「잠깐 놀아보는 건 어때~♪」
+	ENDIF
+	;月
+ELSEIF CFLAG:111:現在位置 >= 1000 && CFLAG:111:現在位置 < 1100
+	PRINTFORMW 「저 달나라 사람들은 여기서 뭘 하고 있는 거야?」
+	PRINTFORML 「음, %CFLAG:111:1099?"Goshujinsama"#"Master"%가 싸움을 걸지 말라고 했지만...」
+	PRINTFORMW 「만약 그 토끼 동네에서 온 거라면 아마 괜찮겠지ー」
+	PRINTFORML 
+	PRINTFORMDL 당신이 방황해 온 이 달의 땅에서...
+	PRINTFORMDL 화려하게 옷을 차려입은 요정을 만났는데, 그녀가 곧 정신이 나갈 것 같다.
+	PRINTFORML 　[0] - 자신을 소개하라
+	INPUT
+	PRINTFORML 「뭐였지? 너는 지상에서 온 거야?」
+	PRINTFORMW 「아, 흥, 너무 지루해～」
+	PRINTFORMW 「음, 나는 지옥에서 온 요정인 클라운피스야!」
+	PRINTFORMW 「헤이 헤이, %CALLNAME:MASTER%!」
+	PRINTFORMW 「달까지 올라온 지구인이니 꽤 강하겠지?」
+	PRINTFORMW 「잠깐 놀아보는 건 어때ー♪」
+	;それ以外
+ELSE
+	PRINTFORMDL 
+	PRINTFORMDL 갑자기 화려하게 차려입고 들뜬 듯한 요정을 마주치게 된다...
+	PRINTFORMDW 　[0] - 자신을 소개하라
+	INPUT
+	PRINTFORMW 「Well, I'm Clownpiece, the fairy from Hell!」
+	PRINTFORMW 「Right now, I'm doing some sightseeing down here with %CFLAG:111:1099?"Goshujinsama"#"Master"%.」
+	PRINTFORMW 「Hey hey, %CALLNAME:MASTER%!」
+	PRINTFORMW 「I have a little free time, so...」
+	PRINTFORMW 「Why don't we play for a whileー♪」
+ENDIF
+;最後にあった日
+CFLAG:111:1002 = DAY
+;一日一回
+TCVAR:111:358 = 1
+RETURN 1
+;※※※※※※※※※※※※※※※※※※※※※※※※※※
+;"SP_EVENT"系イベント
+;※※※※※※※※※※※※※※※※※※※※※※※※※※
+;==================================================
+;デート帰りにファーストKISS（合意も付く）
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+
+@M_KOJO_SPEVENT_MESSAGECHECK_K111_1
+RETURN 1
+
+@M_KOJO_SPEVENT_K111_1(ARG,ARG:1)
+;口上主はTARGET
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	PRINTL 
+	PRINTFORMDL 두 사람이 데이트를 마치고 집으로 걸어갈 때, 클라운피스가 무슨 이유에서인지 천천히 손전등을 꺼내는 것을 알아차린다.
+	PRINTW 
+	PRINTFORMW 「헤이 헤이, 내가 진짜 내 힘을 너한테 사용하면 무슨 일이 일어날지 보고 싶어, %CALLNAME:MASTER%?」
+	PRINTFORML 「좋아, 해보자ー...」
+	PRINTL 
+	PRINTFORMDW 그 말이 그녀의 입에서 나오는 순간, 클라운피스는 손전등을 높이 치켜들고 빛을 터뜨린다.
+	PRINTFORMDW 당신은 본능적으로 눈을 꼭 감고 얼굴을 가리며, 미친 듯한 빛으로부터 자신을 보호하려 한다...
+	PRINTL 
+	PRINTL 
+	FORCEWAIT
+	SETCOLOR 255, 100, 255
+	CALL HPH_PRINT,@"...츄ㅎㅍ","W"
+	CALL M_KOJO_COLOR_K111
+	PRINTL 
+	CALL HPH_PRINT,@"「파하하~ 내가 잡았어- HPH」","W"
+	IF FIRSTTIME("ファーストキス")
+		;custom code
+		CALL MUTUAL_KISS(TARGET, 1, 0)
+		PRINTFORMW 「어때, 응? 내 첫 키스 계획 완벽했지, 안 그래♪」
+		IF TALENT:111:恋慕
+			PRINTFORMW 「왜냐면, 그러니까, 나 완전히~ 너 속였어, 그리고 음...」
+			CALL HPH_PRINT,@"「게다가 네가 그걸 받아준 사람이었다는 것도 좀 좋았어, 있잖아HPH.」","W"
+			CSTR:111:ファーストキス喪失履歴 = %PRINT_DATE_F(DAY)%, on the way home from the date at %DATENAME_PLACE()%, she mischievously gave her first kiss to her beloved %CALLNAME:MASTER%.
+		ELSEIF TALENT:111:思慕
+			PRINTFORMW 「왜냐면, 그러니까, 나 완전히~ 너 속였어, 그리고 음...」
+			CALL HPH_PRINT,@"「게다가 그건 당신과였으니까, %CALLNAME:MASTER%, 알잖아HPH」","W"
+			CSTR:111:ファーストキス喪失履歴 = %PRINT_DATE_F(DAY)%, on the way home from the date at %DATENAME_PLACE()%, she mischievously gave her first kiss to her best bud %CALLNAME:MASTER%.
+		ELSE
+			PRINTFORML 「당신은 사랑과 그런 것들로 가득 차 있으니까 말이야, %조사처리(CALLNAME:MASTER,"에게")%!」
+			PRINTFORMW 「언제 또 일어날지 누가 알겠어~?」
+			CSTR:111:ファーストキス喪失履歴 = %PRINT_DATE_F(DAY)%, on the way home from the date at %DATENAME_PLACE()%, she gave %CALLNAME:MASTER% her first kiss as a prank.
+		ENDIF
+	ELSE
+		PRINTFORML 「당신은 사랑과 그런 것들로 가득 차 있으니까 말이야, %조사처리(CALLNAME:MASTER,"에게")%!」
+		PRINTFORMW 「언제 또 일어날지 누가 알겠어~?」
+	ENDIF
+	PRINTFORMW 「캬하하하~ ♪ 조만간 또 나가자!」
+	;キスをキャンセルしたい場合は以下を開放
+	;TCVAR:キスキャンセル = 1
+ENDIF
+RETURN 1
+;==================================================
+;デート帰りに告白（恋人が付く）
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+
+@M_KOJO_SPEVENT_MESSAGECHECK_K111_2
+RETURN 1
+
+@M_KOJO_SPEVENT_K111_2(ARG,ARG:1)
+;口上主はTARGET
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	;-------------------------------------------------
+	;小分岐
+	;-------------------------------------------------
+	;告白内容
+	;この告白内容表示後に受けるかどうかの選択分が表示されます
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 0
+		;初回
+		IF FIRSTTIME("告白")
+			PRINTL 
+			PRINTFORMDL 데이트 후 집으로 돌아오는 길에 클라운피스는 평소와 달리 기운 없이 터벅터벅 걸었다.
+			PRINTW 
+			PRINTFORMW 「음, 저기 %CALLNAME:MASTER%, 있잖아요...」
+			PRINTFORMDW 클라운피스는 걸음을 멈추고 당신에게 이전에 본 적 없는 망설임으로 말을 건다.
+			PRINTFORMW 「이걸 꺼내기에 지금이 맞을지 모르겠지만...」
+			PRINTFORMW 「음... 있잖아요! %CALLNAME:MASTER%!」
+			PRINTFORML 「사랑해요, %CALLNAME:MASTER%!!」
+			PRINTL 
+			FORCEWAIT
+			PRINTFORMW 「음, 나는 항상 당신과 잘 지냈는데, 최근에 뭔가 달라졌어!」
+			PRINTFORMW 「랄까, 더 큰 연모라고 할 수 있지... 아니면 내가 거부할 수 없는 연모일지도 모르지...」
+			PRINTFORMW 「응! 나 %조사처리(CALLNAME:MASTER,"를")% 정말로 사랑하게 됐어!」
+			PRINTFORMW 「정말 이걸 속으로만 담아두고 싶지 않았어... 오랫동안 당신에게 말하고 싶었거든...」
+			PRINTFORMW 「야, %CALLNAME:MASTER%, 나도... 나 좋아해 주니...?」
+			PRINTL 
+			;以降
+		ELSE
+			PRINTL 
+			PRINTFORMDL 데이트를 마치고 집으로 돌아오는 길에, 클라운피스는 잠시 멈춰 당신을 탐색하듯 바라본 후 입을 연다...
+			PRINTW 
+			PRINTFORMW 「헤이, %CALLNAME:MASTER%...」
+			PRINTFORMW 「너는 음... 아직 누구랑 사귀고 있지 않지, 맞지...?」
+			PRINTL 
+			PRINTFORMDL 당신 마음속의 흔들리는 불확실함에 놀라, 말문이 막힌 채 그저 서 있었다.
+			PRINTFORMDL 당신의 망설임을 감지한 클라운피스는 먼저 입을 열며 주도권을 잡았다.
+			PRINTW 
+			PRINTFORMW 「나-나는 항상 좋아했어, %CALLNAME:MASTER%, 그때부터!」
+			PRINTFORMW 「그래서, 그게 말이야... 네가 답을 준다면, 나는...」
+		ENDIF
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;告白オッケー（恋人が付く）
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 1
+		;初めての返答（お断りしてない）
+		IF FIRSTTIME("返答")
+			PRINTFORMW 「정말!?」
+			PRINTFORMW 「나에게도 반했어, %CALLNAME:MASTER%!?」
+		ELSE
+			PRINTFORMW 「정말!?」
+			PRINTFORMW 「%CALLNAME:MASTER%도 나를 좋아하게 된 거야!?」
+		ENDIF
+		PRINTFORMW 「키하아~ 정말 행복해~!!」
+		PRINTL 
+		PRINTFORMDL 그녀의 기쁨을 참지 못한 클라운피스는 얼굴 전체에 미소를 띠고 뛰어다녔다.
+		PRINTFORMDL 넘치는 에너지를 발산하며, 그녀는 흥분해서 당신에게 달려들었다...
+		PRINTFORMDL 당신은 양손으로 그녀를 받아내며 날아오는 태클을 막고 포옹으로 바꾸었다.
+		PRINTFORMDL 클라운피스는 간절하게 그것을 되돌려주며 당신의 가슴에 얼굴을 묻고 볼을 앞뒤로 비볐다.
+		PRINTW 
+		CALL HPH_PRINT,@"「흐으으-하프 사랑해 %CALLNAME:MASTER%~하프 하하호호~♪」","W"
+		PRINTFORMW 「저기, 이대로 조금 더 있어도 괜찮을까...?」
+		PRINTL 
+		;雪
+		IF GROUPMATCH(天候, 8, 9, 10, 11, 12, 13)
+			PRINTFORMDW 두 사람은 서로의 체온을 나누며 긴 순간 동안 함께 포옹한다--
+			;雨
+		ELSEIF GROUPMATCH(天候, 4, 5, 6, 7)
+			PRINTFORMDW 두 사람은 서로를 끌어안고 비 소리를 들으며 긴 순간을 함께 보냈다--
+			;早朝～昼
+		ELSEIF INRANGE(TIME, 240, 899)
+			PRINTFORMDL 두 사람은 서로의 행복을 만끽하며 긴 순간을 함께 보냈다.
+			PRINTFORMDW 마치 당신들의 결합을 축복하듯, 태양은 둘만을 위한 하나의 그림자만을 드리웠다――
+			;地の文に合わせるために勝手に天気を変える,まぁ変わるのほぼ曇りだけなんで
+			天候 = 0
+			;夕方
+		ELSEIF INRANGE(TIME, 900, 1140)
+			PRINTFORMDL 지는 태양에 길게 드리워진 너의 두 그림자가
+			PRINTFORMDW 서로의 행복을 나누듯 하나로 합쳐진다――
+			天候 = 0
+			;夜
+		ELSE
+			PRINTFORMDL 두 사람은 서로의 행복을 나누며 긴 순간을 함께 보냈다...
+			PRINTFORMDW 고요한 달빛 아래, 너희는 하나로 하나가 된다--
+			天候 = 0
+		ENDIF
+		PRINTL 
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;告白失敗
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 2
+		;初めてのお断り
+		IF FIRSTTIME("返答")
+			PRINTFORMW 「알겠어... 음, 괜찮아...」
+			PRINTFORMW 「적어도 내 감정을 솔직하게 표현할 수 있었으니까...」
+			PRINTFORMW 「내 마음을 %조사처리(CALLNAME:MASTER,"에게")% 말할 수 있었잖아, 그러니까 가슴에 짐을 내려놓은 기분이야...」
+			PRINTL 
+			PRINTFORMDL 클라운피스는 눈이 울음으로 가득 차는 것을 막으려는 듯 계속 눈을 비빈다.
+			PRINTFORMDL 그녀는 고개를 저으며 깊게 숨을 들이마시고 마음을 다잡는다.
+			PRINTW 
+			PRINTFORMW 「우-음 그건 안타깝네! 있잖아, 울지 않을 수가 없을 정도로 충격이야... 하지만...」
+			PRINTFORMW 「하지만 동시에 기분 전환이 된 것 같아!」
+			PRINTFORMW 「게다가, 아직 사랑하는 사람이 아무도 없잖아, 맞지 %CALLNAME:MASTER%?」
+			PRINTFORMW 「그럼 내가 %조사처리(CALLNAME:MASTER,"가")% 나를 좋아할 때까지 계속 최선을 다할게!」
+			PRINTFORMW 「그러니까 우리 앞으로도 많이 같이 놀자, 응!」
+			;お断り二回目以降
+		ELSE
+			PRINTFORMW 「알겠어... 음, 괜찮아...」
+			PRINTFORMW 「하지만 너 자신을 확신하지 못하고 있는 거잖아? 그렇다면 난 포기 안 할 거야!」
+			PRINTFORMW 「%CALLNAME:MASTER%, 네가 계속 나와 함께 놀고 싶다면, 언젠가는 마음이 돌아올 거라고 믿을게!」
+		ENDIF
+		PRINTL 
+		RETURN 1
+	ENDIF
+ENDIF
+RETURN 1
+;==================================================
+;デート帰り
+;==================================================
+;==================================================
+;Optional: Determines if the standard description should be skipped.
+;Return 0 if description and KOJO should be shown, 1 if description should be hidden and KOJO shown, 2 if description should be shown and KOJO hidden, and 3 if both description and KOJO should be hidden.
+;==================================================
+
+@M_KOJO_SPEVENT_MESSAGECHECK_K111_3
+RETURN 1
+
+@M_KOJO_SPEVENT_K111_3(ARG,ARG:1)
+;口上主はTARGET
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	;-------------------------------------------------
+	;小分岐
+	;-------------------------------------------------
+	;通常帰宅
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 0
+		;ただいま
+		IF CFLAG:[[クラウンピース]]:神社在住
+			PRINTFORML 「나 집에 왔어~」
+			IF BASE:[[クラウンピース]]:体力 < MAXBASE:[[クラウンピース]]:体力 / 2 || BASE:[[クラウンピース]]:気力 < MAXBASE:[[クラウンピース]]:気力 / 2
+				PRINTFORMW 「휴~... 지쳤어~」
+			ELSEIF TIME >= CFLAG:[[クラウンピース]]:就寝時間 + 60
+				PRINTFORMW 「후우~ ... 너무 졸리네...」
+			ELSEIF TIME_PROGRESS(TCVAR:[[クラウンピース]]:空腹時刻)
+				PRINTFORMW 「꾸우~ 배가 다 꼬르륵거려～」
+			ELSE
+				PRINTFORMW 「조만간 또 외출하자♪」
+			ENDIF
+		ELSEIF TALENT:[[クラウンピース]]:恋慕
+			SELECTCASE RAND:3
+				CASE 1
+					PRINTFORML 「후우~ 잘 됐다고 하자～」
+					PRINTFORMW 「당신과 데이트하는 건 정말 즐거워요, %CALLNAME:MASTER%♪」
+				CASE 2
+					PRINTFORML 「아~ 재밌었어!」
+					PRINTFORMW 「조만간 또 데이트하자♪」
+				CASEELSE
+					PRINTFORML 「어라, 벌써 집에 가는 거야~?」
+					PRINTFORMW 「하지만 좀 더 놀고 싶었단 말이야~」
+			ENDSELECT
+		ELSE
+			PRINTFORML 「아~ 재미있었어!」
+			SELECTCASE RAND:3
+				CASE 1
+					PRINTFORMW 「조만간 또 데이트하자~♪」
+				CASE 2
+					PRINTFORMW 「다음엔 어디 갈까~?」
+				CASEELSE
+					PRINTFORMW 「조만간 또 외출하자♪」
+			ENDSELECT
+		ENDIF
+		RETURN 1
+	ENDIF
+	;	;-------------------------------------------------
+	;	;反発刻印消去イベント
+	;	;記入チェック（=0, 非表示、1, 表示）
+	;	LOCAL:1 = 0
+	;	;-------------------------------------------------
+	;	IF LOCAL:1 && ARG == 1
+	;		PRINTFORML
+	;		RETURN 1
+	;	ENDIF
+	;	;-------------------------------------------------
+	;	;反発刻印2>1レベルダウンイベント
+	;	;記入チェック（=0, 非表示、1, 表示）
+	;	LOCAL:1 = 0
+	;	;-------------------------------------------------
+	;	IF LOCAL:1 && ARG == 2
+	;		PRINTFORML
+	;		RETURN 1
+	;	ENDIF
+	;	;-------------------------------------------------
+	;	;反発刻印3>2レベルダウンイベント
+	;	;記入チェック（=0, 非表示、1, 表示）
+	;	LOCAL:1 = 0
+	;	;-------------------------------------------------
+	;	IF LOCAL:1 && ARG == 3
+	;		PRINTFORML
+	;		RETURN 1
+	;	ENDIF
+	;	PRINTFORML
+ENDIF
+RETURN 1
+;※※※※※※※※※※※※※※※※※※※※※※※※※※
+;"EVENT"系イベント
+;※※※※※※※※※※※※※※※※※※※※※※※※※※
+;==================================================
+;部屋で遭遇
+;==================================================
+
+@M_KOJO_EVENT_K111_1(ARG,ARG:1)
+;口上主はTARGET
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	;-------------------------------------------------
+	;小分岐
+	;-------------------------------------------------
+	;MASTERが入ってきた＆TARGETが入ってきた
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && (ARG == 1 || ARG == 2) && !TCVAR:111:358
+		CALL M_KOJO_EVENT_K111_1_MAINMAP(ARG)
+		RETURN 1
+	ENDIF
+	;	;-------------------------------------------------
+	;	;TARGETが入ってきた
+	;	;記入チェック（=0, 非表示、1, 表示）
+	;	LOCAL:1 = 0
+	;	;-------------------------------------------------
+	;
+	;	;統合しました
+	;
+	;-------------------------------------------------
+	;TARGETが風呂に入ってきて一緒に入る
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	;恥薄いと大体入ってくる
+	IF LOCAL:1 && ARG == 3
+		PRINTFORML 「Oh! It's %CALLNAME:MASTER%!」
+		CALL HPH_PRINT,@"「파하~ BPB 같이 들어가자~ BPB」","W"
+		CALL M_KOJO_EVENT_K111_1_END(ARG)
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;TARGETが風呂に入ってきて出て行った
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 4
+		PRINTFORML 「Ah! It's %CALLNAME:MASTER%!」
+		PRINTFORMW 「죄송해요~ 방해할 의도는 아니었어요~」
+		CALL M_KOJO_EVENT_K111_1_END(ARG)
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;TARGETが風呂に入ってきて追い出された
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 5
+		PRINTFORML 「Ah! It's %CALLNAME:MASTER%!」
+		PRINTFORMW 「후후~♪ 이제 내 차례니까 얼른 끝내는 게 좋을 거야, %CALLNAME:MASTER%♪」
+		CALL M_KOJO_EVENT_K111_1_END(ARG)
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;外出先で遭遇した
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 6 && !TCVAR:111:358
+		;ハロウィン
+		IF DAY:2 == 3 && DAY:3 == 30
+			CALL M_KOJO_EVENT_K111_1_HALLOWEEN
+			;元旦（2年目以降）
+		ELSEIF DAY:2 == 1 && DAY:3 == 1 && DAY != 1
+			CALL M_KOJO_EVENT_K111_1_GANTAN
+			;クリスマスイブ
+		ELSEIF DAY:2 == 4 && DAY:3 == 24 && !TCVAR:[[クラウンピース]]:今日の贈り物
+			CALL M_KOJO_EVENT_K111_1_XMAS
+		ELSE
+			PRINTFORML 「Oh! %CALLNAME:MASTER%!」
+			IF TALENT:111:恋慕
+				;月
+				IF CFLAG:111:現在位置 >= 1000 && CFLAG:111:現在位置 < 1100
+					;恋人
+					IF TALENT:111:恋人
+						PRINTFORMW 「나를 보러 왔어!?」
+						CALL HPH_PRINT,@"「야호♪ 나는 %조사처리(CALLNAME:MASTER,"를")% 정말 많이 연모해~HPH」","W"
+					ELSE
+						PRINTFORMW 「여기에 뭐 하는 거야?」
+						PRINTFORMW 「자, 왔으니 같이 놀자!」
+					ENDIF
+				ELSE
+					SELECTCASE RAND:5
+						CASE 1
+							PRINTFORMW 「이런 곳에서 만나다니, 정말 우연이네요!」
+						CASE 2
+							PRINTFORMW 「어이, 같이 어딘가 가고 싶어?」
+						CASE 3
+							PRINTFORMW 「혼자 외출하는 거야? 그럼 나랑 같이 놀지 않아~」
+						CASE 4
+							PRINTFORMW 「헤이, %CALLNAME:MASTER%～! 시간 되면 나랑 놀자ー?」
+						CASEELSE
+							PRINTFORMW 「놀자, 놀자♪」
+					ENDSELECT
+				ENDIF
+			ELSE
+				PRINTFORMW 「이봐 이봐, 뭐 하고 있어?」
+			ENDIF
+			;バレンタイン
+			SIF DAY:2 == 4 && DAY:3 == 14
+				CALL M_KOJO_EVENT_K111_1_VALENTINE
+		ENDIF
+		CALL M_KOJO_EVENT_K111_1_END(ARG)
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;他キャラとデート中に遭遇した
+	;ARG:1にデート相手
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 7 && !TCVAR:111:358
+		;ハロウィン
+		IF DAY:2 == 3 && DAY:3 == 30
+			CALL M_KOJO_EVENT_K111_1_HALLOWEEN
+			;元旦（2年目以降）
+		ELSEIF DAY:2 == 1 && DAY:3 == 1 && DAY != 1
+			CALL M_KOJO_EVENT_K111_1_GANTAN
+			;クリスマスイブ
+		ELSEIF DAY:2 == 4 && DAY:3 == 24 && !TCVAR:[[クラウンピース]]:今日の贈り物
+			CALL M_KOJO_EVENT_K111_1_XMAS
+		ELSE
+			PRINTFORML 「Ah! %CALLNAME:MASTER%!」
+			IF TALENT:111:恋慕
+				;ヘカーティアとデート
+				IF FLAG:デート相手 == [[ヘカーティア]]
+					PRINTFORML 「%CFLAG:111:1099?"Go-Goshujinsama"#"M-Master"%...!」
+					PRINTFORMW 「저기... 음... 여기서 있어도 괜찮을까요...?」
+					;純狐とデート
+				ELSEIF FLAG:デート相手 == [[純狐]]
+					PRINTFORML 「%CFLAG:111:1099?"Yu-Yuujinsama"#"M-Mrs. Friend"%!」
+					PRINTFORMW 「저기... 음... 여기서 있어도 괜찮을까요?」
+					;三月精orチルノとデート
+				ELSEIF GROUPMATCH(FLAG:デート相手, [[サニー]], [[ルナ]], [[スター]], [[チルノ]])
+					;ここはフルネーム
+					PRINTFORML 「이봐, 꺼져! %NAME:(FLAG:デート相手)%!」
+					IF TALENT:[[クラウンピース]]:恋人
+						PRINTFORMW 「%CALLNAME:MASTER%」는 나의 사랑이야! 너 가버려, 난 안 나눠줄 거야ー!
+					ELSE
+						PRINTFORMW 「%조사처리(CALLNAME:MASTER,"가")% 지금 나랑 놀 거야! 꺼져!」
+					ENDIF
+					;ラルバとデート,ちょっと仲良し
+				ELSEIF FLAG:デート相手 == [[ラルバ]]
+					PRINTFORMW 「%CALLNAME:(FLAG:デート相手)%?하고 있니?」
+					IF TALENT:[[クラウンピース]]:恋人
+						PRINTFORMW 「그냥 알려주자면, %조사처리(CALLNAME:MASTER,"는")% 나의 사랑이야!」
+					ELSE
+						PRINTFORMW 「정말 재미있어 보여! 나도 같이 갈래!」
+					ENDIF
+					;妖精とデート
+				ELSEIF TALENT:(FLAG:デート相手):妖精
+					PRINTFORMW 「저 요정은 누구야? 너희 둘이 친구라도 돼?」
+					SIF TALENT:[[クラウンピース]]:恋人
+						PRINTFORMW 「%CALLNAME:MASTER%」는 나의 사랑이야, 알잖아!
+					;それ以外
+				ELSE
+					PRINTFORMW 「크윽, 네가 같이 있는 저 여자 누구야?」
+					SIF TALENT:[[クラウンピース]]:恋人
+						PRINTFORMW 「%CALLNAME:MASTER%」는 나의 사랑이야, 알잖아!
+				ENDIF
+			ELSE
+				;ヘカーティアとデート
+				IF FLAG:デート相手 == [[ヘカーティア]]
+					PRINTFORML 「세상에, %CFLAG:111:1099?"Goshujinsama"#"Master"%아!」
+					PRINTFORMW 「너희 둘은 대체 뭐 하고 있었던 거니?」
+					;純狐とデート
+				ELSEIF FLAG:デート相手 == [[純狐]]
+					PRINTFORML 「정말, %CFLAG:111:1099?"Yuujinsama"#"Mrs. Friend"%!」
+					PRINTFORMW 「둘이서 도대체 뭐 하고 있었던 거야?」
+					;三月精orチルノorラルバとデート
+				ELSEIF GROUPMATCH(FLAG:デート相手, [[サニー]], [[ルナ]], [[スター]], [[チルノ]], [[ラルバ]])
+					PRINTFORML 「어머, %CALLNAME:(FLAG:デート相手)%도 여기 있네!」
+					PRINTFORMW 「너희 둘 뭐 하고 있는 거야? 나도 같이 하자ー!」
+				ELSE
+					PRINTFORMW 「어이, 뭐 하는 거야?」
+				ENDIF
+			ENDIF
+			;バレンタイン
+			SIF DAY:2 == 4 && DAY:3 == 14
+				CALL M_KOJO_EVENT_K111_1_VALENTINE
+		ENDIF
+		CALL M_KOJO_EVENT_K111_1_END(ARG)
+		RETURN 1
+	ENDIF
+	;	;-------------------------------------------------
+	;	;MAIN_MAP上で一日最初の挨拶
+	;	;記入チェック（=0, 非表示、1, 表示）
+	;	LOCAL:1 = 0
+	;	;-------------------------------------------------
+	;	IF LOCAL:1 && ARG == 8
+	;		RETURN 1
+	;	ENDIF
+	;	;-------------------------------------------------
+	;	;外出先で一日最初の挨拶
+	;	;ARG:1にデート相手
+	;	;記入チェック（=0, 非表示、1, 表示）
+	;	LOCAL:1 = 0
+	;	;-------------------------------------------------
+	;	IF LOCAL:1 && ARG == 9
+	;	ENDIF
+ENDIF
+
+@M_KOJO_EVENT_K111_1_MAINMAP(ARG)
+;バレンタイン機嫌補正
+SIF DAY:2 == 4 && DAY:3 == 14
+	TALENT:111:機嫌 = MAX(TALENT:111:機嫌, 0)
+;ハロウィン
+IF DAY:2 == 3 && DAY:3 == 30
+	CALL M_KOJO_EVENT_K111_1_HALLOWEEN
+	;元旦（2年目以降）
+ELSEIF DAY:2 == 1 && DAY:3 == 1 && DAY != 1
+	CALL M_KOJO_EVENT_K111_1_GANTAN
+	;クリスマスイブ
+ELSEIF DAY:2 == 4 && DAY:3 == 24 && !TCVAR:[[クラウンピース]]:今日の贈り物
+	CALL M_KOJO_EVENT_K111_1_XMAS
+	;不機嫌
+ELSEIF M_KOJO_K111_FUKIGEN([[クラウンピース]])
+	PRINTFORMW 「Ah, %CALLNAME:MASTER%...」
+	;20日以上会ってない
+ELSEIF DAY - CFLAG:111:1002 >= 20
+	PRINTFORML 「Ah, %CALLNAME:MASTER%!」
+	;恋人
+	IF TALENT:111:恋人
+		PRINTFORMW 「잠깐 기다려 봐ー! 도대체 뭘 하고 나를 이렇게 혼자 두는 거야!」
+		PRINTFORMW 「너 정말 못된 애야... 네가 너무 보고 싶었어...」
+		;恋慕
+	ELSEIF TALENT:111:恋慕
+		PRINTFORMW 「요즘 당신을 보지 못해서 보고 싶어지기 시작했단 말이야... 음, 그러니까 무슨 일이라도 생긴 건 아닐까 걱정됐던 거지!」
+		PRINTFORMW 「저기, 내가 크게 '꽉' 안아도 괜찮겠니...?」
+	ELSE
+		PRINTFORMW 「오랜만이다, 잘 지냈나?」
+	ENDIF
+	;MASTERが入ってきた or 同じ拠点
+ELSEIF ARG == 2 || CFLAG:[[クラウンピース]]:神社在住
+	;同じ拠点
+	IF CFLAG:[[クラウンピース]]:神社在住
+		SELECTCASE TIME
+			;4時～10時
+			CASE 240 TO 600
+				SELECTCASE RAND:3
+					CASE 1
+						PRINTFORML 「아, %CALLNAME:MASTER%, 시작해 보자~」
+					CASE 2
+						PRINTFORML 「좋은 아침이야, %CALLNAME:MASTER%님!」
+					CASEELSE
+						PRINTFORML 「아, %CALLNAME:MASTER%, 좋은 아침이야♪」
+				ENDSELECT
+				;10時～18時
+			CASE 601 TO 1080
+				;遅起き（4時～10時以外）,迷ったけど10時は許す！
+				IF !INRANGE(TIME:3, 240, 600)
+					SELECTCASE RAND:3
+						CASE 1
+							PRINTFORML 「좋은 아침이야~ %CALLNAME:MASTER%, 벌써 정오인데도 말이야~」
+						CASE 2
+							PRINTFORML 「좋은 아침이야, 잠꾸러기ー!」
+						CASEELSE
+							PRINTFORML 「아, %CALLNAME:MASTER%―! 도대체 얼마나 자는 거야~?」
+					ENDSELECT
+				ELSE
+					SELECTCASE RAND:3
+						CASE 1
+							PRINTFORML 「Ah, %CALLNAME:MASTER%, %M_KOJO_EVENT_K111_1_HELLO()%!」
+						CASE 2
+							PRINTFORML 「%M_KOJO_EVENT_K111_1_HELLO()%, %CALLNAME:MASTER%!」
+						CASEELSE
+							PRINTFORML 「아, %CALLNAME:MASTER%님, 좋은 오후네요♪」
+					ENDSELECT
+				ENDIF
+				;18時～
+			CASEELSE
+				;夜型？（4時～18時以外）
+				IF !INRANGE(TIME:3, 240, 1080)
+					SELECTCASE RAND:3
+						CASE 1
+							PRINTFORML 「좋은 아침이에요, %CALLNAME:MASTER%~ 벌써 밤인데 말이죠~」
+						CASE 2
+							PRINTFORML 「좋은 아침이야, 세상에서 제일 잠 많은 사람!」
+						CASEELSE
+							PRINTFORML 「아, %CALLNAME:MASTER%― 너무 많이 자는군―…」
+					ENDSELECT
+				ELSE
+					SELECTCASE RAND:3
+						CASE 1
+							PRINTFORML 「Ah, %CALLNAME:MASTER%, %M_KOJO_EVENT_K111_1_HELLO()%!」
+						CASE 2
+							PRINTFORML 「%M_KOJO_EVENT_K111_1_HELLO()%, %CALLNAME:MASTER%!」
+						CASEELSE
+							PRINTFORML 「아, %CALLNAME:MASTER%, 좋은 저녁이야~♪」
+					ENDSELECT
+				ENDIF
+		ENDSELECT
+		;来訪
+	ELSE
+		PRINTFORML 「Ah, %CALLNAME:MASTER%!」
+	ENDIF
+	;▲ここまで挨拶
+	;まれにこける
+	IF !RAND:200
+		PRINTFORML 「아야!!」
+		PRINTL 
+		PRINTFORMDW 클라운피스가 당신에게 달려와 극적으로 쓰러지는 연기를 한다.
+		;溜まってるとたまに
+	ELSEIF TALENT:[[クラウンピース]]:恋慕 && CFLAG:111:溜まってる度 >= 750 && !RAND:5
+		CALL HPH_PRINT,@"「헤이~ %CALLNAME:MASTER%~ 그런 종류의 연극을 하자~HPH」","W"
+		PRINTL 
+		PRINTFORMDW 클라운피스는 응석받이 아이처럼 당신에게 매달린다.
+	ELSE
+		SELECTCASE RAND:12
+			CASE 1
+				PRINTFORMW 「오? 볼에 밥이 묻었잖아!」
+			CASE 2
+				PRINTFORMW 「오늘은 무슨 게임을 할까~」
+			CASE 3
+				PRINTFORMW 「지금 시간 괜찮아? 이봐, 시간 돼??」
+			CASE 4
+				PRINTFORMW 「나 그냥 너랑 놀까 생각하고 있었는데—!」
+			CASE 5
+				PRINTFORMW 「헤이! 헤이! 같이 놀래~?」
+			CASE 6
+				PRINTFORMW 「오늘은 장난치기에 좋은 날인 것 같아~」
+			CASE 7
+				PRINTFORMW 「캬하하! 머리가 난장판이네!」
+			CASE 8
+				PRINTFORMW 「놀고 싶어서 방문했나요?」
+			CASE 9
+				PRINTFORMW 「음~ %조사처리(CALLNAME:MASTER,"랑")% 장난치러 가는 것도 좋겠는데...」
+			CASE 10
+				PRINTFORMW 「흥, 장난치려고 준비 중이었는데-」
+			CASE 11
+				PRINTFORMW 「헤이~ 할 거 없는데~ 놀래?」
+			CASEELSE
+				PRINTFORMW 「야! 야! 놀러 가자!」
+		ENDSELECT
+	ENDIF
+	;TARGETが入ってきた or それ以外
+ELSE
+	SELECTCASE RAND:6
+		CASE 1
+			PRINTFORMW 「%M_KOJO_EVENT_K111_1_HELLO()%!! 그냥 산책하고 있었어!」
+		CASE 2
+			PRINTFORMW 「%M_KOJO_EVENT_K111_1_HELLO()%이(가) 뭘 하고 있는 거야?」
+		CASE 3
+			PRINTFORMW 「%M_KOJO_EVENT_K111_1_HELLO()%이 바쁜가요?」
+		CASE 4
+			PRINTFORMW 「%M_KOJO_EVENT_K111_1_HELLO()%!! 내가 놀러 왔어!」
+		CASE 5
+			PRINTFORMW 「%M_KOJO_EVENT_K111_1_HELLO()% 오늘 장난치기 좋은 날이잖아, 그렇지 않아?」
+		CASEELSE
+			PRINTFORMW 「%M_KOJO_EVENT_K111_1_HELLO()%이 왔어!」
+	ENDSELECT
+ENDIF
+;バレンタインチョコ
+IF DAY:2 == 4 && DAY:3 == 14
+	CALL M_KOJO_EVENT_K111_1_VALENTINE
+	;上機嫌
+ELSEIF TALENT:111:機嫌 == 1 && TALENT:111:恋慕
+	PRINTFORMW 「에헤헤~ %CFLAG:111:1099?"Goshujinsama"#"Master"% 오늘 아침 나를 칭찬해 주셨어~♪」
+ENDIF
+CALL M_KOJO_EVENT_K111_1_END(ARG)
+;ハロウィン挨拶
+
+@M_KOJO_EVENT_K111_1_HALLOWEEN
+PRINTFORMW 「트릭☆오어☆트릿!!」
+PRINTFORMW 「나에게 사탕을 줘♪」
+PRINTFORMW 「아니면 %조사처리(CALLNAME:MASTER,"를")% 장난치게 해줄까～?」
+PRINTFORML 「...아니면 둘 다?」
+PRINTDL [ 1] 그녀에게 사탕 주기
+PRINTDL [ 2] 절대 사탕 나눠주지 않을 거야!
+SIF (TALENT:[[クラウンピース]]:恋慕 || TALENT:[[クラウンピース]]:恋人 || TALENT:[[クラウンピース]]:セフレ) && !FIRSTTIME("ファーストキス", 1, [[クラウンピース]])
+	PRINTDL [ 0] 음, 만약 장난이 부끄러운 종류라면...
+INPUT
+IF RESULT == 1 && ITEM:飴
+	PRINTFORMW 「야아~ 해냈어~! 사탕을 얻었어! 고마워~!」
+	CALL HPH_PRINT,@"「음~ 맛있어~ 하프」","W"
+	CALL LOST_ITEM("飴", 1, 2)
+	;陥落＋キス経験済み
+ELSEIF RESULT == 0 && (TALENT:[[クラウンピース]]:恋慕 || TALENT:[[クラウンピース]]:恋人 || TALENT:[[クラウンピース]]:セフレ) && !FIRSTTIME("ファーストキス", 1, [[クラウンピース]])
+	PRINTFORMW 「부와아!? 뭐, 뭐야... 그게 무슨 뜻이야...」
+	PRINTFORMW 「...좋아, 그럼 눈 감아!」
+	PRINTL
+	PRINTFORMDL 당신은 지시받은 대로 눈을 감는다...
+	PRINTW 
+	PRINTL 
+	FORCEWAIT
+	SETCOLOR 255, 100, 255
+	CALL HPH_PRINT,@"...츄후피","W"
+	PRINTL 
+	PRINTFORMDW 클라운피스가 당신에게 \@ EXP:[[クラウンピース]]:キス経験 > 10 ? 평소의 키스 # 몇 번의 짧은 키스를 준다 \@.
+	PRINTFORMDW 그녀의 입술은 너무 부드럽고, 촉촉하고 달콤했다――
+	PRINTFORMDW ――아니, 너무 달아!
+	PRINTFORMDW 눈을 깜빡이자 클라운피스가 악마 같은 미소로 당신을 응시하며 거기에 있었다――
+	PRINTL 
+	CALL HPH_PRINT,@"...%RANDKISS("kiss")%HPH","W"
+	PRINTL 
+	PRINTFORMDL 네가 놀라는 틈을 타 그녀는 또 다른 키스를 빼앗고, 죽을 만큼 달콤한 사탕을 네 입안에 넣는다...
+	PRINTW 
+	CALL M_KOJO_COLOR_K111
+	CALL HPH_PRINT,@"「...파하하하♪ 식사 감사해 HPH」","W"
+	PRINTFORMW 「아니, '음식이나 즐겨'라고 말해야 할지도? 키하하♪」
+	EXP:[[クラウンピース]]:キス経験 ++
+	EXP:MASTER:キス経験 ++
+	EXP:[[クラウンピース]]:愛情経験 ++
+ELSE
+	IF RESULT == 1
+		PRINTFORMDL 불행하게도 그녀에게 줄 사탕이 없다...
+		PRINTW 
+	ENDIF
+	PRINTFORMW 「후 후 후... 그렇다면 기도라도 했기를 바라네, %CALLNAME:MASTER%...」
+	PRINTFORMW 「이거 받아라! 지옥에서 온 할로윈 폭탄이다!」
+	SELECTCASE RAND:8
+		CASE 1
+			LOCALS:1 = Cursed
+		CASE 2
+			LOCALS:1 = Hexed
+		CASE 3
+			LOCALS:1 = Hellish
+		CASE 4
+			LOCALS:1 = Deathly
+		CASE 5
+			LOCALS:1 = Murderous
+		CASE 6
+			LOCALS:1 = Maddening
+		CASE 7
+			LOCALS:1 = Bloody
+		CASEELSE
+			LOCALS:1 = Halloween
+	ENDSELECT
+	SELECTCASE RAND:8
+		CASE 1
+			LOCALS:2 = Pumpkin
+		CASE 2
+			LOCALS:2 = Seal
+		CASE 3
+			LOCALS:2 = Kitchen Knife
+		CASE 4
+			LOCALS:2 = Cross
+		CASEELSE
+			LOCALS:2 = Jack-O-Lantern
+	ENDSELECT
+	CALL GIFT_ORDER_MADE_FROM_CHARA([[クラウンピース]], LOCALS:1, LOCALS:2)
+	PRINTL 
+	CALL COLORMESSAGE(@"%조사처리(CALLNAME:MASTER,"는")% 【%RESULTS%】를 얻었다!", C_RED, 2)
+	PRINTL 
+	PRINTFORMW 「캬하하하—♪ 이게 너에게 교훈을 준다면, 내년에 사탕을 준비해 두는 게 좋을 거야♪」
+ENDIF
+;機嫌補正
+TALENT:111:機嫌 = MAX(TALENT:111:機嫌, 0)
+;元旦挨拶
+
+@M_KOJO_EVENT_K111_1_GANTAN
+PRINTFORMW 「해피~ ★ 새해~! ★ 되세요!!!」
+;幼稚だと共通お年玉が発生するので
+IF !TALENT:[[クラウンピース]]:幼稚
+	PRINTFORML 「흐음, 새해 용돈은 어때♪」
+	PRINTFORMDL [ 1] 그녀에게 (%金額表示( 3000)%) 을 준다
+	PRINTFORMDL [ 2] 그녀에게 (%金額表示(10000)%) 을 준다
+	PRINTDL [ 0] 돈을 주지 않는다
+	INPUT
+	IF (RESULT == 1 && MONEY < 3000) || (RESULT == 2 && MONEY < 10000)
+		PRINTFORMDL 돈이 충분하지 않아요...
+		PRINTW 
+		PRINTFORML 「에... %CALLNAME:MASTER%, 당신은 그런 "빈털터리" 중 한 명인가...」
+		PRINTFORMW 「당신의 상실에 진심으로 유감입니다...」
+		TALENT:[[クラウンピース]]:機嫌 = 0
+	ELSEIF RESULT == 1
+		PRINTFORMW 「야아~♪ 만세-! 고마워~!」
+		MONEY -= 3000
+		TALENT:[[クラウンピース]]:機嫌 = 1
+		CALL CHANGE_CFLAG(4, [[クラウンピース]], ABL:[[クラウンピース]]:親密 * 5)
+	ELSEIF RESULT == 2
+		PRINTFORML 「우와!? 정말이야—!? 만세—!」
+		PRINTFORMW 「이제 정말 말해야겠어~♪ 고마워~!」
+		MONEY -= 10000
+		TALENT:[[クラウンピース]]:機嫌 = 1
+		CALL CHANGE_CFLAG(4, [[クラウンピース]], ABL:[[クラウンピース]]:親密 * 2)
+	ELSE
+		PRINTFORMW 「흥! 너 이 돈 아끼는 자 같아!! 크으윽!」
+		TALENT:[[クラウンピース]]:機嫌 = -1
+	ENDIF
+ENDIF
+;クリスマスイブ挨拶
+
+@M_KOJO_EVENT_K111_1_XMAS
+PRINTFORMW 「메리～ ☆ 크리스마스～!!」
+PRINTFORML 「서둘러, 산타 %CALLNAME:MASTER%♪ 뭘 해야 하는지 알잖아, 그렇지?」
+PRINTDL [ 1] 그녀에게 선물을 주어라
+PRINTDL [ 0] 그녀에게 선물을 요구해라
+INPUT
+IF RESULT
+	RESETCOLOR
+	PRINTFORMW 클라운피스를 위한 맞춤 선물을 만들어라!
+	CALL GIFT_ORDER_MADE_FROM_MASTER_TR([[クラウンピース]])
+	CALL M_KOJO_COLOR_K111
+	;あげるのをやめた
+	IF RESULT == -1
+		PRINTFORMW 「응...?」
+		PRINTFORMW 「뭐야, 도대체?! 다음엔 좀 더 배려해라! 흥!」
+		TALENT:[[クラウンピース]]:機嫌 = -1
+		;あげた
+	ELSE
+		PRINTL 
+		PRINTFORMDL 당신은 Clownpiece에게 %RESULTS%을 준다.
+		PRINTW 
+		IF RESULT:1 >= 700
+			PRINTFORML 「꺄아~♪ 정말 이걸 하나 얻다니!? 굉장해~!!」
+			CALL HPH_PRINT,@"「%CALLNAME:MASTER%, 고마워! 정말 좋아해」","W"
+			TALENT:[[クラウンピース]]:機嫌 = 1
+		ELSEIF RESULT:1 >= 400
+			PRINTFORML 「오옷~♪ 멋지다~!」
+			PRINTFORMW 「%CALLNAME:MASTER%, 고마워!」
+			TALENT:[[クラウンピース]]:機嫌 = 1
+		ELSE
+			PRINTFORML 「으음―...!」
+			PRINTFORMW 「좋아―…… 응, 나, 음, 정말 좋아…… 고마워―……」
+			TALENT:[[クラウンピース]]:機嫌 = 0
+		ENDIF
+	ENDIF
+ELSE
+	IF TALENT:[[クラウンピース]]:恋慕 || TALENT:[[クラウンピース]]:恋人
+		PRINTFORML 「응? 내가 선물 주는 사람이 될 리가 없잖아—!」
+		PRINTFORMW 「에이, 나 정말 정말 선물 받고 싶었단 말이야!」
+		;後日くれる
+		CFLAG:[[クラウンピース]]:1006 = DAY
+	ELSE
+		PRINTFORML 「음? 내가 선물을 주는 쪽이라니?」
+		PRINTFORMW 「뭐, 이렇게 될지도 모른다고 생각했거든~」
+	ENDIF
+	TALENT:[[クラウンピース]]:機嫌 = 0
+ENDIF
+;バレンタイン挨拶（通常挨拶後に追加）
+
+@M_KOJO_EVENT_K111_1_VALENTINE
+PRINTFORML 「아, 맞다!」
+SELECTCASE CFLAG:[[クラウンピース]]:好感度
+	CASE 1000 TO 3000
+		;ブラックサンダー
+		PRINTFORMW 「자, 이걸 받아!」
+	CASE 3001 TO 5000
+		;チョコレート
+		PRINTFORMW 「여기, 이건 너를 위한 거야, 초콜릿이야!」
+	CASE IS > 5000
+		IF EXP:111:愛情経験 < 100
+			;高級チョコ
+			PRINTFORMW 「여기, 이건 당신을 위한 거야, 해피 발렌타인!」
+		ELSE
+			;手作りチョコ
+			PRINTFORMW 「여기, 이거 당신을 위한 거예요! %CFLAG:111:1099?"Goshujinsama"#"Master"%께서 만드는 것을 도와주셨어요!」
+			PRINTFORMW 「행복한 발렌타인 데이☆」
+		ENDIF
+ENDSELECT
+;機嫌補正
+TALENT:111:機嫌 = MAX(TALENT:111:機嫌, 0)
+;挨拶口上終了処理
+;口上が表示されなくても処理されます
+
+@M_KOJO_EVENT_K111_1_END(ARG)
+;最後に会った日
+CFLAG:111:1002 = DAY
+;一日一回
+TCVAR:111:358 = 1
+;最初から不機嫌かどうか
+SIF TALENT:[[クラウンピース]]:機嫌 < 0
+	TCVAR:[[クラウンピース]]:360 = 1
+;ここから先は通常遭遇および単独外出先遭遇のみ
+SIF !GROUPMATCH(ARG, 1, 2, 6)
+	RETURN 1
+;恋慕で、不機嫌ではなく、デート中ではなく、欲求不満が75%以上
+IF TALENT:111:恋慕 && TALENT:111:機嫌 >= 0 && !FLAG:デート相手 && CFLAG:111:溜まってる度 >= 750
+	PRINTL 
+	PRINTFORMDL 클라운피스의 뺨이 붉어지고 그녀는 사랑스럽게 몸을 꿈틀거린다...
+	PRINTW 
+	SELECTCASE RAND:6
+		CASE 1
+			CALL HPH_PRINT,@"「아-아니에요! 그게 아니라, 음... 나 화장실 좀 가야 해... BPB」","W"
+		CASE 2
+			PRINTFORMW 「F-됐어! 나 그냥 생각하고 있었어 "와 오늘 덥네"!」
+		CASE 3
+			CALL HPH_PRINT,@"「아무튼, 음, 데이트하러 가자! 데이트 HPH 데이트 HPH」","W"
+		CASE 4
+			PRINTFORMW 「어떻게인지 심장이 두근거렸다 \@ CFLAG:[[クラウンピース]]:神社在住 ? 너를 봤을 때 # 너를 우연히 만났을 때 \@, %CALLNAME:MASTER%...」
+		CASE 5
+			PRINTFORMW 「음~... %CALLNAME:MASTER%님~ 좀 외로운걸요~...」
+		CASEELSE
+			PRINTFORMW 「후우~ 아무래도 오늘은 몸이 뭔가 짜릿하네~...」
+	ENDSELECT
+ENDIF
+RETURN 1
+;やっほーパターン
+
+@M_KOJO_EVENT_K111_1_HELLO
+#FUNCTIONS
+;SSR
+SIF !RAND:1000
+	RETURNF "Ciao～"
+SELECTCASE RAND:6
+	CASE 1
+		RETURNF "Yahhoー"
+	CASE 2
+		RETURNF "Yahho～"
+	CASE 3
+		RETURNF "Heyaー"
+	CASE 4
+		RETURNF "Heya～"
+	CASE 5
+		RETURNF "Hiー"
+	CASEELSE
+		RETURNF "Hi～"
+ENDSELECT
+;==================================================
+;朝起きたとき（おはよう口上）
+;==================================================
+
+@M_KOJO_EVENT_K111_2(ARG,ARG:1)
+#DIM 分岐
+CALL MESSAGE_GOODMONING(ARG,ARG:1)
+;口上主はTARGET
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	;-------------------------------------------------
+	;小分岐
+	;-------------------------------------------------
+	;非同棲かつ相手が先に起きてる
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && (ARG == 1 || ARG == 2)
+		;-------------------------------------------------
+		;TARGET私室にMASTERが入っている（恋慕時添い寝中就寝時のみ？
+		;記入チェック（=0, 非表示、1, 表示）
+		LOCAL:1 = 1
+		;-------------------------------------------------
+		IF LOCAL:1
+			PRINTL 
+			PRINTFORMW 「좋은 아침! 잘 잤어?」
+			分岐 = RAND:10
+			IF GROUPMATCH(分岐, 1, 2, 3) || TALENT:111:機嫌 == 1 || CFLAG:111:1001 == DAY - 1
+				;				;昨晩満足,ズレ修正したけどまだ懸念アリ
+				IF CFLAG:111:1001 == DAY - 1
+					CALL HPH_PRINT,@"「에헤~ 어제 정말 많은 연모를 받았어♪」","L"
+					PRINTFORMW 「오늘은 더 음란한 짓을 하자♪」
+					TALENT:111:機嫌 = 1
+				ELSE
+					PRINTFORMW 「파하하♪ %조사처리(CALLNAME:MASTER,"의")% 잠든 얼굴가 웃기다♪」
+				ENDIF
+			ELSEIF 分岐 == 0 || TALENT:111:機嫌 == -1
+				PRINTFORML 「자면서 여자 이름 불렀어?」
+				PRINTFORMW 「그게 무슨 소리야? 응?」
+				TALENT:111:機嫌 = -1
+			ELSEIF GROUPMATCH(分岐, 4, 5, 6)
+				PRINTFORML 「파하하♪ %조사처리(CALLNAME:MASTER,"는")% 얼굴에 미소를 띠고 잠들어 있었어♪」
+				PRINTFORMW 「무슨 꿈을 꾼 거야?」
+			ELSE
+				PRINTFORML 「히히... 키아하하하♪」
+				PRINTFORMW 「미안해, 네 얼굴에 낙서했어!」
+			ENDIF
+			RETURN 1
+		ENDIF
+		;		;-------------------------------------------------
+		;		;MASTER私室にTARGETが入ってきてる(恋慕無しでも入ってくる可能性有り
+		;		;記入チェック（=0, 非表示、1, 表示）
+		;		LOCAL:1 = 1
+		;		;-------------------------------------------------
+		;
+		;		よくわからんけど統合しました
+		;
+	ENDIF
+	;	;-------------------------------------------------
+	;	;同棲かつ相手が起きている
+	;	;記入チェック（=0, 非表示、1, 表示）
+	;	LOCAL:1 = 1
+	;	;-------------------------------------------------
+	;
+	;	統合しました
+	;
+	;-------------------------------------------------
+	;同棲かつ相手が寝ている
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 3
+		SELECTCASE RAND:5
+			CASE 1
+				PRINTFORMW 「음냐~ 중얼중얼...」
+			CASE 2
+				PRINTFORMW 「음냐아~... 코 고는 소리~」
+			CASE 3
+				PRINTFORMW 「후우... %CALLNAME:MASTER%...」
+			CASE 4
+				PRINTFORMW 「음... 흐으...」
+			CASEELSE
+				PRINTFORMW 「음~... 음음~...」
+		ENDSELECT
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;MASTERが起きていて、相手が起きてきた
+	;添い寝時TARGET起床はこちら（TARGET衰弱or添い寝中TARGET睡魔負け後そのままMASTERが起き続けた上で相手が起床した場合限定
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 4
+		;-------------------------------------------------
+		;非同棲
+		;記入チェック（=0, 非表示、1, 表示）
+		LOCAL:1 = 1
+		;-------------------------------------------------
+		IF LOCAL:1 && !ARG:1
+			PRINTL 
+			PRINTFORML 「좋은 아침～～ 하아암～～!」
+			PRINTFORMW 「...뭐라고? 왜 여기 있는 거야, %CALLNAME:MASTER%?」
+			PRINTFORMW 「아! 맞다, 내가 잠든 모양이네.」
+			RETURN 1
+		ENDIF
+		;-------------------------------------------------
+		;同棲中
+		;記入チェック（=0, 非表示、1, 表示）
+		LOCAL:1 = 1
+		;-------------------------------------------------
+		IF LOCAL:1 && ARG:1 == 1
+			PRINTL 
+			PRINTFORML 「좋은 아침~~ 하품~~!」
+			SELECTCASE RAND:5
+				CASE 1
+					PRINTFORMW 「그럼 하루 종일 놀 준비 하자~」
+				CASE 2
+					PRINTFORMW 「음냐... 졸리네...」
+				CASE 3
+					PRINTFORMW 「아아...? %CALLNAME:MASTER%님... 좋은 아침이야...」
+				CASE 4
+					PRINTFORMW 「%조사처리(CALLNAME:MASTER,"는")% 정말 일찍 일어나네...」
+				CASEELSE
+					PRINTFORMW 「…다시 잠들 수 있을까요?」
+			ENDSELECT
+			RETURN 1
+		ENDIF
+	ENDIF
+ENDIF
+RETURN 1
+;==================================================
+;夜寝るとき（おやすみ口上）
+;==================================================
+
+@M_KOJO_EVENT_K111_3(ARG,ARG:1)
+;口上主はTARGET
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	;-------------------------------------------------
+	;小分岐
+	;-------------------------------------------------
+	;自室に帰って寝る（～は【現在地】から【キャラの自室】に戻りました）
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 1
+		IF ARG:1
+			;デート中に眠くて帰って寝る（拠点キャラのみ）
+			IF TALENT:[[クラウンピース]]:恋慕
+				PRINTFORML 「하아암~... %CALLNAME:MASTER%, 나 정말 졸려...」
+				PRINTFORMW 「내일 더 놀 수 있으면 좋겠어~?」
+				PRINTL 
+				PRINTFORMDW 당신은 그녀가 당신 품에서 졸아드는 동안 클라운피스를 그녀의 방으로 데려다준다.
+			ELSE
+				PRINTFORML 「하아암~... %CALLNAME:MASTER%, 나 너무 졸려...」
+				PRINTFORMW 「이제 집에 갈 시간인가 봐~?」
+				PRINTL 
+				PRINTFORMDW 졸린 클라운피스를 이끌고 두 분은 집으로 향한다.
+			ENDIF
+		ELSEIF CFLAG:うふふ
+			;うふふ中に眠くて自室に帰って寝る（拠点キャラのみ）
+			PRINTFORMW 「민뉴우~...」
+			PRINTFORMW 「죄송해요, %CALLNAME:MASTER%님, 하지만 너무 졸려서요... 하아암...」
+			PRINTL 
+			PRINTFORMDW 어쩔 수 없으니 당신은 졸고 있는 클라운피스를 안고 그녀의 방으로 돌아간다.
+			;月在住
+		ELSEIF MAIN_MAP == 10
+			SELECTCASE RAND:5
+				CASE 1
+					PRINTFORMW 「하아암~... 졸리다...」
+				CASE 2
+					PRINTFORMW 「하아암~... 서둘러 침대에 들자~」
+				CASE 3
+					PRINTFORMW 「하아암~... 너무 피곤해서 똑바로 서 있기도 힘들 정도야~」
+				CASE 4
+					PRINTFORMW 「뭘 해야 할까... 다음은... 하아암...」
+					PRINTFORMDL 클라운피스에게 잠잘 시간이라고 말한다.
+					PRINTFORML 「하아암~...」
+				CASEELSE
+					PRINTFORML 「음~... 졸리네~...」
+					PRINTFORMW 「Zzz... Zzz...」
+					PRINTFORMDL 그녀가 이미 잠들었으니, 너는 클라운피스가 네 방에서 자도록 해라.
+					PRINTFORML 「하아암~...」
+			ENDSELECT
+			;おやすみセット
+			CALL M_KOJO_EVENT_K111_3_OYASUMI
+			;それ以外
+		ELSE
+			SELECTCASE RAND:3
+				CASE 0 ;custom code
+					PRINTFORMW 「하아암~... 졸리다...」
+				CASE 1 ;custom code
+					PRINTFORMW 「하아암~... 피곤해서 이제 잠자리에 들 거야~」
+				CASEELSE
+					PRINTFORMW 「뭘 해야 할까... 다음엔... 하아...」
+					PRINTFORMDL 클라운피스에게 이제 집에 가서 자야 할 시간이라고 말한다.
+					PRINTFORML 「하아암~...」
+			ENDSELECT
+			PRINTFORMW 「안녕히 계세요 %CALLNAME:MASTER%, 나중에 봐～...」
+		ENDIF
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;眠そうにしている（～は眠そうにしている）
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 2
+		SELECTCASE RAND:5
+			CASE 1
+				PRINTFORMW 「하아암~... 너무 졸려...」
+			CASE 2
+				PRINTFORMW 「음... 냐~...」
+			CASE 3
+				PRINTFORMW 「음... 음흠...」
+			CASE 4
+				PRINTFORMW 「후아아... 졸리다...」
+			CASEELSE
+				PRINTFORMW 「음~... 졸리다...」
+		ENDSELECT
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;睡眠中（～は眠っている）
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 3
+		SELECTCASE RAND:7
+			CASE 1, 2
+				PRINTFORMW 「음~... 엄마...」
+			CASE 3, 4
+				PRINTFORMW 「쿨쿨...」
+			CASE 5, 6
+				PRINTFORMW 「음... 하품...」
+			CASEELSE
+				PRINTFORMW 「광기 어린 시간이야...」
+		ENDSELECT
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;イタズラ中
+	;記入チェック（=0, 非表示、1, 表示）
+	;LOCAL:1 = 0
+	;-------------------------------------------------
+	;IF LOCAL:1 && ARG == 4
+	;PRINTFORMW
+	;RETURN 1
+	;ENDIF
+	;-------------------------------------------------
+	;衰弱して寝る（体力500以下,うふふ時はうふふ強制終了）
+	;（キャラの自室以外：～を【現在地】から【キャラの自室】に運びました）
+	;（キャラの自室　　：～は疲れたと言って、横になりました）
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 5
+		PRINTFORMW 「하아, 하아암...」
+		PRINTFORMW 「죄송해요 %CALLNAME:MASTER%, 정말 지쳤어요... 잘 자요...」
+		IF M_KOJO_K111_HOUSE(CFLAG:MASTER:現在位置) != 1
+			PRINTL 
+			PRINTFORMDW 너는 축 늘어진 광대 조각을 그녀의 방으로 반쯤 부축하여 데려간다.
+		ENDIF
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;MASTERがダウン（恋慕のみ,そのまま一日が終了）
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 6
+		PRINTFORMW 「아이고, 괜찮으세요, %CALLNAME:MASTER%?」
+		IF BASE:MASTER:酒気 >= MAXBASE:MASTER:酒気
+			PRINTFORML 「%CALLNAME:MASTER%, 술에 그렇게 약하다니 정말 놀랐어～♪」
+			PRINTFORMW 「...아니, 내가 걱정해야 할 건 그게 아니야, 음... %HIM_HER(MASTER)%를 재워줘야겠지?」
+		ELSE
+			IF ARG:1
+				;自室でダウン,（～が【MASTER】をベッド（布団）へと運んでくれた…）
+				PRINTFORML 「좀 과하게 했나 보네～♪」
+				PRINTFORMW 「...아니야, 내가 걱정해야 할 건 그게 아니지. 음... %HIM_HER(MASTER)%를 재워야겠어?」
+			ELSE
+				;部屋まで運ばれる,（～が【MASTER】を私室へと運んでくれた…）
+				PRINTFORML 「음, 뭘 해야 할까...」
+				PRINTFORMW 「%조사처리(CALLNAME:MASTER,"를")% %HIS_HER(MASTER)% 방으로 안고 갈까?」
+			ENDIF
+		ENDIF
+		PRINTFORMW 「허어... 너무 무거워―!」
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;TARGETが自室まで戻ってきた
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 7
+		;-------------------------------------------------
+		;そのまま着替えて寝た（【TARGET】が部屋に戻ってきた→寝間着へと着替え、寝床に潜った）
+		;記入チェック（=0, 非表示、1, 表示）
+		LOCAL:1 = 1
+		;-------------------------------------------------
+		IF LOCAL:1 && ARG:1 == 0
+			SELECTCASE RAND:3
+				CASE 1
+					PRINTFORMW 「아, %CALLNAME:MASTER%... 나 이제 자러 갈 거야~」
+				CASE 2
+					PRINTFORMW 「아, %CALLNAME:MASTER%…… 먼저 잠자리에 들게~……」
+				CASEELSE
+					PRINTFORMW 「아, %CALLNAME:MASTER%... 미안하지만 벌써 너무 졸려~」
+			ENDSELECT
+			;おやすみセット
+			CALL M_KOJO_EVENT_K111_3_OYASUMI
+			RETURN 1
+		ENDIF
+		;-------------------------------------------------
+		;部屋から追い出して寝た（眠そうな【TARGET】に追い出された…）
+		;記入チェック（=0, 非表示、1, 表示）
+		LOCAL:1 = 1
+		;-------------------------------------------------
+		IF LOCAL:1 && ARG:1 == 1
+			IF CFLAG:[[クラウンピース]]:前ターン位置 == CFLAG:[[クラウンピース]]:現在位置
+				;前のターンまで一緒に部屋にいた
+				PRINTFORMW 「하아암~ 이제 잘 거야. 그러니까 내 방에서 나가야 해...」
+			ELSE
+				;寝るために部屋に帰ってきたところ
+				PRINTFORMW 「흐음, %CALLNAME:MASTER%... 도대체 내 방에 무슨 일이야～?」
+				PRINTFORMW 「나 이제 잘 거야, 그러니까 나가줘야 해...」
+			ENDIF
+			;おやすみセット
+			CALL M_KOJO_EVENT_K111_3_OYASUMI
+			RETURN 1
+		ENDIF
+		;-------------------------------------------------
+		;他キャラとのＨを止めさせて寝た（【TARGET】が部屋に戻ってきた→唇をとがらせる【TARGET】に、【MASTER】は渋々【Ｈの相手】から離れた）
+		;記入チェック（=0, 非表示、1, 表示）
+		LOCAL:1 = 1
+		;-------------------------------------------------
+		IF LOCAL:1 && ARG:1 == 2
+			;寝ぼけてるということにしておく
+			PRINTFORMW 「응? %CALLNAME:MASTER%... 내 방에서 뭘 하는 거야...?」
+			PRINTFORMW 「뭐, 됐어. 괜찮겠지... 이제 자러 갈게~」
+			;おやすみセット
+			CALL M_KOJO_EVENT_K111_3_OYASUMI
+			RETURN 1
+		ENDIF
+	ENDIF
+	;-------------------------------------------------
+	;来訪キャラが拠点で休憩（～は疲れ切っている→ちょっと休んでいきなよ）
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 8
+		PRINTFORMW 「하아암~... 죄송해요, %CALLNAME:MASTER%, 그리고 고마워요~...」
+		PRINTFORMW 「잘 자요~...」
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;寝室に居る状態でその場で寝る（～は眠気に負け、眠りについた…）
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 9
+		IF CFLAG:うふふ
+			;うふふ中に寝る
+			PRINTFORMW 「음냐아~...」
+			PRINTFORMW 「죄송해요 %CALLNAME:MASTER%, 하지만 정말 졸려요... 하품...」
+			PRINTL 
+			PRINTFORMDW 어쩔 수 없으니 당신은 클라운피스를 이불로 덮어 그녀가 잠들도록 한다.
+		ELSE
+			SELECTCASE RAND:5
+				CASE 1
+					PRINTFORMW 「하아암~... 졸려어...」
+				CASE 2
+					PRINTFORMW 「하아암~... 정말 졸리네...」
+				CASE 3
+					PRINTFORMW 「하아암~ ... 오늘 정말 지쳤어...」
+				CASE 4
+					PRINTFORMW 「하아암~... 잠자러 갈 거야~... 양들을 세어보자~...」
+				CASEELSE
+					PRINTFORMW 「뭐 해야 할까... 다음은... 하아...」
+					PRINTFORMDL 클라운피스에게 이제 잠자리에 들 시간일지도 모른다고 말한다.
+					PRINTFORML 「하아암～...」
+			ENDSELECT
+			PRINTFORMW 「안녕 %CALLNAME:MASTER%님, 내일 봐~...」
+			SIF TALENT:[[クラウンピース]]:恋慕
+				PRINTFORMW 「...아니면 오늘 밤 여기에 있어 줄 수 있어...?」
+		ENDIF
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;拠点外で自宅前に居るキャラが自室に帰って寝る（眠くなった～は自室に帰って行きました）
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 10
+		SELECTCASE RAND:3
+			CASE 1
+				PRINTFORMW 「하아암~... 졸리기 시작한 것 같아요.」
+			CASE 2
+				PRINTFORMW 「하아암~... 서둘러 침대에 들자~」
+			CASEELSE
+				PRINTFORMW 「하아암~... 너무 피곤해서 똑바로 서 있기도 힘들 정도야~」
+		ENDSELECT
+		PRINTFORMW 「알았어~... 잘 자~...」
+		RETURN 1
+	ENDIF
+ENDIF
+RETURN 1
+;クラウンピースのおやすみセット（拠点用）
+
+@M_KOJO_EVENT_K111_3_OYASUMI
+SELECTCASE RAND:4
+	CASE 1
+		PRINTFORMW 「안녕 %CALLNAME:MASTER%님, 내일 봐~...」
+	CASE 2
+		PRINTFORMW 「%CALLNAME:MASTER%, 안녕히 주무세요~...」
+	CASE 3
+		PRINTFORMW 「안녕히 주무세요~... 하품...」
+	CASEELSE
+		IF TALENT:[[クラウンピース]]:恋慕
+			PRINTFORMW 「%CALLNAME:MASTER%, 같이 자자아~...」
+		ELSE
+			PRINTFORMW 「알았어~... 잘 자~...」
+		ENDIF
+ENDSELECT
+;;==================================================
+;;移動時すれちがい
+;;==================================================
+;@M_KOJO_EVENT_K111_4(ARG,ARG:1)
+;;口上主はTARGET
+;;--------------------------------------------------
+;;記入チェック（=0, 非表示、1, 表示）
+;LOCAL = 0
+;;-------------
+;
+;IF LOCAL
+;	;-------------------------------------------------
+;	;小分岐
+;	;-------------------------------------------------
+;	;立ち止まった
+;	;この後遭遇口上に接続
+;	;記入チェック（=0, 非表示、1, 表示）
+;	LOCAL:1 = 0
+;	;-------------------------------------------------
+;	IF LOCAL:1 && ARG == 1
+;		PRINTFORML
+;		RETURN 1
+;	ENDIF
+;	;-------------------------------------------------
+;	;軽く会釈して通り過ぎた
+;	;記入チェック（=0, 非表示、1, 表示）
+;	LOCAL:1 = 0
+;	;-------------------------------------------------
+;	IF LOCAL:1 && ARG == 2
+;		PRINTFORML
+;		RETURN 1
+;	ENDIF
+;	;-------------------------------------------------
+;	;無視して通り過ぎた
+;	;記入チェック（=0, 非表示、1, 表示）
+;	LOCAL:1 = 0
+;	;-------------------------------------------------
+;	IF LOCAL:1 && ARG == 3
+;		PRINTFORML
+;		RETURN 1
+;	ENDIF
+;	;その他
+;	PRINTFORML
+;ENDIF
+;RETURN 1
+;==================================================
+;他者介入でムード変化
+;==================================================
+
+@M_KOJO_EVENT_K111_5(ARG,ARG:1)
+;口上主はTARGET
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	;-------------------------------------------------
+	;小分岐
+	;-------------------------------------------------
+	;純狐が入ってきた
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == [[純狐]]
+		PRINTFORMW 「Ah! %CFLAG:111:1099?"Yuujinsama"#"Mrs. Friend"%!」
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;ヘカーティアが入ってきた
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == [[ヘカーティア]]
+		PRINTFORMW 「Ah! %CFLAG:111:1099?"Goshujinsama"#"Master"%!」
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;三月精orチルノが入ってきた,ラルバに対しては言わない
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && GROUPMATCH(ARG, [[サニー]], [[ルナ]], [[スター]], [[チルノ]])
+		PRINTFORML 「이봐, 꺼져! %NAME:(FLAG:デート相手)%!」
+		IF TALENT:[[クラウンピース]]:恋人
+			PRINTFORMW 「지금 내 연인이랑 놀고 있잖아~!」
+		ELSE
+			PRINTFORMW 「나 지금 %조사처리(CALLNAME:MASTER,"랑")% 놀고 있어ー!」
+		ENDIF
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;ラルバが入ってきた
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == [[ラルバ]]
+		PRINTFORMW 「오, 라바가군요, %M_KOJO_EVENT_K111_1_HELLO()%!」
+		RETURN 1
+	ENDIF
+	;その他
+	PRINTFORML 「뭐야? %CALLNAME:MASTER%, 왜 떠나려고?」
+ENDIF
+RETURN 1
+;==================================================
+;情事を目撃した
+;==================================================
+
+@M_KOJO_EVENT_K111_6(ARG,ARG:1)
+;口上主はTARGET
+;ARGに情事相手
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	;-------------------------------------------------
+	;小分岐
+	;-------------------------------------------------
+	;情事を目撃した（馴れ合い度:低）
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG:1 == 1
+		IF TALENT:111:恋人
+			PRINTFORML 「Ah!!!」
+			;ヘカーティアと
+			IF ARG == 113
+				PRINTFORMW 「%CFLAG:111:1099?"Go-Goshujinsama"#"M-Master"%...!」
+				PRINTFORMW 「아, 저기, 천천히 하세요...」
+				PRINTFORML 
+				PRINTFORMW 「하아 하아 하아...」
+				PRINTFORMW (괜찮아... 나는 %조사처리(CALLNAME:MASTER,"를")% 믿어...)
+				;純狐と
+			ELSEIF ARG == 112
+				PRINTFORMW 「%CFLAG:111:1099?"Yu-Yuujinsama"#"M-Mrs. Friend"%...!」
+				PRINTFORMW 「아, 저기, 천천히 하세요...」
+			ELSE
+				PRINTFORMW 「%CALLNAME:MASTER%...」
+				PRINTFORMW 「내가 바로 여기 있는데, 너는 그걸 하고 있구나... 흐윽...」
+			ENDIF
+		ELSEIF TALENT:111:恋慕
+			PRINTFORML 「Ahー!!」
+			;ヘカーティアと
+			IF ARG == 113
+				PRINTFORMW 「%CFLAG:111:1099?"Go-Goshujinsama"#"M-Master"%...!」
+				PRINTFORMW 「아, 저기, 천천히 하세요...」
+				PRINTFORML 
+				PRINTFORMW 「하아 하아 하아...」
+				PRINTFORMW (안 돼... 정말 보고 싶지 않았는데...)
+				;純狐と
+			ELSEIF ARG == 112
+				PRINTFORMW 「%CFLAG:111:1099?"Yu-Yuujinsama"#"M-Mrs. Friend"%...!」
+				PRINTFORMW 「아, 저기, 천천히 하세요...」
+			ELSE
+				PRINTFORMW 「Uu...」
+				PRINTFORMW 「...%CALLNAME:MASTER%, 이 멍청아!」
+			ENDIF
+		ELSE
+			PRINTFORML 「Ahーー!」
+			PRINTFORMW 「봤어, 봤다고♪」
+			;ヘカーティアと
+			IF ARG == 113
+				PRINTFORMW 「그렇군요 %CFLAG:111:1099?"Goshujinsama"#"Master"%는 그런 행동을 한다니, 하아...」
+				PRINTFORMW 「캬하하하♪」
+				;純狐と
+			ELSEIF ARG == 112
+				PRINTFORMW 「그러니까 %CFLAG:111:1099?"Yuujinsama"#"Mrs. Friend"%은(는) 그런 짓을 하는 거네, 후...」
+				PRINTFORMW 「캬하하하하♪」
+			ENDIF
+		ENDIF
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;負けじと参加（馴れ合い度:高）
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG:1 == 2
+		IF TALENT:111:恋人
+			PRINTFORML 「Ah!!!」
+			;ヘカーティアと
+			IF ARG == 113
+				PRINTFORML 「%CFLAG:111:1099?"Goshujinsama"#"Master"%, 그렇게 할 수는 없어♪」
+				CALL HPH_PRINT,@"「%CALLNAME:MASTER%」는 내 것이니, 내가 HPH에 참여하도록 허락해 달라고 부탁해야 할 것 같아.","W"
+				;純狐と
+			ELSEIF ARG == 112
+				PRINTFORML 「%CFLAG:111:1099?"Yuujinsama"#"Mrs. Friend"%, 그렇게 할 수 없어♪」
+				CALL HPH_PRINT,@"「%CALLNAME:MASTER%」는 내 것이니, 내가 HPH에 참여하도록 허락해 달라고 부탁해야 할 것 같아.","W"
+			ELSE
+				PRINTFORML 「%CALLNAME:MASTER%, 도대체 뭐 하는 거야—?」
+				PRINTFORMW 「너 할 수 없어! 왜냐하면 %조사처리(CALLNAME:MASTER,"는")% 내 거니까!」
+			ENDIF
+		ELSEIF TALENT:111:恋慕
+			;ヘカーティアと
+			IF ARG == 113
+				PRINTFORML 「%CFLAG:111:1099?"Go-Goshujinsama"#"M-Master"%...!」
+				PRINTFORMW 「우으... 저도 같이 해도 돼요?!」
+				;純狐と
+			ELSEIF ARG == 112
+				PRINTFORML 「%CFLAG:111:1099?"Yu-Yuujinsama"#"M-Mrs. Friend"%...!」
+				PRINTFORMW 「우으... 저도 같이 해도 돼요?!」
+			ELSE
+				PRINTFORML 「Ahーー!!」
+				CALL HPH_PRINT,@"「%CALLNAME:MASTER%, 나도 너희랑 같이 할게HPH」","W"
+			ENDIF
+		ELSE
+			;ヘカーティアと
+			IF ARG == 113
+				PRINTFORML 「Ah! %CFLAG:111:1099?"Goshujinsama"#"Master"%!」
+				CALL HPH_PRINT,@"「저거 재미있어 보인다♪ 나도 끼워줘 HPH」","W"
+				;純狐と
+			ELSEIF ARG == 112
+				PRINTFORML 「Ah! %CFLAG:111:1099?"Yuujinsama"#"Mrs. Friend"%!」
+				CALL HPH_PRINT,@"「저거 재미있어 보인다♪ 나도 끼워줘 HPH」","W"
+			ELSE
+				PRINTFORML 「Ahーー!!」
+				CALL HPH_PRINT,@"「%CALLNAME:MASTER%, 나도 너희랑 같이 할게HPH」","W"
+			ENDIF
+		ENDIF
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;気まずそうに立ち去る
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	;弱み握りと全く同じ,握らないけど
+	IF LOCAL:1 && ARG:1 == 3
+		IF TALENT:111:恋人
+			PRINTFORML 「Ah!!!」
+			;ヘカーティアと
+			IF ARG == 113
+				PRINTFORMW 「%CFLAG:111:1099?"Go-Goshujinsama"#"M-Master"%...!」
+				PRINTFORMW 「아, 저기, 천천히 하세요...」
+				PRINTFORML 
+				PRINTFORMW 「하아 하아 하아...」
+				PRINTFORMW (괜찮아... 나는 %조사처리(CALLNAME:MASTER,"를")% 믿어...)
+				;純狐と
+			ELSEIF ARG == 112
+				PRINTFORMW 「%CFLAG:111:1099?"Yu-Yuujinsama"#"M-Mrs. Friend"%...!」
+				PRINTFORMW 「아, 저기, 천천히 하세요...」
+			ELSE
+				PRINTFORMW 「%CALLNAME:MASTER%...」
+				PRINTFORMW 「내가 바로 여기 있는데, 너는 그걸 하고 있구나... 흐윽...」
+			ENDIF
+		ELSEIF TALENT:111:恋慕
+			PRINTFORML 「Ahー!!」
+			;ヘカーティアと
+			IF ARG == 113
+				PRINTFORMW 「%CFLAG:111:1099?"Go-Goshujinsama"#"M-Master"%...!」
+				PRINTFORMW 「아, 저기, 천천히 하세요...」
+				PRINTFORML 
+				PRINTFORMW 「하아 하아 하아...」
+				PRINTFORMW (안 돼... 정말 보고 싶지 않았는데...)
+				;純狐と
+			ELSEIF ARG == 112
+				PRINTFORMW 「%CFLAG:111:1099?"Yu-Yuujinsama"#"M-Mrs. Friend"%...!」
+				PRINTFORMW 「아, 저기, 천천히 하세요...」
+			ELSE
+				PRINTFORMW 「Uu...」
+				PRINTFORMW 「...%CALLNAME:MASTER%, 이 멍청아!」
+			ENDIF
+		ELSE
+			PRINTFORML 「Ahーー!」
+			PRINTFORMW 「봤어, 봤어♪」
+			;ヘカーティアと
+			IF ARG == 113
+				PRINTFORMW 「그렇군요 %CFLAG:111:1099?"Goshujinsama"#"Master"%는 그런 행동을 한다니, 하아...」
+				PRINTFORMW 「캬하하하♪」
+				;純狐と
+			ELSEIF ARG == 112
+				PRINTFORMW 「그러니까 %CFLAG:111:1099?"Yuujinsama"#"Mrs. Friend"%은(는) 그런 짓을 하는 거네, 후...」
+				PRINTFORMW 「캬하하하하♪」
+			ENDIF
+		ENDIF
+		RETURN 1
+	ENDIF
+	;	;-------------------------------------------------
+	;	;MASTERに誘われて参加
+	;	;記入チェック（=0, 非表示、1, 表示）
+	;	LOCAL:1 = 0
+	;	;-------------------------------------------------
+	;	;IF LOCAL:1 && ARG:1 == 4
+	;		;PRINTFORML
+	;		;RETURN 1
+	;	;ENDIF
+	;	;その他
+	;	PRINTFORML
+ENDIF
+RETURN 1
+;==================================================
+;情事を見られた
+;==================================================
+
+@M_KOJO_EVENT_K111_7(ARG,ARG:1)
+;口上主はTARGET
+;ARGに目撃者
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	;-------------------------------------------------
+	;小分岐
+	;-------------------------------------------------
+	;情事を見られた（目撃者の馴れ合い度:低）
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG:1 == 1
+		;ヘカーティアに見られちゃう
+		IF ARG == 113
+			CALL HPH_PRINT,@"「에헤~ HPH 미안해, %CFLAG:111:1099?"Goshujinsama"#"Master"%♪」","W"
+			;純狐に見られちゃう
+		ELSEIF ARG == 112
+			CALL HPH_PRINT,@"「에헤~ 하프 미안해, %CFLAG:111:1099?"Yuujinsama"#"Mrs. Friend"%♪」","W"
+		ELSE
+			PRINTFORMW 「신경 안 써, 신경 안 써♪」
+		ENDIF
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;目撃者が負けじと参加（目撃者の馴れ合い度:高）
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG:1 == 2
+		;ヘカーティアに見られちゃう
+		IF ARG == 113
+			PRINTFORMW 「너도 끼고 싶어, %CFLAG:111:1099?"Goshujinsama"#"Master"%에게? 키야하♪ 괜찮아~♪」
+			;純狐に見られちゃう
+		ELSEIF ARG == 112
+			PRINTFORMW 「너도 같이 하고 싶어, %CFLAG:111:1099?"Yuujinsama"#"Mrs. Friend"%? 키아하♪ 괜찮아~♪」
+		ELSE
+			PRINTFORMW 「에이, 어쩔 수 없나 보네♪」
+		ENDIF
+		PRINTFORMW 「쓰리썸이라고 부르는 거야, 맞지? 사람이 더 많으면 훨씬 더 재미있을지도 몰라♪」
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;目撃者が立ち去る
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	;目撃と同様に握られた時と同じ
+	IF LOCAL:1 && ARG:1 == 3
+		;ヘカーティアに見られちゃう
+		IF ARG == 113
+			CALL HPH_PRINT,@"「에헤~ HPH 미안해, %CFLAG:111:1099?"Goshujinsama"#"Master"%♪」","W"
+			;純狐に見られちゃう
+		ELSEIF ARG == 112
+			CALL HPH_PRINT,@"「에헤~ 하프 미안해, %CFLAG:111:1099?"Yuujinsama"#"Mrs. Friend"%♪」","W"
+		ELSE
+			PRINTFORMW 「신경 안 써, 신경 안 써♪」
+		ENDIF
+		RETURN 1
+	ENDIF
+	;	;-------------------------------------------------
+	;	;MASTERに誘われて目撃者も参加
+	;	;記入チェック（=0, 非表示、1, 表示）
+	;	LOCAL:1 = 0
+	;	;-------------------------------------------------
+	;	;IF LOCAL:1 && ARG:1 == 4
+	;		;PRINTFORML
+	;		;RETURN 1
+	;	;ENDIF
+	;	;その他
+	;	PRINTFORML
+ENDIF
+RETURN 1
+;;==================================================
+;;目撃した情事を問い詰める（現在無し
+;;==================================================
+;@M_KOJO_EVENT_K111_8(ARG,ARG:1)
+;RETURN 1
+;==================================================
+;パンツ没収された
+;==================================================
+
+@M_KOJO_EVENT_K111_9(ARG,ARG:1)
+;口上主はTARGET
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	;-------------------------------------------------
+	;小分岐
+	;-------------------------------------------------
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG:1 == 1
+		IF FIRSTTIME("パンツ没収")
+			PRINTFORMW 「어? %CALLNAME:MASTER%, 뭔가 떨어뜨렸어.」
+			PRINTFORML 「우와! 이게 뭐야! 팬——」
+			PRINTFORMDL 당신은 당황한 클라운피스의 입을 서둘러 손으로 막았다.
+			PRINTFORMW 「음프! 음프!!」
+			PRINTFORML 
+			PRINTFORML 「...푸아!」
+			PRINTFORMW 「어째서 이런 걸 가지고 있는 거야? 정말 역겹다!」
+			PRINTFORMW 「모두에게 소문을 내야겠어~♪」
+			PRINTFORML 「캬하하하~! 농담이었어~♪」
+			PRINTFORMW 「하지만, 내가 무슨 뜻인지 알겠지만, 실수로 뭔가 새어나가는 건 원치 않겠지♪」
+		ELSE
+			PRINTFORML 「아! %CALLNAME:MASTER%! 또 다른 팬——」
+			PRINTFORMDL 그녀가 비밀을 누설하기 전에 서둘러 클라운피스의 입을 손으로 막았다.
+			PRINTFORMW 「음프! 므으읍!!」
+			PRINTFORML 
+			PRINTFORML 「...푸아!」
+			PRINTFORMW 「또 팬티 레이드 하러 가는 거야? 그만두는 게 더 낫지 않아—?」
+			PRINTFORML 「어차피 그걸로 뭘 할 계획이야?」
+			PRINTFORMW 「캬하하하하! 너 정말 역겹다♪」
+		ENDIF
+		RETURN 1
+	ENDIF
+ENDIF
+RETURN 1
+;==================================================
+;押し倒した
+;==================================================
+
+@M_KOJO_EVENT_K111_10(ARG,ARG:1)
+;口上主はTARGET
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	;-------------------------------------------------
+	;小分岐
+	;-------------------------------------------------
+	;MASTERを押し倒した（開始時）
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 1
+		SELECTCASE RAND:8
+			CASE 1
+				CALL HPH_PRINT,@"「호호호...헵ㅎ」","L"
+				PRINTFORML 「당신의 경계는 허술하군요, %CALLNAME:MASTER%...」
+			CASE 2
+				PRINTFORML 「미안해요, %CALLNAME:MASTER%...」
+				CALL HPH_PRINT,@"「하지만 더는 못 견디겠어...HPH」","L"
+			CASE 3
+				PRINTFORML 「맹세하건대... %CALLNAME:MASTER%, 나를 그런 식으로 보는 건 너에게 좋지 않아?」
+				PRINTFORML 「아니면 처음부터 이렇게 꾸짖어주길 원했던 걸까～?」
+			CASE 4
+				CALL HPH_PRINT,@"「키아하프ㅎ」","L"
+				CALL HPH_PRINT,@"「정말로 %조사처리(CALLNAME:MASTER,"는")%, 공격하기 너무 쉽네HPH」","L"
+			CASE 5
+				PRINTFORML 「이건 못 참겠어～! 어쩌면 나쁜 짓일지도 모르지만... 나인가, 아니면 네가 그냥 너무 맛있게 보여서 그런 걸까～?」
+				CALL HPH_PRINT,@"「너를 다 먹을 생각이야~HPH」","L"
+			CASE 6
+				PRINTFORML 「아아-, 됐어, 나 한계야!」
+				PRINTFORML 「너랑 더 진하게 얽힐 기회가 너무 오래 기다려졌어!」
+			CASE 7
+				PRINTFORML 「하아 하아...」
+				PRINTFORML 「진심으로, 당신의 향을 맡자마자, %CALLNAME:MASTER%, 이미 너무 늦어버렸어...」
+			CASEELSE
+				PRINTFORML 「당신 바지 풀고 있는 걸 잡았어요, %CALLNAME:MASTER%...」
+				CALL HPH_PRINT,@"「역시 이렇게 될 줄 알았지, 난 어쨌든 요정이니까.」","L"
+		ENDSELECT
+		IF TALENT:111:恋慕
+			SELECTCASE RAND:3
+				CASE 1
+					CALL HPH_PRINT,@"「내 광기에 그냥 몸을 맡겨 봐... HPH」","L"
+				CASE 2
+					CALL HPH_PRINT,@"「서로 하나가 되자 HPH」","L"
+				CASEELSE
+					CALL HPH_PRINT,@"「함께 지옥으로 떨어지자 HPH」","L"
+			ENDSELECT
+		ELSE
+			CALL HPH_PRINT,@"「지옥HPH에 떨어지는 게 어떤 건지 보여주마」","L"
+		ENDIF
+		;妊娠中
+		IF TALENT:111:妊娠 && CFLAG:111:妊娠自覚状態 == 1
+			PRINTFORML 
+			PRINTFORMW 「걱정 마~!! 내 배에%BABYCONDSTR(" a",111,1)% %BABYPLNOUN("baby",111)%가 있으니까, 내가 특별히 조심할게♪」
+			;そんなこといいつつ好き勝手しちゃいます
+			;危険日
+		ELSEIF CFLAG:111:生理周期 == 7 && !TALENT:111:妊娠 && CFLAG:111:生解禁 == 2
+			PRINTFORML 
+			CALL HPH_PRINT,@"(하하하...흠, %HIM_HER(MASTER)%를 미치게 만들 수 있을까♪)","L"
+			;ちょっとヤンデレかも
+		ENDIF
+		TCVAR:111:351 = 1
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;なだめられた（終了時）
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 2
+		SELECTCASE ARG:1
+			CASE 0
+				;抜け出した
+				IF TALENT:111:恋慕
+					;妊娠中
+					IF TALENT:111:妊娠 && CFLAG:111:妊娠自覚状態 == 1
+						PRINTFORML 「후우... 어쩔 수 없나 봐...」
+						PRINTFORMW 「오늘은 이대로 버텨야겠어...」
+						;我慢しません
+						;危険日
+					ELSEIF CFLAG:111:生理周期 == 7 && !TALENT:111:妊娠 && CFLAG:111:生解禁 == 2
+						PRINTFORML 「도망쳐... 말도 안 돼...」
+						PRINTFORMW 「이 정도로는 턱없이 부족해!」
+						;無限に催促
+					ELSE
+						SELECTCASE RAND:5
+							CASE 0
+								PRINTFORML 「도망쳐... 안 돼...」
+								PRINTFORMW 「%CALLNAME:MASTER%너 정말 돈 밝히는 인간이구나! 못된 사람이네!」
+							CASE 1
+								PRINTFORML 「도망쳐... 벌써 끝이야～?」
+								PRINTFORMW 「하지만 더 놀고 싶단 말이야~~!」
+							CASE 2
+								PRINTFORML 「후우... 끝난 거야...?」
+								PRINTFORMW 「말도 안 돼! 난 더 재밌게 놀 거야—!」
+							CASE 3
+								PRINTFORML 「도망쳐... 하지만 왜~!」
+								PRINTFORMW 「%CALLNAME:MASTER%, 마음에 들지 않았어...? 흐윽...」
+							CASEELSE
+								PRINTFORML 「도망쳐... 말도 안 돼...」
+								PRINTFORMW 「하지만 우리는 아직 끝나지도 않았잖아ー!」
+						ENDSELECT
+					ENDIF
+				ELSE
+					PRINTFORML 「안 돼... 말도 안 돼...」
+					PRINTFORMW 「이대로는 안 돼, 그걸로 만족할 수는 없어ー!」
+				ENDIF
+				;		CASE 1
+				;		;抱き着きモード満足終了
+				;			RETURN 1
+				;		CASE 2
+				;		;抱き着きモード強制終了
+				;			RETURN 1
+		ENDSELECT
+		TCVAR:111:351 = 0
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;抜け出す失敗
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 3
+		SELECTCASE ARG:1
+			CASE 1
+				;好きにして状態から抜け出せなかった
+				SELECTCASE RAND:3
+					CASE 0
+						PRINTFORML 「이길 방법이 없을 때는 싸우려고 애쓰지 않는 게 나을 거야, 그렇지?」
+						CALL HPH_PRINT,@"「긴장 풀지 않으면 봐주기 힘들 거야... HPH」","W"
+					CASE 1
+						CALL HPH_PRINT,@"「캬하하하헵」","L"
+						CALL HPH_PRINT,@"「진심으로 %CALLNAME:MASTER%, 그거 정말 귀여운 응답이야, 알잖아HPH」","W"
+					CASEELSE
+						PRINTFORML 「이제 이제, %CALLNAME:MASTER%, 당신은 지금 나의 장난감이니까 그런 질문을 하는 건 소용없어~」
+						PRINTFORMW 「장난감은 그냥 뒤에 앉아서 가지고 놀아주는 동안 귀여운 소리를 내야지!」
+				ENDSELECT
+				RETURN 1
+			CASE 2
+				;欲求不満が高くて抜け出せなかった
+				SELECTCASE RAND:5
+					CASE 0
+						CALL HPH_PRINT,@"「아니야~ 이제 멈출 수 없어 HPH 아직 더 많은 것이 남아있어♪」","W"
+					CASE 1
+						PRINTFORML 「야, 그만 애쓰지 마!」
+						CALL HPH_PRINT,@"「진정하고 나에게 좀 더 열렬하게 봉사해줘HPH」","W"
+					CASE 2
+						CALL HPH_PRINT,@"「소용없어~♪ %CALLNAME:MASTER%, 네 몸은 지금 내 장난감이야HPH」","W"
+					CASE 3
+						CALL HPH_PRINT,@"「캬하하하헵」","L"
+						CALL HPH_PRINT,@"「미안해 %CALLNAME:MASTER%♪ 하지만 나는 당신의 슈퍼~ 귀여운 반응들을 연모해 HPH」","W"
+					CASEELSE
+						PRINTFORMW 「아! 잠깐 잠시만! 안 돼, 멈추지 마! 더 하자!」
+				ENDSELECT
+				RETURN 1
+		ENDSELECT
+	ENDIF
+	;-------------------------------------------------
+	;誘ってきた（人目につかない場所に行きたがるやつ）
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 4
+		SELECTCASE ARG:1
+			CASE IS < 600
+				PRINTFORML 「헤이, %CALLNAME:MASTER%... 우리 둘만 방에 갈까...♪」
+			CASE IS < 800
+				PRINTFORML 「헤이, %CALLNAME:MASTER%... 있잖아, 지금 내 심장이 정말 두근거려...♪」
+			CASEELSE
+				CALL HPH_PRINT,@"「%CALLNAME:MASTER%... 더는 견딜 수가 없어...HPH」","L"
+		ENDSELECT
+		RETURN 1
+	ENDIF
+ENDIF
+RETURN 1
+;==================================================
+;浴場で遭遇
+;==================================================
+
+@M_KOJO_EVENT_K111_11(ARG,ARG:1)
+;口上主はTARGET
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	;-------------------------------------------------
+	;小分岐
+	;-------------------------------------------------
+	;追い出された
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	;恥薄いと大抵入れるが
+	IF LOCAL:1 && ARG == 1
+		PRINTFORML 「와아-!! 레흐! 변태 같아!」
+		PRINTFORMW 「나가! 나가! 지옥에나 가!」
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;目が合った（追い出されない）
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 2
+		;ヘカーティアも一緒
+		IF CFLAG:113:同行
+			PRINTFORML 「Ah! %CFLAG:111:1099?"Goshujinsama"#"Master"%!」
+			PRINTFORMW 「다 같이 목욕하자♪」
+			;純狐も一緒
+		ELSEIF CFLAG:112:同行
+			PRINTFORML 「Ah! %CFLAG:111:1099?"Yuujinsama"#"Mrs. Friend"%!」
+			PRINTFORMW 「다 같이 목욕하자♪」
+		ELSE
+			PRINTFORML 「Ah! It's %CALLNAME:MASTER%!」
+			PRINTFORMW 「같이 목욕하자♪」
+		ENDIF
+		RETURN 1
+	ENDIF
+ENDIF
+RETURN 1
+;==================================================
+;寝床に忍び込み
+;==================================================
+
+@M_KOJO_EVENT_K111_12(ARG,ARG:1)
+;口上主はTARGET
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	;-------------------------------------------------
+	;小分岐
+	;-------------------------------------------------
+	;追い出される（怒り）
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 2
+		PRINTFORMW 「크윽! 도대체 왜 여기 있는 거야, %CALLNAME:MASTER%! 내 침실에서 나가!!」
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;寝床に侵入
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG:1 == 1
+		SELECTCASE RAND:3
+			CASE 1
+				PRINTFORMW 「코 고는 소리...」
+			CASE 2
+				PRINTFORMW 「음... 중얼중얼...」
+			CASEELSE
+				PRINTFORMW 「쿨쿨...」
+		ENDSELECT
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;寝床に侵入（相手が恋慕）
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && (ARG:1 == 2 || ARG:1 == 3)
+		PRINTFORML 「Hm～...?」
+		SELECTCASE RAND:3
+			CASE 1
+				PRINTFORMW 「%CALLNAME:MASTER%... 뭐 하는 거니...?」
+			CASE 2
+				PRINTFORMW 「아, %CALLNAME:MASTER%……웅얼거린다…」
+			CASEELSE
+				PRINTFORMW 「하아암~... %CALLNAME:MASTER%, 무슨 일이야~...?」
+		ENDSELECT
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;寝床に侵入（相手が恋慕・衰弱）
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 0
+	;-------------------------------------------------
+	;統合しました
+	;-------------------------------------------------
+	;追い出される
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && (ARG:1 == 4 || ARG:1 == 5)
+		PRINTFORML 「만...?!!」
+		SELECTCASE RAND:3
+			CASE 1
+				PRINTFORMW 「웅얼거린다... 침입자는 가야 한다아~!」
+			CASE 2
+				PRINTFORMW 「으음... 여기서 자려고 하는데~!! 귀찮게 하지 마아~!」
+			CASEELSE
+				PRINTFORMW 「너... 너 같은 악당 같으니! 그만둬, 가버려!」
+		ENDSELECT
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;追い出される（衰弱）
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 0
+	;-------------------------------------------------
+	;統合しました
+ENDIF
+RETURN 1
+;;==================================================
+;;お仕事中
+;;==================================================
+;@M_KOJO_EVENT_K111_13(ARG,ARG:1)
+;;口上主はTARGET
+;;ARG:1に残っている仕事量
+;;--------------------------------------------------
+;;記入チェック（=0, 非表示、1, 表示）
+;LOCAL = 0
+;;-------------
+;
+;IF LOCAL
+;	;-------------------------------------------------
+;	;小分岐
+;	;-------------------------------------------------
+;	;仕事開始（職場へ移動する）
+;	;記入チェック（=0, 非表示、1, 表示）
+;	LOCAL:1 = 0
+;	;-------------------------------------------------
+;	IF LOCAL:1 && ARG == 1
+;		PRINTFORML
+;		RETURN 1
+;	ENDIF
+;	;-------------------------------------------------
+;	;業務中
+;	;記入チェック（=0, 非表示、1, 表示）
+;	LOCAL:1 = 0
+;	;-------------------------------------------------
+;	IF LOCAL:1 && ARG == 2
+;		PRINTFORML
+;		RETURN 1
+;	ENDIF
+;	;-------------------------------------------------
+;	;仕事終了
+;	;記入チェック（=0, 非表示、1, 表示）
+;	LOCAL:1 = 0
+;	;-------------------------------------------------
+;	IF LOCAL:1 && ARG == 3
+;		PRINTFORML
+;		RETURN 1
+;	ENDIF
+;	;その他
+;	PRINTFORML
+;ENDIF
+;RETURN 1
+;==================================================
+;食事系
+;==================================================
+
+@M_KOJO_EVENT_K111_14(ARG,ARG:1)
+;口上主はTARGET
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	;-------------------------------------------------
+	;持っていた食物を食べられた
+	;TCVAR:盗み食い抑制で持っていた食物を食われるのを回避できる
+	IF STRCOUNT(DISH_TASTE, "野菜/")
+		TCVAR:盗み食い抑制 = 1
+	ENDIF
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == -1
+		;一緒に作った
+		IF DISH_ASSI == 111
+			PRINTFORML 「안 먹을 거면 나한테 줘!」
+			;作ってない
+		ELSE
+			PRINTFORML 「오, 그거 뭐야? 맛있어 보인다! 나도 좀 줘!」
+		ENDIF
+		TCVAR:111:356 = 0
+		TCVAR:111:357 = 0
+		RETURN 1
+	ENDIF
+ENDIF
+RETURN 1
+;==================================================
+;MASTERが押し倒した
+;==================================================
+
+@M_KOJO_EVENT_K111_15(ARG,ARG:1)
+;口上主はTARGET
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	;	;-------------------------------------------------
+	;	;小分岐
+	;	;-------------------------------------------------
+	;	;未実装（押し倒しコマンドに統合？
+	;	;MASTERが押し倒した（ウフフ開始時）
+	;	;記入チェック（=0, 非表示、1, 表示）
+	;	;LOCAL:1 = 0
+	;	;-------------------------------------------------
+	;	;IF LOCAL:1 && ARG == 1
+	;		;PRINTFORML
+	;		;RETURN 1
+	;	;ENDIF
+	;-------------------------------------------------
+	;逢瀬終了（ウフフ終了時）
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 2
+		IF FLAG:時間停止 || CFLAG:睡眠 ;fix
+			RETURN 0
+		ELSEIF TALENT:恋慕
+			;満足
+			IF TCVAR:111:355
+				SELECTCASE RAND:3
+					CASE 1
+						CALL HPH_PRINT,@"「하아, 하아...흐읍」","L"
+						CALL HPH_PRINT,@"「%CALLNAME:MASTER%, 굉장했어! 또 하자HPH」","W"
+					CASE 2
+						CALL HPH_PRINT,@"「파하하후후」","L"
+						CALL HPH_PRINT,@"「정말 굉장했어♪ %CALLNAME:MASTER%, 고마워HPH ChuuHPH」","W"
+					CASEELSE
+						;ちんこ使わなくても言う
+						CALL HPH_PRINT,@"「하아, 하아... HPH %CALLNAME:MASTER%... 정말 좋았어!」","L"
+						SIF HAS_PENIS(MASTER)
+							PRINTFORMW 「다음에 네 %ONEDARI_MASTER_TINKO()%에게 지지 않을 거야!」
+				ENDSELECT
+			ELSEIF CFLAG:111:溜まってる度 < 200
+				PRINTFORML 「휴우, 나 지쳤어...」
+				CALL HPH_PRINT,@"「에헤~ HPH 다음에 또 하자HPH」","W"
+			ELSEIF CFLAG:111:溜まってる度 < 500
+				PRINTFORML 「그게 다야?」
+				CALL HPH_PRINT,@"「조금 더 갈 수 있어 HPH」","W"
+			ELSEIF CFLAG:111:溜まってる度 < 800
+				PRINTFORML 「도망쳐... 이게 끝인가?」
+				CALL HPH_PRINT,@"「넌 더 할 수 있어, 알고 있어...HPH」","W"
+			ELSE
+				PRINTFORML 「아니, 벌써 끝이야...?」
+				PRINTFORMW 「정말~~ 더 하자~!」
+			ENDIF
+		ELSE
+			PRINTFORMW 「후우... 벌써 끝이야?」
+		ENDIF
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;事後描写
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 3
+		;-------------------------------------------------
+		;精液が垂れてきた
+		;記入チェック（=0, 非表示、1, 表示）
+		LOCAL:1 = 1
+		;-------------------------------------------------
+		IF LOCAL:1 && ARG:1 == 1
+			CALL HPH_PRINT,@"「푸하하하...큭큭 이리 봐줘...」","L"
+			SELECTCASE RAND:3
+				CASE 1
+					CALL HPH_PRINT,@"「네 걸 두껍고 질척한 액체—그것이 흘러나오고 있어~ HPH」","L"
+					CALL HPH_PRINT,@"「우리가 음란한 짓을 하고 있었다는 걸 모두가 알게 될 거야~HPH」","W"
+				CASE 2
+					PRINTFORMW 「게임 오버~♪ 뿅뿅~♪」
+				CASEELSE
+					CALL HPH_PRINT,@"「%조사처리(CALLNAME:MASTER,"의")% 장난기 넘치는 액체가 흘러나오고 있다」","W"
+			ENDSELECT
+			RETURN 1
+		ENDIF
+		;-------------------------------------------------
+		;愛液が垂れてきた
+		;記入チェック（=0, 非表示、1, 表示）
+		LOCAL:1 = 1
+		;-------------------------------------------------
+		IF LOCAL:1 && ARG:1 == 2
+			CALL HPH_PRINT,@"「아하하후우 내 요정 꿀이 흐르지 않네~후우」","W"
+			RETURN 1
+		ENDIF
+		;-------------------------------------------------
+		;事後のムード
+		;記入チェック（=0, 非表示、1, 表示）
+		LOCAL:1 = 1
+		;-------------------------------------------------
+		IF LOCAL:1 && ARG:1 == 3
+			IF TALENT:[[クラウンピース]]:恋人
+				SELECTCASE RAND:3
+					CASE 1
+						PRINTFORML 「푸하하하, 오늘 나한테 사랑을 많이 주었네♪」
+						CALL HPH_PRINT,@"「하지만 당신도 알잖아요 %CALLNAME:MASTER%, 저도 정말 많이 사랑해요 HPH」","W"
+					CASE 2
+						PRINTFORML 「그래, 계속 내 몸에 너의 흔적을 새겨줘, %CALLNAME:MASTER%... 바로 이렇게!」
+						PRINTFORMW 「나를 너의 소중한 보물로 만들어줘♪」
+					CASEELSE
+						PRINTFORML 「이렇게 나와 성관계를 가지면, 내가 행운의 요정이 되어가는 건지도 모른다고 생각하게 돼!」
+						CALL HPH_PRINT,@"「계속 베풀어주는 모든 축복에 대해 고맙다, %CALLNAME:MASTER%HPH.」","W"
+				ENDSELECT
+			ELSEIF TALENT:MASTER:恋人 && !GROUPMATCH(TALENT:MASTER:恋人, [[純狐]], [[ヘカーティア]]) && CFLAG:(TALENT:MASTER:恋人):現在位置 != CFLAG:[[クラウンピース]]:現在位置
+				SELECTCASE RAND:3
+					CASE 1
+						PRINTFORML 「푸하하하... %CALLNAME:MASTER%, 벌써 여자친구라도 있나?」
+						PRINTFORMW 「입 다물긴 할게. 하지만 자네한테 무슨 일이 생길지 누군들 알겠어~?」
+					CASE 2
+						PRINTFORML 「크하하하... 사람들이 이걸 "바람피기"라고 부를 것 같네, 알지♪」
+						PRINTFORMW 「캬하하♪ 왠지 기분이 나쁘진 않네～♪」
+					CASEELSE
+						PRINTFORML 「캬하하하♪ %CALLNAME:MASTER%, 정말 여자친구한테 못되게 구는구나♪」
+						CALL HPH_PRINT,@"「걱정 마, 나도 네 공범이니까 우리가 함께 지옥에 갈 거야HPH」","W"
+				ENDSELECT
+			ELSE
+				SELECTCASE RAND:3
+					CASE 1
+						CALL HPH_PRINT,@"「파하, 당신과 음란한 짓을 하는 건 정말 재미있어, %CALLNAME:MASTER%, 기분이 너무 좋아～HPH」","L"
+						PRINTFORMW 「또 몸을 부딪치고 싶을 때면 언제든 기다리고 있을게~♪」
+					CASE 2
+						PRINTFORML 「♪～～～♪～～～」
+						PRINTFORMW 「충분해, 여운이 정말 기분 좋아~♪」
+					CASEELSE
+						PRINTFORML 「나랑 음란한 짓 하면서 즐거웠어, %CALLNAME:MASTER%?」
+						CALL HPH_PRINT,@"「정말 재미있었고, 멋지게 느껴졌다~HPH」","W"
+				ENDSELECT
+			ENDIF
+			RETURN 1
+		ENDIF
+		;		;-------------------------------------------------
+		;		;服を着る
+		;		;記入チェック（=0, 非表示、1, 表示）
+		;		LOCAL:1 = 0
+		;		;-------------------------------------------------
+		;		IF LOCAL:1 && ARG:1 == 4
+		;			PRINTFORML
+		;			RETURN 1
+		;		ENDIF
+	ENDIF
+ENDIF
+RETURN 1
+;;==================================================
+;;添い寝する
+;;==================================================
+;@M_KOJO_EVENT_K111_16(ARG,ARG:1)
+;;口上主はTARGET
+;;--------------------------------------------------
+;;記入チェック（=0, 非表示、1, 表示）
+;LOCAL = 0
+;;-------------
+;
+;IF LOCAL
+;	;-------------------------------------------------
+;	;小分岐
+;	;-------------------------------------------------
+;	;添い寝を始めた（開始時）(存在せず
+;	;記入チェック
+;	;LOCAL:1 = 0
+;	;-------------------------------------------------
+;	;IF LOCAL:1 && ARG == 1
+;		;PRINTFORML
+;		;RETURN 1
+;	;ENDIF
+;	;-------------------------------------------------
+;	;添い寝を終了した（終了時）
+;	;記入チェック（=0, 非表示、1, 表示）
+;	LOCAL:1 = 0
+;	;-------------------------------------------------
+;	IF LOCAL:1 && ARG == 2
+;		PRINTFORML
+;		RETURN 1
+;	ENDIF
+;ENDIF
+;RETURN 1
+;==================================================
+;時止め終了時
+;==================================================
+
+@M_KOJO_EVENT_K111_17(ARG,ARG:1)
+#DIM 表示済み
+;口上主はTARGET
+;排他と明記されていないモノは状況によっては連続で表示されるので注意
+;ARGに射精状況
+;ARG:1に射精状態
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+表示済み = 0
+IF LOCAL
+	;-------------------------------------------------
+	;小分岐
+	;-------------------------------------------------
+	;ARG=1～3は排他
+	;謎の快感
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 1
+		PRINTFORMW 「흠?!」
+		PRINTFORML (도대체 방금 무슨 일이 일어난 거지...)
+		PRINTFORMW (그거 엄청 좋았는데...)
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;絶頂
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 2
+		PRINTFORML 「히구우!!」
+		PRINTFORMDW 클라운피스는 눈시울이 붉어지며 볼이 진한 빨간색으로 물든다.
+		PRINTFORMW 「방금... 후에... 도대체 그게 뭐였지?」
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;パンツ紛失
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 3
+		PRINTFORML 「부활?」
+		PRINTFORMW 「내 팬이…… 아, 아니야. 아무것도 아니야……」
+		;パンツのことは知らない
+		IF FIRSTTIME("パンツ没収", 1)
+			PRINTFORMW (웃기네... 혹시 안 입고 있었나...? )
+			;パンツを没収したことがある
+		ELSE
+			PRINTFORML (%CALLNAME:MASTER%일지도...?)
+			PRINTFORMW (...하지만 어떻게??)
+		ENDIF
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;【無自覚口内射精】
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 4
+		;精液中毒低精飲
+		IF ARG:1 == 1
+			;味を知らない
+			IF FIRSTTIME("精液の味", 1)
+				PRINTFORML 「응!? 콜록콜릭, 꿀꺽!」
+				PRINTFORMW 「어떻게 된 일인지 갑자기 입안에 뭔가 들어왔어, 윽!」
+				PRINTFORMW 「으음... 그게 대체 뭔지는 모르겠지만 결국 삼켜버렸어...」
+				;味を知っている
+			ELSE
+				PRINTFORML 「응...? 콜록콜릭, 꿀꺽!」
+				PRINTFORMW 「뭐야!? 방금 또 입안에 뭐가 들어왔어, 에우, 기침!」
+				PRINTFORMW 「음... 정말 역겨워...」
+			ENDIF
+			;精液中毒低吐き出し
+		ELSEIF ARG:1 == 2
+			;味を知らない
+			IF FIRSTTIME("精液の味", 1)
+				PRINTFORML 「응? 콜록콜록!」
+				PRINTFORMW 「어째선지 갑자기 입안에 뭔가 들어왔어, 크윽!」
+				PRINTFORMW 「꿀꺽... 으윽, 이 건 뭐야... 너무 역겨워...」
+				;味を知っている
+			ELSE
+				PRINTFORML 「응!? 콜록콜리!」
+				PRINTFORMW 「뭐라고!? 방금 또 입안에 뭔가 있었어, 으윽, 콜록!」
+				PRINTFORMW 「퉤... 아, 이거 또 일어날지도 모른 줄 알았는데... 크윽...」
+			ENDIF
+			;精液中毒低手で覆う
+		ELSEIF ARG:1 == 3
+			;味を知らない
+			IF FIRSTTIME("精液の味", 1)
+				PRINTFORML 「응!? 콜록콜록!」
+				PRINTFORMW 「어떻게 된 일인지 갑자기 입안에 뭔가 들어와서, 크으윽!」
+				PRINTFORMW 「씹자... 이게 대체 뭐야? 쓰고 역겨워...」
+				;味を知っている
+			ELSE
+				PRINTFORML 「응!? 콜록콜록!」
+				PRINTFORMW 「어떻게인지 갑자기 입안에 뭔가 들어왔어, 윽!」
+				PRINTFORMW 「씹는다... 냠냠... 대체 이게 왜 계속 일어나는 건지 모르겠네...」
+			ENDIF
+			;精液中毒高精飲
+		ELSEIF ARG:1 == 4
+			PRINTFORML 「응우!? 크윽!」
+			PRINTFORMW 「후으... 이게 뭐야...?」
+			PRINTFORMW 「음... 뭔지는 몰라도 맛있다...♪」
+			;濃厚でも同じ
+			;濃厚精液＆精液中毒低吐き出し
+		ELSEIF ARG:1 == 5
+			;味を知らない
+			IF FIRSTTIME("精液の味", 1)
+				PRINTFORML 「응? 콜록콜록!」
+				PRINTFORMW 「어째선지 갑자기 입안에 뭔가 들어왔어, 크윽!」
+				PRINTFORMW 「꿀꺽... 으윽, 이 건 뭐야... 너무 역겨워...」
+				;味を知っている
+			ELSE
+				PRINTFORML 「응!? 콜록콜리!」
+				PRINTFORMW 「뭐라고!? 방금 또 입안에 뭔가 있었어, 으윽, 콜록!」
+				PRINTFORMW 「퉤... 아, 이거 또 일어날지도 모른 줄 알았는데... 크윽...」
+			ENDIF
+			;濃厚精液＆精液中毒高精飲
+		ELSEIF ARG:1 == 6
+			PRINTFORML 「응우!? 크윽!」
+			PRINTFORMW 「후으... 이게 뭐야...?」
+			PRINTFORMW 「음... 뭔지는 몰라도 맛있다...♪」
+		ENDIF
+		表示済み = 1
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;【無自覚顔面射精】
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 5
+		;幼稚持ち＆精液経験100未満
+		IF ARG:1 == 1
+			;通常ぬぐい取り
+		ELSEIF ARG:1 == 2
+			IF 表示済み
+				PRINTFORMW 「으윽... 내 얼굴에 온갖 게 다 묻었어...」
+			ELSE
+				PRINTFORML 「으윽... 이게 도대체 뭐야...」
+				PRINTFORMW 「왜 이런 일이 벌어지는 거야... 너무 역겨워...」
+			ENDIF
+			;顔射精液舐めとり
+		ELSEIF ARG:1 == 3
+			IF 表示済み
+				PRINTFORMW 「아, 내 얼굴에 게가 잔뜩 붙었네... 핥핥...」
+			ELSE
+				PRINTFORML 「이런... 이게 대체 뭐야...」
+				PRINTFORMW 「음... 야옹야옹...」
+			ENDIF
+		ENDIF
+		表示済み = 1
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;【無自覚手淫射精】
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 6
+		;ぬぐい取り
+		IF ARG:1 == 1
+			IF 表示済み
+				PRINTFORMW 「그 장소에서조차...」
+			ELSE
+				PRINTFORML 「으음... 도대체 무슨 일이야...」
+				PRINTFORMW 「Wait, what should I do...」
+			ENDIF
+			;舐めとり
+		ELSEIF ARG:1 == 2
+			IF 表示済み
+				PRINTFORMW 「아, 내 손에 뭔가 있네... 핥는 소리...」
+			ELSE
+				PRINTFORML 「에헤... 왜...」
+				PRINTFORMW 「Hmm, um... Lick...」
+			ENDIF
+		ENDIF
+		表示済み = 1
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;【無自覚アナル射精】
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 7
+		;Ａ感覚0
+		IF ARG:1 == 1
+			PRINTFORML 「히이이!!」
+			PRINTFORMW 「우윽... 왜 이러지, 내 엉덩이가 갑자기... 아프네...」
+			;ソレ以外
+		ELSEIF ARG:1 == 2
+			PRINTFORML 「히이이!!」
+			PRINTFORMW 「우윽... 왜 이러지, 내 엉덩이가 갑자기... 아프네...」
+		ENDIF
+		表示済み = 2
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;【無自覚処女喪失】
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 8
+		IF 表示済み == 2
+			PRINTFORML 「아악!!」
+			PRINTFORMW 「아파... 아프다...」
+		ELSE
+			PRINTFORML 「히이이!!」
+			PRINTFORMW 「으응... 아파, 아파... 이게 대체 무슨 일이야...」
+		ENDIF
+		表示済み = 2
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;【無自覚膣内射精】
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 9
+		;非処女膣内射精ピルなし
+		IF ARG:1 == 1
+			PRINTFORML 「음...!?」
+			PRINTFORMW 「왠지... 느껴지는 것 같아... 응...? 이상해...」
+			;非処女膣内射精ピルあり
+		ELSEIF ARG:1 == 2
+			PRINTFORML 「음...!?」
+			PRINTFORMW 「왠지... 느껴지는 것 같아... 응...? 이상해...」
+			;処女膣内射精
+		ELSEIF ARG:1 == 3
+			PRINTFORML 「흠...!?」
+			PRINTFORMW 「이런 이상한 기분은 도대체 뭐지...?」
+		ENDIF
+		表示済み = 2
+		RETURN 1
+	ENDIF
+	;	;-------------------------------------------------
+	;	;時間停止解除共通
+	;	;記入チェック（=0, 非表示、1, 表示）
+	;	LOCAL:1 = 0
+	;	;-------------------------------------------------
+	;	IF LOCAL:1 && ARG == 0
+	;		RETURN 1
+	;	ENDIF
+ENDIF
+RETURN 1
+;==================================================
+;ナマでやらせろ時
+;==================================================
+
+@M_KOJO_EVENT_K111_18(ARG,ARG:1)
+;口上主はTARGET
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	;-------------------------------------------------
+	;小分岐
+	;-------------------------------------------------
+	;避妊要求台詞
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 1
+		PRINTFORMW 「후우... 아기 갖고 싶어...?」
+		PRINTFORMW 「그렇게 말하기엔 조금 성급하지 않아...?」
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;断った
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 2
+		PRINTFORMW 「안 돼...」
+		PRINTFORMW 「너는 친절할지도 몰라, %조사처리(CALLNAME:MASTER,"지만")%, 그건 너무 무서워...」
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;断ったのに粘られて切れた
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 3
+		PRINTFORMW 「No!!」
+		PRINTFORMW 「당신은 이해 못 해, %CALLNAME:MASTER%!! 지옥으로 가라!」
+		CALL COLORMESSAGE(@"케르파우!", C_RED, 1)
+		PRINTFORMDW 클라운피스가 온 힘을 다해 너를 격렬하게 때린다!!
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;危険日以外許可
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 4
+		PRINTFORMW 「알았어... 알겠어...」
+		CALL HPH_PRINT,@"「%CALLNAME:MASTER%에게라면 괜찮아」","W"
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;危険日許可
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 5
+		PRINTFORMW 「음~ 네 뜻 알겠어!」
+		CALL HPH_PRINT,@"「우리 같이 아기 만들자HPH」","W"
+		RETURN 1
+	ENDIF
+ENDIF
+RETURN 1
+;==================================================
+;神社暮らしを承認して貰う
+;==================================================
+
+@M_KOJO_EVENT_K111_19(ARG,ARG:1)
+;口上主はARG
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+IF LOCAL
+	;-------------------------------------------------
+	;小分岐
+	;-------------------------------------------------
+	;認められる
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 1
+		PRINTFORML 「야호! 해냈어!」
+		PRINTFORMW 「좋아, %CFLAG:111:1099?"Goshujinsama"#"Master"%께 좋은 소식을 바로 알려드려야겠어!」
+		PRINTL 
+		PRINTFORMDL 클라운피스는 이미 헤카티아에게 이사를 허락받으려고 계획 중이라고 말한 것 같다.
+		PRINTFORMDL 그녀는 이것을 한동안 계획해 온 듯하다.
+		PRINTW 
+		PRINTFORML 「이것으로, 지옥에서의 일은 당분간 보류해야겠어♪」
+		PRINTFORML 「%CFLAG:111:1099?"Goshujinsama"#"Master"%가 매일 곁에 없으니 조금 외로울 거야...」
+		PRINTFORMW 「하지만 당신과 함께 성장할 수 있어, %CALLNAME:MASTER%!」
+		PRINTL 
+		PRINTFORMDL 클라운피스는 기운을 차리고 열심히 일할 준비를 한다.
+		PRINTFORMDW 그녀를 부주의하게 대하면 쫓겨날 수도 있다...
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;認められない
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 2
+		PRINTFORML 「Boo! 나쁜 아이!」
+		PRINTFORMW 「왜 안 돼! 내가 요정이라서 그런 거야!?」
+		PRINTFORMW 「나는 다른 요정들과는 달라!」
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;あなたの私室変更により同居
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 3
+		;色々考えたけど素直が一番
+		CALL HPH_PRINT,@"「그거 괜찮아, HPH. 이제부터 같이 자자ー!」","W"
+		RETURN 1
+	ENDIF
+ENDIF
+RETURN 1
+;==================================================
+;帰宅時
+;==================================================
+
+@M_KOJO_EVENT_K111_20(ARG,ARG:1)
+;口上主はLOCALS or RESULT
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+IF LOCAL
+	;-------------------------------------------------
+	;小分岐
+	;-------------------------------------------------
+	;通常帰宅
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 1
+		IF CFLAG:[[クラウンピース]]:うふふ
+			PRINTFORML 「냐아~...」
+			PRINTFORMW 「죄송해요 %CALLNAME:MASTER%, 하지만 졸려요... 하품...」
+			PRINTL 
+			PRINTFORMDW 어쩔 수 없으니 잠이 많은 클라운피스를 방으로 돌아가라고 재촉한다.
+		ELSEIF TALENT:[[クラウンピース]]:恋慕
+			SELECTCASE RAND:3
+				CASE 1
+					PRINTFORML 「아아, 벌써 집에 갈 시간이 되었구나...」
+					PRINTFORML 「당신과 계속 놀고 싶었는데, %CALLNAME:MASTER%～」
+				CASE 2
+					PRINTFORML 「하아암~ ... 좀 졸리네...」
+					PRINTFORML 「오늘은 이만하고 자러 가는 게 좋을 것 같아...」
+				CASEELSE
+					PRINTFORML 「아우~ 서두르지 않고 집에 가면 %CFLAG:111:1099?"Goshujinsama"#"Master"%'가 나한테 혼낼 거야~」
+					PRINTFORML 「정말 안타깝지만, 오늘은 여기까지인 것 같아!」
+			ENDSELECT
+			IF TALENT:[[クラウンピース]]:恋人
+				IF DAY % 2 == 0
+					PRINTFORML 「%CALLNAME:MASTER%! 내일 우리가 할 수 있는 게임 아이디어 좀 생각해 줘, 알았지!」
+				ELSE
+					PRINTFORML 「%CALLNAME:MASTER%! 다음에 만날 때 할 수 있는 것들 생각해 봐, 알겠지!」
+				ENDIF
+				;キス経験済みで3分の1
+				IF !FIRSTTIME("ファーストキス", 1, [[クラウンピース]]) && !RAND:3
+					;さらに4分の1
+					IF !RAND:4
+						CALL HPH_PRINT,@"「잘 가요♪ %RANDKISS("kiss")%HPH」","W"
+						PRINTFORMDW 허를 찌른 클라운피스가 떠나며 당신에게 입맞춤을 한다.
+					ELSE
+						CALL HPH_PRINT,@"「안녕♪ 주후피」","W"
+						PRINTFORMDW 예상치 못하게, 클라운피스는 떠나며 당신의 뺨에 장난기 어린 입맞춤을 남긴다.
+					ENDIF
+				ELSE
+					PRINTFORMW 「잘 가~♪」
+				ENDIF
+			ELSE
+				PRINTFORML 「조만간 또 같이 놀자, %CALLNAME:MASTER%! 꼭!!」
+				PRINTFORMW 「잘 가~♪」
+			ENDIF
+		ELSE
+			SELECTCASE RAND:3
+				CASE 1
+					PRINTFORML 「정말 더 하고 싶은데, 이제 집에 갈 시간이야...」
+				CASE 2
+					PRINTFORML 「하아암~ ... 졸리니까 서둘러 집에 가야겠다!」
+				CASEELSE
+					PRINTFORML 「아, 벌써 이렇게 늦었네! 집에 가야 하는데...」
+			ENDSELECT
+			IF TALENT:[[クラウンピース]]:思慕
+				PRINTFORMW 「안녕, %CALLNAME:MASTER%님. 다음에 또 놀자~♪」
+			ELSE
+				PRINTFORMW 「잘 가요 %CALLNAME:MASTER%, 나중에 봐요~」
+			ENDIF
+		ENDIF
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;デート中帰宅
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 2
+		IF CFLAG:うふふ
+			IF CFLAG:衰弱
+				;うふふ中に疲れて帰る
+				PRINTFORML 「하아, 하아, 하아...」
+				PRINTFORMW 「죄송해요 %CALLNAME:MASTER%, 하지만 정말 지쳤어요... 안녕...」
+				PRINTL 
+				PRINTFORMDW 클라운피스가 너무 지쳐서 더 이상 계속할 수 없기 때문에 당신의 데이트가 취소된다.
+			ELSE
+				;うふふ中に眠くて帰る
+				PRINTFORML 「나무유~...」
+				PRINTFORMW 「%CALLNAME:MASTER%죄송해요, 하지만 정말 졸려요... 하품...」
+				PRINTL 
+				PRINTFORMDW 클라운피스가 정말로 잠들 것 같아서 데이트가 끝나버린다.
+			ENDIF
+		ELSE
+			IF TALENT:[[クラウンピース]]:恋慕
+				SELECTCASE RAND:3
+					CASE 1
+						PRINTFORML 「아아, 벌써 집에 갈 시간이 되었구나...」
+						PRINTFORML 「당신과 계속 놀고 싶었는데, %CALLNAME:MASTER%～」
+					CASE 2
+						PRINTFORML 「하아암~ ... 좀 졸리네...」
+						PRINTFORML 「오늘은 이만하고 자러 가는 게 좋을 것 같아...」
+					CASEELSE
+						PRINTFORML 「아우~, 내가 서둘러 집에 가지 않으면 %CFLAG:111:1099?"Goshujinsama"#"Master"%'가 나를 꾸짖을 거야~」
+						PRINTFORML 「정말 아쉽지만, 오늘은 여기까지인 것 같아!」
+				ENDSELECT
+			ELSE
+				SELECTCASE RAND:3
+					CASE 1
+						PRINTFORML 「정말 더 하고 싶은데, 이제 집에 갈 시간이야...」
+					CASE 2
+						PRINTFORML 「하아암~ ... 졸리니까 서둘러 집에 가야겠다!」
+					CASEELSE
+						PRINTFORML 「아, 벌써 이렇게 늦었네! 집에 가야 하는데...」
+				ENDSELECT
+			ENDIF
+			IF TALENT:[[クラウンピース]]:恋人 && !FIRSTTIME("ファーストキス", 1, [[クラウンピース]])
+				IF !RAND:4
+					CALL HPH_PRINT,@"「오늘 정말 재미있었어! 안녕~♪ %RANDKISS("kiss")%HPH」","W"
+					PRINTL 
+					PRINTFORMDW 허를 찌른 클라운피스가 떠나며 당신에게 입맞춤을 한다.
+				ELSE
+					CALL HPH_PRINT,@"「오늘 정말 재미있었어! 잘 가♪ 추후프」","W"
+					PRINTL 
+					PRINTFORMDW 예상치 못하게, 클라운피스는 떠나며 당신의 뺨에 장난기 어린 입맞춤을 남긴다.
+				ENDIF
+			ELSE
+				PRINTFORMW 「오늘 정말 재미있었어♪ 그럼, 나중에 봐요 %CALLNAME:MASTER%～」
+			ENDIF
+		ENDIF
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;玄関先でお見送り（キャラの自宅位置、またはキャラの部屋でデート終了）
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 3
+		;お招き部屋
+		IF CFLAG:111:現在位置 == OMANEKIBEYA()
+			PRINTFORMW 「하아암~ 벌써 너무 늦었네...」
+			PRINTFORMW 「안녕 %CALLNAME:MASTER%... 나중에 봐...」
+			;泊まれる
+			SIF !TCVAR:(CFLAG:MASTER:お招き):連泊禁止 && NEMUKE() < 720
+				PRINTFORMW 「...아니면 나와 하룻밤을 보낼래...?」
+		ELSE
+			PRINTFORMW 「집까지 데려다줘서 고마워!」
+			PRINTFORMW 「오늘 정말 재미있었어♪ 그럼, 나중에 봐요 %CALLNAME:MASTER%～」
+		ENDIF
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;デート終了時に部屋に来ないかと誘う（～から部屋に来ないかと誘われた）
+	;（来訪キャラのみ,自宅が無いキャラでも発生します）
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 4
+		IF TALENT:[[クラウンピース]]:恋人
+			PRINTFORML 「헤이 %CALLNAME:MASTER%, 우리 집으로 돌아와서 계속할래?」
+		ELSE
+			PRINTFORML 「헤이 %CALLNAME:MASTER%, 실례가 안 된다면 우리 집으로 갈래?」
+		ENDIF
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;部屋に来ないか→「行く」を選択（～に誘われるまま、【MASTER】は【TARGET】の部屋へと向かった……）
+	;（これが発生すると十中八九押し倒されます）
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 5
+		CALL HPH_PRINT,@"「자, 그럼 가보자ー!」","W"
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;部屋に来ないか→「やめとく」を選択（～は心なしか寂しそうだ……）
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 6
+		PRINTFORMW 「나 보였어... 음, 그럼 곧 보자, %CALLNAME:MASTER%! 잘 가~♪」
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;今夜は帰りたくないと言い出す（～は今夜は帰りたくないと言い出した…）
+	;（来訪キャラの帰宅時に欲求不満と欲望が高いと発生）
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 7
+		IF TALENT:[[クラウンピース]]:恋人
+			PRINTFORML 「저기요, %CALLNAME:MASTER%님... 오늘 밤 당신 방에서 자도 될까요...?」
+			PRINTFORMW 「혼자 하룻밤 보내면 너무 외로울 것 같아요... 제발요!」
+		ELSE
+			PRINTFORML 「싫어~ 집에 가고 싶지 않아~!」
+			PRINTFORMW 「%조사처리(CALLNAME:MASTER,"랑")% 계속 놀고 싶단 말이야~!」
+		ENDIF
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;今夜は帰りたくない→「泊める」を選択（～は【MASTERの自室】に泊まっていくことになりました）
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 8
+		PRINTFORML 「진짜야!? 만세~!」
+		IF CFLAG:[[クラウンピース]]:現在位置 == CFLAG:MASTER:初期位置
+			PRINTFORMW 「그럼 서둘러서 ★로 가서 잠자리에 들자!!」
+		ELSE
+			CALL HPH_PRINT,@"「좋아, 그럼 이제 네 방으로 가자HPH」","W"
+		ENDIF
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;今夜は帰りたくない→「泊めない」を選択、または家主が居る（【MASTER】は丁重に断った）
+	;（家主が居る＝MASTERの私室に他のキャラの私室を設定している）
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 9
+		IF TALENT:[[クラウンピース]]:恋人
+			PRINTFORML 「아... 알겠어...」
+			PRINTFORMW 「나중에 봐요, %CALLNAME:MASTER%... 안녕...」
+			PRINTL 
+			PRINTFORMDW 클라운피스는 실망한 듯 발만 내려다보며 집으로 터벅터벅 걸어간다...
+		ELSE
+			PRINTFORML 「아아~ ... 알겠어...」
+			PRINTFORMW 「뭐야, 나중에 봐요 %CALLNAME:MASTER%! 잘 가요♪」
+		ENDIF
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;疲れて帰宅（疲れきった～は帰って行きました）
+	;（～は疲れ切っている→（入り口）まで送るよ でも発生）
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 10
+		IF CFLAG:うふふ
+			;うふふ中に疲れて帰る
+			PRINTFORML 「하아, 하아, 하아...」
+			PRINTFORMW 「죄송해요 %CALLNAME:MASTER%, 하지만 정말 지쳤어요... 안녕...」
+			PRINTL 
+			PRINTFORMDW 클라운피스가 기절했으므로 그녀를 등에 업고 집으로 돌려보낸다.
+		ELSE
+			PRINTFORML 「하아, 하아, 하아...」
+			PRINTFORMW 「정말 지쳤어... 집에 가서 잠을 자야겠다...」
+			PRINTFORMW 「%CALLNAME:MASTER%님, 안녕~」
+		ENDIF
+		RETURN 1
+	ENDIF
+ENDIF
+RETURN 1
+;==================================================
+;陥落素質取得時
+;==================================================
+
+@M_KOJO_EVENT_K111_21(ARG,ARG:1)
+;口上主はARG
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+IF LOCAL
+	;-------------------------------------------------
+	;小分岐
+	;-------------------------------------------------
+	;恋慕取得
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 1
+		PRINTFORMW （%CALLNAME:MASTER%...）
+		PRINTFORMW （.........）
+		PRINTFORMW 「...잠을 잘 수가 없어.」
+		PRINTFORML 
+		PRINTFORMDW 생각에 잠긴 클라운피스는 침대에서 뒤척인다.
+		PRINTFORML 
+		PRINTFORMW (왜 그런지 모르겠지만, 매일 %CALLNAME:MASTER%생각이 나...)
+		PRINTFORMW (뭔가 이상해진 것 같아... 기분이 이상해.)
+		PRINTFORMW (%CFLAG:111:1099?"Goshujinsama"#"Master"%에게 물어봐야 할지 궁금하다...)
+		PRINTFORML 
+		;ヘカーティアの親密が6以上
+		IF ABL:113:親密 >= 6
+			PRINTFORMW (%조사처리(CALLNAME:MASTER,"는")%(는) %CFLAG:111:1099?"Goshujinsama"#"Master"%에 대해 무슨 생각을 하는지 궁금하다...)
+			PRINTFORMW （.........）
+			PRINTFORMW (아니, 그런 생각은 하고 싶지 않아.)
+			PRINTFORMW (%HE_SHE(MASTER)%이/가 %CFLAG:111:1099?"Goshujinsama"#"Master"%와 정말 잘 지내는 것 같은데, 어쩐지 마음이 불편해져.)
+			PRINTFORMW (%CFLAG:111:1099?"Goshujinsama"#"Master"%를/을 미워하는 건 아니지만, 그녀가 %HIM_HER(MASTER)%과 시간을 보낸다는 사실이 싫어지기 시작했어...)
+		ELSE
+			PRINTFORMW (혹시 %CFLAG:111:1099?"Goshujinsama"#"Master"%가 %CALLNAME:MASTER%에 대해 어떻게 생각할지 궁금해...)
+			PRINTFORMW (%CFLAG:111:1099?"Goshujinsama"#"Master"%와 %CALLNAME:MASTER%하고 함께 놀고 싶어!)
+			PRINTFORMW (분명 재미있을 거야, 뭘 할지 궁금하네...)
+			PRINTFORMW (아, 그리고 %CFLAG:111:1099?"Yuujinsama"#"Mrs. Friend"%도 같이ー...)
+			PRINTFORMW （.........）
+			PRINTFORMW (음, 취소해 둘게. 결국 두 사람만 있는 게 제일 나아.)
+			PRINTFORMW (%조사처리(CALLNAME:MASTER,"를")% %CFLAG:111:1099?"Goshujinsama"#"Master"%에게 비밀로 하고 싶어...)
+		ENDIF
+		PRINTFORML 
+		PRINTFORMW (왜 나는 저렇게 느끼는 걸까... 내가 뭔가 잘못하고 있는 건가...)
+		PRINTFORMW 「우으... 파악하기 너무 힘들어, 고통스러워... %CALLNAME:MASTER%...」
+		PRINTFORMW 「%CALLNAME:MASTER%도와줘...」
+		IF M_KOJO_K111_JUNKO_KURASHI()
+			PRINTFORMW 「내 곁에 있어줘...」
+			PRINTFORMW 「내 손을 잡아줘...」
+		ELSE
+			PRINTFORMW 「보고 싶어...」
+			PRINTFORMW 「내 곁에 있어줘...」
+		ENDIF
+		PRINTFORML 
+		PRINTFORMDW 클라운피스의 잠 못 이루는 밤은 계속된다.
+		PRINTL 
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;思慕取得
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 2
+		;純狐邸に住んでる
+		IF M_KOJO_K111_JUNKO_KURASHI()
+			PRINTFORMW (%조사처리(CALLNAME:MASTER,"와")% 나는 함께 살고 있어...)
+			PRINTFORMW (%HE_SHE(MASTER,1)%랑 같이 있는 게 정말 재미있어, %HIM_HER(MASTER)%가 주변에 있게 되니까 정말 흥미로웠지.)
+			PRINTFORMW (내일 뭘 할까, %HE_SHE(MASTER)%가 어떤 게임을 가장 하고 싶어할까...)
+		ELSE
+			PRINTFORMW (음, %CALLNAME:MASTER%, 그렇지...)
+			PRINTFORMW (요즘 자주 같이 놀았는데, %HIM_HER(MASTER)%랑 함께하는 게 정말 즐거워!)
+			PRINTFORMW (%HIM_HER(MASTER)%랑 더 자주 놀고 싶어. 다음엔 언제 만날 수 있을까?)
+		ENDIF
+		PRINTFORMW 「후후후...♪ 생각만 해도 기분이 좋아져♪」
+		RETURN 1
+	ENDIF
+	;	;-------------------------------------------------
+	;	;愛欲取得
+	;	;記入チェック（=0, 非表示、1, 表示）
+	;	LOCAL:1 = 0
+	;	;-------------------------------------------------
+	;	IF LOCAL:1 && ARG == 3
+	;		PRINTFORML
+	;		RETURN 1
+	;	ENDIF
+	;	;-------------------------------------------------
+	;	;愛人取得
+	;	;記入チェック（=0, 非表示、1, 表示）
+	;	LOCAL:1 = 0
+	;	;-------------------------------------------------
+	;	IF LOCAL:1 && ARG == 4
+	;		PRINTFORML
+	;		RETURN 1
+	;	ENDIF
+	;	;-------------------------------------------------
+	;	;セフレ取得
+	;	;記入チェック（=0, 非表示、1, 表示）
+	;	LOCAL:1 = 0
+	;	;-------------------------------------------------
+	;	IF LOCAL:1 && ARG == 5
+	;		PRINTFORML
+	;		RETURN 1
+	;	ENDIF
+	;	;-------------------------------------------------
+	;	;キス魔取得
+	;	;記入チェック（=0, 非表示、1, 表示）
+	;	LOCAL:1 = 0
+	;	;-------------------------------------------------
+	;	IF LOCAL:1 && ARG == 6
+	;		PRINTFORML
+	;		RETURN 1
+	;	ENDIF
+	;	;-------------------------------------------------
+	;	;自慰狂い取得
+	;	;記入チェック（=0, 非表示、1, 表示）
+	;	LOCAL:1 = 0
+	;	;-------------------------------------------------
+	;	IF LOCAL:1 && ARG == 7
+	;		PRINTFORML
+	;		RETURN 1
+	;	ENDIF
+	;	;-------------------------------------------------
+	;	;ポルチオ性感取得
+	;	;記入チェック（=0, 非表示、1, 表示）
+	;	LOCAL:1 = 0
+	;	;-------------------------------------------------
+	;	IF LOCAL:1 && ARG == 8
+	;		PRINTFORML
+	;		RETURN 1
+	;	ENDIF
+	;	;-------------------------------------------------
+	;	;おもらし癖取得
+	;	;記入チェック（=0, 非表示、1, 表示）
+	;	LOCAL:1 = 0
+	;	;-------------------------------------------------
+	;	IF LOCAL:1 && ARG == 9
+	;		PRINTFORML
+	;		RETURN 1
+	;	ENDIF
+ENDIF
+RETURN 1
+;==================================================
+;調教終了時に自慰
+;==================================================
+
+@M_KOJO_EVENT_K111_22(ARG,ARG:1)
+;口上主はARG
+;ARG:0に自慰状況
+;ARG:1に自慰種類
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+;全部一括
+IF LOCAL
+	;	;-------------------------------------------------
+	;	;通常自慰
+	;	;記入チェック（=0, 非表示、1, 表示）
+	;	LOCAL:1 = 0
+	;	;-------------------------------------------------
+	;	IF LOCAL:1 && ARG == 1
+	;		PRINTFORML
+	;		RETURN 1
+	;	ENDIF
+	;	;-------------------------------------------------
+	;	;同居時自慰
+	;	;記入チェック（=0, 非表示、1, 表示）
+	;	LOCAL:1 = 0
+	;	;-------------------------------------------------
+	;	IF LOCAL:1 && ARG == 2
+	;		PRINTFORML
+	;		RETURN 1
+	;	ENDIF
+	;	;-------------------------------------------------
+	;	;中だし精液自慰
+	;	;記入チェック（=0, 非表示、1, 表示）
+	;	LOCAL:1 = 0
+	;	;-------------------------------------------------
+	;	IF LOCAL:1 && ARG == 3
+	;		PRINTFORML
+	;		RETURN 1
+	;	ENDIF
+	;	;-------------------------------------------------
+	;	;無知持ち（自慰中毒による分岐あり
+	;	;記入チェック（=0, 非表示、1, 表示）
+	;	LOCAL:1 = 0
+	;	;-------------------------------------------------
+	;	IF LOCAL:1 && ARG == 4
+	;		;無知消去イベントあり（表示は一度だけ
+	;		IF ABL:LOCAL:自慰中毒 >= 5
+	;		;地の文分岐。書きたい場合は[SKIPSTART][SKIPEND]を削除してください
+	;		[SKIPSTART]
+	;		ELSEIF ABL:LOCAL:自慰中毒 == 4
+	;		ELSEIF ABL:LOCAL:自慰中毒 == 3
+	;		ELSEIF ABL:LOCAL:自慰中毒 == 2
+	;		ELSEIF ABL:LOCAL:自慰中毒 == 1
+	;		[SKIPEND]
+	;		ELSE
+	;		ENDIF
+	;		PRINTFORML
+	;		RETURN 1
+	;	ENDIF
+	;	;-------------------------------------------------
+	;	;陥落素質あり自慰中毒高め
+	;	;記入チェック（=0, 非表示、1, 表示）
+	;	LOCAL:1 = 0
+	;	;-------------------------------------------------
+	;	IF LOCAL:1 && ARG == 5
+	;		;-------------------------------------------------
+	;		;Ｂ敏感orＢ感覚10以上
+	;		;記入チェック（=0, 非表示、1, 表示）
+	;		LOCAL:1 = 0
+	;		;-------------------------------------------------
+	;		IF LOCAL:1 && ARG:1 == 1
+	;			PRINTFORML
+	;			RETURN 1
+	;		ENDIF
+	;		;-------------------------------------------------
+	;		;Ａ敏感orＡ感覚10以上
+	;		;記入チェック（=0, 非表示、1, 表示）
+	;		LOCAL:1 = 0
+	;		;-------------------------------------------------
+	;		IF LOCAL:1 && ARG:1 == 2
+	;			PRINTFORML
+	;			RETURN 1
+	;		ENDIF
+	;		;-------------------------------------------------
+	;		;Ｃ敏感orＣ感覚10以上
+	;		;記入チェック（=0, 非表示、1, 表示）
+	;		LOCAL:1 = 0
+	;		;-------------------------------------------------
+	;		IF LOCAL:1 && ARG:1 == 3
+	;			PRINTFORML
+	;			RETURN 1
+	;		ENDIF
+	;		;-------------------------------------------------
+	;		;Ｖ敏感orＶ感覚10以上
+	;		;記入チェック（=0, 非表示、1, 表示）
+	;		LOCAL:1 = 0
+	;		;-------------------------------------------------
+	;		IF LOCAL:1 && ARG:1 == 4
+	;			PRINTFORML
+	;			RETURN 1
+	;		ENDIF
+	;		;-------------------------------------------------
+	;		;部位指定無し
+	;		;記入チェック（=0, 非表示、1, 表示）
+	;		LOCAL:1 = 0
+	;		;-------------------------------------------------
+	;		IF LOCAL:1 && ARG:1 == 5
+	;			PRINTFORML
+	;			RETURN 1
+	;		ENDIF
+	;		;その他
+	;		;上の分岐を一切書かずに、ここに書くことで陥落素質あり自慰中毒高め自慰の共通口上を表示することが出来ます
+	;		PRINTFORML
+	;		RETURN 1
+	;	ENDIF
+	;	;-------------------------------------------------
+	;	;自慰中毒高め
+	;	;記入チェック（=0, 非表示、1, 表示）
+	;	LOCAL:1 = 0
+	;	;-------------------------------------------------
+	;	IF LOCAL:1 && ARG == 6
+	;		;-------------------------------------------------
+	;		;尻穴膣腔同時
+	;		;記入チェック（=0, 非表示、1, 表示）
+	;		LOCAL:1 = 0
+	;		;-------------------------------------------------
+	;		IF LOCAL:1 && ARG:1 == 1
+	;			PRINTFORML
+	;			RETURN 1
+	;		ENDIF
+	;		;-------------------------------------------------
+	;		;膣腔のみ
+	;		;記入チェック（=0, 非表示、1, 表示）
+	;		LOCAL:1 = 0
+	;		;-------------------------------------------------
+	;		IF LOCAL:1 && ARG:1 == 2
+	;			PRINTFORML
+	;			RETURN 1
+	;		ENDIF
+	;		;その他
+	;		;上の分岐を一切書かずに、ここに書くことで自慰中毒高め自慰の共通口上を表示することが出来ます
+	;		PRINTFORML
+	;		RETURN 1
+	;	ENDIF
+	;その他
+	;上の分岐を一切書かずに、ここに書くことで自慰の共通口上を表示することが出来ます
+	;我慢
+	IF ARG == 7
+		PRINTFORML 「으음, 뭘 해야 할까... 하고 싶은데...」
+		CALL HPH_PRINT,@"「아니, 정말로, 기다렸다가 %조사처리(CALLNAME:MASTER,"를")% 만나러 갈게...후우」","L"
+		;通常
+	ELSE
+		CALL HPH_PRINT,@"「하아, 하아, 하아... 음...붕붕」","L"
+		IF TALENT:111:恋慕
+			PRINTFORML 「안 돼... 이대로는 더 이상 버틸 수가 없어...」
+			CALL HPH_PRINT,@"「아아앙... %CALLNAME:MASTER%흐응... 더... 응ㅎ...흐응」","L"
+		ENDIF
+		SIF TALENT:111:恋慕 || TALENT:111:思慕
+			CALL HPH_PRINT,@"「응... %CALLNAME:MASTER%흐음...흡」","L"
+	ENDIF
+	PRINTL 
+	RETURN 1
+ENDIF
+RETURN 1
+;==================================================
+;浴場連れだし
+;==================================================
+
+@M_KOJO_EVENT_K111_23(ARG,ARG:1)
+;口上主はLOCAL
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	;-------------------------------------------------
+	;小分岐
+	;-------------------------------------------------
+	;断られた
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 1
+		PRINTFORML 「뭐라고? 나랑 목욕하고 싶다고?」
+		PRINTFORMW 「미쳤어?」
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;一緒に入ってくれた
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 2
+		PRINTFORMW 「야호♪ 목욕 시간이야~♪」
+		RETURN 1
+	ENDIF
+	;その他
+	PRINTFORML  
+ENDIF
+RETURN 1
+;==================================================
+;懐妊
+;==================================================
+
+@M_KOJO_EVENT_K111_24(ARG,ARG:1)
+;口上主はLOCAL
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	;-------------------------------------------------
+	;小分岐
+	;-------------------------------------------------
+	;恋慕
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 1
+		PRINTFORMW 「아! 이게...일지도 몰라...!」
+		PRINTFORML 
+		PRINTFORMDL 클라운피스는 자신의 몸에서 이상한 변화를 감지한다.
+		PRINTFORMDW 그녀는 자신이 얼마나 느려졌는지 놀라 당신을 찾아 서둘러 나간다.
+		PRINTFORML 
+		PRINTFORMW 「이봐! %CALLNAME:MASTER%! 자, 봐,%BABYCONDSTR(" a",111,1)% %BABYPLNOUN("baby",111)%!」
+		PRINTFORMW 「그건 내 거고 %조사처리(CALLNAME:MASTER,"의")% %BABYPLNOUN("baby",111)%야!」
+		PRINTFORML 「더 이상 소란을 피울 수는 없겠지만...」
+		PRINTFORMW 「%CALLNAME:MASTER%, 여기 분위기가 지루해지지 않게 해줘야 해, 안 그러면 %BABYPLNOUN("baby",111)%에 영향을 줄 거야!」
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;思慕
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	;同じ
+	IF LOCAL:1 && ARG == 2
+		PRINTFORMW 「아! 이게...일지도 몰라...!」
+		PRINTFORML 
+		PRINTFORMDL 클라운피스는 자신의 몸에서 이상한 변화를 감지한다.
+		PRINTFORMDW 그녀는 자신이 얼마나 느려졌는지 놀라 당신을 찾아 서둘러 나간다.
+		PRINTFORML 
+		PRINTFORMW 「이봐! %CALLNAME:MASTER%! 자, 봐,%BABYCONDSTR(" a",111,1)% %BABYPLNOUN("baby",111)%!」
+		PRINTFORMW 「그건 내 거고 %조사처리(CALLNAME:MASTER,"의")% %BABYPLNOUN("baby",111)%야!」
+		PRINTFORML 「더 이상 소란을 피울 수는 없겠지만...」
+		PRINTFORMW 「%CALLNAME:MASTER%, 여기 분위기가 지루해지지 않게 해줘야 해, 안 그러면 %BABYPLNOUN("baby",111)%에 영향을 줄 거야!」
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;陥落素質無し
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	;同じ,好きでなくともとりあえず喜ぶ純粋さがかわいい（言い訳）
+	IF LOCAL:1 && ARG == 3
+		PRINTFORMW 「아! 이게...일지도 몰라...!」
+		PRINTFORML 
+		PRINTFORMDL 클라운피스는 자신의 몸에서 이상한 변화를 감지한다.
+		PRINTFORMDW 그녀는 자신이 얼마나 느려졌는지 놀라 당신을 찾아 서둘러 나간다.
+		PRINTFORML 
+		PRINTFORMW 「이봐! %CALLNAME:MASTER%! 자, 봐,%BABYCONDSTR(" a",111,1)% %BABYPLNOUN("baby",111)%!」
+		PRINTFORMW 「그건 내 거고 %조사처리(CALLNAME:MASTER,"의")% %BABYPLNOUN("baby",111)%야!」
+		PRINTFORML 「더 이상 소란을 피울 수는 없겠지만...」
+		PRINTFORMW 「%CALLNAME:MASTER%, 여기 분위기가 지루해지지 않게 해줘야 해, 안 그러면 %BABYPLNOUN("baby",111)%에 영향을 줄 거야!」
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;無自覚
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 4
+		PRINTFORMW 「흐읍!? 설마 이게...」
+		PRINTFORMW 「왜 왜 왜...?? 안 돼, 그럴 리 없어... 무서워...」
+		RETURN 1
+	ENDIF
+	;その他
+	PRINTFORML  
+ENDIF
+RETURN 1
+;==================================================
+;出産
+;==================================================
+
+@M_KOJO_EVENT_K111_25(ARG,ARG:1)
+;口上主はLOCAL
+;ARG:1	何人目の子供か
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	;子供の性格設定（まだ）
+	;	CALL M_KOJO_K111_CHILD_TYPE_SETTING(ARG:1)
+	;無自覚リセット
+	CFLAG:111:1010 = 0
+	;-------------------------------------------------
+	;小分岐
+	;-------------------------------------------------
+	;恋慕
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 1
+		PRINTFORMW 「하아! 하아! 하아! 하아...!」
+		PRINTFORMW 「나... 나오고 있어...!!」
+		PRINTFORML 
+		CALL HPH_PRINT,@"「\@ CFLAG:111:LatestChildCount > 1 ? 아기들 # 한 아이 \@... 내 것과 %조사처리(CALLNAME:MASTER,"의")% %PLNOUN("baby",CFLAG:111:LatestChildCount)%...BPB」","W"
+		CALL HPH_PRINT,@"「캬♪ 너무 귀여워」","W"
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;思慕
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 2
+		PRINTFORMW 「하아! 하아! 하아! 하아...!」
+		PRINTFORMW 「나... 나오고 있어...!!」
+		PRINTFORML 
+		CALL HPH_PRINT,@"「\@ CFLAG:111:LatestChildCount > 1 ? 아기들 # 한 아이 \@... 내 것과 %조사처리(CALLNAME:MASTER,"의")% %PLNOUN("baby",CFLAG:111:LatestChildCount)%...BPB」","W"
+		CALL HPH_PRINT,@"「캬♪ 너무 귀여워」","W"
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;陥落素質無し
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 3
+		PRINTFORMW 「하아! 하아! 하아! 하아...!」
+		PRINTFORMW 「나... 나오고 있어...!!」
+		PRINTFORML 
+		CALL HPH_PRINT,@"「\@ CFLAG:111:LatestChildCount > 1 ? 아기들 # 한 아이 \@... 내 것과 %조사처리(CALLNAME:MASTER,"의")% %PLNOUN("baby",CFLAG:111:LatestChildCount)%...BPB」","W"
+		CALL HPH_PRINT,@"「캬♪ 너무 귀여워」","W"
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;無自覚
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 4
+		PRINTFORMW 「하아! 하아! 하아! 하아...!」
+		PRINTFORMW 「나... 나오고 있어...!!」
+		PRINTFORML 
+		PRINTFORMW 「\@ CFLAG:111:LatestChildCount > 1 ? 아기들 # 아이 한 명 \@... 왜 나한테 이런 일이... 누구의 %PLNOUN("child",CFLAG:111:LatestChildCount)%일 수 있을까 %PLNOUN("this",CFLAG:111:LatestChildCount)% 심지어...」
+		PRINTFORMW 「아, 하지만 %PLNOUN("it's",CFLAG:111:LatestChildCount)% 귀엽네...」
+		;無自覚出産,親が分からない
+		CFLAG:111:1010 = 1
+		CFLAG:111:(1020 + ARG:1) = 1
+		RETURN 1
+	ENDIF
+	;その他
+	PRINTFORML  
+ENDIF
+RETURN 1
+;==================================================
+;オナバレ
+;==================================================
+
+@M_KOJO_EVENT_K111_26(ARG,ARG:1)
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	SELECTCASE ARG
+		;-------------------------------------------------
+		CASE 0
+			;見られた瞬間
+			;記入チェック（=0, 非表示、1, 表示）
+			LOCAL:1 = 1
+			;-------------------------------------------------
+			IF LOCAL:1
+				IF FIRSTTIME("オナバレ")
+					PRINTFORMW 「와아... %CALLNAME:MASTER%님... 어-얼마나 거기 계셨던 거예요...」
+					PRINTFORML 「뭐, 뭐 보고 있는 거예요! 별거 아니에요! 그냥 평범한 여자들이 하는 거잖아요!」
+					PRINTFORMW 「여기 들어오지 않는 게 좋을 거야!」
+					TCVAR:111:352 = 1
+				ELSEIF TALENT:111:恋慕 && GETBIT(CFLAG:111:既成事実, 1)
+					;10日以上会ってない
+					IF DAY - CFLAG:111:1002 >= 10
+						PRINTFORML 「Ah... %CALLNAME:MASTER%...!」
+						PRINTFORMW 「이건... 음, 뭐... 당신을 한동안 못 봐서, 그리고 혼자 외로웠거든...」
+						PRINTFORMW 「더는 견딜 수가 없었어... 그래서, 음, 우우...」
+						TCVAR:111:352 = 4
+					ELSE
+						PRINTFORML 「아, 그건 그냥 %CALLNAME:MASTER%잖아~ 숨어 있기보다는 솔직하게 말하는 편이 좋지 않아~~」
+						PRINTL 
+						PRINTFORMDL 클라운피스는 거리낌 없이 문턱으로 다가오고, 그녀의 눈은 반쯤 감겨 있고 하반신에서는 물이 흘러내리고 있었다.
+						PRINTFORMDW 당신 주변의 공기가 뜨거워지고, 달콤한 사탕 같은 향기가 코를 가득 채웠다...
+						PRINTL 
+						PRINTFORML 「나 보러 여기까지 왔어~? 기쁘네♪」
+						PRINTFORMW 「뭘 찾고 있어~? 데이트? 하룻밤? 아 맞다, 같이 간식 먹자~」
+						TCVAR:111:352 = 3
+					ENDIF
+				ELSE
+					PRINTFORMW 「우으... %CALLNAME:MASTER%... 그리고 난 막...」
+					PRINTFORMW 「기다려, 아니야, 그게 문제가 아니라고! 또 엿보러 왔지?! 변태 같으니라고!」
+					TCVAR:111:352 = 2
+				ENDIF
+				;			CALL HPH_PRINT,@"「Ahhhnghー!! Nhoo! CummingHPH」","W"
+				;			PRINTFORMDL ...Apparently, getting seen made her a bit too flustered, and drove her over the edge.
+				;			PRINTFORMDW But nevertheless Clownpiece just powers through it, and resolutely turns you away.
+				;			PRINTFORML 「What are you looking at! It's not a big deal!」
+				;			PRINTFORMW 「You'd better not come in here!」
+				GOTO FINISH
+			ENDIF
+			;-------------------------------------------------
+		CASE 1
+			;何もしない
+			;記入チェック（=0, 非表示、1, 表示）
+			LOCAL:1 = 1
+			;-------------------------------------------------
+			IF LOCAL:1
+				PRINTL 
+				;初回,恋慕なしor合意まだ
+				IF TCVAR:111:352 == 1 || TCVAR:111:352 == 2
+					PRINTFORMW 「바보 같아! 나가!」
+					;恋慕＋合意
+				ELSEIF TCVAR:111:352 == 3
+					PRINTFORMW 「도망쳐~? 무슨 문제라도 있어~?」
+					;久しぶり
+				ELSEIF TCVAR:111:352 == 4
+					PRINTFORMW 「아! 잠깐... 아, 음...」
+				ENDIF
+				GOTO FINISH
+			ENDIF
+			;-------------------------------------------------
+		CASE 2
+			;そのまま続行
+			;記入チェック（=0, 非表示、1, 表示）
+			LOCAL:1 = 1
+			;-------------------------------------------------
+			IF LOCAL:1
+				PRINTL 
+				;初回,恋慕なしor合意まだ
+				IF TCVAR:111:352 == 1 || TCVAR:111:352 == 2
+					PRINTFORML 「뭐라고? 계속하라는 거야...?」
+					PRINTFORMW 「Okay, then feast your eyes♪」
+					;恋慕＋合意
+				ELSEIF TCVAR:111:352 == 3
+					PRINTFORML 「흐음, "이런 식으로"라고 말하는 거야... 계속하라는 뜻이야...?」
+					PRINTFORMW 「여기서 당신과 함께 하는 건, 음...」
+					PRINTFORMW 「아, 빌어먹을! 쇼를 원한다면 내가 보여주지!」
+					;久しぶり
+				ELSEIF TCVAR:111:352 == 4
+					PRINTFORML 「흐음, "이런 식으로"라고 말하는 건가... 계속하게 해달라는 거니...?」
+					PRINTFORMW 「으으... 안 돼... 네가 가능한 한 오래 끌 생각인 거지...」
+					PRINTFORMW 「그렇다면, 어쩔 수 없겠지... 부디 나를 스스로 만지는 걸 구경해 주렴...」
+				ENDIF
+				;			PRINTFORMW 「Whuh...? You want me to keep going...?」
+				;			PRINTFORMW 「Okay, then feast your eyes♪」
+				;			CALL HPH_PRINT,@"「...HaahnHPH NnghHPH」","W"
+				;			CALL HPH_PRINT,@"「AhhHPH Being watched by you turns me on so much, %CALLNAME:MASTER%HPH」","W"
+				GOTO FINISH
+			ENDIF
+			;-------------------------------------------------
+		CASE 3
+			;追い出し
+			;記入チェック（=0, 非表示、1, 表示）
+			LOCAL:1 = 1
+			;-------------------------------------------------
+			IF LOCAL:1
+				PRINTL 
+				PRINTFORMW 「개자식!! 지옥에나 가라!」
+				GOTO FINISH
+			ENDIF
+			;-------------------------------------------------
+		CASE 4
+			;やっちゃう
+			;記入チェック（=0, 非表示、1, 表示）
+			LOCAL:1 = 1
+			;-------------------------------------------------
+			IF LOCAL:1
+				PRINTL 
+				CALL HPH_PRINT,@"「이게 뭐야? 당신도 정말 응어리져 있군요, %CALLNAME:MASTER%HPH?」","L"
+				CALL HPH_PRINT,@"「좋아, 같이 하자HPH」","W"
+				GOTO FINISH
+			ENDIF
+			;-------------------------------------------------
+		CASE 5
+			;事後
+			;記入チェック（=0, 非表示、1, 表示）
+			LOCAL:1 = 1
+			;-------------------------------------------------
+			IF LOCAL:1
+				PRINTL 
+				CALL HPH_PRINT,@"「하아, 하아, 하아... 정말 기분 좋았다...흐읍」","L"
+				PRINTFORMW 「다음에 또 할 수 있겠지, 뭐!」
+				GOTO FINISH
+			ENDIF
+			;		;-------------------------------------------------
+			;		CASE 6
+			;		;事後お泊り
+			;		;記入チェック（=0, 非表示、1, 表示）
+			;		LOCAL:1 = 0
+			;		;-------------------------------------------------
+			;		IF LOCAL:1
+			;			PRINTL
+			;			PRINTFORML 「」
+			;			PRINTFORMW 「」
+			;			RETURN 1
+			;		ENDIF
+	ENDSELECT
+ENDIF
+$FINISH
+;最後に会った日
+CFLAG:111:1002 = DAY
+TCVAR:111:今日会ったか = 1
+RETURN 1
+;;オナバレックス判定用関数
+;;RETURN -1で強制失敗、RETURN 1で強制成功
+;@M_KOJO_EVENT_K111_26_1(ARGS)
+;#DIM 補正値
+;IF ARGS == "どうぞそのまま"
+;
+;ELSEIF ARGS == "二人で"
+;
+;ENDIF
+;使用例
+;IF !TALENT:XX:恋慕
+;	PRINTFORMW %CALLNAME:XX%はガードが堅いぞ！
+;	RETURN -1
+;ENDIF
+;IF TALENT:MASTER:濃厚精液
+;	PRINTFORMW %CALLNAME:XX%はちんぽに弱いぞ！
+;	RETURN 1
+;ENDIF
+;遠いので持ってきた
+;-------------------------------------------------
+;オナバレ遭遇時の地の文。
+;デフォルトのものと置き換えたい場合は上下のSKIPSTART~SKIPENDを外してください。
+;置き換える気がないならスルー。
+;-------------------------------------------------
+
+@M_KOJO_EVENT_K111_ONABARE_1(ARG)
+;-------------------------------------------------
+SELECTCASE RAND:5
+	CASE 0
+		PRINTFORMW 「아... 정말 굉장하다...」
+	CASE 1
+		PRINTFORMW 「%CFLAG:111:1099?"Goshyujinshamaaa"#"Mashterrrr"%~... 저 구역은 출입 금지야... 흐으음...」
+	CASE 2
+		PRINTFORMW 「네... %CFLAG:111:1099?"Goshujinsama"#"Master"%... 바로 거기에... 더~...」
+	CASE 3
+		PRINTFORMW 「후우~... 이런 곳에서... 모두가 볼 거야...」
+	CASEELSE
+		IF TALENT:111:恋慕
+			CALL HPH_PRINT,@"「응... %CALLNAME:MASTER%... 더 부드럽게 해줘... 아...흐읍」","W"
+		ELSE
+			PRINTFORMW 「음... 아아...」
+		ENDIF
+ENDSELECT
+PRINTL 
+PRINTFORMDW 당신이 알아채지 못하고 방을 엿보면, 클라운피스가 자위를 하는 모습을 힐끗 본다.
+SELECTCASE RAND:3
+	CASE 0
+		PRINTFORMDL 클라운피스는 큰 봉제 인형에 매달려 스스로 흥분하며, 즐거움 속에서 달콤한 울음소리를 낸다.
+	CASE 1
+		PRINTFORMDL 클라운피스는 다리를 활짝 벌린 채 침대 위에 드러누워 있고, 가랑이는 완전히 노출되어 있다.
+		PRINTFORMDL 그녀의 몸은 뒤로 아치형으로 휘어지며 골반을 공중으로 밀어 올리고 광적으로 스스로를 만지고 있었다.
+	CASEELSE
+		PRINTFORMDL 클라운피스는 소파에 늘어져 있었고, 옷은 느슨하게 걸려 있었으며 다리는 음란하게 벌리고 있었다.
+		PRINTFORMDL 그녀는 내내 달콤한 신음소리를 지르며 자신의 가랑이를 손가락으로 부드럽게 쓸었다.
+ENDSELECT
+SELECTCASE RAND:2
+	CASE 0
+		PRINTFORMD 강하고 달콤한 여자의 향기가 방을 가득 채우고 간신히 열린 문틈으로 새어 나와 코를 자극한다.
+	CASEELSE
+		PRINTFORMD 그녀의 광기의 횃불이 매혹적인 빛으로 장면을 비추며 죄악의 분위기를 고조시켰다.
+ENDSELECT
+PRINTFORMDW 머리가 빙빙 돌 정도로 어지럽다, 여기서 더 있으면 미쳐버릴 것 같다!
+PRINTFORMDL 하지만 다음 방에서 들려오는 귀여운 헐떡이는 목소리와 황홀한 분위기는 너무나 중독적이다.
+PRINTFORMDW 소녀가 오로지 쾌락에 몸을 맡기고 있는 모습에, 움직일 수 없이 완전히 매료되어 버린다...
+PRINTL 
+PRINTFORMW 「!! ...누구냐?!」
+;＞26-1へ
+;-------------------------------------------------
+;==================================================
+;相手からデートのお誘い
+;==================================================
+
+@M_KOJO_EVENT_K111_27(ARG,ARG:1)
+;口上主はLOCAL
+;ARG:1は目的地
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	SELECTCASE ARG
+		CASE 0
+			;-------------------------------------------------
+			;誘い文句
+			;記入チェック（=0, 非表示、1, 表示）
+			LOCAL:1 = 1
+			;-------------------------------------------------
+			IF LOCAL:1
+				PRINTFORML 「헤이 헤이, %CALLNAME:MASTER%, 모험을 떠나자♪」
+				SELECTCASE STR:(5000 + ARG:1)
+					CASE "博麗神社"
+						PRINTFORMW 「하쿠레이 신사에 가고 싶어~♪」
+					CASE "命蓮寺"
+						PRINTFORMW 「명련사에 가고 싶어~♪」
+					CASE "人間の里"
+						PRINTFORMW 「마을에서 데이트하자! 데이트야, 데이트~♪」
+					CASE "霧の湖～紅魔館"
+						PRINTFORMW 「안개 호수로 가고 싶어~♪」
+					CASE "迷いの竹林"
+						PRINTFORMW 「길을 잃은 대나무 숲에 가고 싶어～♪」
+					CASE "魔法の森"
+						PRINTFORMW 「마법의 숲에 가고 싶어~♪」
+					CASE "三途の川～冥界"
+						PRINTFORML 「산즈 강을 함께 건너자!」
+						PRINTFORMW 「괜찮을 거야~ 우리 같이 지옥에 갈 수 있잖아, %CALLNAME:MASTER%~」
+					CASE "妖怪の山 (山麓)"
+						PRINTFORMW 「요괴 산에 가고 싶어～♪」
+					CASE "妖怪の山 (山頂)"
+						PRINTFORMW 「산 등반을 해보고 싶어~♪」
+					CASE "地底"
+						PRINTFORMW 「지하로 가고 싶어~♪」
+					CASE "夢の世界～月"
+						PRINTFORMW 「달에 가자♪ 멀다고 생각해? 아니, 사실 여기서는 정말 가까워!」
+				ENDSELECT
+				RETURN 1
+			ENDIF
+		CASE 1
+			;-------------------------------------------------
+			;受けた
+			;記入チェック（=0, 非表示、1, 表示）
+			LOCAL:1 = 1
+			;-------------------------------------------------
+			IF LOCAL:1
+				PRINTFORMW 「야호♪ %조사처리(CALLNAME:MASTER,"는")% 정말 착하네♪」
+				RETURN 1
+			ENDIF
+		CASE 2
+			;-------------------------------------------------
+			;断った
+			;記入チェック（=0, 非表示、1, 表示）
+			LOCAL:1 = 1
+			;-------------------------------------------------
+			IF LOCAL:1
+				PRINTFORML 「쳇, 이 못난 애야.」
+				PRINTFORMW 「뭐 어때♪ 그럼 다음에 하자♪」
+				RETURN 1
+			ENDIF
+		CASE 3
+			;-------------------------------------------------
+			;部屋に誘われた
+			;記入チェック（=0, 非表示、1, 表示）
+			LOCAL:1 = 1
+			;-------------------------------------------------
+			IF LOCAL:1
+				PRINTFORML 「헤이 헤이, 오늘 우리 집에 가지 않을래?」
+				IF FIRSTTIME("お招き", 1, 111)
+					PRINTFORML 「지금 부모님 안 계셔!」
+					PRINTFORMW 「...하지만 늘 그런 거지.」
+				ELSE
+					SELECTCASE RAND:3
+						CASE 0
+							PRINTFORMW 「너에게 뭔가 보여주고 싶은 게 있어, %CALLNAME:MASTER%♪」
+						CASE 1
+							PRINTFORMW 「%조사처리(CALLNAME:MASTER,"의")% 집 요리를 해보고 싶어~! 푸하하, 농담이야~!」
+						CASEELSE
+							PRINTFORMW 「아, 음, 우리 둘만 있는 게 좀 좋을 것 같아서 말이야...」
+					ENDSELECT
+				ENDIF
+				RETURN 1
+			ENDIF
+		CASE 4
+			;-------------------------------------------------
+			;部屋に誘われたのを受けた
+			;記入チェック（=0, 非表示、1, 表示）
+			LOCAL:1 = 1
+			;-------------------------------------------------
+			IF LOCAL:1
+				IF FIRSTTIME("お招き", 0, 111)
+					PRINTFORML 「정말!? 야호♪」
+					PRINTFORMW 「그게, 음, 좀 지저분할 수도 있지만 분명 마음에 들 거라고 확신해, %CALLNAME:MASTER%♪」
+				ELSE
+					;晴れ
+					IF TIME:5 <= 1
+						PRINTFORML 「야호!」
+						PRINTFORML 「좋아, 내 손 꼭 잡아! 날아가자ー!」
+						;TIME += -1 * TIME_REQUIRED(GET_MAPID(CFLAG:MASTER:現在位置), 10) / 2
+						;遠いから時間短縮してあげようと思ったけど直後に出る地の文の表示と齟齬が出るのでやめ。-X分ってのは変だよね…
+					ELSE
+						PRINTFORML 「아, 다행이다!」
+						PRINTFORMW 「방을 치우기로 한 게 잘됐어♪」
+						;とか言ってるけど部屋の汚れは変化しません（ここではできない）
+						;本人は精一杯部屋を片付けたつもりでいるのです！
+					ENDIF
+				ENDIF
+				RETURN 1
+			ENDIF
+		CASE 5
+			;-------------------------------------------------
+			;部屋に誘われたのを断った
+			;記入チェック（=0, 非表示、1, 表示）
+			LOCAL:1 = 1
+			;-------------------------------------------------
+			IF LOCAL:1
+				PRINTFORML 「보인다...」
+				PRINTFORMW 「결국 달은 좀 멀고 뭐 그런 거겠지...」
+				RETURN 1
+			ENDIF
+	ENDSELECT
+ENDIF
+RETURN 1
+;==================================================
+;脱衣口上
+;==================================================
+
+@M_KOJO_EVENT_K111_28(ARG,ARG:1)
+;口上主はTARGET
+;ARGに脱がし方選択
+;ARG:1（ARG=3の場合のみあり）地の文の反応
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	SELECTCASE ARG
+		;-------------------------------------------------
+		CASE 0
+			;全裸にする
+			;記入チェック（=0, 非表示、1, 表示）
+			LOCAL:1 = 1
+			;-------------------------------------------------
+			IF LOCAL:1
+				;時間停止時
+				IF FLAG:時間停止
+					IF TCVAR:111:350
+						PRINTFORMDL 클라운피스의 옷을 벗기면서, 그 안에 남아있는 그녀의 체온이 관능적인 온기를 내뿜는 것을 느낄 수 있다.
+						PRINTFORMDW 달콤하고 황홀한 향기를 맡는다.
+					ENDIF
+					;通常
+				ELSE
+					IF TCVAR:111:350
+						PRINTFORMDL 클라운피스의 옷을 벗기면서 그녀의 몸에서 나는 열기가 남아 관능적인 온기를 풍긴다.
+						PRINTFORMW 「냄새 맡지 마! 역겨워!」
+					ELSE
+						CALL HPH_PRINT,@"「좋아, 그럼 나를 벗겨줘, %CALLNAME:MASTER%HPH」","L"
+						PRINTFORMW 「후우~ 상쾌하다♪」
+					ENDIF
+				ENDIF
+				RETURN 1
+			ENDIF
+			;-------------------------------------------------
+		CASE 1
+			;下着姿にする
+			;記入チェック（=0, 非表示、1, 表示）
+			LOCAL:1 = 0
+			;-------------------------------------------------
+			IF LOCAL:1
+				;時間停止時
+				IF FLAG:70
+					;通常
+				ELSE
+				ENDIF
+				RETURN 1
+			ENDIF
+			;-------------------------------------------------
+		CASE 2
+			;半脱ぎ
+			;記入チェック（=0, 非表示、1, 表示）
+			LOCAL:1 = 0
+			;-------------------------------------------------
+			IF LOCAL:1
+				;時間停止時
+				IF FLAG:70
+					;通常
+				ELSE
+				ENDIF
+				RETURN 1
+			ENDIF
+			;-------------------------------------------------
+		CASE 3
+			;パンツちょうだい
+			;記入チェック（=0, 非表示、1, 表示）
+			LOCAL:1 = 1
+			;-------------------------------------------------
+			IF LOCAL:1
+				SELECTCASE ARG:1
+					;-------------------------------------------------
+					CASE 0
+						;交換です
+						;記入チェック（=0, 非表示、1, 表示）
+						LOCAL:1 = 1
+						;-------------------------------------------------
+						IF LOCAL:1
+							PRINTFORMW 「헤이 헤이, 팬티 교환하자~♪」
+							RETURN 1
+						ENDIF
+						;-------------------------------------------------
+					CASE 1
+						;OK（嬉々
+						;記入チェック（=0, 非表示、1, 表示）
+						LOCAL:1 = 1
+						;-------------------------------------------------
+						IF LOCAL:1
+							IF TCVAR:111:350
+								PRINTFORML 「음ー... 지금은 좀, 어...」
+								PRINTFORMW 「있잖아, 나 땀 흘렸어...」
+								PRINTFORMW 「잠깐, 왜 그렇게 웃는 거야?! 변태 같아!」
+							ELSE
+								PRINTFORML 「뭐야? 내 팬티?」
+								PRINTFORMW 「그 후에 뭘 입어야 하지?」
+								CALL HPH_PRINT,@"「좋아, 그렇게 원한다면 %CALLNAME:MASTER%, 내가 줄게HPH」","W"
+							ENDIF
+							RETURN 1
+						ENDIF
+						;-------------------------------------------------
+					CASE 2
+						;OK（渋々
+						;記入チェック（=0, 非表示、1, 表示）
+						LOCAL:1 = 1
+						;-------------------------------------------------
+						IF LOCAL:1
+							IF TCVAR:111:350
+								PRINTFORML 「음ー... 지금은 좀, 어...」
+								PRINTFORMW 「있잖아, 나 땀 흘렸어...」
+								PRINTFORMW 「잠깐, 왜 그렇게 웃는 거야?! 변태 같아!」
+							ELSE
+								PRINTFORML 「뭐야? 내 팬티를?」
+								PRINTFORMW 「어차피 그걸로 뭘 할 건데...?」
+								PRINTFORMW 「좋아, 그렇게 원한다면 %CALLNAME:MASTER%, 줄게. 하지만...」
+							ENDIF
+							RETURN 1
+						ENDIF
+						;-------------------------------------------------
+					CASE 3
+						;嫌です
+						;記入チェック（=0, 非表示、1, 表示）
+						LOCAL:1 = 1
+						;-------------------------------------------------
+						IF LOCAL:1
+							PRINTFORML 「뭐라고? 내 팬티를?」
+							PRINTFORMW 「No way! Gross!」
+							RETURN 1
+						ENDIF
+						RETURN 1
+				ENDSELECT
+			ENDIF
+	ENDSELECT
+ENDIF
+RETURN 1
+;==================================================
+;怒り口上
+;==================================================
+
+@M_KOJO_EVENT_K111_29(ARG,ARG:1)
+;口上主はTARGET
+;ARGはTARGETの度胸で分岐
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	;-------------------------------------------------
+	;小分岐
+	;-------------------------------------------------
+	;怒らせてしまった
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 1
+		PRINTFORMW 「너를 증오해, %CALLNAME:MASTER%! 지옥으로 가라!」
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;泣かせてしまった　[臆病]持ち
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 0
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 2
+		RETURN 1
+	ENDIF
+ENDIF
+RETURN 1
+;==================================================
+;相手が押し倒しを解除
+;==================================================
+
+@M_KOJO_EVENT_K111_30(ARG,ARG:1)
+;口上主はTARGET
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	;-------------------------------------------------
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 1
+		;疲れた
+		PRINTFORML 「후우... 피곤하다♪」
+		CALL HPH_PRINT,@"「미안해 %CALLNAME:MASTER%HPH! 하지만 이제 충분히 먹었어♪」","W"
+		TCVAR:111:351 = 0
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 2
+		;満足して解放
+		CALL HPH_PRINT,@"「후우」","L"
+		CALL HPH_PRINT,@"「고마워요 %CALLNAME:MASTER%님! 충분했어요♪」","W"
+		TCVAR:111:351 = 0
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 3
+		;満足したところを押し倒された
+		CALL HPH_PRINT,@"「꺄아흐프」","L"
+		CALL HPH_PRINT,@"「젠장, 어쩔 수 없겠지」","W"
+		TCVAR:111:351 = 0
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 4
+		;壊れるまでしてあげる
+		CALL HPH_PRINT,@"「크하하하... 네가 원했잖아HPH」","L"
+		CALL HPH_PRINT,@"「~미친 시간이야~ HPHHPH」","W"
+		RETURN 1
+	ENDIF
+ENDIF
+RETURN 1
+;==================================================
+;一日の終了時(AFTERTRAニーの前)、面識がなければ呼び出されない
+;==================================================
+
+@M_KOJO_EVENT_K111_31(ARG,ARG:1)
+;口上主はTARGET
+;ARGは会ってない日数
+;何日以上会ってなかったら愚痴を言うとかできます
+;CFLAG:オナバレで分岐入れてもよさそう
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	;※口上はないけどフラグの管理だけする
+	;-------------------------------------------------
+	;小分岐
+	;-------------------------------------------------
+	;今日会っていない
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG
+		CFLAG:111:1003 = ARG
+		RETURN 1
+	ENDIF
+	;-------------------------------------------------
+	;今日会っている
+	;記入チェック（=0, 非表示、1, 表示）
+	LOCAL:1 = 1
+	;-------------------------------------------------
+	IF LOCAL:1 && ARG == 0
+		CFLAG:111:1003 = 0
+		RETURN 1
+	ENDIF
+ENDIF
+RETURN 1
+;==================================================
+;自由行動中
+;ARG:1      0=行動中,1=完了時
+;技能系の行動は技能レベルが1以上なら発生
+;==================================================
+
+@M_KOJO_EVENT_K111_32(ARG,ARG:1)
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	SELECTCASE ARG
+		CASE 0
+			;▼考え事,（～は考えに耽っている。）
+			IF !ARG:1
+				;行動中
+				PRINTFORML 「흠~...」
+			ELSE
+				;完了時
+				PRINTFORML 「그래, 그거야!」
+			ENDIF
+		CASE 1
+			;		;▼遊ぶ,（～は走り回っている。）
+			;		;※[幼稚]持ちのみ
+			;		IF !ARG:1
+			;			;行動中
+			;			PRINTFORML
+			;;		ELSE
+			;			;完了時
+			;			PRINTFORML
+			;		ENDIF
+		CASE 2
+			;▼食事,（～は食事を摂っている。）
+			IF !ARG:1
+				;行動中
+				SELECTCASE RAND:4
+					CASE 1
+						PRINTFORML 「냠냠...」
+					CASE 2
+						PRINTFORML 「냠냠...」
+					CASE 3
+						PRINTFORML 「음, 맛있다...」
+					CASEELSE
+						PRINTFORML 「냠냠...」
+				ENDSELECT
+			ELSE
+				;完了時
+				PRINTFORML 「음식 고마워~♪」
+			ENDIF
+		CASE 3
+			;▼つまみ食い（～はこっそりつまみ食いをしている。）
+			;※[妖精]持ちとルーミア、こいし、幽々子、紫苑のみ
+			IF !ARG:1
+				;行動中
+				SELECTCASE RAND:4
+					CASE 1
+						PRINTFORML 「아, 그거 정말 맛있어 보이네♪」
+					CASE 2
+						PRINTFORML 「여기에 어딘가에 있을 거야...!」
+					CASE 3
+						PRINTFORML 「쉬잇-! 들킬 거야...」
+					CASEELSE
+						PRINTFORML 「냠냠...」
+				ENDSELECT
+			ELSE
+				;完了時
+				PRINTFORML 「음식 고마워~♪」
+			ENDIF
+		CASE 4
+			;		;▼掃除,（～はテキパキと部屋の掃除をしている。）
+			;		;※[掃除係]持ちまたは汚臭耐性-1以下のみ
+			;		IF !ARG:1
+			;			;行動中
+			;			PRINTFORML
+			;		ELSE
+			;			;完了時
+			;			PRINTFORML
+			;		ENDIF
+		CASE 5
+			;▼運動,（～は張り切って運動している。）
+			;※[音楽知識]持ちは除く（演奏になる）
+			IF !ARG:1
+				;行動中
+				SELECTCASE RAND:4
+					CASE 1
+						PRINTFORML 「흡, 흡, 흐음프!」
+					CASE 2
+						PRINTFORML 「흥흥흥, 하아앗! 크으윽, 푸와아!」
+					CASE 3
+						PRINTFORML 「후우, 후우, 하아, 좋아!」
+					CASEELSE
+						PRINTFORML 「아-원, 후, 아-투, 후, 아-원, 후, 아-투!」
+				ENDSELECT
+			ELSE
+				;完了時
+				PRINTFORML 「휴우, 완전히 녹아버렸다～」
+			ENDIF
+		CASE 6
+			;		;▼読書,（～は黙々と本を読んでいる。）
+			;		IF !ARG:1
+			;			;行動中
+			;			PRINTFORML
+			;		ELSE
+			;			;完了時
+			;			PRINTFORML
+			;		ENDIF
+		CASE 7
+			;		;▼料理,
+			;		IF !ARG:1
+			;			;行動中
+			;			IF Activity_Duration:TARGET > 30
+			;				;料理中（～は軽快に料理をしている。）
+			;				PRINTFORML
+			;			ELSE
+			;				;食事中（～は作った料理を食べている。）
+			;				PRINTFORML
+			;			ENDIF
+			;		ELSE
+			;			;完了時
+			;			PRINTFORML
+			;		ENDIF
+		CASE 8
+			;		;▼演奏
+			;		;※[音楽知識]持ちのみ（TALENT:音楽知識で変化）
+			;		;1,～は小気味よく演奏している。
+			;		;2,～は気ままに歌っている。
+			;		;3,～は華麗に踊っている。
+			;		IF !ARG:1
+			;			;行動中
+			;			PRINTFORML
+			;		ELSE
+			;			;完了時
+			;			PRINTFORML
+			;		ENDIF
+		CASE 9
+			;▼採集,（～使える素材を探している。）
+			IF !ARG:1
+				;行動中
+				SELECTCASE RAND:4
+					CASE 1
+						PRINTFORML 「이 근처에 반짝이는 게 남아있을까~?」
+					CASE 2
+						PRINTFORML 「어라? 이게 뭐지?」
+					CASE 3
+						PRINTFORML 「킁킁... 저기 뭔가 있는 것 같아!」
+					CASEELSE
+						PRINTFORML 「세상에! 이 엄청 멋진 돌을 얻었어!」
+				ENDSELECT
+			ELSE
+				;完了時
+				PRINTFORML 「오케이, 난 이걸로 끝내야겠어!」
+			ENDIF
+		CASE 10
+			;		;▼釣り,（～はのんびり釣りをしている。）
+			IF !ARG:1
+				;行動中
+				SELECTCASE RAND:4
+					CASE 1
+						PRINTFORML 「♪～～」
+					CASE 2
+						PRINTFORML 「....곧일 것이다...」
+					CASE 3
+						PRINTFORML 「여기야 물고기 씨이~♪」
+					CASEELSE
+						;ここポケモン
+						PRINTFORML 「오호, 당겨야 해, 빨리 당겨야 한다!!」
+				ENDSELECT
+			ELSE
+				;完了時
+				PRINTFORML 「푸우―......... 몰라, 지루해 죽겠어!!」
+			ENDIF
+		CASE 11
+			;		;▼実験,（～は怪しい実験をしている。）
+			;		IF !ARG:1
+			;			;行動中
+			;			PRINTFORML
+			;		ELSE
+			;			;完了時
+			;			PRINTFORML
+			;		ENDIF
+		CASE 12
+			;▼のんびり,（～はのんびりしている。）
+			IF !ARG:1
+				;行動中
+				SELECTCASE RAND:4
+					CASE 1
+						PRINTFORML 「♪～～♪～～」
+					CASE 2
+						PRINTFORML 「하아암~...」
+					CASE 3
+						PRINTFORML 「흠♪ 흥흥음~♪ 후우웅~♪」
+					CASEELSE
+						PRINTFORML 「음~ ♪ 정말 조용하네~」
+				ENDSELECT
+			ELSE
+				;			;完了時
+				;			PRINTFORML
+			ENDIF
+		CASE 13
+			;▼晩酌,（～はまったりとお酒を飲んでいる。）
+			;※酒耐性0以上のみ
+			IF !ARG:1
+				;行動中
+				SELECTCASE RAND:4
+					CASE 1
+						PRINTFORML 「푸하아~~♪」
+					CASE 2
+						PRINTFORML 「아, 내려갈 때 정말 멋진 불꽃이 피어나네♪」
+					CASE 3
+						PRINTFORML 「너도 좀 먹을래, %CALLNAME:MASTER%～?」
+					CASEELSE
+						PRINTFORML 「파하하하하하~♪」
+				ENDSELECT
+			ELSE
+				;			;完了時
+				;			PRINTFORML
+			ENDIF
+		CASE 14
+			;		;▼買い物,（～は気ままに買い物している。）
+			;		IF !ARG:1
+			;			;行動中
+			;			PRINTFORML
+			;		ELSE
+			;			;完了時
+			;			PRINTFORML
+			;		ENDIF
+		CASE 15
+			;		;▼説教,（～はじっと聞いている…）
+			;		;※神霊・蓬莱人は除く
+			;		IF !ARG:1
+			;			;行動中
+			;			PRINTFORML
+			;		ELSE
+			;			;完了時
+			;			PRINTFORML
+			;		ENDIF
+		CASE 16
+			;▼落とし穴,（～は落とし穴を増やしている）
+			;※三月精・チルノ・クラウンピースのみ
+			;それ以外は落ちる側
+			IF !ARG:1
+				;行動中
+				SELECTCASE RAND:4
+					CASE 1
+						PRINTFORML 「흡, 흡, 흡프프!!」
+					CASE 2
+						PRINTFORML 「크크크크...」
+					CASE 3
+						PRINTFORML 「음~ 이렇게 더 만들어 볼까~?」
+					CASEELSE
+						PRINTFORML 「좋아~ 잘 되고 있어~」
+				ENDSELECT
+			ELSE
+				;完了時,
+				;（仕掛け人（失敗時）,誰も引っかからないので～は飽きてしまったようだ…）
+				;（落ちた側（戦闘能力2～4）,～はすぐに穴から飛び出して周りをキョロキョロ見回している…）
+				;PRINTFORML
+			ENDIF
+		CASE 17
+			;▼雪だるま作り（～は雪を集めている）
+			IF !ARG:1
+				;行動中
+				SELECTCASE RAND:4
+					CASE 1
+						PRINTFORML 「좋아, 좋아, 조금만 더 커야 해...」
+					CASE 2
+						PRINTFORML 「데굴데굴데굴~♪」
+					CASE 3
+						PRINTFORML 「히야아~, 너무 추워!」
+					CASEELSE
+						PRINTFORML 「그리고 밀어붙이고, 그리고 밀어붙여!」
+				ENDSELECT
+			ELSE
+				;完了時
+				PRINTFORML 「모든 것이 끝났어~♪」
+			ENDIF
+		CASE 18
+			;▼炬燵でのんびり（～は炬燵に入って温まっている）
+			IF !ARG:1
+				;行動中
+				SELECTCASE RAND:4
+					CASE 1
+						PRINTFORML 「흐으음~ 포근포근♪」
+					CASE 2
+						PRINTFORML 「하아암~...」
+					CASE 3
+						PRINTFORML 「음~ 정말 따뜻하네~♪」
+					CASEELSE
+						PRINTFORML 「하아아, 하품이네...」
+				ENDSELECT
+			ELSE
+				;			;完了時
+				;			PRINTFORML
+			ENDIF
+	ENDSELECT
+ENDIF
+RETURN 1
+;==================================================
+;ハッピーニューイヤー
+;年越しの瞬間に同じ部屋に居ると発生
+;==================================================
+
+@M_KOJO_EVENT_K111_33(ARG,ARG:1)
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	PRINTFORML 「야아아~! 해피 ★ 새해 ★ 되길!!」
+	PRINTFORMW 「우와아~~샴페인 터진다!」
+ENDIF
+RETURN 1
+;==================================================
+;技能レベルアップ
+;各ABL値はレベルアップ後の値になってます
+;==================================================
+
+@M_KOJO_EVENT_K111_34(ARG,ARG:1)
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	SIF INRANGE(ARG, 1, 16) && ARG:1 == 0 ;bug fixes line displaying even if there is no skill lvl up
+		PRINTFORML 「스킬 레벨 업~!」
+	;	SELECTCASE ARG
+	;	CASE 1
+	;		;戦闘技能
+	;		PRINTFORMW
+	;	CASE 2
+	;		;話術技能
+	;		PRINTFORMW
+	;	CASE 3
+	;		;清掃技能
+	;		PRINTFORMW
+	;	CASE 4
+	;		;教養
+	;		PRINTFORMW
+	;	CASE 5
+	;		;料理技能
+	;		PRINTFORMW
+	;	CASE 6
+	;		;採集Lv
+	;		PRINTFORMW
+	;	CASE 7
+	;		IF ARG:1 == 0
+	;			;音楽技能
+	;			PRINTFORMW
+	;		ELSEIF ARG:1 == 1
+	;			;【音楽知識】取得
+	;			PRINTFORMW
+	;		ELSEIF ARG:1 == 2
+	;			;【相対音感】取得
+	;			PRINTFORMW
+	;		ENDIF
+	;	CASE 8
+	;		;釣りLv
+	;		PRINTFORMW
+	;	CASE 9
+	;		IF ARG:1 == 0
+	;			;調合Lv
+	;			PRINTFORMW
+	;		ELSEIF ARG:1 == 1
+	;			;【調合知識】取得
+	;			PRINTFORMW
+	;		ENDIF
+	;	CASE 10
+	;		;伐採Lv
+	;		PRINTFORMW
+	;	CASE 11
+	;		IF ARG:1 == 0
+	;			;指
+	;			PRINTFORMW
+	;		ELSEIF ARG:1 == 1
+	;			;【器用な指】取得
+	;			PRINTFORMW
+	;		ENDIF
+	;	CASE 12
+	;		IF ARG:1 == 0
+	;			;舌
+	;			PRINTFORMW
+	;		ELSEIF ARG:1 == 1
+	;			;【舌使い】取得
+	;			PRINTFORMW
+	;		ENDIF
+	;	CASE 13
+	;		IF ARG:1 == 0
+	;			;胸
+	;			PRINTFORMW
+	;		ELSEIF ARG:1 == 1
+	;			;【淫乳】取得
+	;			PRINTFORMW
+	;		ENDIF
+	;	CASE 14
+	;		;腰
+	;		PRINTFORMW
+	;	CASE 15
+	;		IF ARG:1 == 0
+	;			;膣
+	;			PRINTFORMW
+	;		ELSEIF ARG:1 == 1
+	;			;【淫壺】取得
+	;			PRINTFORMW
+	;		ENDIF
+	;	CASE 16
+	;		IF ARG:1 == 0
+	;			;アナル
+	;			PRINTFORMW
+	;		ELSEIF ARG:1 == 1
+	;			;【尻穴狂い】取得
+	;			PRINTFORMW
+	;		ENDIF
+	;	ENDSELECT
+	PRINTL 
+ENDIF
+RETURN 1
+;;==================================================
+;;デイリーイベント2,夢精
+;濃厚精液状態で発生
+;;▼地の文--------------------------------------------------
+;;【MASTER】が夢精で汚した下着を洗っていると【TARGET】が飛んできた！
+;;【TARGET】はそんなもの他の洗濯物と一緒に洗わないでと抗議すると、【MASTER】の手に収まった下着をふんだくり戻っていった…
+;;【TARGET】　欲情の珠＋1000
+;;==================================================
+;@M_KOJO_DAILY_EVENT_K111_2(ARG, ARG:1, ARG:2, ARG:3, ARG:4, ARGS:1, ARGS:2)
+;;地の文を変えたければコメントアウト
+;;※コメントアウトすると欲情の珠＋1000（JUEL:11 += 1000）もカットされるので注意
+;CALL DAILY_MESSAGE_2(ARG, ARG:1, ARG:2, ARG:3, ARG:4, ARGS:1, ARGS:2)
+;;--------------------------------------------------
+;;記入チェック（=0, 非表示、1, 表示）
+;LOCAL = 0
+;;-------------
+;IF LOCAL
+;	PRINTFORMW
+;ENDIF
+;RETURN 1
+;==================================================
+;デイリーイベント4,物思い
+;;親密5以上で発生（来訪キャラのみ）
+;▼地の文--------------------------------------------------
+;とりとめもない思考に耽っていた【TARGET】は、いつの間にか【MASTER】のことを考えていたことに気づいた
+;【TARGET】は明日【MASTER】に会いに行くことにしたようだ
+;==================================================
+
+@M_KOJO_DAILY_EVENT_K111_4(ARG, ARG:1, ARG:2, ARG:3, ARG:4, ARGS:1, ARGS:2)
+;地の文を変えたければコメントアウト
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	PRINTFORMW 「흠~ 그래, 맞아... 내일은 %조사처리(CALLNAME:MASTER,"랑")% 놀러 가야겠다!」
+ENDIF
+RETURN 1
+;==================================================
+;デイリーイベント12,特訓
+;信頼100以上で発生（拠点キャラのみ）
+;==================================================
+
+@M_KOJO_DAILY_EVENT_K111_12(ARG, ARG:1, ARG:2, ARG:3, ARG:4, ARGS:1, ARGS:2)
+;地の文を変えたければコメントアウト
+;コメントアウトできるのはARG:1=1,2のみです
+;--------------------------------------------------
+;記入チェック（=0, 非表示、1, 表示）
+LOCAL = 1
+;-------------
+IF LOCAL
+	SELECTCASE ARG:1
+		CASE 1
+			;特訓を頼まれる
+			;～から新技の訓練に付き合って欲しいと言われた
+			PRINTFORML 「헤이 헤이, %CALLNAME:MASTER%님!」
+			PRINTFORML 「와서 이 새로운 기교를 시험해 봐줘! 딱 1분밖에 안 걸릴 거야!」
+		CASE 2
+			;断る
+			;～は残念そうだ
+			PRINTFORML 「칫-! 너 이 못난 애야-!」
+		CASE 3
+			;～の攻撃！
+			;※ここはWAITしないでください
+			PRINTFORML 「좋아, 이거 먹어!!」
+		CASE 4
+			IF ARG:2
+				;時間停止して回避
+				PRINTFORML 「뭐야!? 방금 이상한 거 했어?」
+			ELSE
+				;回避成功
+				PRINTFORML 「크윽! 제대로 하는 게 좀 어렵네!」
+			ENDIF
+		CASE 5
+			;回避失敗
+			PRINTFORML 「캬하하♪ 좋아, 아주 잘 작동하는 것 같아~!」
+	ENDSELECT
+ENDIF
+RETURN 1
+;;-------------------------------------------------
+;;処女・無自覚非処女に挿入する直前の口上
+;;RETURN 1するとコマンドをキャンセルします
+;;RETURN 0なら通します
+;;CFLAG:破瓜キャンセル口上有がオンになってないと読み込まれないので注意
+;;-------------------------------------------------
+;@M_KOJO_EVENT_K111_LOST_VIRGIN_STOP
+;;-------------------------------------------------
+;PRINTFORML
+;RETURN 1
+;-------------------------------------------------
+;CFLAG:口上内抱き寄せ判定_初回がオンになっている場合のみ有効。
+;初めて押し倒した時、ここでRETURN -1すると押し倒しを強制的にキャンセルします。
+;RETURN 0なら通常の判定を行い、RETURN 1すると無条件に成功させます。
+;特定のイベント（デート帰りキスなど）を見るまでうふふできないようにしたいときなどにどうぞ。
+;-------------------------------------------------
+
+@M_KOJO_EVENT_K111_PERMISSION_1
+;-------------------------------------------------
+IF M_KOJO_K111_FUKIGEN([[クラウンピース]])
+	;口上本体は押し倒す側で
+	RETURN -1
+ELSE
+	RETURN 0
+ENDIF
+;-------------------------------------------------
+;-------------------------------------------------
+;CFLAG:口上内抱き寄せ判定_通常がオンになっている場合のみ有効。
+;合意付きで押し倒した時、ここでRETURN -1すると押し倒しを強制的にキャンセルします。
+;RETURN 0なら通常通り成功させます。
+;合意があっても何らかの理由でうふふできないようにしたいときなどにどうぞ。
+;-------------------------------------------------
+
+@M_KOJO_EVENT_K111_PERMISSION_2
+;-------------------------------------------------
+IF M_KOJO_K111_FUKIGEN([[クラウンピース]])
+	;口上本体は押し倒す側で
+	RETURN -1
+ELSE
+	RETURN 0
+ENDIF
+;-------------------------------------------------
+;-------------------------------------------------
+;部屋描写用関数
+;口上キャラのOMANEKIBEYAか拠点の描写に使います
+;記入する際はコメントアウトを外してください
+;-------------------------------------------------
+
+@K111_ROOM_DESCRIPTION
+;贈り物を3回以上保存しているとき
+IF CFLAG:[[クラウンピース]]:1007 >= 3 && !RAND:3
+	PRINTFORMDL 벽에 걸린 선반에는 지금까지 그녀에게 주었던 모든 선물들이 정성스럽게 일렬로 놓여 있다.
+ELSE
+	SELECTCASE RAND:5
+		CASE 1
+			PRINTFORMDL 고문 도구 같은 걱정거리들이 장난감과 게임의 혼란스러운 잡동사니 속에 섞여 있었다...
+		CASE 2
+			PRINTFORMDL 벽지는 기이한 무늬로 뒤덮여 있었고, 몇 순간 이상 그것을 바라보면 머리가 아파오기 시작했다.
+		CASE 3
+			PRINTFORMDL 방 여기저기에 신비로운 불빛들이 놓여 있어 깜빡이는 빛들 때문에 눈이 이리저리 움직인다...
+		CASE 4
+			PRINTFORMDL 한 가지 의미에서는 명백히 아이의 방이지만, 동시에 정말 섬뜩한 분위기를 풍긴다...
+		CASEELSE
+			PRINTFORMDL 그녀의 방은 당신을 깊이 불안하게 만드는 이세계적인 아우라를 풍긴다.
+	ENDSELECT
+ENDIF
+;-------------------------------------------------
+;==================================================
+;贈り物イベント
+;==================================================
+
+@M_KOJO_EVENT_K111_GIFT(ARG, GIFT_ID, 評価点, GIFT_NAME, SENSE)
+#DIM GIFT_ID
+#DIM 評価点
+#DIMS GIFT_NAME
+#DIMS SENSE
+;---------------------------------------------------------------------------------------------------
+;評価点       贈り物の評価点（1～999）,口上主があげた場合でも口上主の評価点
+;GIFT_NAME    贈り物の名称
+;SENSE        贈り物に設定された属性。STRCOUNT(DISH_TASTE, "ほげほげ/")を使うと特定の属性を判定できます。
+;GIFT_ID      これ単体では使いません。以下の式内関数を使うとデータを抽出できます（こだわりたい人用）
+;　GET_GIFTDATA(GIFT_ID, "回数")    貰った（あげた）回数
+;　GET_GIFTDATA(GIFT_ID, "得点")    得点（1～999）,口上テンプレ内では用意されてます。
+;　GET_GIFTDATA(GIFT_ID, "日付")    貰った（あげた）日付（1～9999）
+;　GET_GIFTDATA(GIFT_ID, "場所")    買った場所（デートの行き先）
+;　GET_GIFTDATA(GIFT_ID, "形容詞")  形容詞番号（贈り物_形容詞.erb参照）
+;　GET_GIFTDATA(GIFT_ID, "本体")    本体番号（贈り物_本体.erb参照）
+;--------------------------------------------------------------------------------------------------
+;デート帰りに口上主があなたに贈り物を渡す（陥落や好感度に関わらず親密5以上から発生）
+;評価点は701～999（渡すキャラ本人の評価）
+;--------------------------------------------------------------------------------------------------
+IF ARG == 1
+	SELECTCASE RAND:3
+		CASE 1
+			PRINTFORMW 「아, 잠깐 잠깐! %CALLNAME:MASTER%님!」
+			PRINTFORMW 「잊고 있었는데, 오늘 당신을 위해 정말 특별한 선물을 준비했어, %CALLNAME:MASTER%님!」
+		CASE 2
+			PRINTFORMW 「너에게 무언가 깜짝 선물을 해주고 싶어서 말이야, %CALLNAME:MASTER%!」
+			PRINTFORMW 「짠―!」
+		CASEELSE
+			PRINTFORMW 「오 그래요! 오늘 당신을 위한 선물을 가져왔어요, %CALLNAME:MASTER%님!」
+			PRINTFORMW 「자, 여기 있어요!」
+	ENDSELECT
+	PRINTL 
+	PRINTFORMDL 당신은 클라운피스에게서 선물을 언래핑한다. 그녀가 당신에게 %GIFT_NAME%을 준 것 같다!
+	PRINTW 
+	IF STRCOUNT(SENSE, "(クレイジーな|地獄の|狂気の)")
+		PRINTFORML 「음? 꽤 멋지지 않아~!」
+		CALL HPH_PRINT,@"「정말 잘 돌봐줘야 해, 알았지 HPH?」","W"
+	ELSEIF STRCOUNT(SENSE, "(かわいい|怖い)")
+		PRINTFORML 「음? 정말 귀엽잖아~!」
+		PRINTFORMW 「너만을 위해 특별히 골랐어, %CALLNAME:MASTER%ー!」
+	ELSE
+		PRINTFORML 「글쎄? 엄청 멋지지 않아~!」
+		PRINTFORMW 「하지만 %조사처리(CALLNAME:MASTER,"에게")% 정말 취향일지는 잘 모르겠어~...」
+	ENDIF
+	RETURN 1
+	;--------------------------------------------------------------------------------------------------
+	;一日の終わりに今日貰った贈り物を大事にする（700点以上）
+	;--------------------------------------------------------------------------------------------------
+ELSEIF ARG == 2
+	IF STRCOUNT(SENSE, "(地獄の|狂気の|クレイジーな|骨|妖術)")
+		CALL M_KOJO_COLOR_K111_HECA
+		PRINTFORML 「오, 조각아, 저건 뭐니? 꽤 멋져 보이네.」
+		PRINTW 
+		CALL M_KOJO_COLOR_K111
+		PRINTFORML 「에헤헤~♪ 정말 굉장해~! %CALLNAME:MASTER%에게서 얻었어~♪」
+		PRINTW 
+		CALL M_KOJO_COLOR_K111_HECA
+		IF TALENT:[[ヘカーティア]]:恋慕
+			PRINTFORML 「오 마이~보게, %CALLNAME:MASTER%답네. %HE_SHE(MASTER)%는 머리가 좋구나♪」
+		ELSEIF TALENT:[[ヘカーティア]]:思慕
+			PRINTFORML 「후~ %HE_SHE(MASTER)%는 네가 좋아하는 걸 꽤 잘 아는 것 같네. 내 생각에 %HIM_HER(MASTER)%에 대한 평가는 방금 올라간 것 같아!」
+		ELSE
+			PRINTFORML 「음~, %HE_SHE(MASTER)%는 취향이 꽤 좋은 것 같다.」
+		ENDIF
+	ELSEIF STRCOUNT(SENSE, "(ポップ|ロリータ|かわいい)")
+		CALL M_KOJO_COLOR_K111
+		PRINTFORML 「헤이 헤이, %CFLAG:111:1099?"Goshujinsama"#"Master"%! 이것 좀 봐!」
+		PRINTW 
+		CALL M_KOJO_COLOR_K111_HECA
+		PRINTFORML 「오 마이, 정말 귀엽네. 너한테 정말 잘 어울려, 피스♪」
+		PRINTW 
+		CALL M_KOJO_COLOR_K111
+		PRINTFORML 「에헤헤~ %CALLNAME:MASTER%에게서 받았어~♪」
+		PRINTW 
+		CALL M_KOJO_COLOR_K111_HECA
+		IF TALENT:[[ヘカーティア]]:恋慕
+			PRINTFORML 「그렇게 생각했어! %HE_SHE(MASTER)%는 정말로 너를 사랑해, 조각아.」
+		ELSEIF TALENT:[[ヘカーティア]]:思慕
+			PRINTFORML 「나도 봐~ 지금쯤이면 %조사처리(CALLNAME:MASTER,"가")% 너를 꽤 잘 안다고 할 수 있지 않니?」
+		ELSE
+			PRINTFORML 「음~, 최소한 %HE_SHE(MASTER)%는 나쁜 사람이 아닌 것 같아.」
+		ENDIF
+	ELSE
+		CALL M_KOJO_COLOR_K111_HECA
+		PRINTFORML 「오 이런, 무슨 일이야, 조각?」
+		PRINTW 
+		CALL M_KOJO_COLOR_K111
+		PRINTFORML 「푸하하하, 다 괜찮아~♪ 있잖아, %조사처리(CALLNAME:MASTER,"가")% 나한테 이거 사줬단 말이야~♪」
+		PRINTFORML 「앗! 하지만 너한테 줄 생각 없어, %CFLAG:111:1099?"Goshujinsama"#"Master"%이여!」
+		PRINTW 
+		CALL M_KOJO_COLOR_K111_HECA
+		IF TALENT:[[ヘカーティア]]:恋慕
+			IF CFLAG:[[ヘカーティア]]:貰った贈り物
+				CALL HPH_PRINT,@"「후훗♪ 괜찮아, %HE_SHE(MASTER)%가 나에게 더 좋은 걸 주셨어HPH」","L"
+			ELSEIF CFLAG:[[ヘカーティア]]:贈り物ストック
+				PRINTFORML 「후훗♪ 나도 특별한 게 있어.」
+				SIF GET_GIFTDATA(CFLAG:[[ヘカーティア]]:贈り物ストック, "得点") < 400
+					PRINTFORML (비록 내가 전당포에서 그것을 맡겼지만...)
+			ELSE
+				PRINTFORML 「아... %HE_SHE(MASTER)%가 나한테 그런 걸 아직 안 해줬네... 뭐, 괜찮아.」
+			ENDIF
+		ELSEIF TALENT:[[ヘカーティア]]:思慕
+			PRINTFORML 「정말, 기분이 좋아 보이는군.」
+		ELSE
+			PRINTFORML 「걱정 마, 너에게서 아무것도 가져갈 계획은 없어.」
+		ENDIF
+	ENDIF
+	PRINTFORML 「조각아, 정말 잘 돌봐야 해, 어디에 잃어버리지 마.」
+	PRINTW 
+	CALL M_KOJO_COLOR_K111
+	CALL HPH_PRINT,@"「이야! 내 보물이 될 거야-HPH」","W"
+	CFLAG:[[クラウンピース]]:1007 ++
+	RETURN 1
+	;--------------------------------------------------------------------------------------------------
+	;一日の終わりに今日貰った贈り物をお気に入りにする（↑の大事にするから続き）（700点以上かつ最高得点）
+	;--------------------------------------------------------------------------------------------------
+ELSEIF ARG == 3
+	PRINTL 
+	IF TALENT:[[クラウンピース]]:恋人
+		PRINTFORML 「이거면 돼! 내가 가는 곳 어디든 이걸 가지고 다닐 수 있다면, 절대 잃어버릴 리 없어——」
+		PRINTFORMW 「이제 %조사처리(CALLNAME:MASTER,"의")% 연모가 항상 나와 함께 있을 것만 같아...」
+	ELSEIF TALENT:[[クラウンピース]]:恋慕
+		PRINTFORML 「이거면! 내가 어디를 가든 이걸 가지고 다니면 절대 잃어버리지 않을 거야——」
+		PRINTFORMW 「...왠지 %조사처리(CALLNAME:MASTER,"의")% 작은 일부가 나와 함께 있는 것 같은 기분이 들어...」
+	ELSE
+		PRINTFORML 「이거면 내가 어디를 가든 항상 가지고 다닐 수 있겠네~」
+	ENDIF
+	RETURN 1
+	;--------------------------------------------------------------------------------------------------
+	;一日の終わりに今日貰った贈り物をとりあえず保管する（400～699点）
+	;--------------------------------------------------------------------------------------------------
+ELSEIF ARG == 4
+	;たまに介入してくる
+	IF !RAND:3
+		CALL M_KOJO_COLOR_K111_JUNKO
+		PRINTFORML 「오호, 거기 무슨 걸 가지고 있나?」
+		PRINTW 
+		CALL M_KOJO_COLOR_K111
+		PRINTFORML 「아! %CFLAG:111:1099?"Yuujinsama"#"Mrs. Friend"%! 이걸 %조사처리(CALLNAME:MASTER,"에게")% 받았어!」
+		PRINTW
+		CALL M_KOJO_COLOR_K111_JUNKO
+		IF TALENT:[[純狐]]:恋慕
+			IF CFLAG:[[純狐]]:貰った贈り物
+				PRINTFORML 「그런 거구나... 음, %HE_SHE(MASTER)%가 나에게 준 것과 비교할 수 있을지는 모르겠지만, 좋은 선물이야...」
+			ELSEIF CFLAG:[[純狐]]:贈り物ストック
+				PRINTFORML 「그렇단 말인가... 음, 당신만이 %HIM_HER(MASTER)%에게 선물을 받은 건 아니니까...」
+			ELSE
+				;漢字で書くと誤解されそうなので平仮名で……
+				PRINTFORML 「그렇단 말인가... 아마 나에게 무언가를 주도록 %HIM_HER(MASTER)%를 "설득"해야 할지도 모르겠군...」
+			ENDIF
+		ELSEIF TALENT:[[純狐]]:思慕
+			PRINTFORML 「%CALLNAME:MASTER%에게서... 알겠다.」
+		ELSE
+			PRINTFORML 「그런 거야... 정말 좋네, 축하해 줄게.」
+		ENDIF
+		PRINTFORML 「음, 그걸로 뭘 할 계획이야?」
+		PRINTW
+		CALL M_KOJO_COLOR_K111
+		PRINTFORMW 「네, 좋은 질문이네요, 음... 그냥 장식용으로 쓸게요!」
+		PRINTFORMDL ...
+		PRINTFORMDL ......
+		PRINTFORMDL .........
+		PRINTW 
+	ENDIF
+	CALL M_KOJO_COLOR_K111
+	SELECTCASE CFLAG:[[クラウンピース]]:1007 % 5
+		CASE 1
+			PRINTFORMW 「좋아! 여기, 딱 놓자!」
+		CASE 2
+			PRINTFORMW 「어디에 두어야 할지 잘 모르겠네... 그냥 저기에 둘게.」
+		CASE 3
+			PRINTFORMW 「이 자리를 이용해서 %조사처리(CALLNAME:MASTER,"에게")% 받은 모든 선물을 보관해야겠어~」
+		CASE 4
+			PRINTFORMW 「흠~ 어디에 두어야 할까...」
+		CASEELSE
+			PRINTFORML 「아! 나 이것들도 받았던 거 완전히 깜빡했어!」
+			PRINTFORMW 「이것들을 다 둘 만한 장소는 이미 생각해 뒀는데...」
+	ENDSELECT
+	IF CFLAG:[[クラウンピース]]:1007 >= 3
+		SELECTCASE CFLAG:[[クラウンピース]]:1007 % 4
+			CASE 1
+				PRINTFORMW 「전혀 눈치채지 못했지만, 벌써 이렇게 많은 선물을 받았어, %HIM_HER(MASTER)%로부터!」
+			CASE 2
+				PRINTFORMW 「곧 이 자리에 더 이상 넣을 공간이 없어질 거야...」
+			CASE 3
+				PRINTFORMW 「네네, 선반이 차려가는 것 같아♪」
+			CASEELSE
+				PRINTFORMW 「와, 안에 정말 많이 꽉 차 있네~♪」
+		ENDSELECT
+	ENDIF
+	CFLAG:[[クラウンピース]]:1007 ++
+	RETURN 1
+	;--------------------------------------------------------------------------------------------------
+	;一日の終わりに今日貰った贈り物をこっそり質に入れる（400点未満）
+	;--------------------------------------------------------------------------------------------------
+ELSEIF ARG == 5
+	CALL M_KOJO_COLOR_K111_HECA
+	PRINTFORML 「오 이런, 무슨 일이야, 조각?」
+	PRINTW 
+	CALL M_KOJO_COLOR_K111
+	PRINTFORML 「음, 있잖아, 나 이 이상한 걸 %CALLNAME:MASTER%한테 받았어...」
+	PRINTW 
+	CALL M_KOJO_COLOR_K111_HECA
+	IF TALENT:[[ヘカーティア]]:恋慕
+		IF CFLAG:[[ヘカーティア]]:贈り物ストック
+			PRINTFORML 「아, 아하... 그게 정말 좋다고 할 수 있겠네...」
+			PRINTFORML (정말 다행이야 %HE_SHE(MASTER)%가 그걸 나에게 주지 않았어~)
+		ELSE
+			PRINTFORML 「아, 아하... 있잖아, 질투한다고 말할 수는 없을 것 같아...」
+		ENDIF
+	ELSEIF TALENT:[[ヘカーティア]]:思慕
+		PRINTFORML 「오 이런... %HIS_HER(MASTER)%의 비참한 판단이 패턴이 되지 않기를 정말 바라지만...」
+	ELSE
+		PRINTFORML 「아이고, 정말 말도 안 되는 사람이야...」
+	ENDIF
+	PRINTFORML 「음, 내가 %HE_SHE(MASTER)%이 너를 위해 골라준 거니까 그래도 소중히 여겨야겠지.」
+	PRINTW
+	CALL M_KOJO_COLOR_K111
+	PRINTFORML 「우와아—?! 말도 안 돼, 이 쓰레기 계속 갖고 싶지 않아!」
+	;This line had a very silly pun - Clownpiece references selling it on 『シニガミ』 shinigami, which is a pun for the online marketplace merukari
+	PRINTFORMW 「그냥 이걸 『헬베이』에서 팔아버리자!」
+	;地獄界の大手フリマサービス『シニガミ』は、処分品を効率よく、かつ迅速に市場に流せる便利なサービスなのだ。
+	RETURN 1
+ENDIF
+RETURN 1
+;==================================================
+;ムシバトル
+;ムシバトルの口上は少し特殊で、PRINTを使うのではなく、
+;台詞一行のみをRESULTSに入れてください
+;ムシの名前は %MUSHI_NAME% で表示できます
+;ムシの名前の最長はアレキサンドラトリバネアゲハの全角14文字です
+;文字数制限があります。はみ出ないように気をつけてください
+;ARGは残りムシ数か順位です
+;==================================================
+
+@M_KOJO_MESSAGE_COM_K111_MUSHI_BATTLE(ARGS, ARG)
+#DIM 残りムシ数
+#DIM 順位
+SELECTCASE ARGS
+	CASE "試合前"
+		;-------------------------------------------------
+		;キャラセレクト時,ARGは使えません
+		;全角50文字くらいまで
+		;記入チェック（=0, 非表示、1, 表示）
+		LOCAL:1 = 1
+		;-------------------------------------------------
+		IF LOCAL:1
+			RESULTS = 「Ho ho ho... You're gonna witness Hell!」
+		ENDIF
+	CASE "戦場に出した"
+		;-------------------------------------------------
+		;"【（キャラ）】は《（ムシ）》を戦場に出した！」"の直後
+		;全角40文字まで（カギカッコ含む）
+		;記入チェック（=0, 非表示、1, 表示）
+		LOCAL:1 = 1
+		残りムシ数 = ARG
+		;-------------------------------------------------
+		IF LOCAL:1
+			RESULTS = 「Gooo! %MUSHI_NAME_TR(MUSHI_NAME)%!」
+		ENDIF
+	CASE "攻撃時"
+		;-------------------------------------------------
+		;"【（キャラ）】《（ムシ）》の『（攻撃名）』！」"の直前
+		;全角40文字まで（カギカッコ含む）
+		;記入チェック（=0, 非表示、1, 表示）
+		LOCAL:1 = 1
+		残りムシ数 = ARG
+		;-------------------------------------------------
+		IF LOCAL:1
+			RESULTS = 「Blow 'em awayー! %MUSHI_NAME_TR(MUSHI_NAME)%!」
+		ENDIF
+	CASE "倒れた時"
+		;-------------------------------------------------
+		;"【（キャラ）】《（ムシ）》は倒れた！！"の直後
+		;全角40文字まで（カギカッコ含む）
+		;記入チェック（=0, 非表示、1, 表示）
+		LOCAL:1 = 1
+		残りムシ数 = ARG
+		;-------------------------------------------------
+		IF LOCAL:1
+			RESULTS = 「Ack! Aw maaan～」
+		ENDIF
+	CASE "敗退時"
+		;-------------------------------------------------
+		;"【（キャラ）】敗退！！"の直後
+		;全角40文字まで（カギカッコ含む）
+		;記入チェック（=0, 非表示、1, 表示）
+		LOCAL:1 = 1
+		残りムシ数 = ARG
+		;-------------------------------------------------
+		IF LOCAL:1
+			RESULTS = 「Can't any of you guys move anymore... Gahhh!」
+		ENDIF
+	CASE "タイマン：勝ち"
+		;-------------------------------------------------
+		;順位は1位
+		;全角20文字まで（カギカッコ含む）
+		;記入チェック（=0, 非表示、1, 表示）
+		LOCAL:1 = 1
+		順位 = ARG
+		;-------------------------------------------------
+		IF LOCAL:1
+			RESULTS = 「You're ten years too early before you can think about beating me!」
+		ENDIF
+	CASE "タイマン：負け"
+		;-------------------------------------------------
+		;順位は2位
+		;全角20文字まで（カギカッコ含む）
+		;記入チェック（=0, 非表示、1, 表示）
+		LOCAL:1 = 1
+		順位 = ARG
+		;-------------------------------------------------
+		IF LOCAL:1
+			RESULTS = 「I never thought I could lose...」
+		ENDIF
+	CASE "バトルロイヤル：優勝"
+		;-------------------------------------------------
+		;順位は1位
+		;全角30文字まで（カギカッコ含む）
+		;記入チェック（=0, 非表示、1, 表示）
+		LOCAL:1 = 1
+		順位 = ARG
+		;-------------------------------------------------
+		IF LOCAL:1
+			RESULTS = 「I was a piece of cake♪」
+		ENDIF
+	CASE "バトルロイヤル：２位以下"
+		;-------------------------------------------------
+		;順位は2～4位
+		;全角30文字まで（カギカッコ含む）
+		;記入チェック（=0, 非表示、1, 表示）
+		LOCAL:1 = 1
+		順位 = ARG
+		;-------------------------------------------------
+		IF LOCAL:1
+			RESULTS = 「Aw crapー...」
+		ENDIF
+	CASE "チーム戦：勝ち"
+		;-------------------------------------------------
+		;順位は1位（やられていても）
+		;全角32文字まで（カギカッコ含む）
+		;記入チェック（=0, 非表示、1, 表示）
+		LOCAL:1 = 1
+		順位 = ARG
+		;-------------------------------------------------
+		IF LOCAL:1
+			RESULTS = 「Of course this was gonna be the result!」
+		ENDIF
+	CASE "チーム戦：負け"
+		;-------------------------------------------------
+		;順位は2位
+		;全角32文字まで（カギカッコ含む）
+		;記入チェック（=0, 非表示、1, 表示）
+		LOCAL:1 = 1
+		順位 = ARG
+		;-------------------------------------------------
+		IF LOCAL:1
+			RESULTS = 「Whaaー!? Whyyyー!?」
+		ENDIF
+ENDSELECT
+SIF RESULTS != ""
+	RETURN 1
+;==================================================
+;引力操作
+;TCVAR:引力点に場所IDを入れるとその地点に引っ張られていきます
+;場所IDと同じ拠点マップでしか効果はありません（博麗神社の境内なら拠点が博麗神社のときだけ）
+;条件を付けないと永久に引っ張られ続けるので注意
+;RANDは基本的に使えません。CFLAG:今日の運勢にその日のランダム数値（0～999）が入っているのでこれを使うと良いです
+;==================================================
+
+@M_KOJO_EVENT_K111_GRAVITY(ARG)
+SIF 0
+	TCVAR:引力点 = 0
+;▼共通設定で使われているサンプル
+
+@M_KOJO_CHECK_K111_IRAI_BLOCKED(ARGS,ARG,ARG:1)
+SIF GROUPMATCH(ARG, 2)
+	RETURN 1

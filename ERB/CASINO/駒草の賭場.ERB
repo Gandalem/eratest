@@ -1,0 +1,2396 @@
+﻿; Modular ERB: 駒草の賭場.ERB
+;稼ぐ手段の紅魔カジノに対して雰囲気+ロールプレイ用な感じで差別化したいなあ
+;ほとんどのコードをカジノから引っ張ってきてます
+
+@賭場_導入
+#DIM 退店フラグ
+退店フラグ = 0
+DRAWLINE
+CALL 賭場_台詞("入店中")
+DRAWLINE
+PRINTFORML 
+PRINTFORML ~코마쿠사 도박장~
+PRINTFORML 　현재 보유 자산: %金額表示(MONEY), 13, RIGHT%
+PRINTFORML 　현재 칩: %三桁区切(KOMAFUDA:MASTER), 13, RIGHT%
+;qol custom code
+PRINTFORML 　총 승리 수 : %金額表示(nGamblingDenProfit), 13, RIGHT%
+PRINTFORML 
+PRINTFORML [1] - 초한(짝수 확률)을 플레이한다.
+PRINTFORML [2] - 시로(세 개의 주사위)를 플레이한다.
+;PRINTFORML [3]おいちょかぶで遊ぶ-札表示のスクリプト組めたらやりたい
+;PRINTFORML [4]ナンパする-お金で即セフレになるモブ子を湧かせる、とか
+;PRINTFORML [5]酒を頼む-酔っ払うとダイス判定に極小メリット＆強烈なデバフをつける、とか
+;PRINTFORML [6]おだいじん-モブ子も酔うとクリファン率上がる、とか
+PRINTFORML 
+PRINTFORML [8] - 칩 교환
+PRINTFORML [9] - 설명
+PRINTFORML [0] - 나가기
+DO
+INPUT
+SELECTCASE RESULT
+	CASE 0
+		退店フラグ = 1
+		BREAK
+	CASE 1
+		CALL CHIPS_REQ(100) ;custom code
+		SIF RESULT
+			BREAK
+		CALL COLORMESSAGE("「좋아, 이제 당신에게 가장 잘 맞을 것 같은 적절한 설정을 골라주세요.」", 0xD37CD0, 1, 0)
+		CALL ASK_M("아이들의 놀이터 : 최대 베팅액 = 200", KOMAFUDA:0 >= 100, "레이디스 앤 젠틀맨즈 클럽: 최대 베팅 = 500", KOMAFUDA:0 >= 250, "하드코어 도박장 :최대 베팅=1000", KOMAFUDA:0 >= 500, "궁극의 생존자 : 최대 베팅= ???(TBD)", 0, "취소", 1)
+		LOCAL = RESULT
+		IF RESULT == 4
+			CALL COLORMESSAGE(@"「괜찮아, 기분 날 때 언제든지 다시 불러줘.」", 0xD37CD0, 2, 0)
+		ELSE
+			CALL COLORMESSAGE(@"「좋아, 병을 흔들 테니 준비해!」", 0xD37CD0, 1, 0)
+			CALL COLORMESSAGE(@"「사람이 테이블에 충분히 모이면 게임을 시작할 거야!」", 0xD37CD0, 2, 0)
+			RESULT = 0
+			CALL 丁半博打_メイン(LOCAL)
+			退店フラグ = RESULT
+		ENDIF
+	CASE 2
+		CALL CHIPS_REQ(40) ;custom code
+		SIF RESULT
+			BREAK
+		CALL COLORMESSAGE("「좋아, 이제 네가 즐기기에 적절한 설정을 골라.」", 0xD37CD0, 1, 0)
+		;custom code, enabled 2000 bet
+		CALL ASK_M("아이들의 놀이터 : 최대 베팅액 = 20", KOMAFUDA:0 >= 40, "레이디스 앤 젠틀맨즈 클럽: 최대 베팅액 = 200", KOMAFUDA:0 >= 400, "하드코어 도박판 :최대 베팅액=2000", KOMAFUDA:0 >= 4000, "궁극의 생존자 : 최대 베팅= ???(TBD)", 0, "취소", 1)
+		LOCAL = RESULT
+		LOCALS:0 '= "Right-o, have a good one with each other!", "Gotcha, better get your money's worth, then!", "My-my-my, we got ourselves a brave one, huh? Try your best not to go broke!", "...Well, I ain't stopping ya. Go get 'em!", "Huh, changed your mind already?"
+		RESULT = 0
+		CALL COLORMESSAGE(@"「%LOCALS:LOCAL%」", 0xD37CD0, 2, 0)
+		SIF LOCAL < 4
+			CALL チンチロリン_メイン(LOCAL)
+		退店フラグ = RESULT
+	CASE 8
+		CALL 賭場_コマ札交換
+	CASE 9
+		CALL 賭場_台詞("へるぷ")
+	CASEELSE
+		CLEARLINE 1
+		CONTINUE
+ENDSELECT
+SIF NEMUKE() >= 700
+	退店フラグ = 2
+BREAK
+LOOP 1
+IF 退店フラグ
+	CALL 賭場_台詞("退店", 退店フラグ)
+	RETURN
+ENDIF
+RESTART
+
+@CHIPS_REQ(ARG) ;custom code
+IF KOMAFUDA:0 < ARG ;custom code fix
+	CALL COLORMESSAGE(@"「고객님께, 충분한 칩이 없으면 이 게임을 할 수 없습니다!」", 0xD37CD0, 1, 0)
+	CALL COLORMESSAGE(@"「먼저 돈을 내고 돌아와라.」", 0xD37CD0, 2, 0)
+	PRINTFORMW 이 게임을 플레이하려면 최소 {ARG} 칩이 필요하다.
+	RETURN 1
+ENDIF
+;賭場システムメッセージ部分
+;@CASINO_CHECK_EVENTをだいたい流用
+
+@賭場_台詞(ARGS, ARG)
+#DIM 賭場入店
+#DIM 賭場退店
+#DIM DYNAMIC 人物 ;custom code
+#DIM メッセージ
+#DIM ラッキー
+#DIMS モブ
+#DIMS 自称
+#DIMS 台詞
+#DIMS 表情
+#DIM nPersonality ;custom code
+;custom code - set to target in case there's kanako hanging around for example
+;replace with a loop once more characters are added
+IF !FLAG:デート相手
+	SIF TOBA_PLACE(CFLAG:32:現在位置)
+		人物 = 32
+	SIF TOBA_PLACE(CFLAG:33:現在位置)
+		人物 = 33
+	SIF TOBA_PLACE(CFLAG:129:現在位置)
+		人物 = 129
+	SIF	TOBA_PLACE(CFLAG:138:現在位置)
+	人物 = 138
+	SIF TOBA_PLACE(CFLAG:140:現在位置)
+		人物 = 140
+ELSE
+	人物 = FLAG:デート相手
+ENDIF
+表情 = 通常
+メッセージ = 0
+SELECTCASE ARGS
+	CASE "入店中"
+		;初回
+		IF !FLAG:賭場訪問日
+			SELECTCASE 人物
+				;神奈子/諏訪子/久侘歌/魅須丸/龍
+				CASE 32, 33, 129, 138, 140
+					台詞 = 「Well, well, well... Look who's here!」 /「To think we'd have a %\@ 人物 == 138 ? Great Tengu # Goddess \@% bless us with her presence, it's a great honor to have you come all the way to visit us.」 /「This is a social meeting place for both ladies and gentlemen alike.」 /「If not for a moment, you can forget all your worldly affairs and simply enjoy yourself!」
+					;典
+				CASE 139
+					台詞 = 「My, my...」 /「What do folks like the Kuda-Gitsune %HIM_HER(138)%self have in store for us, stepping in here?」 /「This is a social meeting place for both ladies and gentlemen alike.」 /「Spare us the trouble of the distasteful tricks, would you?」
+				CASEELSE
+					;山頂/山麓住まい
+					;addition custom code, duplicated characters
+					IF GROUPMATCH(CSVCFLAG(NO:人物, GETNUM(CFLAG, "自宅位置")) / 100 , 7, 8)
+						台詞 = 「Glad to see you finally made it here. I welcome you.」 /「This is a social meeting place for both ladies and gentlemen alike.」 /「A perfect place to kick back and unwind, so to speak.」 /「Well, have a good time! Try not to get too into it, though.」
+					ELSEIF !人物
+						台詞 = 「Hmm? You look new here...」 /「Welcome to our humble gambling den of the forest!」 /「You can call it a social meeting place for both ladies and gentlemen alike.」 /「Well, now that you're here, go on ahead and take your time to enjoy yourself!」
+					ELSE
+						台詞 = 「Hmm? This must be the first time we've met here...」 /「Welcome to our humble gambling den of the forest!」 /「This is a social meeting place for both ladies and gentlemen alike, a place for everyone to have fun.」 /「So let's not get into any wild ideas about carelessly using your abilities or anything like that.」
+					ENDIF
+			ENDSELECT
+			賭場入店 = 1
+			賭場退店 = 0
+			FLAG:賭場訪問日 = DAY
+			メッセージ = 1
+			;その日初めての入店
+		ELSEIF DAY - FLAG:賭場訪問日
+			SELECTCASE 人物
+				;神奈子/諏訪子/久侘歌/魅須丸/龍
+				CASE 32, 33, 129, 138, 140
+					台詞 = 「Welcome!」/「Are you and your companion here for a breather?」/「By all means, have a great time!」
+					;典
+				CASE 139
+					台詞 = 「Well well... A Kuda-Gitsune is snooping around in here.」/「Leaving %HIS_HER(138)% master's side to indulge in some *fun*, I see.」
+				CASEELSE
+					台詞 = 「Heya, come on in!」/「Have you grown fond of this place?」/「In any case, take your time and have fun.」
+			ENDSELECT
+			賭場入店 = 1
+			賭場退店 = 0
+			FLAG:賭場訪問日 = DAY
+			メッセージ = 1
+			;当日再来店
+		ELSEIF 賭場入店 == 賭場退店
+			SELECTCASE 人物
+				;神奈子/諏訪子/久侘歌/魅須丸/龍
+				CASE 32, 33, 129, 138, 140
+					台詞 = 「Oh, you're back again?」/「Come on in, please, enjoy your stay to your heart's content.」
+					;典
+				CASE 139
+					台詞 = 「You kept sneaking around like that...」/「Just what kind of mischief do you have in mind?」/「Please don't try anything strange.」
+				CASEELSE
+					台詞 = 「My oh my... I see you haven't had enough fun yet?」/「Go right ahead, indulge yourself as much as you want.」
+			ENDSELECT
+			賭場退店 ++
+			メッセージ = 1
+			;にぎやかし
+		ELSEIF !RAND:3
+			モブ = %TEXTR("Yamawaro/Kappa/Crow Tengu/Bakedanuki/Bakegitsune/Bakeneko/Youkai Rabbit/")%
+			自称 = %TEXTR("わたし/私/あたい/あたし/")%
+			SIF !RAND:4
+				自称 = %TEXTR("ボク/僕/")%
+			;custom code
+			nPersonality = RAND:4 ;%SPLIT_G("normal:child:girly:tomboy")%
+			SIF FLAG:口上色
+				SETCOLOR GET_CN_WORD_COLOR(STR:(RAND:13 + 2050))
+			;しょーもないネタは低確率
+			IF !RAND:25
+				;some kind of obscure jp meme https://dic.nicovideo.jp/a/%E3%82%B8%E3%83%A5%E3%83%BC%E3%82%B9%E9%A3%B2%E3%82%93%E3%81%A7%E3%82%93%E3%81%98%E3%82%83%E3%83%8D%E3%83%BC%E3%83%A8%E3%81%AF%E3%81%92%21%21
+				PRINTFORMDL 당신은 입구에서 심하게 당황한 %モブ%을 발견한다...
+				PRINTFORML 
+				PRINTFORML 「우으음, 내 소중한 돈... 다 날렸어, 전부 날렸다고... 심지어 %TEXTR("친구에게 빌린 것/그 여자에게 빌린 것/가게에서 빌린 것/딜러에게 빌린 것/보스에게 빌린 것/")%의 돈까지...」
+				PRINTFORMW 「내 이름으로 남은 건 겨우 200엔뿐이야...」
+				PRINTFORMDL ...딸깍! 파-친크!
+				PRINTFORML 「이제 80엔밖에 안 남았어... 아, 나 완전 망했어...!」
+				PRINTFORMDL ...주스에만 쓰지 마, 이 빌어먹을 대머리!!!
+			ELSEIF RAND:2
+				PRINTDATADL
+					DATAFORM %CAPITALIZE(ARTICLE(モブ))%는 장관으로 보이는 승리에 대해 소란을 피우고 있다...
+					DATAFORM %CAPITALIZE(ARTICLE(モブ))%는 인생에서 한 번뿐인 올인 게임에서 이긴 후 뛰어다니며 소리를 지르고 있다...
+					DATAFORM %CAPITALIZE(ARTICLE(モブ))%는 옆에 쌓여 있는 거대한 칩 더미를 보며 스스로 매우 만족하는 듯하다...
+					DATAFORM %CAPITALIZE(ARTICLE(モブ))%는 단 한 번의 결정적인 승리로 큰돈을 벌고 나서 배를 잡고 웃고 있다...
+				ENDDATA
+				PRINTFORML 
+				PRINTDATAL LOCAL
+					DATAFORM 「%SPLIT_SINGLE(@"오 이런, 이렇게 많이 따다니 정말 짜릿하네!: 아하하, 와우! 나 좀 봐, 내가 대박이야! 기분 좋다～: 음~ 누가 잭팟을 터뜨리는 게 이렇게 기분 좋을 거라고 생각했겠어?: 오 마안, 현금 산더미를 따는 건 최고의 기분이야!", nPersonality)%」\n「%SPLIT_SINGLE(@"계속 이길 수 있는 건 정말 힘들다니까~ : 아얏, 아파! 웃음을 멈출 수가 없어, 너무 아프다! : 하아, 이게 쉽지 않네. 내가 번 이 모든 현금을 감당하는 게 너무 힘들어! : 아이고, 지금 기분이 나쁘네, 너무 많이 이겨서 악당이 된 것 같아!", nPersonality)%♪」
+					DATAFORM 「%SPLIT_SINGLE(@"저것 좀 봐! 오, 믿을 수가 없어!:이리 와서 봐!: 벌써 내가 하는 걸 봤어? 믿기 힘들 거 알아~: 어때, 응?! 이거 좀 봐!!!", nPersonality)%」\n「%SPLIT_SINGLE(@"모든 노력이 드디어 결실을 맺었고, 내가 해냈어!:나 정말 운이 좋아! 이제 거의 부자야!:당신 같은 고상한 숙녀에게는 걸맞은 완벽한 행운이 따르는 게 당연하지, 후후～:이건 모두 나의 놀라운 실력 덕분이야, 내가 말해주는 거라고!", nPersonality)%」
+					DATAFORM 「%SPLIT_SINGLE(@"정말 미안하지만 이번에도 내 승리인 것 같네.:잘 가라, 패배자들! 다음엔 현금 더 가져와!:후후, 너희들을 위해 거의 안타까워질 뻔했어～:아이고, 네 신세가 딱하겠구나!", nPersonality)%」\n「%SPLIT_SINGLE(@"난 오늘 정말 내 날인 것 같아, 이 모든 승리들 덕분에: 난 계속 이길 수 없어, 그리고 멈출 수가 없다고! 나한테 또 가져와!: 내가 없을 때 다음엔 최선을 다해봐, 그때는 한 번쯤 이기게 될지도 모르지: 내가 항상 이기는 건 내 잘못이 아니잖아!", nPersonality)%♪」
+					DATAFORM 「%SPLIT_SINGLE(@"그거 정말 내 얼굴에 미소를 짓게 하는군, 헤헤헤...:뭐지?! 또 이겼나? 아햐하야! 별 놀랄 일 아니지!:므후후, 굉장해, 정말 멋져~:아하하하하! 크으, 기분 좋다!", nPersonality)%」\n「%SPLIT_SINGLE(@"좋은 술이 필요해, 내가 누릴 자격이 있어!:헤이 바텐더! 네가 가진 제일 센 걸 내놔! 응, 나 먹을 수 있어, 조용히 해!:와인을 마셔야겠어, 좀 가져다주렴～:오오이, 누가 술좀 가져다줘!", nPersonality)%」\n「%SPLIT_SINGLE(@"오오, 이게 바로 그거지! 너희들도 좀 마셔도 돼, 어서 받아가!: 난 안 나눠줄 거야, 흥!: 꿀꺽... 하아~ 이 맛이 승리의 맛인가... 아, 그래, 내가 우월함을 과시해 주지, 네가 어떻게 알겠어?: 적어도 이 패배자들에게 자비를 베풀어줘야지, 공짜야!", nPersonality)%♪」
+					DATAFORM 「%SPLIT_SINGLE(@"또 한 판 할래?:헤이헤이, 다시 할래?:오우, 나에게 도전하는 거야?:또 경기를 하러 갈까?", nPersonality)%」\n「%SPLIT_SINGLE(@"물론이지, 왜 안 되니?:아유 좋아! 네 뒤통수는 풀이야!:이제 지긋지긋하니? 좋다, 네 차례야～:물론이지, 언제든 붙어주겠어!", nPersonality)%」\n「%SPLIT_SINGLE(@"오늘은 내가 최고라는 느낌이 들어!: 당분간은 절대 지지 않을 거야, 잘 봐!: 내 편에 운이 따르고, 아주 분명해!: 지금은 질 것 같지 않아!", nPersonality)%」
+					DATAFORM 「%SPLIT_SINGLE(@"물론 나는 속이지 않았어, 뭐라고 하는 거야?:나를 부정하다고 부르는 건가?! 나라고?! 아아, 그건 손기술 같은 게 아니었어, 내가 보장해～:내가 부정했냐? 어이쿠, 무슨 고발이야?", nPersonality)%」\n「%SPLIT_SINGLE(@"난 절대 그런 짓은 안 해, 알잖아.:넌 그저 네가 못나서 화난 거지, 할 말은 없어!:너희들을 이기려면 속일 필요가 전혀 없단다.:절대 그런 짓 안 해, 절대로!", nPersonality)%」\n「%SPLIT_SINGLE(@"이제 날 방해하는 거 그만두고 내 돈을 내놔:닥치고 내 돈 가져와! 흥, 자초한 일이지:자, 그럼 너희들이 아직 빚을 못 갚았으니 가서 나를 즐겁게 해봐:이봐, 잔소리 그만하고 당장 돈이나 내, 이 패배자들아", nPersonality)%♪」
+				ENDDATA
+				IF !LOCAL && !RAND:5 && ラッキー != DAY
+					WAIT
+					ラッキー = DAY
+					PRINTFORML 
+					PRINTFORML 「%SPLIT_SINGLE(@"Hey, you there, yes you! How are you feeling today?:Yo, %PRINT_MALE("pops:miss", MASTER)%! 'Sup!:Mm～? Oh, what a splendid %PRINT_MALE("gentleman:lady", MASTER)% you are～ Do you mind if I take a moment of your time?:Oooi, %PRINT_MALE("dude:ma'am", MASTER)%! How's it going? Enjoying yourself yet?", nPersonality)%」
+					PRINTFORMDL 갑자기 %モブ%가 당신에게 말을 건다...
+					PRINTFORML 「%SPLIT_SINGLE(@"지금은 세상을 다 가진 기분이야... 그리고 그중 일부를 너와 나누고 싶은데, 어때?:잘 지내? 그렇구나, 그렇구나～ 음, 나 이제 가봐야 해서, 네가 대신 돈을 받아오도록 할게!:지금 아주 관대한 기분이거든, 그러니 재미있게 놀아. 내가 도와줄게～:있잖아, 지금 정말 기분 좋아! 자, 내 행운의 일부를 너와 나누자.", nPersonality)%」
+					PRINTFORML 「%SPLIT_SINGLE(@"별거 아니지만, 마음이 중요하지? 도움이 됐으면 좋겠어.:자, 여기. 이제 가서 다 가져!: 걱정 마, 그냥 오늘을 위한 작은 업보 투자일 뿐이야~: 자, 받아가!", nPersonality)%」
+					PRINTFORMDL 당신은 방금 만난 %モブ%에게서 100 칩을 받습니다!
+					KOMAFUDA:MASTER += 100
+				ENDIF
+			ELSE
+				PRINTDATADL
+					DATAFORM 당신은 입구에서 매우 당황한 표정의 %モブ%을 발견한다...
+					DATAFORM 당신은 공허한 눈으로 무언가를 반복해서 중얼거리는 %ARTICLE(モブ)%를 발견한다...
+					DATAFORM 당신은 실망한 표정을 지으며 벽에 앉아 있는 %ARTICLE(モブ)%를 발견한다...
+					DATAFORM 당신은 멍하니 서 있는 %ARTICLE(モブ)%를 발견하는데, 그녀의 얼굴은 완전히 생기가 없다...
+					;added
+					DATAFORM 당신은 %ARTICLE(モブ)%이 떨고 억울해하며 울기 직전인 것을 발견한다...
+				ENDDATA
+				PRINTFORML 
+				PRINTDATAL
+					DATAFORM 「우으음, 나의 소중한 돈... 다 날렸어, 전부 다... 빌린 돈마저 %TEXTR("from my last savings/from my friend/from that girl/from the shop/from the dealer/from the boss/")%...」\n「나 어떡하지... 대체 이제 어떻게 해야 하지...?」
+					DATAFORM 「내 돈, 내 돈, 내 돈, 내 돈... 나의 소중하고 귀한 현금...!」\n「없어졌어... 전부 다 사라졌어...」
+					DATAFORM 「만약 내가 %SPLIT_G("guessed differently:didn't roll one there")%했더라면... 쉽게 이겼을 텐데...!」\n「%SPLIT_SINGLE(@"This can't be... I was so close...:No, no, no... Not like this...:Why, why me...:Why, why did it have to be this way...", nPersonality)%」
+					DATAFORM 「.........」\n「............」\n「%SPLIT_SINGLE(@"망했어...: 너무 벌받고 있어...: 큰 실수했어, 안 좋아...: 완전히 끝났어...", nPersonality)%」
+					DATAFORM 「%SPLIT_SINGLE(@"마을에서 잡아서 데려갈 사람을 찾아야 해... : 우으, 또 인간을 납치해야겠네... : 괜찮아, 아직 회복할 수 있어... 그냥 인간 한 명만 붙잡으면 돼, 그게 이 마을의 목적이니까... : 아무래도 마을로 가봐야겠어... 인간이나 두세 명이라도 있는지 봐야지...", nPersonality)%」\n「%SPLIT_SINGLE(@"정말 미안해... 정말 하고 싶지 않지만... 엄마가 돈을 벌어야 되거든...:저 지긋지긋한 빨간색이나 초록색이 날 귀찮게 하지 않았으면 좋겠어...:내가 해야 할 일은 저 성가신 신사 아이를 조심하는 것뿐이고, 그리고...:...하지만 그럼 그 신사 아이가 알아버릴지도 몰라...", nPersonality)%」\n「%SPLIT_SINGLE(@"이 일로 돌아오지 못할지도 모르지만... 뭘 해야 하지, 또 나 자신을 팔아야 하나? 안 돼, 절대 안 돼... :아니, 아니, 그건 너무 위험해! 그냥 돌이랑 약초나 팔아야겠어, 잘 팔리니까... :응, 그렇게 하면 될 거야... 저 목욕탕에서는 보통보다 거의 두 배 가까이 가격이 붙으니까... :결국 내 유일한 다른 선택지는 지하세계 목욕탕뿐인가 봐...", nPersonality)%」
+				ENDDATA
+			ENDIF
+		ELSE
+			PRINTFORML 
+			PRINTDATAL
+				DATAFORM 도박판은 특이하게 광란적인 분위기에 잠겨 있었다...
+				DATAFORM 시끄러운 웃음소리가 들리더니 이어서 가느다란 혀의 '딸깍' 소리가 들려온다...
+				DATAFORM 한 구석에서 상황이 특히 뜨겁게 달하고 있다.\n모든 것을 걸고 승부를 겨루는 듯하다...
+				DATAFORM 어떤 종류의 논쟁이 벌어지고 있었다.\n하지만 어느새 모든 것이 다시 조용해진다...
+				DATAFORM 누군가 울며 반복적으로 사과하는 소리가 들린다.\n하지만 그 직후, 소리의 근원지는 바깥으로 끌려나간다...
+				DATAFORM 아무도 당신에게 신경을 쓰는 것 같지 않다.\n모두 현재 진행 중인 게임에 집중하고 있는 듯하다...
+			ENDDATA
+		ENDIF
+	CASE "退店"
+		;神奈子/諏訪子/久侘歌/魅須丸/龍
+		IF GROUPMATCH(人物, 32, 33, 129, 138, 140)
+			台詞 = 「Are you leaving already?」/「I hope you had a great time today, thank you very much for coming!」
+			;典
+		ELSEIF 人物 == 139
+			台詞 = 「Sure, well, the exit is right there.」/「Please just leave.」
+		ELSE
+			台詞 = 「Have you had your fun?」/「Be sure to swing by any time!」
+		ENDIF
+		賭場退店 ++
+		メッセージ = 1
+	CASE "へるぷ"
+		SIF FLAG:口上色
+			SETCOLOR 0xD37CD0
+		PRINTFORML 「좋아, 여기 상황이 어떻게 돌아가는지 간단히 설명해 줄게.」
+		PRINTFORML 
+		PRINTFORML 「우선 우리 칩을 좀 가지고 있어야 한다. 칩이 없으면 게임도 안 된다, 간단하다.」
+		PRINTFORML 「그러니 무슨 일이 있기 전에 여기서 당신의 힘들게 번 현금을 칩으로 교환하러 가는 것을 추천한다.」
+		PRINTFORML 「각 칩은 %金額表示(105)%엔에 구매할 수 있다. 우리는 소수 처리를 싫어하니, 최소 10개의 칩을 가져야 한다, 이해해 주길 바란다.」
+		PRINTFORML 「우리는 당신에게 그 칩들을 개당 %金額表示(100)%엔에 사줄 것이다. 당연히 이번에는 소수도 계산할 테니 걱정할 필요 없다.」
+		PRINTFORML 
+		PRINTFORML 「상황이 좋지 않은 비율처럼 들리나? 운이 없군. 하지만 그게 하우스 컷이야. 우리는 어떻게든 우리 몫을 얻어야겠어, 알잖아?」
+		PRINTFORML 「테이블 위의 음식을 벌어들이는 것은 우리의 소득에 매우 중요한 출처야. 개인적으로 받아들이지 마.」
+		PRINTFORML 「우리가 가진 다른 게 뭐 있겠어... 그래, 만약 게임 도중에 칩이 다 떨어지면 그게 끝이야.」
+		PRINTFORML 「추가 비용을 포함해서 부족한 칩을 더 높은 비율로 사게 될 테니 조심해.」
+		PRINTFORML 「음, 그냥 칩이 다 떨어지지 않도록 조심하면 완벽할 거야, 그렇지?」
+		$EXP_LOOP
+		RESETCOLOR
+		CALL ASK_M("반환",1, "조한에 대해 더 말해줘", 1, "Cee-lo에 대해 더 말해줘", 1)
+		SIF FLAG:口上色
+			SETCOLOR 0xD37CD0
+		SELECTCASE RESULT
+			CASE 0
+			CASE 1
+				PRINTFORML 「승 또는 짝수... 설명이 필요할까?」
+				PRINTFORML 「네가 해야 할 일은 주사위 굴림이 홀수인지 짝수인지 맞추는 것뿐이다, 그게 전부다.」
+				PRINTFORML 「베팅은 10 단위로 이루어지며 한도는 설정에 의해 정해지니 규칙을 잘 따르도록 해라.」
+				PRINTFORML 「그리고, 맞아... 칩 교환이 좀 복잡하긴 하겠군.」
+				PRINTFORML 
+				PRINTFORML 「만약 틀리게 예측한다면, 당신의 내기는 무효가 된다... 그 부분은 꽤 간단하다.」
+				PRINTFORML 「하지만, 맞히게 되면 단순히 걸었던 금액의 두 배를 갑자기 얻는 건 아니다.」
+				PRINTFORML 「승자는 자신의 내기 비율에 비례하여 패배한 베팅액을 나눠 갖는다.」
+				PRINTFORML 
+				PRINTFORML 「예를 들어, 짝수에 네 개의 배당이 있고 홀수에 세 개가 있으며 모두 100칩을 베팅했다고 해보자.」
+				PRINTFORML 「결과가 홀수라면 짝수에 걸린 400칩은 홀수에 베팅한 세 플레이어에게 분배된다.」
+				PRINTFORMW 「이 경우, 166칩의 이익과 함께 균등하게 분배된다.」
+				PRINTFORML 
+				PRINTFORML 「계속 길게 떠들긴 했지만, 실제로 플레이하기 전까지는 이해하기 어려울지도 몰라...」
+				PRINTFORML 「어쨌든 이 게임은 지갑만 있다면 큰 판을 벌일 수도 있고, 여유롭게 작게 즐길 수도 있는 거야.」
+				PRINTFORMW 「무엇을 하든지 즐거운 시간 보내길 바라!」
+				GOTO EXP_LOOP
+			CASE 2
+				PRINTFORML 「저희 소박한 업소의 규칙과 규정들을 한번 살펴봅시다.」
+				PRINTFORML 「히후미(1-2-3)는 두 배를 잃고, 시고로(4-5-6)는 두 배를 얻으며, 트립(같은 세 장)은 세 배를 얻고, 스네이크 아이즈(1-1-1, 에이스 아웃)는 다섯 배를 얻습니다.」
+				PRINTFORML 「만약 당신이 뱅커로 정해지더라도 역할이 계속 바뀌기 때문에 이기든 지든 상관없습니다.」
+				CALL PRINT_DIALOGUE, @"하지만 히후미(1-2-3)와 같은 즉시 손실 조합, 1포인트, 또는 미스드 더 포트(pisser, 파이프 밖에 도착), 혹은 버스트(세 번 던져도 조합 없음)를 굴릴 경우, 당신은 딜러로 남아 있어야 한다."
+				PRINTFORML 「아 그리고 조심해, 모두가 최소한 한 번은 딜을 할 기회를 얻기 전까지 그냥 포기할 수는 없어.」
+				PRINTFORML 「맞아, 주사위 한 번 던진 후에 이기고 있을 때 그만두는 건 선택지가 아니지.」
+				PRINTFORMW 「어쨌든 모두가 그걸 원하니까, 만약 되찾을 기회가 없다면 정말 안 되겠지, 그렇지?」
+				PRINTFORML 
+				PRINTFORML 「또 무슨 말이 더 있겠어... 아직도 더 알고 싶으신 거야? 헤헤, 나머지는 네 스스로 알아내 보도록 하지.」
+				PRINTFORML 「모든 비법을 가르쳐주길 바라는 건 좀 어리석은 짓 아닐까? 나 자신만 파묻고 있는 거나 마찬가지야!」
+				PRINTFORML 「음, 단순함이 이 게임의 이름이지. 계속 해나가다 보면 시간이 지나면서 알게 될 거야, 믿어줘.」
+				GOTO EXP_LOOP
+		ENDSELECT
+ENDSELECT
+SIF メッセージ
+	CALL SPTALK, 0, 表情, 95, 台詞, 1, "0xD37CD0"
+RESETCOLOR
+RETURN
+;やっぱりCASINOから構文お借りしてます
+
+@賭場_コマ札交換
+#DIM 閾値 = 0, 1050, 2100, 10500, 105000
+LOCAL = LINECOUNT
+LOCAL:9 = MONEY ;qol custom code
+PRINTFORML %"Current ￥", 36, LEFT%%金額表示(MONEY), 13, RIGHT%
+PRINTFORML %"Current Chips", 36, LEFT%%三桁区切(KOMAFUDA:MASTER), 13, RIGHT%
+PRINTFORML [1]칩 구매 (105엔=1 칩) ※최소 10개 필요
+PRINTFORML [2]칩 판매 (1 칩=100엔)
+PRINTFORML [0]반납
+DO
+INPUT
+SELECTCASE RESULT
+	CASE 0
+		CLEARLINE 1
+		RETURN 0
+	CASE 1
+		CALL COLORMESSAGE(@"「얼마를 원하세요?」", 0xD37CD0, 1, 0)
+		SIF MONEY >= 1050
+			PRINTFORML [1] 모든 돈({MONEY / 105} 칩)을 교환한다. 
+		SIF MONEY >= 2100
+			PRINTFORML [2] 돈의 절반( {MONEY / 210} 칩)을 교환한다.
+		SIF MONEY >= 10500
+			PRINTFORML [3]칩 100개(%金額表示(10500)%)를 받는다
+		SIF MONEY >= 105000
+			PRINTFORML [4]1000칩(%金額表示(105000)%을) 받는다.
+		PRINTFORML [0]취소
+		PRINTFORML (원하는 칩 개수를 직접 입력하거나 버튼을 선택할 수 있다)
+		$BUY_LOOP
+		INPUT
+		IF INRANGE(RESULT, 1, 4) && (MONEY < 閾値:RESULT)
+			CLEARLINE 1
+			GOTO BUY_LOOP
+		ENDIF
+		SELECTCASE RESULT
+			CASE 0
+				CLEARLINE LINECOUNT - LOCAL
+				RESTART
+			CASE 1
+				KOMAFUDA:MASTER += MONEY / 105
+				MONEY = MONEY % 105
+			CASE 2
+				KOMAFUDA:MASTER += MONEY / 210
+				MONEY /= 2
+			CASE 3, 4
+				MONEY -= 閾値:RESULT
+				KOMAFUDA:MASTER = RESULT == 3 ? KOMAFUDA:MASTER + 100 # KOMAFUDA:MASTER + 1000
+			CASE IS < 0, 5 TO 9
+				CLEARLINE 1
+				GOTO BUY_LOOP
+			CASEELSE
+				IF RESULT * 105 > MONEY
+					CLEARLINE 1
+					GOTO BUY_LOOP
+				ENDIF
+				MONEY -= RESULT * 105
+				KOMAFUDA:MASTER += RESULT
+		ENDSELECT
+		PRINTFORML 돈: %金額表示(LOCAL:9)% → %金額表示(MONEY)%
+		;qol custom code
+		nGamblingDenProfit -= LOCAL:9 - MONEY
+		CALL COLORMESSAGE(@"「자, 가라, 가져가!」", 0xD37CD0, 2, 0)
+	CASE 2
+		IF !KOMAFUDA:MASTER
+			CLEARLINE LINECOUNT - LOCAL
+			RESTART
+		ENDIF
+		CALL COLORMESSAGE(@"「얼마에 팔래?」", 0xD37CD0, 1, 0)
+		PRINTFORML [ 0] 보유한 모든 칩을 현금으로 교환합니다(%金額表示(KOMAFUDA:MASTER * 100)%) 
+		PRINTFORML (교환하고 싶은 칩의 개수를 직접 입력하거나 버튼을 선택할 수 있습니다)
+		PRINTFORML [-1] -1 취소
+		$SELL_LOOP
+		INPUT
+		SELECTCASE RESULT
+			CASE IS < -1
+				CLEARLINE 1
+				GOTO SELL_LOOP
+			CASE -1
+				CLEARLINE LINECOUNT - LOCAL
+				RESTART
+			CASE 0
+				MONEY += KOMAFUDA:MASTER * 100
+				KOMAFUDA:MASTER = 0
+			CASEELSE
+				IF RESULT > KOMAFUDA:MASTER
+					CLEARLINE 1
+					GOTO SELL_LOOP
+				ENDIF
+				MONEY += RESULT *100
+				KOMAFUDA:MASTER -= RESULT
+		ENDSELECT
+		PRINTFORML 돈: %金額表示(LOCAL:9)% → %金額表示(MONEY)%
+		;qol custom code
+		nGamblingDenProfit += MONEY - LOCAL:9
+		CALL COLORMESSAGE(@"「여기 있네, 원하면 세어봐도 돼.」", 0xD37CD0, 2, 0)
+ENDSELECT
+CLEARLINE LINECOUNT - LOCAL
+RESTART
+LOOP 1
+;ここから試行錯誤のオリジナル
+
+@チンチロリン_メイン(レート)
+#DIM 回数
+#DIM 増減
+#DIM 胴元
+#DIM レート
+#DIM 判定
+#DIM プール
+#DIM 賭駒, 5
+#DIM 強さ, 5
+#DIM 親継続, 6
+#DIM L_COUNT
+#DIM TGT
+#DIM 表示色
+#DIM 眠い
+#DIM レート指数 = 1, 10, 100 ,500
+#DIM DYNAMIC 役倍率 = 5, 3, 3 ,3, 3, 3, 2 ;bugfix custom code, reset to normal stakes
+;custom code
+#DIMS strMag = "", "", "double", "triple", "quadruple", "quintuple", "sextuple", "septuple", "octuple", "nonuple", "decuple"
+眠い = 0
+VARSET 親継続
+FOR COUNT, 1, 5
+IF KOMAFUDA:COUNT < レート指数:レート * 40
+	PRINTFORMW 일부 플레이어는 레이트에 맞출 충분한 칩이 없다. 당신은 떠난다.
+	RETURN 0
+ENDIF
+NEXT
+回数 = 0
+DRAWLINE
+PRINTFORML 
+PRINTFORML ～Cee-lo～
+PRINTFORML 
+PRINTFORML 딜러 역할을 위한 순서를 정하기 위해 주사위를 굴린다.
+PRINTFORMW 
+CALL TOBA_FILL_DICE(強さ, 5)
+FOR COUNT, 6, 1, -1
+胴元 = FINDELEMENT (強さ, COUNT)
+SIF 胴元 == -1
+	CONTINUE
+BREAK
+NEXT
+FOR COUNT, 0, 5
+PRINTFORML %BAKUTO_NAME_TR:COUNT, 16, LEFT%%NUM_COUNT(強さ:COUNT, , 1)%
+NEXT
+PRINTL
+PRINTFORMW 첫 번째 딜러: %BAKUTO_NAME_TR:胴元%
+PRINTFORML 
+親継続:胴元 = 1
+$GAME_LOOP
+IF NEMUKE() >= 540 && !眠い
+	眠い = 1
+	PRINTFORML 당신의 졸음 때문에 집중하기가 힘들다...
+	PRINTFORMW 의도한 대로 주사위를 던지지 못할 확률이 증가한다.
+	PRINTFORML 
+ENDIF
+SIF レート > 1
+	役倍率 = 10, 6, 5 ,4, 3, 2, 2
+回数 ++
+CALL PRINT_TOBA_STATE(回数, レート, !胴元)
+LOCAL = LINECOUNT
+;COMの賭けゴマを適当に決める
+FOR COUNT, 1, 5
+IF KOMAFUDA:COUNT >= レート指数:レート * 50 && RAND:4
+	TGT = 20
+ELSEIF KOMAFUDA:COUNT >= レート指数:レート * 20
+	TGT = 10
+ELSEIF KOMAFUDA:COUNT <= レート指数:レート * 10
+	TGT = KOMAFUDA:COUNT / レート指数:レート
+ELSE
+	TGT = 5
+ENDIF
+賭駒:COUNT = レート指数:レート * TGT
+NEXT
+賭駒:胴元 = 0
+IF 胴元
+	PRINTFORML 이번 턴의 초기 베팅액을 결정하세요 (1=「%PRINT_PLUR("Chip", レート指数:レート)%」)
+	PRINTFORML [20]최대 「%PRINT_PLUR("Chip", 20 * レート指数:レート)%」
+	PRINTFORML [10]절반 「%PRINT_PLUR("Chip", 10 * レート指数:レート)%」
+	PRINTFORML 또는 직접 1부터 19까지 입력할 수 있습니다.
+	$INPUT_LOOP
+	INPUT
+	IF !INRANGE(RESULT, 1, 20) || (レート指数:レート * RESULT > KOMAFUDA:MASTER)
+		CLEARLINE 1
+		GOTO INPUT_LOOP
+	ENDIF
+	賭駒:MASTER = レート指数:レート * RESULT
+ENDIF
+CLEARLINE LINECOUNT - LOCAL
+FOR COUNT, 0, 4
+TGT = TOBA_ROTATE:胴元:COUNT
+PRINTFORML %BAKUTO_NAME_TR:TGT + "'s Wager", 26, LEFT%%三桁区切(賭駒:TGT)%
+TWAIT 200, 0
+NEXT
+PRINTFORML 
+;親の処理
+PRINTFORML 딜러의 차례
+LOCAL = LINECOUNT
+PRINTFORML 
+PRINTFORML %BAKUTO_NAME_TR:胴元%이 주사위를 던진다!
+TWAIT 1000, 0
+CALL THROW_CHINCHIRO_DICE(胴元, -1)
+強さ:胴元 = RESULT
+CLEARLINE LINECOUNT -LOCAL
+;その場で勝ち負け確定判定
+IF !INRANGE(強さ:胴元, 4, 7)
+	IF 強さ:胴元 > 7
+		CALL COLORMESSAGE(@"딜러가 %CHIN_PRIZE_TR:(強さ:胴元)%을(를) 굴린다.", C_YELLOW, 1, 1)
+		PRINTFORML %BAKUTO_NAME_TR:胴元% %\@ 強さ:胴元 > 8 ? wins %strMag:(役倍率:(15 - 強さ:胴元))% the wager # takes all \@%!
+	ELSE
+		CALL COLORMESSAGE(@"딜러가 %CHIN_PRIZE_TR:(強さ:胴元)%을 굴린다...", C_YELLOW, 1, 1)
+		PRINTFORML %BAKUTO_NAME_TR:胴元%은(는) 지급한다 \@ 強さ:胴元 == 0 ? 두 배를 # 금액을 각 플레이어에 대한 \@ 걸었다.
+		親継続:5 = 1
+	ENDIF
+	RESULT = 0
+	TGT = !胴元 ? RAND(1, 5) # 胴元
+	IF (TGT != 胴元 && RAND:2) || !胴元
+		CALL TOBA_GAMBLER_TWEET(TGT, "一投目", 強さ:胴元)
+	ELSE
+		CALL TOBA_GAMBLER_TWEET(胴元, "親で振った後", 強さ:胴元)
+	ENDIF
+	GOTO PAY
+ENDIF
+PRINTFORML %"Dealer's Roll：", 26, LEFT%%CHIN_PRIZE_TR:(強さ:胴元)%
+PRINTFORML 
+CALL TOBA_GAMBLER_TWEET(胴元, "親で振った後", 強さ:胴元)
+;子の処理
+PRINTFORML 플레이어의 차례
+FOR L_COUNT, 0, 4
+TGT = TOBA_ROTATE:胴元:L_COUNT
+LOCAL = LINECOUNT
+PRINTFORML 
+PRINTFORML %BAKUTO_NAME_TR:TGT%가 주사위를 굴린다!
+TWAIT 1000, 0
+CALL THROW_CHINCHIRO_DICE(TGT, 強さ:胴元)
+強さ:TGT = RESULT
+TWAIT 600, 0
+CLEARLINE LINECOUNT - LOCAL
+PRINTFORML %BAKUTO_NAME_TR:TGT + "'s Roll：", 26, LEFT%%COND_STR(@"%UNICODE(0x3000)%", STRLENS(BAKUTO_NAME_TR:TGT) <= 4)%%CHIN_PRIZE_TR:(強さ:TGT)%
+NEXT
+PRINTFORML 베팅을 정리 중이다...
+$PAY
+PRINTFORML 
+増減 = 0
+プール = 0
+;親と勝負・出目判定処理
+IF INRANGE(強さ:胴元, 4, 7)
+	FOR COUNT, 0, 4
+	TGT = TOBA_ROTATE:胴元:COUNT
+	SELECTCASE 強さ:TGT
+		CASE 0
+			判定 = 2
+			増減 = -(賭駒:TGT * 2)
+		CASE 1, 2, 3
+			判定 = 0
+			増減 = -(賭駒:TGT)
+		CASE 4 TO 8
+			判定 = 1
+			IF 強さ:TGT == 強さ:胴元
+				増減 = 0
+			ELSEIF 強さ:TGT > 強さ:胴元
+				増減 = 賭駒:TGT
+			ELSE
+				増減 = -(賭駒:TGT)
+			ENDIF
+		CASEELSE
+			判定 = 役倍率:(15 - 強さ:TGT)
+			増減 = 賭駒:TGT * 判定
+	ENDSELECT
+	PRINTFORM %BAKUTO_NAME_TR:TGT%의 굴림 : %CHIN_PRIZE_TR:(強さ:TGT)% =　
+	IF 増減 < 0
+		PRINTFORML 딜러 승리!
+		SIF 判定 > 1
+			CALL COLORMESSAGE(@"1-2-3으로 굴리면 %BAKUTO_NAME_TR:TGT%는 두 배를 지불해야 한다...", C_YELLOW, 1, 1)
+	ELSEIF 増減 > 0
+		PRINTFORML 플레이어가 승리했다!
+		SIF 判定 > 1
+			CALL COLORMESSAGE(@"굴리면 %CHIN_PRIZE_TR:(強さ:TGT)%이 베팅을 %BAKUTO_NAME_TR:TGT% 승리한다 %strMag:判定%!", C_YELLOW, 1, 1)
+	ELSE
+		PRINTFORML 드로우!
+		PRINTFORML 베팅액이 반환된다.
+	ENDIF
+	TWAIT 500, 0
+	;親のコマ変動を一時保存
+	プール -= 増減
+	;子のコマ変動を表示
+	KOMAFUDA:TGT = KOMAFUDA:TGT + 増減
+	SIF 増減
+		CALL TOBA_RESULT_PRINT(TGT, 増減)
+	PRINTFORML 
+	NEXT
+	;親の総取り/総付け処理
+ELSE
+	FOR L_COUNT, 0, 4
+	TGT = TOBA_ROTATE:胴元:L_COUNT
+	SELECTCASE 強さ:胴元
+		;ヒフミ
+		CASE 0
+			プール -= 賭駒:TGT * 2
+			KOMAFUDA:TGT += 賭駒:TGT * 2
+			増減 = 賭駒:TGT * 2
+			;ションベン目無しピン
+		CASE 1, 2, 3
+			プール -= 賭駒:TGT
+			KOMAFUDA:TGT += 賭駒:TGT
+			増減 = 賭駒:TGT
+			;ロッポウ
+		CASE 8
+			プール += 賭駒:TGT
+			KOMAFUDA:TGT -= 賭駒:TGT
+			増減 = -賭駒:TGT
+			;倍付以上
+		CASEELSE
+			プール += 賭駒:TGT * 役倍率:(15 - 強さ:胴元)
+			KOMAFUDA:TGT -= 賭駒:TGT * 役倍率:(15 - 強さ:胴元)
+			増減 = -(賭駒:TGT * 役倍率:(15 - 強さ:胴元))
+	ENDSELECT
+	CALL TOBA_RESULT_PRINT(TGT, 増減)
+	TWAIT 500, 0
+	NEXT
+	PRINTFORML 
+ENDIF
+KOMAFUDA:胴元 += プール
+IF プール
+	表示色 = プール > 0 ? C_GREEN # C_D_RED
+	PRINTFORM %BAKUTO_NAME_TR:胴元 + "'s Balance", 26, LEFT%%COND_STR(@"%UNICODE(0x3000)%", STRLENS(BAKUTO_NAME_TR:TGT) <= 4)%
+	CALL COLORMESSAGE(@"%\@ プール > 0 ? ＋ # － \@%{ABS(プール)}", 表示色, 1, 1)
+	SIF ABS(プール) >= レート指数:レート * 80
+		CALL TOBA_GAMBLER_TWEET(胴元, @"%\@ プール > 0 ? 得 # 失 \@%의", 強さ:胴元)
+	PRINTFORML 
+ENDIF
+TIME += 5
+;タネ銭足りないと終了
+FOR COUNT, 0, 5
+SIF KOMAFUDA:COUNT >= レート指数:レート * 2
+	CONTINUE
+PRINTFORML 
+IF COUNT > 0 || KOMAFUDA:0 >= 0
+	PRINTFORML %BAKUTO_NAME_TR:COUNT% \@ KOMAFUDA:COUNT > 0 ? 레이트를 더 이상 커버할 수 없다 # 칩이 소진됐다 \@.
+	PRINTFORMW 게임 오버했다.
+	RETURN 0
+ELSE
+	SIF FLAG:口上色
+		SETCOLOR 0xD37CD0
+	PRINTFORML 「어이쿠, 얘야... 벌써 칩을 다 썼다고? 손해를 끊을 때가 된 건 아닐까 싶군, 어때?」
+	PRINTFORML 「...잠깐만, 네가 손실을 메울 돈이 없다는 게 무슨 소리야?! 이거 장난치는 거야?!」
+	PRINTFORMW 「네가 가진 모든 페니를 다 물게 될 테니까 각오해!」
+	PRINTFORMDL ...빨간 부분에 들어간 것을 충당하기 위해 칩(할증된 가격으로)을 강제로 사야 했다.
+	PRINTFORMDW 잠시 밖에 나가고 싶다는 생각이 들었다.
+	RESETCOLOR
+	LOCAL:9 = MONEY
+	MONEY = MONEY + KOMAFUDA:MASTER * 125
+	;qol custom code
+	nGamblingDenProfit -= LOCAL:9 - MONEY
+	KOMAFUDA:MASTER = 0
+	RETURN 0
+ENDIF
+NEXT
+;親の目がショボいときは親を続行
+IF 親継続:5 == 1
+	PRINTFORMW %BAKUTO_NAME_TR:胴元%은(는) 딜러로 남는다!
+	親継続:5 = 0
+	GOTO GAME_LOOP
+	;親交代
+ELSEIF SUMARRAY(親継続, 0, 5) < 5
+	胴元 = 胴元 == 4 ? 0 # 胴元 + 1
+	親継続:胴元 = 1
+	PRINTFORMW %BAKUTO_NAME_TR:胴元%이(가) 새로운 대리다!
+	GOTO GAME_LOOP
+ENDIF
+IF NEMUKE() >= 700
+	PRINTFORMW 계속하기에 너무 졸리다. 강제로 떠나게 된다.
+	RETURN 2
+ENDIF
+;一周したら一区切り
+PRINTFORML 
+PRINTFORML 각 플레이어는 최소 한 라운드 동안 딜러 역할을 맡았으므로 이제 떠나도 됩니다.
+PRINTFORML [0]게임 계속하기
+PRINTFORML [1]나가기
+DO
+INPUT
+IF !INRANGE(RESULT, 0, 1)
+	CLEARLINE 1
+	CONTINUE
+ELSEIF !RESULT
+	VARSET 親継続
+	胴元 = 胴元 == 4 ? 0 # 胴元 + 1
+	親継続:胴元 = 1
+	PRINTFORML 게임은 계속된다.
+	PRINTFORMW %BAKUTO_NAME_TR:胴元%가 새로운 딜러다!
+	GOTO GAME_LOOP
+ENDIF
+RETURN 0
+LOOP 1
+;紅魔館のとなんとか差別化しようとして結構頑張ってます
+
+@丁半博打_メイン(レート)
+#DIM CH_TURN, 7
+#DIM CH_BET, 7
+#DIM BET_POOL, 3
+#DIM CH_PROFIT, 7
+#DIM CH_COUNT,2
+#DIM DICE, 2
+#DIM TGT
+#DIM L_COUNT
+#DIM PL_BET
+#DIM 賭駒, 7
+#DIM 連勝, 7
+#DIM 回数
+#DIM 結果
+#DIM レート
+#DIM レート指数 = 20, 50, 100 ,1000
+回数 = 0
+VARSET 連勝
+FOR L_COUNT, 1, 7
+IF KOMAFUDA:L_COUNT < レート指数:レート * 5
+	PRINTFORMW 일부 플레이어는 레이트에 맞출 충분한 칩이 없다. 당신은 떠난다.
+	RETURN 0
+ENDIF
+NEXT
+DRAWLINE
+PRINTFORML 
+PRINTFORML ~조한~
+PRINTFORML 
+CALL TOBA_DEALER_TWEET(3, "挨拶")
+$GAME_LOOP
+回数 ++
+CALL PRINT_TOBA_STATE(回数, レート, 0)
+TWAIT 1200, 0
+VARSET CH_BET
+VARSET CH_COUNT
+VARSET BET_POOL
+REDRAW 0
+CALL TOBA_FILL_DICE(DICE, 2)
+LOCAL = LINECOUNT
+CALL TOBA_DEALER_TWEET(0, "スタート口上",0, 0, 回数)
+TWAIT 3000, 0 ;custom code
+CLEARLINE LINECOUNT-LOCAL
+LOCAL = LINECOUNT
+CALL TOBA_DEALER_TWEET(0, "構え口上", DICE:0, DICE:1)
+TWAIT 1500, 0
+CLEARLINE LINECOUNT-LOCAL
+CALL TOBA_DEALER_TWEET(0, "被り口上")
+TWAIT 1200, 0
+PRINTFORML 
+REDRAW 1
+CALLF FUNC_FISHER_YATES_SHAFFLE(CH_TURN, 7)
+;予想ターン
+FOR L_COUNT, 0, 7
+TGT = CH_TURN:L_COUNT
+IF !TGT
+	REDRAW 0
+	PL_BET = 0
+	$BET_LOOP
+	LOCAL = LINECOUNT
+	PRINTPLAIN 「짝수」 또는 「홀수」를 선택한 후 베팅을 하세요.
+	PRINTFORML 
+	PRINTFORML 1＝10 Chip 최대치: %三桁区切(レート指数:レート * 10)%
+	PRINTFORML 현재 Chip : %三桁区切(KOMAFUDA:MASTER)%
+	CALL PRINTBUTTON_EX("　　　[Even]", -1, 0, (PL_BET == -1))
+	CALL PRINTBUTTON_EX("　　　[Odds]", -2, 0, (PL_BET == -2))
+	PRINTFORML 
+	PRINTBUTTON @"[{レート指数:レート * 10} - 최대 베팅]", レート指数:レート
+	PRINTFORML 
+	PRINTBUTTON @"[{レート指数:レート * 5} - 하프 배팅]", レート指数:レート / 2
+	PRINTFORML 
+	PRINTBUTTON @"[{レート指数:レート / 4 * 10} - 로우키]", レート指数:レート / 4
+	PRINTFORML 
+	PRINTFORML 아니면 1-{レート指数:レート - 1}을 직접 입력해도 된다.
+	INPUT
+	CLEARLINE LINECOUNT - LOCAL
+	SELECTCASE RESULT
+		CASE IS < -2, 0, IS > レート指数:レート
+			GOTO BET_LOOP
+		CASE -1, -2
+			PL_BET = RESULT
+			GOTO BET_LOOP
+		CASEELSE
+			SIF !PL_BET || RESULT * 10 > KOMAFUDA:MASTER
+				GOTO BET_LOOP
+			賭駒:MASTER = RESULT * 10
+			CH_BET:MASTER = PL_BET == -1 ? 0 # 1
+	ENDSELECT
+	PRINTFORML 당신은 %\@ CH_BET:MASTER == 0 ? Even # Odds \@% 위에 {賭駒:MASTER}을/를 놓는다!
+	TWAIT 350, 0
+	REDRAW 1
+ELSE
+	;NPCの丁半予想と賭けゴマ数を決定
+	CH_BET:TGT = RAND:2
+	賭駒:TGT = BET_CHOHAN(TGT, レート指数:レート, 連勝:TGT)
+	CALL TOBA_GAMBLER_TWEET(TGT, "丁半選択", CH_BET:TGT, 連勝:TGT)
+	IF !RESULT && TGT != 4
+		CALL COLORMESSAGE(@"「\@ CH_BET:TGT ? 배당률 # 홀수 \@%"!"*RAND(1,4)%」", BAKUTO_WORDCOLOR:TGT, 1, 0)
+		TWAIT 300, 0
+	ENDIF
+	PRINTFORML %BAKUTO_NAME_TR:TGT%이/가 %\@ CH_BET:TGT == 0 ? Even # Odds \@%에 {賭駒:TGT}을/를 놓는다!
+	TWAIT 600, 0
+ENDIF
+PRINTFORML 
+CH_COUNT:(CH_BET:TGT) ++
+;BET_POOL:第一引数 0=丁の賭けゴマ 1=半の賭けゴマ 2=賭けゴマ総数
+BET_POOL:(CH_BET:TGT) += 賭駒:TGT
+SIF L_COUNT == 6
+	BREAK
+CALL TOBA_DEALER_TWEET(0, "煽り", CH_COUNT:0, CH_COUNT:1, CH_BET:TGT)
+PRINTFORML 
+TWAIT 350 + RAND(3, 7) * 50, 0
+NEXT
+PRINTFORML 　　베팅 풀
+PRINTFORML 　　균등: %PRINT_PLUR("Player", CH_COUNT:0), 7, LEFT% {BET_POOL:0} 칩
+PRINTFORMW 　　배당률: %PRINT_PLUR("Player", CH_COUNT:1), 7, LEFT% {BET_POOL:1} 칩
+BET_POOL:2 = BET_POOL:0 + BET_POOL:1
+;ツボを開くターン
+CALL TOBA_FILL_DICE(DICE, 2)
+結果 = (DICE:0 + DICE:1) % 2
+CALL TOBA_CREATE_DICEIMAGE(DICE:0, 0, DICE:1, 2)
+LOCAL = LINECOUNT
+TGT = (ABS(CH_COUNT:0 - CH_COUNT:1) == 7) * 3
+REDRAW 0
+CALL TOBA_DEALER_TWEET(TGT, "予想終了", CH_COUNT:0, CH_COUNT:1)
+SIF TGT
+	CALL COLORMESSAGE(@"「더 이상 베팅은 없다. 자, 그럼... 보자고!」\n「가라!」", 0xD37CD0, 1, 0)
+TWAIT 1600 + (RAND(2, 5) * 200), 0
+CLEARLINE LINECOUNT - LOCAL
+CALL TOBA_DEALER_TWEET(0, "勝負！", DICE:0, DICE:1, 結果)
+TWAIT 1200, 0
+REDRAW 1
+;コマ札やり取りのターン
+VARSET CH_PROFIT
+;丁半コマ揃って勝負
+IF CH_COUNT:0 && CH_COUNT:1
+	FOR L_COUNT, 0, 7
+	IF CH_BET:L_COUNT == 結果
+		CH_PROFIT:L_COUNT = (BET_POOL:(!結果) * ((10000 * 賭駒:L_COUNT) / BET_POOL:結果)) / 10000
+	ELSE
+		CH_PROFIT:L_COUNT = -(賭駒:L_COUNT)
+	ENDIF
+	KOMAFUDA:L_COUNT += CH_PROFIT:L_COUNT
+	NEXT
+	;全員同じ方に賭けて当たった
+ELSEIF CH_BET:MASTER == 結果
+	FOR L_COUNT, 0, 7
+	CH_PROFIT:L_COUNT = (BET_POOL:2 * ((4500 * 賭駒:L_COUNT) / BET_POOL:2)) / 10000
+	KOMAFUDA:L_COUNT += CH_PROFIT:L_COUNT
+	NEXT
+	;皆ハズレ
+ELSE
+	FOR L_COUNT, 0, 7
+	CH_PROFIT:L_COUNT = -(賭駒:L_COUNT)
+	KOMAFUDA:L_COUNT += CH_PROFIT:L_COUNT
+	NEXT
+ENDIF
+;ランダムで誰か一言
+TGT = RAND(1, 7)
+CALL TOBA_GAMBLER_TWEET(TGT, @"%\@ CH_BET:TGT == 結果 ? 安堵 # 失望 \@%", 0, 0, 7)
+;結果表示
+FOR L_COUNT, 0, 7
+TGT = CH_TURN:L_COUNT
+CALL TOBA_RESULT_PRINT(TGT, CH_PROFIT:TGT)
+IF CH_PROFIT:TGT > 0
+	連勝:TGT ++
+ELSE
+	連勝:TGT = 0
+ENDIF
+TWAIT 250, 0
+NEXT
+;BET最大値より儲けるとツボ振りとのサシ勝負提案
+IF CH_PROFIT:MASTER > レート指数:レート * 10
+	REDRAW 0
+	CALL TOBA_DEALER_TWEET(0, "サシ持ちかけ")
+	CALL ASK_YN
+	IF RESULT
+		CALL TOBA_DEALER_TWEET(3, "サシお断り")
+		REDRAW 1
+	ELSE
+		REDRAW 0
+		LOCAL = LINECOUNT
+		CALL TOBA_DEALER_TWEET(0, "スタート口上",0, 0, 0)
+		TWAIT 1500, 0
+		CLEARLINE LINECOUNT-LOCAL
+		LOCAL = LINECOUNT
+		CALL TOBA_DEALER_TWEET(0, "構え口上", DICE:0, DICE:1, 1)
+		TWAIT 1800, 0
+		CLEARLINE LINECOUNT-LOCAL
+		CALL TOBA_DEALER_TWEET(0, "被り口上", 0, 0, 1)
+		CALL ASK_YN("심지어", "배당률")
+		CH_BET:MASTER = RESULT
+		CALL TOBA_FILL_DICE(DICE, 2)
+		結果 = (DICE:0 + DICE:1) % 2
+		CALL TOBA_CREATE_DICEIMAGE(DICE:0, 0, DICE:1, 2)
+		LOCAL = LINECOUNT
+		CALL TOBA_DEALER_TWEET(0, "予想終了", CH_BET:MASTER, 0, 1)
+		TWAIT 2000 + (RAND(2, 5) * 200), 0
+		CLEARLINE LINECOUNT - LOCAL
+		CALL TOBA_DEALER_TWEET(0, "勝負！", DICE:0, DICE:1, 結果)
+		TWAIT 1200, 0
+		IF CH_BET:MASTER == 結果
+			CALL TOBA_DEALER_TWEET(3, "サシで負け")
+			KOMAFUDA:MASTER += CH_PROFIT:MASTER
+			連勝:MASTER ++
+		ELSE
+			CALL TOBA_DEALER_TWEET(3, "サシで勝ち")
+			KOMAFUDA:MASTER -= CH_PROFIT:MASTER
+			連勝:MASTER = 0
+			CH_PROFIT:MASTER = -(CH_PROFIT:MASTER)
+		ENDIF
+		REDRAW 1
+		CALL TOBA_RESULT_PRINT(MASTER, CH_PROFIT:MASTER)
+		PRINTFORML 현재 칩 : %三桁区切(KOMAFUDA:MASTER)%
+	ENDIF
+ENDIF
+TIME += 5
+;継続/終了チェック
+PRINTFORML 
+FOR L_COUNT, 0, 7
+SIF KOMAFUDA:L_COUNT >= レート指数:レート * 5
+	CONTINUE
+PRINTFORML %BAKUTO_NAME_TR:L_COUNT%는(은) 칩이 바닥났다.
+PRINTFORMW 게임 오버다.
+RETURN 0
+NEXT
+IF NEMUKE() >= 700
+	PRINTFORMW 계속하기에 너무 졸리다. 강제로 떠나게 된다.
+	RETURN 2
+ENDIF
+CALL TOBA_DEALER_TWEET(0, "継続口上", (CH_BET:MASTER == 結果), (連勝:MASTER > 1))
+CALL ASK_YN("계속한다", "정지")
+SIF !RESULT
+	GOTO GAME_LOOP
+CALL COLORMESSAGE(@"「%TEXTR("후우, 그런가.../알겠다, 알겠어.../뭐, 아쉽네./흐음, 안됐구나./뭐, 네 마음대로 해라.")%」\n「어쨌든 와줘서 고맙다. 수고했어.」", 0xD37CD0, 2, 0)
+RETURN 0
+;丁半博打で賭けゴマの枚数を決める式中関数
+;評価値とか重み付けとか難しいことはよくわからんので乱数頼み
+
+@BET_CHOHAN(TGT, MAX_BET, WINS)
+#FUNCTION
+#DIM TGT
+#DIM MAX_BET
+#DIM BASE_BET
+#DIM ADD
+#DIM WINS
+#DIM BET
+;勝っていると稀に全ツッパ
+SIF RAND:100 + 1 < MIN(WINS, 3)
+	RETURNF MIN(KOMAFUDA:TGT / 10, MAX_BET) * 10
+BASE_BET = MAX_BET / 4
+ADD = RAND(3 + WINS) > 1 ? RAND(BASE_BET) # -(RAND(BASE_BET))
+SELECTCASE RAND:15 + MIN(WINS, 4)
+	CASE IS > 11
+		BASE_BET = BASE_BET * 3 + (ADD / 4)
+	CASE 5 TO 11
+		BASE_BET = BASE_BET * 2 + (ADD / 3)
+	CASE IS < 5
+		BASE_BET = BASE_BET + (ADD / 2)
+ENDSELECT
+BASE_BET = LIMIT(BASE_BET, 1, KOMAFUDA:TGT / 100 * 8) * 10
+RETURNF BASE_BET
+;チンチロリンダイス表示＆判定関数
+
+@THROW_CHINCHIRO_DICE(振り手, ARG)
+#DIM 出目
+#DIM L_COUNT
+#DIM D_COUNT
+#DIM 賽, 3
+#DIM DICE, 3
+#DIM 失敗率
+#DIM ファンブル
+#DIM 振り手
+;ファンブル率2％、あなたのみ眠気ありで+2％
+失敗率 = 1 + (!振り手 && NEMUKE() >= 540) * 2
+ファンブル = 0
+CALL TOBA_GAMBLER_TWEET(振り手, "一投目", ARG)
+FOR L_COUNT, 1, 4
+LOCAL = LINECOUNT
+CALL TOBA_FILL_DICE(賽, 3)
+VARSET DICE
+ARRAYCOPY "賽", "DICE"
+;昇順に並び替え
+ARRAYSORT DICE, FORWARD
+;値が同じ=ゾロ目
+IF ALLSAMES(DICE:0, DICE:1, DICE:2)
+	IF DICE:0 == 1
+		出目 = 15
+	ELSE
+		出目 = 15 - (7 - DICE:0)
+	ENDIF
+	;値が全て異なる=目無し/ヒフミ/シゴロ
+ELSEIF !((DICE:0 == DICE:1) || (DICE:1 == DICE:2) || (DICE:0 == DICE:2))
+	IF DICE:0 == 1 && DICE:2 == 3
+		出目 = 0
+	ELSEIF DICE:0 == 4 && DICE:2 == 6
+		出目 = 9
+	ELSE
+		出目 = 2
+	ENDIF
+	;XXYパターン=Yの値で判定
+ELSEIF DICE:0 == DICE:1
+	出目 = 2 + DICE:2
+	;XYYパターン=Xの値で判定
+ELSE
+	出目 = 2 + DICE:0
+ENDIF
+;ファンブル判定
+ファンブル = RAND:100 <= 失敗率 ? 1 # 0
+PRINTFORML ~ %NUM_COUNT(L_COUNT, "pos", 1)%의 주사위를 던진다~
+REDRAW 0
+IF FLAG:画像表示
+	CALL TOBA_CREATE_DICEIMAGE(賽:0, 賽:1, 賽:2, ファンブル)
+	CALL PRINT_IMAGE_ANIMATION("SAI_",0 ,13, 1, 0, 33)
+	CALL PRINT_IMAGE("SAI_RESULT")
+	TWAIT 250, 0
+ELSE
+	FOR D_COUNT, 0, 3
+	PRINTFORM %NUM_COUNT(賽:D_COUNT, "pos", 1)%　%COND_STR(@"!", D_COUNT == 2)%
+	TWAIT 30 + RAND(25, 50 + D_COUNT * 20), 0
+	NEXT
+ENDIF
+IF ファンブル
+	PRINTFORML 뭐야?!
+	PRINTFORML %BAKUTO_NAME_TR:振り手%의 주사위 굴림이 %TEXTR("다른 곳으로 날아가거나/모두 눈앞에서 순식간에 사라지거나/갑자기 생긴 빈틈에 휘말리거나/솥에게 거절당한 것처럼 바닥에 떨어지는 것")%로 끝났다...
+	SIF !振り手
+		TWAIT 1000, 0
+	出目 = 1
+	BREAK
+ELSEIF 出目 == 2
+	PRINTFORML 「\@ L_COUNT < 3 ? 결과가 불명확하여 재시도한다. # 세 번의 시도 내에 조합을 얻지 못했다, 운이 없군... \@」
+	CALL TOBA_GAMBLER_TWEET(振り手, "n投目", L_COUNT, 0, (3 + (L_COUNT == 3) * 4))
+	SIF !RESULT
+		TWAIT 1000, 0
+	REDRAW 0
+	CLEARLINE LINECOUNT - LOCAL
+	SIF L_COUNT < 3
+		CONTINUE
+	REDRAW 1
+ENDIF
+BREAK
+NEXT
+RESULT = 0
+IF 出目 == 2 || !振り手
+	;出目が極端なら必ずつぶやく
+ELSEIF 出目 == 0 || (INRANGE(ARG, 0, 4) && ARG > 出目)
+	CALL TOBA_GAMBLER_TWEET(振り手, "悲鳴", 出目, 0, 7)
+ELSEIF 出目 == 1
+	CALL TOBA_GAMBLER_TWEET(振り手, "罵声", 出目, 0, 7)
+ELSEIF 出目 > 8 || (ARG > 6 && 出目 > ARG)
+	CALL TOBA_GAMBLER_TWEET(振り手, "歓声", 出目, 0, 7)
+	;通常の勝ち負け/出目
+ELSEIF (ARG < 0 && INRANGE(出目, 3, 4)) || ARG > 出目
+	CALL TOBA_GAMBLER_TWEET(振り手, "失望", 出目)
+ELSEIF (ARG < 0 && INRANGE(出目, 7, 8)) || (ARG >= 0 && ARG < 出目)
+	CALL TOBA_GAMBLER_TWEET(振り手, "安堵", 出目)
+ENDIF
+SIF !RESULT
+	TWAIT 600, 0
+REDRAW 1
+RETURN 出目
+;博徒の呟きを表示する関数
+;CHARA:1=山童 2=河童 3= 鴉天狗, 4=蟒蛇 5=ランダムモブ子Ａ 6=ランダムモブ子Ｂ
+;L_FEED：表示分類=BIT0 ONでウエイトあり BIT1 ONでCLEARLINE BIT2 ONで必ず表示
+
+@TOBA_GAMBLER_TWEET(CHARA, 状況, 分類, SUB = 0, L_FEED = 3)
+#DIM CHARA
+#DIM 分類
+#DIM L_FEED
+#DIM SUB
+#DIM EFFECT
+#DIM L_COUNT
+#DIM 表示CID = 0, 91, 92, 93, 94, 25, 26
+#DIMS エフェクト = "", "顔絵_ざわ", "顔絵_ぐにゃあ"
+#DIMS 状況
+#DIMS 表情
+#DIMS MESSAGE
+#DIMS FONTCOLOR
+#DIMS MESSAGE_PRINT, 50
+;ペラペラ喋ると発言すぐ被るので発生抑えめ
+SIF !(!RAND:3 || 分類 == 15 || GETBIT(L_FEED, 2)) || CHARA == MASTER
+	RETURN 0
+EFFECT = 0
+MESSAGE = %BAKUTO_TALK_STRINGS(CHARA, 状況, 分類, SUB)%
+DEBUGPRINTFORML {CHARA} %MESSAGE%
+SIF MESSAGE == ""
+	RETURN 0
+表情 = %RESULTS%
+LOCAL = LINECOUNT
+;表示部分は@SP_TALKのカスタム
+IF 顔絵付きメッセージ
+	キャラ画像表示サイズ比 = 100
+	FONTCOLOR = %TOSTR(BAKUTO_WORDCOLOR:CHARA, "X")%
+	VARSET MESSAGE_PRINT
+	SIF FLAG:マルチサイズ
+		デフォルトキャラ画像横幅 = 180
+	CALL IMAGE_SET(@"얼굴그림_옷_%表情%_스침_{表示CID:CHARA}", 0, 0, キャラ画像表示サイズ比, 0)
+	SIF EFFECT
+		CALL IMAGE_SET(エフェクト:EFFECT, 0, 0, キャラ画像表示サイズ比, 1)
+	MESSAGE = %SPTALK整形(MESSAGE)%
+	SPLIT MESSAGE, "/", MESSAGE_PRINT
+	FOR L_COUNT, 0, RESULT
+	SIF L_COUNT != 0 || EFFECT
+		CALL DUMMY_SET(0, 0, キャラ画像表示サイズ比, L_COUNT)
+	TEMP_HTML:L_COUNT += @"<font color='#%FONTCOLOR%'>%MESSAGE_PRINT:L_COUNT%</font>"
+	NEXT
+	CALL SIMULTANEOUS_IMAGE_DISPLAY(0, 0, 1, -1)
+	IF GETBIT(L_FEED, 0)
+		PRINTW 
+	ELSE
+		PRINTL
+	ENDIF
+ELSE
+	SIF FLAG:口上色
+		SETCOLOR BAKUTO_WORDCOLOR:CHARA
+	SPLIT MESSAGE, "/", MESSAGE_PRINT
+	FOR L_COUNT, 0, RESULT
+	PRINTFORML %MESSAGE_PRINT:L_COUNT%
+	NEXT
+	RESETCOLOR
+	SIF GETBIT(L_FEED, 0)
+		WAIT
+ENDIF
+REDRAW 0
+SIF GETBIT(L_FEED, 1)
+	CLEARLINE LINECOUNT - LOCAL
+REDRAW 1
+RETURN 1
+;博徒の呟きと表情を決める式中関数
+;キャラ:1=山童 2=河童 3=鴉天狗 4=蟒蛇 5=ランダムモブ子１ 6=ランダムモブ子２
+
+@BAKUTO_TALK_STRINGS(キャラ, 状況, 分類, SUB = 0)
+#FUNCTIONS
+#DIM キャラ
+#DIM 分類
+#DIM SUB
+#DIM 初回
+#DIM 定義済
+#DIM L_COUNT
+#DIMS 賭け = "Even", "Odds"
+#DIMS 自称, 2
+#DIMS 状況
+#DIMS 台詞
+#DIMS 候補
+#DIM nPersonality, 2 ;custom code
+RESULTS = 通常
+台詞 =
+IF 定義済 != DAY
+	定義済 = DAY
+	FOR L_COUNT, 0, 2
+	自称:L_COUNT = %TEXTR("わたし/私/あたい/あたし/")%
+	SIF !RAND:4
+		自称:L_COUNT = %TEXTR("ボク/僕/")%
+	nPersonality:L_COUNT = RAND:4 ;%SPLIT_G("normal:child:girly:tomboy")%
+	NEXT
+ENDIF
+SELECTCASE 状況
+	;チンチロリン台詞
+	;親・子の一投目：分類 = 親の出目
+	CASE "一投目" ;rolling the dice, 分類 sets their reaction according to dealer's roll
+		SELECTCASE 分類
+			;親がピン以下勝ち確時の煽り
+			CASE 0 TO 3 ;if dealer rolled very poorly and instalost
+				SELECTCASE キャラ
+					CASE 1
+						STRDATA 台詞
+							DATAFORM 「나나, 혹시 돈을 새처럼 뿌리는 부류인가?」/「뭐, 상관없어! 나도 좀 가져갈게, 정말 고마워♪」
+							DATAFORM 「가만히 앉아 아무것도 안 하는데 계속 칩이 늘다니 믿기지 않아.」/「정말로... 이 도박장이 아주 끝내주는 곳이군♪」
+							DATAFORM 「뭐, 위로가 된다면 나중에 좋은 일이 생길 거라고 확신해.」/「하지만 네가 여기 있는 동안은 지금처럼 남아 우리를 잘 먹여줘♪」
+							DATAFORM 「때로는 지는 것이 승리를 얻는 데 필요하다고들 하지.」/「그러니까 결국 이기는 한 아무 문제 없다고 보는 거지?」/「그렇기에... 우리를 위해 좀 더 많은 승리를 양보해야 해♪」
+						ENDDATA
+					CASE 2
+						STRDATA 台詞
+							DATAFORM 「분 단위로 부자가 되다니 정말 대단하네,」/「순식간에 모두에게 저렇게 칩을 나눠주다니!」/「맞지 않아, 우리의 귀한 후원자님?♪」
+							DATAFORM 「%SPLIT_G("돈 다 고맙다: 여기에서 정말 좋은 시간을 보낼 것 같아!")%♪」
+							DATAFORM 「있잖아, 네가 엄청난 돈을 잃은 건 알지만, 지금 무슨 생각을 하고 있는 거야?」/「이봐, 말해봐, 말해줘! 기분이 어때, 응?」
+							DATAFORM 「푸훗! 푸-푸... 큭큭!」/「...ㅋㅋ, 대박♪」
+							DATAFORM 「아니야 아니야 아니야...」/「오오오오...」/「(헉) 풉하하하!」
+							DATAFORM 「아야 아파라, 인구 - 너야, 친구♪」
+						ENDDATA
+					CASE 3
+						STRDATA 台詞
+							DATAFORM 「아하하! 심지어 칩들도 네 손에서는 편치 않다고 말해!」/「하지만 걱정 마, 내가 기꺼이 그 책임을 지고 가져갈게♪」
+							DATAFORM 「만나서 반가워, 너 돈으로 모두를 웃게 만들다니.」/「너 정말 대단한 성녀로구나, 얘야!」/「벌써 네 위에 후광 같은 게 떠 있는 것 같아져 가네♪」
+							DATAFORM 「우와, 이게 무슨 마법이야?! 손 하나 까딱 안 하고 칩을 더 얻었다고?」/「어머, 귀여워라, 그럴 필요 없었어! 이렇게 돈 벌기 좋은 방법이라니♪」
+							DATAFORM 「사람들의 불행도 꿀 맛이라고들 하던걸♪」/「그리고 정말이지, 영원히 핥고 싶을 정도야!」
+						ENDDATA
+					CASE 4
+						RESULTS = 笑顔
+						STRDATA 台詞
+							DATAFORM (큰 뱀이 원을 그리며 몸을 말고 있다...)
+							DATAFORM (큰 뱀이 기쁨에 차 입을 크게 벌린다...)
+							DATAFORM (큰 뱀이 용수철처럼 튕기기 전에 스스로 몸을 감는다...)
+							DATAFORM (큰 뱀이 포식자의 섬뜩한 빛을 눈에 담고 입술을 핥는다...)
+						ENDDATA
+				ENDSELECT
+			CASE 4 ;2-pointer
+				SELECTCASE キャラ
+					CASE 1
+						STRDATA 台詞
+							DATAFORM 「내 승리는 결정된 것 같군。」/「이걸로 내가 질 리가 없지!」
+							DATAFORM 「후후후! 그렇게 쉽게 내게 기회를 주어서 고맙네.」
+							DATAFORM 「결국 이건 진지한 게임이니까. 그러니 누구도 방심할 수 없어!」
+							DATAFORM 「여기서 제대로 된 승리를 확정 지을 테다.」
+							DATAFORM 「상황이 좋지 않아... 오호, 너 정말 끝났구나!」
+						ENDDATA
+					CASE 2
+						STRDATA 台詞
+							DATAFORM 「와, 우리한테 힘 빼고 있는 거야?」/「그럼 내 마음대로 전력을 다해 봐야겠어!」
+							DATAFORM 「아, 정말 너 너무 관대하다! 나 너한테 넘어갈지도 모르겠어.「 / 」하지만 네 본을 따지는 건 아닐 것 같아♪」
+							DATAFORM 「미리 사과할게, 개인적으로 받아들이지 마~「 / 」하지만 이건 시합이니까, 내가 해야 할 일을 해야 해♪」
+							DATAFORM 「아하하! 정말 미안해, 네 마음이 너무 안쓰러워♪「 / 」걱정 마, 잠시 후에 내 던짐으로 끝내줄게~」
+							DATAFORM 「네 기대에 부응할 수 있길 바라야 할 거야, 왜냐면 그럴 것 같지 않거든!」
+						ENDDATA
+					CASE 3
+						STRDATA 台詞
+							DATAFORM 「미안하지만, 이제부터는 내가 플레이할 거야.」
+							DATAFORM 「뭐, 알다시피 이런 일은 가끔 생기는 거지!」/「너무 상심하지 마!」
+							DATAFORM 「이길 수 있다면 해보는 거지, 뭐.」
+							DATAFORM 「아하하, 정말 관대하시네!」/「이렇게 관대한 후원은 거절할 수 없지!」
+							DATAFORM 「페어플레이. 이제 내가 당신을 손쉽게 쓰러뜨릴 차례야♪」
+						ENDDATA
+					CASE 4
+						STRDATA 台詞
+							DATAFORM (빅 스네이크가 입으로 주사위를 집어 던졌다.)
+							DATAFORM (빅 스네이크는 능숙하게 혀를 이용해 주사위를 굴렸다.)
+							DATAFORM (빅 스네이크는 꼬리로 주사위 굴림을 했다. / 주사위들이 공중으로 날아올라 잔 안에 정확히 착지했다...)
+						ENDDATA
+				ENDSELECT
+			CASE -1, 5, 6 ;3,4 pointer, dealer's first roll
+				LOCALS:9 = %SPLIT_G("Shoot:Go:Rolling:Here goes:Heave-ho:Let's go")%!
+				SIF !RAND:10
+					LOCALS:9 = Come on, come on, baby needs a new pair of shoes!
+				SELECTCASE キャラ
+					CASE 1
+						STRDATA 台詞
+							DATAFORM 「좋아, 주사위 굴릴 시간이야!」
+							DATAFORM 「간다... 여기 있다!」
+							DATAFORM 「자 그럼, 시작해 볼까.」
+							DATAFORM 「조심스럽게, 조심스럽게... 여기 있다!」
+							DATAFORM 「%LOCALS:9%」
+							DATAFORM 「좋아, 해보자!」
+						ENDDATA
+					CASE 2
+						STRDATA 台詞
+							DATAFORM 「%LOCALS:9%」
+							DATAFORM 「아유프!」
+							DATAFORM 「굴려보자, 볼리를 받자!」
+							DATAFORM 「좋아... 덤벼라!」
+							DATAFORM 「후라아!」
+							DATAFORM 「오도록 해, 에이스 아웃, 에이스 아웃...」/「여기, 붐!」
+						ENDDATA
+					CASE 3
+						STRDATA 台詞
+							DATAFORM 「%LOCALS:9%」
+							DATAFORM 「자, 가볍게 한 번 굴려보자!」
+							DATAFORM 「나 간다!」
+							DATAFORM 「신과 부처님... 나의 이 던짐을 인도해 주소서!」
+							DATAFORM 「나는 손이 가벼워, 알잖아... 전부 손목에 달렸지!」
+							DATAFORM 「에이스 아웃... 나에게 줘!」
+						ENDDATA
+					CASE 4
+						STRDATA 台詞
+							DATAFORM (큰 뱀은 입으로 주사위를 집어 던진다.)
+							DATAFORM (큰 뱀은 능숙하게 혀를 사용해 주사위를 굴린다.)
+							DATAFORM (큰 뱀은 꼬리로 주사위를 굴린다.) / (주사위가 공중을 날아 잔 속에 정확히 떨어진다...)
+						ENDDATA
+				ENDSELECT
+			CASE 7 ;5-pointer
+				RESULTS = 泣き
+				SELECTCASE キャラ
+					CASE 1
+						RESULTS = 怒り
+						STRDATA 台詞
+							DATAFORM 「흠, 이거 만만치 않네...」
+							DATAFORM 「최선을 다하면 어쩌면...」
+							DATAFORM 「아주 작은 기미라도 있다면...」
+							DATAFORM 「나 아직... 지지 않았다고... 말할 수 있으니까...」
+						ENDDATA
+					CASE 2
+						STRDATA 台詞
+							DATAFORM 「아, 으윽... 이거 아플 것 같은데...」
+							DATAFORM 「그냥 큰 걸 걸고 최선을 다해볼래...」/「어차피 다른 방법은 없어...」
+							DATAFORM 「만약 시도하면 좋은 콤보로 모두를 놀라게 할지도 모르겠어... 어쩌면?」
+							DATAFORM 「이건 망한 것 같지만, 해보는 수밖에 없지... 내 운에 맡길래!」＠通常
+						ENDDATA
+					CASE 3
+						RESULTS = 通常
+						STRDATA 台詞
+							DATAFORM 「이거 내가 이기면 멋지지 않을까? 봐!」
+							DATAFORM 「아직 그렇게 자만하지 마, 얘야! 내 움직임을 보기 전까지는 아무도 모른다구, 알잖아?」
+							DATAFORM 「내가 이 난관을 극복하고 이겨낸다면 정말 기분 좋을 거야!」
+							DATAFORM 「나의 동기를 끌어내라! 동기 부여만이 내가 필요한 전부야! 해낼 수 있어, 간다!!!」
+						ENDDATA
+					CASE 4
+						STRDATA 台詞
+							DATAFORM (빅 스네이크는 자신감에 넘쳐 주사위를 굴린다...)
+							DATAFORM (빅 스네이크는 무언가를 생각한 후 주사위를 굴린다...)
+							DATAFORM (빅 스네이크는 평소보다 훨씬 조심스럽게 주사위를 굴린다...)
+						ENDDATA
+				ENDSELECT
+			CASE 8 TO 15 ;dealer instawon
+				SELECTCASE キャラ
+					CASE 1
+						RESULTS = 怒り
+						STRDATA 台詞
+							DATAFORM 「...이것들은 잠시 빌리는 것뿐이야。」／「내 이름 걸고 반드시 되찾을 거야!」
+							DATAFORM 「가끔은 잃는 것이 최고의 이득일 때도 있어...」／「가끔은 잃는 것이 최고의 이득일 때도 있어...」／「가끔은 잃는 것이 최고의 이득일 때도 있어...」／「그래, 전부 되찾을 거야, 의심의 여지 없이!」
+							DATAFORM 「이건... 형언할 수 없을 정도로 답답하군。」／「그러니까 말이야, 시작하기도 전에 끝난 것 같아...」／「그리고 그렇게 내 베팅은 사라졌어... 내 통제 밖에 있었던 거지...」
+						ENDDATA
+					CASE 2
+						RESULTS = 泣き
+						STRDATA 台詞
+							DATAFORM 「이거 참 간단한 일이야! 주사위 굴리는 것만 지켜봐, 그럼 다 끝이야!」/「물론, 그들이 임금을 주는 대신 네 돈을 가져가지만 말이지.」/「젠장, 생각해보니 별로군!」
+							DATAFORM 「뭐라고?! 방금 한 건 테스트 롤이었잖아, 그렇지?」/「자, 그럼 기다리게 하지 마! 진짜 굴려봐, 어서!」/「...어라, 속을 생각은 없나 보네? 정말 확실해?」
+							DATAFORM 「아이고, 이거 전혀 재미가 없잖아!」/「적어도 모두에게 주사위를 굴릴 기회를 줘야지!」/「내가 마지막에 혼자 이기는 걸로 판타지를 어떻게 충족시키라는 거야?!」
+						ENDDATA
+					CASE 3
+						RESULTS = 怒り
+						STRDATA 台詞
+							DATAFORM 「아이고, 갑자기 이 게임이 너무 지루해졌어.」/「이게 농담이라고 생각해?!」/「이 상황을 어떻게 해결할 생각이야, 응?」
+							DATAFORM 「오, 나는 이 상황을 아주 잘 알아.」/「이런 일 다음에는 언제나 어떤 종류의 고통스러운 반격이 있지!」＠通常
+							DATAFORM 「그리고 그렇게 아무것도 할 새도 없이 모든 게 끝나버리다니...」/「하아, 정말 지루해라.」
+						ENDDATA
+					CASE 4
+						RESULTS = 泣き
+						STRDATA 台詞
+							DATAFORM (빅 스네이크는 매우 억울해 보인다...)
+							DATAFORM (빅 스네이크는 기운 없이 옆으로 몸을 기울인다...)
+							DATAFORM (빅 스네이크는 다소 침울해 보인다...)
+							DATAFORM (빅 스네이크는 슬픔에 고개를 떨군다...)
+						ENDDATA
+				ENDSELECT
+		ENDSELECT
+		;親子共通n回目の賽振り:分類 = 振り終わった回数
+	CASE "n投目" ;re-rolling the dice if failed to get a combo, check for number of attempts
+		SELECTCASE 分類
+			CASE 1
+				SELECTCASE キャラ
+					CASE 1
+						STRDATA 台詞
+							DATAFORM 「다시 한번 해보자.」
+							DATAFORM 「오 이런, 이번엔 아무것도 못 얻었네.」
+							DATAFORM 「한 번만 더 던지게 해줘!」
+							DATAFORM 「좋아-좋아, 됐다!」
+							DATAFORM 「그냥 깔끔하게 한 판 돌리고 싶은데, 제발!」
+						ENDDATA
+					CASE 2
+						STRDATA 台詞
+							DATAFORM 「좋아, 또 시작이군.」
+							DATAFORM 「한 번만 더 던져줘!」
+							DATAFORM 「다시 처음으로 돌아온 것 같네. 여기!」
+							DATAFORM 「응-그래, 그냥 바로 하자.」
+							DATAFORM 「다음 건 분명 좋을 거야! 아마도...」
+						ENDDATA
+					CASE 3
+						STRDATA 台詞
+							DATAFORM 「%SPLIT_G("I'd rather have that than something weird:Still better than rolling some yucky thing")%... 간다!」
+							DATAFORM 「흥, 됐어. 그냥 한 번 더 굴릴래!」
+							DATAFORM 「한 번 더 해보지 뭐, 자!」
+							DATAFORM 「좋아, 이제 기분 최고야... 가자!」
+							DATAFORM 「다음엔 꼭 성공할 거야, 걱정 마!」
+						ENDDATA
+					CASE 4
+						STRDATA 台詞
+							DATAFORM (큰 뱀은 입으로 주사위를 집어 다시 던진다.)
+							DATAFORM (큰 뱀은 능숙하게 혀를 사용해 주사위를 굴린다.)
+							DATAFORM (큰 뱀은 꼬리로 주사위 굴리기를 한다.) / (주사위가 공중으로 날아올라 컵 안에 정확히 떨어진다...)
+						ENDDATA
+				ENDSELECT
+			CASE 2
+				SELECTCASE キャラ
+					CASE 1
+						STRDATA 台詞
+							DATAFORM 「제발 좀... 부탁이야, 여기서 애원하고 있잖아...」
+							DATAFORM 「아이고... 난 그냥 깔끔한 연계를 만들려고 노력 중인데...」
+							DATAFORM 「뭐-뭐라고...? 내가 지금 별로 잘 안 되고 있어...」
+							DATAFORM 「음, 결국 세 번째 시도에 달했네... 꼭 치명적인 일이었으면 좋겠어!」
+							DATAFORM 「상대를 방심하게 만들었으니, 이제 공격할 시간이야... / 지금이다!」
+						ENDDATA
+					CASE 2
+						STRDATA 台詞
+							DATAFORM 「모아뒀던 행운과 에너지를... 지금부터 폭발시킨다!」
+							DATAFORM 「에헤헤, 그냥 빠르고 쉽게 끝내고 싶을 뿐이야!」
+							DATAFORM 「음... 조금 긴장되고 있어...」
+							DATAFORM 「후우... 좀 이상하다. 또?」
+							DATAFORM 「결국 마지막에 제일 좋은 걸 남겨둔 데는 이유가 있었지... / 자, 보라! 쾅!」
+						ENDDATA
+					CASE 3
+						STRDATA 台詞
+							DATAFORM 「%SPLIT_G("Gotta keep my cool, gotta keep my cool:No sweat, no sweat")%... 간다!」
+							DATAFORM 「바로 여기 있다, 승리의 전략이 내 손에 잡혔어... 진짜는 여기서 시작이다!」/「가자아아!」
+							DATAFORM 「승리를 끌어내기 위해 필요한 모든 단계들이 있겠지, 그렇지?」
+							DATAFORM 「좋아, 더 이상 빈둥거리지 않겠다, 간다!」
+							DATAFORM 「나 신경 쓰지 마, 이 장면의 하이라이트를 준비하는 중이야-됐다!」
+						ENDDATA
+					CASE 4
+						STRDATA 台詞
+							DATAFORM (빅 스네이크가 주사위를 한 번 더 굴리려 한다.)
+							DATAFORM (빅 스네이크가 조금 당황하기 시작한다...)＠울음
+							DATAFORM (빅 스네이크가 혼란스러워하며 고개를 기울인다...)
+						ENDDATA
+				ENDSELECT
+			CASEELSE
+				RESULTS = 泣き
+				SELECTCASE キャラ
+					CASE 1
+						RESULTS = 怒り
+						STRDATA 台詞
+							DATAFORM 「음-가끔은... 이게 그저 있는 그대로인 거지... 더 이상 아무것도 없어.」
+							DATAFORM 「젠장, 오늘은 그냥 내 운이 없는 날이야...」
+							DATAFORM 「흐-응? 도통 제대로 할 수가 없네...」
+							DATAFORM 「이렇게까지 했는데 승리를 위한 발판조차 마련하지 못하다니, 나 자신에게 좀 실망했어...」
+							DATAFORM 「음, 응...」/「이건 방향을 바꿔야 할 것 같아...」
+						ENDDATA
+					CASE 2
+						STRDATA 台詞
+							DATAFORM 「오-아, 음... 그게 가끔 일어나는 일 중 하나인 거야, 있잖아?」
+							DATAFORM 「에헤헤, 운이 없네!」
+							DATAFORM 「우와아, 나 완전히 망쳤다...!」
+							DATAFORM 「괜찮아, 졌어, 이번 건 졌어! 내가 그랬잖아!」/「아아앙, 제기랄!!!」＠분노
+							DATAFORM 「아, 주사위들, 나의 사랑스러운 주사위들아...」/「조금만 더 결의를 가지고 나에게 좋은 눈을 던져줬으면 좋았을 텐데!」
+						ENDDATA
+					CASE 3
+						STRDATA 台詞
+							DATAFORM 「아아, 이런... 지금 내가 이걸 굴려야 하는 건가...?」
+							DATAFORM 「나 정말 운이 다 떨어졌어...」
+							DATAFORM 「하아, 이게 뭐야... 솔직히 정말 대실수야!」
+							DATAFORM 「그래-그래, 알아! 나 졌어, 이거 졌다고, 좋아?!」＠怒り
+							DATAFORM 「다음엔... 다음엔 반드시! 내가 되돌릴 거야!」＠怒り
+							DATAFORM 「이건 방금 일어난 일이야... 다음!」
+						ENDDATA
+					CASE 4
+						STRDATA 台詞
+							DATAFORM (큰 뱀은 진지한 표정으로 똑바로 앉아 있다...)＠보통
+							DATAFORM (큰 뱀은 매우 우울해 보인다...)
+							DATAFORM (큰 뱀은 혼란스러운 듯 고개를 기울이고 있다...)
+						ENDDATA
+				ENDSELECT
+		ENDSELECT
+	CASE "親で振った後" ;dealer's reaction to the roll, check roll combo
+		SELECTCASE 分類
+			CASE 0 ;1-2-3
+				RESULTS = 泣き
+				SELECTCASE キャラ
+					CASE 1
+						RESULTS = 怒り
+						STRDATA 台詞
+							DATAFORM 「이건 그냥... 견디기엔 너무 고통스러워...」
+							DATAFORM 「너 안 나타나면 어디로 갈지 이미 알고 있었어...」/「하아...」
+							DATAFORM 「오오, 아파... 이 패배는 내 지갑에 직격탄이야...」
+						ENDDATA
+					CASE 2
+						STRDATA 台詞
+							DATAFORM 「안 돼, 그만둬! %SPLIT_G("What the hell's this:Are you serious right now")%?!」
+							DATAFORM 「이건 가여운 나에게 너무 큰 고통이야!」
+							DATAFORM 「어이, 잠깐 기다려 봐!」/「무슨 일이야?! 무슨 소리야?!」＠怒り
+						ENDDATA
+					CASE 3
+						RESULTS = 怒り
+						STRDATA 台詞
+							DATAFORM 「이럴 리가 없어, 제발!」/「내가 너한테 무슨 잘못을 했다고, 응?! 왜 나를 이렇게 대하는 거야?!」
+							DATAFORM 「모든 결과 중에서 하필 이게 나와야 한다니?!」/「아악, 빌어먹을, 나 화났다고!!!」
+							DATAFORM 「네가 할 수 있을 때 계속 비웃어!」/「너희들도 결국 이렇게 될지도 몰라!」
+						ENDDATA
+					CASE 4
+						STRDATA 台詞
+							DATAFORM (빅 스네이크는 충격으로 얼어붙었다.)
+							DATAFORM 빅 스네이크는 너무 혼란스러워서 이유도 없이 춤추기 시작했다. @보통
+							DATAFORM (빅 스네이크는 온몸을 떨고 있었다.)
+						ENDDATA
+				ENDSELECT
+			CASE 1 TO 3 ;missed, bust or 1-point
+				RESULTS = 泣き
+				SELECTCASE キャラ
+					CASE 1
+						RESULTS = 怒り
+						STRDATA 台詞
+							DATAFORM 「하아아～! 어쩔 수 없었지～」
+							DATAFORM 「뭐, 어쨌든... 다음엔 더 잘할게! 항상 다음 기회가 있잖아, 안 그래?」
+							DATAFORM 「이걸 이렇게 끝내는 게 나아, 아니면 이겨도 회복하지 못할 테니까.」/「그래, 그냥 다시 시작하자.」
+							DATAFORM 「우와... 솔직히 좀 가혹하네...」
+						ENDDATA
+					CASE 2
+						STRDATA 台詞
+							DATAFORM 「좋아, 다음이야! 그냥 다음으로 가자!」@분노
+							DATAFORM 「조만간 이런 걸 얻겠지, 하아...」
+							DATAFORM 「저항할 만한 결과를 뽑을 수 있다면 좋을 텐데...」/「하지만 이건? 그래, 희망 없어...」
+							DATAFORM 「가끔 그런 일도 있는 법이야!」/「하지만 이제 내 운명은 끝났어!」/「자, 다음으로 넘어가자!」@분노
+						ENDDATA
+					CASE 3
+						STRDATA 台詞
+							DATAFORM 「이걸로 발을 들여놓는 것조차 힘들 텐데, 경쟁은 더더욱 못 하겠어.」/「오호라, 이건 정말 속상하군...」
+							DATAFORM 「그냥 운이 없었던 일일 뿐이야. 그게 전부지.」/「하지만 오해하지 마, 다음 내 판은 모두에게 놀라움을 선사할 거야!」＠怒り
+							DATAFORM 「다시 처음부터 시작하자고, 응, 그렇게 할래.」
+							DATAFORM 「하! 이걸로 이길 수는 없을걸.」/「알았어, 그럼 다음으로 넘어가자! 시작해 보자!」＠怒り
+							DATAFORM 「부디 내 불운의 행진이 여기서 끝나기를...」/「그래야지!」＠怒り
+						ENDDATA
+					CASE 4
+						台詞 = （The Big Snake %TEXTR("looks somewhat disheartened/looks disappointed/hangs its head in sadness")%...）
+				ENDSELECT
+			CASE 4 ;2-point
+				RESULTS = 泣き
+				SELECTCASE キャラ
+					CASE 1
+						RESULTS = 怒り
+						STRDATA 台詞
+							DATAFORM 「나 좀 봐줘, 제발...」
+							DATAFORM 「이제 나 깊이 빠졌어...」
+							DATAFORM 「%SPLIT_G("이건... 꽤... 나쁘네?: 이거... 나한테 좋지 않을 것 같은데...")%」
+							DATAFORM 「있잖아, 모두가 갑자기...」/「실수를 저지르고 안 좋은 눈금을 찍기 시작하거나... 뭐 그런 거 말이야...」
+						ENDDATA
+					CASE 2
+						STRDATA 台詞
+							DATAFORM 「음... 너무 세게 몰아붙이지 않았으면 좋겠어... 부디...」
+							DATAFORM 「우와아, 너희들한테 너무 쉽게 해주고 있네...」
+							DATAFORM 「이런... 이거 전혀 좋지 않군...」
+							DATAFORM 「앞으로 무슨 일이 일어날지 모르겠지만... / 내가 이걸 이길 리가 없는데... 어쩌면?」
+						ENDDATA
+					CASE 3
+						STRDATA 台詞
+							DATAFORM 「아니-아직 축하하기엔 너무 이르잖아...」/「내 말은, 결과가 아직 명확하지 않고 전부... 그렇지?」
+							DATAFORM 「오호, 그럼 나에겐 이게 끝인가 보네...」
+							DATAFORM 「와, 이거 정말 안 좋을지도 몰라...」
+							DATAFORM 「아니, 하지만... 너는 이것보다 더 못할 수도 있잖아, 그렇지?」/「그러니까 난... 아직 포기하지 않을 거야!」＠通常
+						ENDDATA
+					CASE 4
+						台詞 = （The Big Snake %TEXTR("looks somewhat disheartened/looks disappointed/hangs its head in sadness")%...）
+				ENDSELECT
+			CASE 5 ;3-point
+				RESULTS = 泣き
+				SELECTCASE キャラ
+					CASE 1
+						RESULTS = 怒り
+						STRDATA 台詞
+							DATAFORM 「휴... 딱 안심이 되는 건 아니네.」
+							DATAFORM 「좀 부족한 것 같아, 내 생각엔...?」
+							DATAFORM 「왠지 좀 불안해지는 기분이야...」
+							DATAFORM 「또 이런 일이 벌어질 수 있는 상황이군...」
+						ENDDATA
+					CASE 2
+						STRDATA 台詞
+							DATAFORM 「이거 좀 안 좋을지도...?」
+							DATAFORM 「조금 부족할 수도 있지만, 지켜보자...」
+							DATAFORM 「솔직히 이건 좀 애매하네...」
+							DATAFORM 「음, 뭐, 이걸 가지고 내가 할 말이 있나...」
+						ENDDATA
+					CASE 3
+						STRDATA 台詞
+							DATAFORM 「최소한 티어가 더 높았으면 좋겠는데...」
+							DATAFORM 「우웁, 정말 아깝네...」/「%SPLIT_G("Just a tad more, and that would've been it:I only needed this much")%...」
+							DATAFORM 「오, 이런... 이건 좀 불안하네요.」
+							DATAFORM 「모든 사람이 그런 상황을 조롱하는 게 놀랍다.」/「나? 난 괜찮다고 생각해, 정말로.」＠通常
+						ENDDATA
+					CASE 4
+						RESULTS = 通常
+						STRDATA 台詞
+							DATAFORM (빅 스네이크는 다소 만족스럽지 않은 듯하다...)
+							DATAFORM (빅 스네이크가 몸을 감고 있다...)
+							DATAFORM (빅 스네이크가 큰 비명을 지른다.)
+						ENDDATA
+				ENDSELECT
+			CASE 6 ;4-point
+				SELECTCASE キャラ
+					CASE 1
+						STRDATA 台詞
+							DATAFORM 「이 확률들... 내 쪽으로 기울어야 할 텐데, 뭐?」
+							DATAFORM 「음, 불평할 건 없지 %SPLIT_G("about that:too much")%.」
+							DATAFORM 「이게... 실제로 효과가 있을지도 모르겠어.」
+							DATAFORM 「어쩌면 이게 나에게 싸울 기회를 줄지도 모르지...」
+						ENDDATA
+					CASE 2
+						STRDATA 台詞
+							DATAFORM 「좋아! 이걸로 됐겠지, 그렇지?」
+							DATAFORM 「이 정도는 괜찮잖아, 그렇지?」
+							DATAFORM 「좋았어! 이거면 될 거야, 그렇게 생각해.」
+							DATAFORM 「설마 너희들... 내 기분 망치지는 않겠지, 그치?」
+						ENDDATA
+					CASE 3
+						STRDATA 台詞
+							DATAFORM 「자, 이제 게임 시작이야!」/「어쨌든 나쁘지 않군.」
+							DATAFORM 「좋아! 이건 내가 받아들일 수 있겠어...」/「덤벼라!」
+							DATAFORM 「응, 좋아, 그건 될 거야!」
+							DATAFORM 「솔직히 내 생각엔 너희들에게 꽤 큰 난관이 되겠지, 안 그래?」/「솔직히 그것 이상은 얻을 수 없을걸.」
+						ENDDATA
+					CASE 4
+						RESULTS = 笑顔
+						STRDATA 台詞
+							DATAFORM (큰 뱀은 스스로에게 매우 만족하는 듯하다...)
+							DATAFORM (큰 뱀은 만족스럽게 고개를 끄덕인다...)
+							DATAFORM (큰 뱀이 크고 날카로운 소리를 낸다.)
+							DATAFORM (큰 뱀이 입 밖으로 혀를 내밀었다가 다시 집어넣는다...)
+						ENDDATA
+				ENDSELECT
+			CASE 7 ;5-point
+				SELECTCASE キャラ
+					CASE 1
+						STRDATA 台詞
+							DATAFORM 「...응, 이걸로 거의 이겼어♪」
+							DATAFORM 「헤이-헤이! 바로 이거 좀 봐봐!」/「저걸 이기는 건 너희들에게 꽤 어려울 거야♪」
+							DATAFORM 「자, 다들 주사위 한번 굴려보도록 해♪」
+							DATAFORM 「후후, 이제 편하게 앉아서 숨을 돌릴 수 있겠네♪」
+						ENDDATA
+					CASE 2
+						STRDATA 台詞
+							DATAFORM 「아아, 정말 미안해～」/「거의 내 승리를 확정 지어줘서 정말 미안해♪」
+							DATAFORM 「아하하!♪ 봐봐! 어때?」
+							DATAFORM 「아하! 나 대박이야 - 이제 그냥 편하게 앉아서 쉬면 돼!」
+							DATAFORM 「푸푸후... 별거 아닐지도 모르지만...」/「가 보오, 한번 해봐♥ 최선을 다해줘♥」
+						ENDDATA
+					CASE 3
+						STRDATA 台詞
+							DATAFORM 「해냈어!♪ 이게 바로 이른 승리라고 할 수 있지!」
+							DATAFORM 「하하! 이거 봤어?! 어때, 그게 말이야?」
+							DATAFORM 「자, 자! 허세 가득한 저항이 어떤 모습인지 보여줘 봐♪」
+							DATAFORM 「아하하하! 이걸 이기기는 힘들 것 같은데, 후후?」/「나라면 포기하는 게 좋을 거야. 그냥 친구로서의 충고야♪」
+						ENDDATA
+					CASE 4
+						RESULTS = 笑顔
+						STRDATA 台詞
+							DATAFORM (큰 뱀은 스스로에게 매우 만족하는 듯하다...)
+							DATAFORM (큰 뱀은 만족스럽게 고개를 끄덕인다...)
+							DATAFORM (큰 뱀은 크고 날카로운 소리를 낸다.)
+							DATAFORM (큰 뱀은 입 안팎으로 혀를 핥는다...)
+						ENDDATA
+				ENDSELECT
+			CASE 8 ;6-point
+				SELECTCASE キャラ
+					CASE 1
+						STRDATA 台詞
+							DATAFORM 「음~ 그럼 내가 판을 가져가야겠어♪」
+							DATAFORM 「응, 서둘러 정산하자♪」
+							DATAFORM 「아... 이래서 승자 독식 시스템이... 황홀하게 느껴지는구나♪」
+							DATAFORM 「아하하!」/「네 모든 칩은 *우리* 것!♪」
+						ENDDATA
+					CASE 2
+						STRDATA 台詞
+							DATAFORM 「요컨대, 너희들이 속임수를 쓰지 않는 한 이건 내 확정 승리야♪」
+							DATAFORM 「이야아, 내가 해냈어!!!」
+							DATAFORM 「좋았어, 나한테 그 '칩시'들을 넘길 시간이야♪」
+							DATAFORM 「우와, 너희들 정말 안됐다!」/「보시다시피, 너희들의 모든 칩이 내게 끌리고 있어～」/「하지만 걱정 마, 내가 그거 *제대로* 잘 보살펴 줄 테니까!♪」
+						ENDDATA
+					CASE 3
+						STRDATA 台詞
+							DATAFORM 「오우, 정말 좋은 지적이야, 동의하지 않아?」/「%SPLIT_G("As expected of myself, of course:No big surprise, it's me we're talking about after all:I'm soooo proud of myself")%!」
+							DATAFORM 「최고의 반전이란 바로 이런 거야!」
+							DATAFORM 「며칠 동안 대박이네, 오 예스!」/「그리고 전부 내 거야!♪」
+							DATAFORM 「엘리트는 항상 정상에 있지...」/「그렇지, 네 모든 칩이 나에게 올 테니까...」/「아하하하하!!!」
+						ENDDATA
+					CASE 4
+						RESULTS = 笑顔
+						STRDATA 台詞
+							DATAFORM (큰 뱀이 즐거운 춤을 추고 있다...)
+							DATAFORM (큰 뱀이 행복하게 원을 그리며 기어가고 있다...)
+							DATAFORM (큰 뱀은 리듬에 맞춰 몸을 좌우로 꿈틀거린다.) / (그것이 매우 기뻐하는 것은 알 수 있다...)
+						ENDDATA
+				ENDSELECT
+			CASE 15 ;ace out
+				SELECTCASE キャラ
+					CASE 1
+						台詞 = 「...%MOAN()%♥」/「W, Wait just a moment, please...」/「I think I actually... came a little, just now... so, umm...♥」/「If you'd excuse me... I need a change of panties, one sec...♥」
+					CASE 2
+						台詞 = 「Ha-ha-ha! They don't call *me* Goddess of Cee-lo for nothing!」/「Come, all you mortals of the lower order, offer up all you have!」
+					CASE 3
+						台詞 = 「WHOAAA?!?! HO-HOLY SHIT!!! WHAT'S THIS???」/「How cool is that?! Huh...」/「I mean seriously, isn't it a bit too crazy?」/「...Like, straight up super nutty?」
+					CASE 4
+						台詞 = （The Big Snake coils itself before... hopping up and down on the spot?!）/（Boing-boing-boing!）/（It just keeps bouncing again and again!）/（It's just that happy, it seems...）
+				ENDSELECT
+			CASEELSE
+				SELECTCASE キャラ
+					CASE 1
+						STRDATA 台詞
+							DATAFORM 「후훗, 정말 미안해♪」
+							DATAFORM 「아아아... 이거 너무 좋아...」/「마치... 네가 얻을 수 있는 최고의 황홀경 같아♪」
+							DATAFORM 「후후!」/「심지어 %CHIN_PRIZE_TR:分類%조차 내 위대함을 향한 발판일 뿐이야... 나는 더 높이, 또 더 높이 겨룰 거야♪」
+							DATAFORM 「오 그래, 좋은 게임이었어! 이 게임이 좋은 건 내가 이겼기 때문이라는 걸 알잖아!」
+						ENDDATA
+					CASE 2
+						STRDATA 台詞
+							DATAFORM 「아하하하하하!」/「너희 모두가 "크르릉"거리는 걸 보는 건 정말 웃기다!」/「오 나 웃어♪」
+							DATAFORM 「어서-어서-어서!!!」/「모두 바짝 짜버릴 거야!♪」
+							DATAFORM 「%CHIN_PRIZE_TR:分類%... 그거 굉장한 소리네!」/「이 기세를 끝까지 이어가면 좋겠어♪」
+							DATAFORM 「아이고, 불쌍하네... 울 시간인 것 같구나, 흐윽흐윽!♪」
+						ENDDATA
+					CASE 3
+						STRDATA 台詞
+							DATAFORM 「드디어 됐네...」/「나의 빛날 시간...이 온 것 같아♪」
+							DATAFORM 「응, 해봐! 네 빚을 갚을 시간이야, 나의 사랑스러운 작은 돼지들아!」/「우리가 가진 이 보잘것없는 양으로는 거의 충분하지 않아♪」
+							DATAFORM 「후후후... 나는 언제나 정상만을 목표로 하는 여자야, 알겠니...」/「그리고 그걸 증명하기 위해, 다음 타겟은 %CHIN_PRIZE_TR:(分類 + 1)%가 될 거야...」/「공식으로 정해졌어!♪」
+							DATAFORM 「흔히들 말하듯이, 매 순간 누군가는 속는 법이지...」/「정말 여기 와서 부자가 될 거라고 생각했니?」/「하하! 하하하하!」
+						ENDDATA
+					CASE 4
+						RESULTS = 笑顔
+						STRDATA 台詞
+							DATAFORM (빅 스네이크는 스스로에게 매우 만족하는 듯하다...)
+							DATAFORM (빅 스네이크는 만족스럽게 고개를 끄덕인다...)
+							DATAFORM (빅 스네이크는 스스로에게 매우 만족하며 큰 비명을 지른다.)
+						ENDDATA
+				ENDSELECT
+		ENDSELECT
+		;after rolling the dice, reactions
+	CASE "悲鳴" ;instaloss, or you having a good roll
+		;親子共通ヒフミ/子が親のニゾウに負けた/親あなたがシゴロ以上
+		RESULTS = 泣き
+		SELECTCASE キャラ
+			CASE 1
+				RESULTS = 怒り
+				STRDATA 台詞
+					DATAFORM 「...어, 뭐-- %CHIN_PRIZE_TR:分類%?」/「에에에에에에에에에에에에에에에엣?!?!」
+					DATAFORM 「안 돼애애애애애애애애애애애애애애!!!」
+					DATAFORM 「이제 잠깐 기다려 보라고오?!?!?!」
+					DATAFORM 「에에에에에에에에에엣?! 절대로 없어애애애애!!!!!!!」
+				ENDDATA
+			CASE 2
+				STRDATA 台詞
+					DATAFORM 「우에에에에에에엥?!?! 그만, 제발 멈춰줘!!!」/「지금 %TOUPPER(CHIN_PRIZE_TR:分類)%이 이러는 건 원치 않았어!!!」
+					DATAFORM 「히이이이이잉?! 뭐-뭐가 일어나고 있는 거야?!」
+					DATAFORM 「아아아아악스CBJIODFaSET0ZIKW0E9V3409G5W0ESDS!!!」
+					DATAFORM 「싫어에에에에에에에에!!!!!!!!!」
+				ENDDATA
+			CASE 3
+				STRDATA 台詞
+					DATAFORM 「잠깐, 뭐어어어어어어어어?!」/「%SPLIT_G("I didn't ask you to roll:Don't tell me you actually rolled")% %CHIN_PRIZE_TR:分類%!!!」
+					DATAFORM 「우와아아아아아아아악!!! 지금 진심이야?!?!」
+					DATAFORM 「뭐어어어어어어어어어어어어어어?!?!?!」
+					DATAFORM 「에에에에에에에에에에에에에에에에에에에?!?」
+				ENDDATA
+			CASE 4
+				STRDATA 台詞
+					DATAFORM (빅 스네이크는 주사위를 슬프게 응시한다...)
+					DATAFORM (빅 스네이크는 약간 울면서 동요하는 모습이다...)
+					DATAFORM (빅 스네이크가 큰 비명을 지른다.)
+				ENDDATA
+		ENDSELECT
+		;random chance
+		SIF キャラ != 4 && !RAND:10
+			台詞 = 「FFFFFFFFFFFUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUCCCCCCCKKKKKKKKKKKK!!!!!!!!」
+		;親子共通シゴロ以上/子が親のゴケに勝った
+	CASE "歓声" ;instawin, ace out or six-point
+		SELECTCASE キャラ
+			CASE 1
+				STRDATA 台詞
+					DATAFORM 「%CHIN_PRIZE_TR:分類%?!」/「놀랍다, 이건 완전히 %SPLIT_G("NUTS:AWESOOOME")%야!!!」
+					DATAFORM 「야아아호, 해냈어!!!」
+					DATAFORM 「야이따, 만세! %SPLIT_G("I can hardly believe it myself:It's like I'm dreaming right now")%!!!」
+					DATAFORM 「꺄아아악! 믿을 수가 없어!」/「%SPLIT_G("I hope I'm not dreaming right now, 'cause this is seriously impressive!!!:Is this real?! Lemme check, did I actually do this?!")%」
+				ENDDATA
+			CASE 2
+				STRDATA 台詞
+					DATAFORM 「%TOFULL(TOUPPER(CHIN_PRIZE_TR:分類 + " IS HERE"))%―――(ﾟ∀ﾟ)――――!!!」
+					DATAFORM 「아아아!!! 드디어 가는구나, 정말 잘 돼가고 있어!!!」/「드디어 왔어 여러분, 우와!!!」
+					DATAFORM 「아하하하하하!!!」/「이게 바로 %SPLIT_G("I keep coming back:I'll never quit gambling:I can't stop gambling")%지!」
+					DATAFORM 「해냈어, 야아아호!!!」
+				ENDDATA
+			CASE 3
+				STRDATA 台詞
+					DATAFORM 「오오오오?! %CHIN_PRIZE_TR:分類%!!!」/「진짜야?!?! 이게 일어나고 있는 거야?! 아아아아아아아아악!!!」
+					DATAFORM 「됐다, 돌아왔어 자기야!!!」
+					DATAFORM 「아하하하하하!!! 봤지?! 내가 말하고 싶었던 게 그거야!!!」
+					DATAFORM 「요오-호오오오오오잇!!!」
+				ENDDATA
+			CASE 4
+				RESULTS = 笑顔
+				STRDATA 台詞
+					DATAFORM (큰 뱀은 스스로에게 매우 만족하는 듯하다...)
+					DATAFORM (큰 뱀은 만족스럽게 고개를 끄덕인다...)
+					DATAFORM (큰 뱀이 몸을 물결치듯 움직이고 있다.) / (어쩌면 스스로 전설의 '웨이브' 기술을 시도하려는 것일지도...?)
+					DATAFORM (큰 뱀은 그냥 계속 나아가더니... 모두에게 눈짓까지 하는 건가?!) / (심지어 "반짝!" 같은 음향 효과를 냈다고 해도 믿겠는데...)
+				ENDDATA
+		ENDSELECT
+		;親子共通ションベン
+	CASE "罵声" ;missed the pot
+		RESULTS = 怒り
+		SELECTCASE キャラ
+			CASE 1
+				STRDATA 台詞
+					DATAFORM 「에에에엣?! 잠깐만 기다려 봐!!!」
+					DATAFORM 「아니 아니 아니, 말도 안 돼!」/「이거 공평한 거 맞냐?! 야!」
+					DATAFORM 「기다려, 안 돼! 제발 좀 해줘!」/「이게 무슨 농담이야?!」
+				ENDDATA
+			CASE 2
+				STRDATA 台詞
+					DATAFORM 「우오오오이이이?!」「이게 뭐야?! 도대체 무슨 일이야?! 지금 장난해?!」
+					DATAFORM 「음, 실례지만?! 아니, 난 괜찮지 않아! 상관없어, 이건 인정 안 해!」
+					DATAFORM 「뭐어어어어?! 이제 대체 뭐가 어떻게 돌아가는 건지도 모르겠어!!!」
+				ENDDATA
+			CASE 3
+				STRDATA 台詞
+					DATAFORM 「야, 잠깐만! 모두 제자리에 있어!!!」/「지금 진심이야, 이게 어떻게 가능한 거야?!」
+					DATAFORM 「뭐... 뭐... 뭐-뭐어어어어엇?!?!」/「아니, 진지하게 말해봐, 이거 사실이라고 하기엔 너무 미친 거 아냐?!」
+					DATAFORM 「야, 이봐!!! 좀 천천히 하자, 제발!」/「우리가 그냥 이걸 받아들이기만 할 거야?!」
+				ENDDATA
+			CASE 4
+				RESULTS = 泣き
+				STRDATA 台詞
+					DATAFORM (큰 뱀이 사라진 주사위를 찾으며 주변을 두리번거린다...)
+					DATAFORM (큰 뱀은 완전히 놀란 듯 제자리에 얼어붙어 있다...)
+					DATAFORM (큰 뱀은 매우 우울해 보인다...)
+				ENDDATA
+		ENDSELECT
+		;親収支マイナスがレートの80倍以上
+	CASE "失意" ;despair
+		RESULTS = 泣き
+		SELECTCASE キャラ
+			CASE 1
+				RESULTS = 怒り
+				STRDATA 台詞
+					DATAFORM 「정말로... 이대로 회복할 수 있을까?」
+					DATAFORM 「에헤헤... 너희들 나 완전히 망쳐놨네...」
+					DATAFORM 「아악, 내가 이렇게까지 추락했다니 믿을 수가 없어...」
+					DATAFORM 「평생 열심히 일해서 한 푼씩 모은다 해도...」/「단 한 번의 실수로 전부 사라져 버려.」/「...하지만 양날의 검이기도 하고, 난 한꺼번에 다 되찾아 버릴 거야!」＠怒り
+				ENDDATA
+			CASE 2
+				STRDATA 台詞
+					DATAFORM 「우으...」/「내 작은 칩스들... 분명 금방 나에게 돌아오겠지, 그렇지?」/「내가 이루어낼게, 걱정 마! 약속이야, 알았지?」
+					DATAFORM 「이런... 과자가 거의 떨어져 가는 것 같네...?」
+					DATAFORM 「에엥?! 이런 상황을 대비해서 가입할 수 있는 보험 같은 건 없나요?!」/「...내 잘못이지, 당연히 그렇게 작동하지 않겠지, 뭐.」
+				ENDDATA
+			CASE 3
+				STRDATA 台詞
+					DATAFORM 「우와, 이번엔 정말 당했네...」 / 「이 게임 전반적으로 너무 힘들었어, 정말...」
+					DATAFORM 「아악, 됐어, 더는 못 참겠어!」 / 「이제부터 연달아 열 번이나 에이스를 뽑을 거야, 두고 봐!」＠분노
+					DATAFORM 「아이구, 이거 정말 너무 나빠...」 / 「응? 잠깐만... 내가 칩이 얼마나 남았더라?」
+				ENDDATA
+			CASE 4
+				STRDATA 台詞
+					DATAFORM (큰 뱀이 칩 더미 위로 휘감으려고 위협한다...) / (하지만 다른 플레이어들이 일제히 노려보기 시작하자, 재빨리 비켜버린다.)
+					DATAFORM (큰 뱀이 큰 날카로운 소리를 낸다.) / (파충물이 이렇게 초라해 보일 줄은 몰랐다...)
+					DATAFORM (큰 뱀이 사방을 기어 다니고 있다.) / (지금 머리가 많이 아픈 게 분명하다...)
+				ENDDATA
+		ENDSELECT
+		;親収支プラスがレートの80倍以上
+	CASE "得意" ;satisfied
+		SELECTCASE キャラ
+			CASE 1
+				STRDATA 台詞
+					DATAFORM 「아아... 내가 말하고 싶었던 게 이거야, 이 느낌 있잖아...」/「몇 번을 경험해도... 만족할 수가 없어...♥」
+					DATAFORM 「음, 이건 아주 좋은 전개라고 불러줘야겠군.」/「그냥 계속... 이어주면 안 될까... 그리고 절정하고... 하고...♥」
+					DATAFORM 「후후후...」/「후후후후!♪」/「후후후!♥」
+				ENDDATA
+			CASE 2
+				STRDATA 台詞
+					DATAFORM 「오오, 대박 수확이네, 정말 기분 좋아♪」/「당연히 다음 것도 저런 걸 노릴 거야!」
+					DATAFORM 「아하하, 내가 정말 중요한 순간에 성공하고 있잖아...」/「잠깐, 설마 그게...」/「나 사실 꽤 유능한 여자였어...?」
+					DATAFORM 「좋아, 괜찮아 보이네! 계속 해보자고, 안 그래?」/「내가 가는 이 열차는 멈출 수 없어!♪」
+				ENDDATA
+			CASE 3
+				STRDATA 台詞
+					DATAFORM 「오 예, 정말 기분이 좋아지는군요!」/「그렇게 계속 나를 즐겁게 해준다면 고맙겠어요♪」
+					DATAFORM 「너희들 조심해! 남은 칩도 안전하다고 생각하지 마!」/「눈 깜짝할 새 전부 내 주머니에 들어갈지도 모르니까♪」
+					DATAFORM 「사실 말이야...」/「원래 이 판을 노리고 있었던 거야♪」/「아니, 정말이야! 사실이라고!」/「맞아, 나를 지켜봐! 다음엔... %CHIN_PRIZE_TR:分類%도 노릴 테니까♪」
+				ENDDATA
+			CASE 4
+				RESULTS = 笑顔
+				STRDATA 台詞
+					DATAFORM (큰 뱀이 기쁨에 몸을 흔든다.) / (이 동작은… 파도일 수 있을까?!)
+					DATAFORM (큰 뱀이 즐거운 춤을 추고 있다…)
+					DATAFORM (큰 뱀이 꼬리를 좌우로 흔들고 있다(?)...)
+				ENDDATA
+		ENDSELECT
+		;丁半博打
+		;丁半博打選択台詞
+	CASE "丁半選択" ;placing bets on odd-even
+		IF RAND:2
+			SIF キャラ == 4
+				RETURNF @"(빅 스네이크는 칩을 던지며 잔의 도움으로 %賭け:分類%에 내기를 건다.)"
+			RETURNF @"「%賭け:分類%%"!"*RAND(1,4)%」"
+		ENDIF
+		SELECTCASE キャラ
+			CASE 1
+				STRDATA 台詞
+					DATAFORM 「그 사소한 방해 요소들에 대해 곱씹을 이유 없어.」 / 「...뭐, %賭け:分類%로 가볼까 봐.」
+					DATAFORM 「난 그냥 내 직감을 따를 뿐이야...」 / 「%賭け:分類%!」
+					DATAFORM 「여기선 정말 도망쳐야 해...」 / 「나는 선택해... %賭け:分類%!」
+				ENDDATA
+			CASE 2
+				STRDATA 台詞
+					DATAFORM 「리듬을 따르고 싶다면 올인해야 해!」/「그래서 나는 %賭け:分類%로 갈 거야!」
+					DATAFORM 「...조금 희미하지만, 거의 볼 수 있어.」/「숫자야... {RAND(1, 5) * 2 + !分類}, 확실히 알아.」/「...%賭け:分類%!」
+					DATAFORM 「너무 멀리 벗어나면 후회할 거야.」/「그러니 망설이지 않고 그냥 %賭け:分類%로 갈게.」
+				ENDDATA
+			CASE 3
+				STRDATA 台詞
+					DATAFORM 「오호, 봤어! 갑자기 떠올랐다고!」/「이번엔 %賭け:分類%일 거야, 틀림없어! 무조건 %賭け:分類%라고 말해줄게!」
+					DATAFORM 「아아악, 머리를 쥐어뜯어도 아직 못 정하겠네...」/「%賭け:分類%, 어쩌면? 그래, 그냥 %賭け:分類%로 하자!」
+					DATAFORM 「...좋아, 결심했어!」/「%SPLIT_G(@"I'm going with %賭け:分類% this time:I call %賭け:分類%")%!」
+				ENDDATA
+			CASE 4
+				DO
+				LOCAL = RAND(1, 7)
+				LOOP  LOCAL == 4
+				STRDATA 台詞
+					DATAFORM (빅 스네이크는 %賭け:分類%에 자신의 내기를 거는 데 많은 노력을 기울인다...)
+					DATAFORM (빅 스네이크가 입으로 열심히 칩을 놓는다.) / (잠시 후, %賭け:分類% 쪽으로 여러 개의 칩이 쌓인다.)
+					DATAFORM (빅 스네이크가 관심을 끌기 위해 %BAKUTO_NAME_TR:LOCAL%의 소매를 잡아당긴다.) / (%BAKUTO_NAME_TR:LOCAL%는 그런 다음 빅 스네이크가 자신의 칩을 %賭け:分類%에 놓도록 돕는다.)
+				ENDDATA
+			CASE 5, 6
+				STRDATA 台詞
+					DATAFORM 「%SPLIT_SINGLE(@"This is my test of luck!:I'm feeling lucky today!:Shall I put my luck to the test, hmm～?:Time to try my own luck, I guess.", nPersonality:(キャラ - 5))%」/「%SPLIT_SINGLE(@"I'll just go ahead and put everything on %賭け:分類%, I know it'll win!:It's gonna roll %賭け:分類% next, I can feel it!:%賭け:分類%... Oh yes, I'm certain of it.:It's gonna be... yes, %賭け:分類%! No regrets!", nPersonality:(キャラ - 5))%」
+					DATAFORM 「%SPLIT_SINGLE(@"The more you hesitate, the worse it gets...:I'm not gonna overthink it! I'm bad at thinking stuff anyways!:Hmm... No, I can't afford wasting time thinking too much, that's how you lose after all.:No use shaking in my boots here, I gotta make a decision...", nPersonality:(キャラ - 5))%」/「%SPLIT_SINGLE(@"That's it, this time I choose %賭け:分類%, why not?:But if I gotta choose... %賭け:分類%, yup!:Let's make it %賭け:分類%. It'll be fine, I'm sure～:I'm gonna go with %賭け:分類%, let's go!", nPersonality:(キャラ - 5))%」
+					DATAFORM 「짝수? 홀수? %SPLIT_SINGLE(@"H-Huh? Which is it, really...?:Why can't I just choose both, ugh...:Hmm... Fifty-fifty is all that separates me from comfortable life, isn't it～?:Oh maaan, this is so tough...", nPersonality:(キャラ - 5))%」/「음, 으응... 우우...」/「...%賭け:分類%!」
+				ENDDATA
+		ENDSELECT
+		;共通台詞
+		;チンチロリン親子共通ピン・ニゾウ/子負け/丁半博打負け
+	CASE "失望" ;losing
+		RESULTS = %\@ キャラ > 4 || キャラ == 1 ? 怒り # 泣き \@%
+		候補 = %SPLIT_G("Ugh:Wow:Uwaaah:Yikes:Ack:Oof")%.../...%SPLIT_G("Eeeh:Wha-:Huh")%?!/%SPLIT_G("No way:It can't be")%.../...%SPLIT_G("Make it stop:No more:Please, don't:Not me, not me:No, no, nooo")%.../Hmm? Mmmmm?! Huuuuuhhhh?!?!/Wha, whaaaaaaaatttt...?!/...%SPLIT_G("Dammit:Drat:Damn:Darn:Crap:Oh no")%!/
+		SELECTCASE キャラ
+			CASE 1
+				候補 = %候補%Nooooo...! Not like thiiiissss...!/Huh... Wha?/...Don't do this to me... not me, nooo...!/Aaaghhh...! It hurts... it hurts so much...!/Eh?! Wait, you mean, I.../What...? You telling me... I lost?
+			CASE 2
+				候補 = %候補%...Make it shtoooopppp!/...For real?/You gotta be joking.../Aahh great, this is just great.../...Achaa, siiigh./...I'm beat. I really blew it this time, huh./K-Kappa sisters...? H-How could this be?
+			CASE 3
+				候補 = %候補%Oi-oi-oi, oiii...!/...Oh snap!/Uwaaahh, ughhh.../Uheee.../Yuck...!/Wooow... I just went and lost it all.../T-Tengu sisters... Hold me, please...
+			CASE 4
+				STRDATA 台詞
+					DATAFORM (빅 스네이크는 정말로 낙담해 보인다...)
+					DATAFORM (빅 스네이크는 매우 우울해 보인다...)
+					DATAFORM (빅 스네이크는 주사위를 슬프게 응시한다...)
+					DATAFORM (빅 스네이크는 지친 모습으로 좌우로 몸을 꿈틀거린다...)
+				ENDDATA
+			CASE 5, 6
+				候補 = %候補%%SPLIT_SINGLE(@"잠깐, 뭐라고?! 어떻게?! 에에에?! 하지만... 하지만... 왜냐고오?! 뭐-뭐-뭐-뭐어억!!! 실례합니다?! 그건 완전 허튼소리잖아요!:설마 그냥 일어났을 리가 없어...", nPersonality:(キャラ - 5))%/%SPLIT_SINGLE(@"아, 망했어... :우와아... 이건, 그러니까... 정말 나빠... :눈을 감으면 현실이 아니야, 눈을 감으면 현실이 아니야, 내가... :응, 그래. 어쩔 수 없지 뭐.", nPersonality:(キャラ - 5))%/%SPLIT_SINGLE(@"아아악, 이딴 걸 들고 꺼져!: 우우웅, 우와아아! 정말 집에 가고 싶어...: 후후후... 너 같은 불쌍한 것...: 아아아악, 제기랄!!!", nPersonality:(キャラ - 5))%/%SPLIT_SINGLE(@"다음 게임으로 넘어가도 될까요?:이건 인정 못 해! 다시 일어나서 다음엔 이길 거야, 두고 봐!:우리 그냥 다시는 이걸 언급하지 않겠다고 서로 약속하자, 알았지?～:아악, 됐어! 계속 가자!", nPersonality:(キャラ - 5))%/%SPLIT_SINGLE(@"휴, 이게 무슨 농담이야... :헉... 너무 시시해... :끔찍해, 정말 최악이야... 에휴. :아니, 이건 망했어!", nPersonality:(キャラ - 5))%/%SPLIT_SINGLE(@"아아악, 정말이지, 끝났네! 내가 그렇게 지다니 믿을 수가 없어! 이건... 나의 패배야, 별일 아니지. 나는 괜찮아, 정말로. (흐느낌): 오 이런, 이번 건 내가 진 것 같아...", nPersonality:(キャラ - 5))%/%SPLIT_SINGLE(@"나한테 어떻게 이런 일이 생길 수 있어?! 말도 안 돼!:아얏, 아파, 오우... 아프다... 모든 게... 후욱후욱...!: 난 가라앉고 있어... 더 깊이... 밑바닥의 빚 지옥 속으로...! 왜... 왜 나한테만 이런 일이 생기는 거야?! 불공평해...", nPersonality:(キャラ - 5))%
+		ENDSELECT
+		SIF キャラ != 4
+			台詞 = 「%TEXTR(候補)%」
+		;チンチロリン親子共通ゴケ・ロッポウ/子勝ち/丁半博打勝ち
+	CASE "安堵" ;winning
+		RESULTS = %\@ キャラ > 3 ? 笑顔 # 通常 \@%
+		SELECTCASE キャラ
+			CASE 1
+				候補 = Yaaay!/...I win♪/Ufufu!♪/...There it is!/...Aha!♪/Kyaah, I'm so happy♪/Theeere we go, that's what I'm talking about♪/Fufu, just as I predicted it♪
+			CASE 2
+				候補 = Hip-hip, hooray!/...Well, looks like I won♪/ ( ΦωΦ)σ　Awright!/I did it!/...Awesome!/...Go me, am I right?/Well-well... I got it in the bag♪/I'm pretty good at this, it turns out♪
+			CASE 3
+				候補 = ...Oh? I got it, yesss!♪/...Winner-winner, chicken dinner♪/Hehe-n!/That's it, keep it coming!♪/Yippie!/Victory is mine!/Nice and clean, as expected♪/Booya! Got some cash money, let's go♪
+			CASE 4
+				STRDATA 台詞
+					DATAFORM (큰 뱀이 쭉 늘어나 위풍당당하게 서 있다.)
+					DATAFORM (큰 뱀이 행복하게 빙글빙글 휘젓고 있다...)
+					DATAFORM (큰 뱀이 흥분해서 사방으로 기어가고 있다...)
+					DATAFORM (큰 뱀은 얼굴에 커다란 미소를 짓고 있는 것 같으신가...? / 정말 뱀치고는 근육 발달이 잘 되었군...)
+				ENDDATA
+			CASE 5, 6
+				候補 = ...Alright, there we go♪/Good, good, veeery good♪/I did it♪/I won, I won♪/%SPLIT_SINGLE(@"야호~! 기쁘다~! 만세~ 멋지다!", nPersonality:(キャラ - 5))%/I got it!♪/Alright, just as I expected♪/Alright, that's another victory under my belt♪/%SPLIT_SINGLE(@"게임을 탓하지 마라, 플레이어를 탓해라! 이 경우에는 너 자신이다!:헤헤, 이제 조심하는 게 좋을 거다, 나 지금 절정이야!:후후후... 이건 내 여자 파워의 극히 일부일 뿐. 감명받았나?～:흥, 이 뒤에 누가 이길 가능성이 있겠어!", nPersonality:(キャラ - 5))%
+		ENDSELECT
+		SIF キャラ != 4
+			台詞 = 「%TEXTR(候補)%」
+ENDSELECT
+IF STRFIND(台詞, "＠") > -1
+	VARSET LOCALS
+	SPLIT 台詞, "＠", LOCALS
+	台詞 = %LOCALS:0%
+	RESULTS = %LOCALS:1%
+ENDIF
+RETURNF 台詞
+;ツボ振りの呟きを表示する関数
+
+@TOBA_DEALER_TWEET(L_FEED, 状況, NUM_A, NUM_B, SUB = 0)
+;L_FEED：表示分類 BIT0 ONでウエイトあり BIT1 ONでCLEARLINE BIT2 ONで必ず表示
+#DIM NUM_A
+#DIM NUM_B
+#DIM SUB
+#DIM L_FEED
+#DIM EFFECT
+#DIM L_COUNT
+#DIMS エフェクト = "", "顔絵_ざわ", "顔絵_ぐにゃあ"
+#DIMS 状況
+#DIMS 表情
+#DIMS MESSAGE
+#DIMS MESSAGE_PRINT, 50
+#DIMS RESOURCE
+EFFECT = 0
+MESSAGE = %DEALER_TALK_STRINGS(状況, NUM_A, NUM_B, SUB)%
+SIF MESSAGE == ""
+	RETURN 0
+表情 = %RESULTS%
+LOCAL = LINECOUNT
+;表示部分は@SP_TALKのカスタム
+IF !顔絵付きメッセージ || STRFIND(状況, "煽り") > -1
+	SIF FLAG:口上色
+		SETCOLOR 0xD37CD0
+	SPLIT MESSAGE, "/", MESSAGE_PRINT
+	FOR L_COUNT, 0, RESULT
+	PRINTFORML %MESSAGE_PRINT:L_COUNT%
+	NEXT
+	RESETCOLOR
+	SIF GETBIT(L_FEED, 0)
+		WAIT
+ELSE
+	キャラ画像表示サイズ比 = 100
+	VARSET MESSAGE_PRINT
+	SIF FLAG:マルチサイズ
+		デフォルトキャラ画像横幅 = 180
+	RESOURCE = %\@ 状況 == "勝負！" ? SAI_RESULT # 顔絵_はだけ_%表情%_MOB_95 \@%
+	CALL IMAGE_SET(RESOURCE, 0, 0, キャラ画像表示サイズ比, 0)
+	SIF EFFECT
+		CALL IMAGE_SET(エフェクト:EFFECT, 0, 0, キャラ画像表示サイズ比, 1)
+	MESSAGE = %SPTALK整形(MESSAGE)%
+	SPLIT MESSAGE, "/", MESSAGE_PRINT
+	FOR L_COUNT, 0, RESULT
+	SIF L_COUNT != 0 || EFFECT
+		CALL DUMMY_SET(0, 0, キャラ画像表示サイズ比, L_COUNT)
+	TEMP_HTML:L_COUNT += @"<font color='#0xD37CD0'>%MESSAGE_PRINT:L_COUNT%</font>"
+	NEXT
+	CALL SIMULTANEOUS_IMAGE_DISPLAY(0, 0, 1, -1)
+	IF GETBIT(L_FEED, 0)
+		PRINTW 
+	ELSE
+		PRINTL
+	ENDIF
+ENDIF
+SIF GETBIT(L_FEED, 1)
+	CLEARLINE LINECOUNT - LOCAL
+RETURN 1
+;ツボ振りの呟きと表情を決める式中関数
+
+@DEALER_TALK_STRINGS(状況, NUM_A, NUM_B, SUB)
+#FUNCTIONS
+#DIM NUM_A
+#DIM NUM_B
+#DIM BIAS
+#DIM SUB
+#DIM POS
+#DIM 初回
+#DIMS 賭け = "Even", "Odds"
+#DIMS 状況
+#DIMS 台詞
+#DIMS 候補
+#DIMS 呼称
+呼称 = %\@ TALENT:MASTER:性別 == 2 ? fella # darling \@%
+POS = NUM_A - NUM_B
+RESULTS = 通常
+台詞 =
+SELECTCASE 状況
+	;チンチロリン台詞
+	;ツボ振り挨拶
+	CASE "挨拶"
+		STRDATA 台詞
+			DATAFORM 「모든 플레이어들이...인 것 같네」/「보아하니 %BAKUTO_NAME_TR:5%과 %BAKUTO_NAME_TR:6%도 우리와 함께 하게 되겠군. \@ 初回 == DAY ? 계속하고 싶지 않아, 아가씨들?」/「다시 한번 함께 즐겁게 놀아보자고, 어때?」 # 처음 여기 오는 건가, 아가씨들?」/「오늘 많이 즐기도록 해, 알겠나?」\@
+			DATAFORM 「좋아, 이제 시작할 수 있겠군.」/「\@ 初回 == DAY ? 내가 오늘 여러분의 겸손한 딜러 역할을 맡아서 잔을 흔들어 줄게.」/「어차피 여기 사람이 충분하지 않아 게임을 할 수가 없거든.」 # 또 네 딜러 역할을 해줄게... 나는 별로 유명하지 않으니 자기소개는 할 필요가 없을 것 같군.」/「아무래도 난 산의 주민 중 한 명일 뿐이니까.」/「여러분 만나서 반갑네.」 \@
+			DATAFORM 「자, 얘들아, 게임할 준비 됐나?」/「시작하기 전에 이것만 분명히 해두지 - %SPLIT_G("set your feelings aside no matter the result:win or lose, no hard feelings:we bear no grudges here whether you win or lose")%. 알겠나?」/「중요한 건 우리 모두가 즐거움을 누리는 거야, 그게 중요하지!」
+		ENDDATA
+		初回 = DAY
+		;ツボ振り直前
+	CASE "スタート口上"
+		SELECTCASE SUB
+			CASE 0 ;showdown accepted
+				STRDATA 候補
+					DATAFORM 「그게 바로 정신이지!」
+					DATAFORM 「이제 제대로 된 대화가 통하네!」
+					DATAFORM 「좋아! 벌써부터 기대돼 미칠 지경이야!」
+					DATAFORM 「%呼称%에게, 네가 나를 받아줄 거라고 확신했어!」
+					DATAFORM 「%呼称%에게, 너는 그럴 수 있는 능력이 있다고 믿었어!」
+					DATAFORM 「이제 재미있는 부분이 시작되는군!」
+				ENDDATA
+				台詞 = %候補%/「Well then, you ready? Best of luck!」
+			CASE 1 ;first speech on subsequent rounds
+				候補 = %TEXTR(@"「…이제 인사치레는 그만두지.」/「…다들 내 허세에 질렸겠지, 그래서 짧게 말하지.」/「…자, 누가 더 할 사람?」/「또 게임할 준비가 됐나? 그렇게 생각했거든.」")%
+				台詞 = %候補%/「Without further ado, let's get the fun started!」
+			CASEELSE
+				STRDATA 台詞
+					DATAFORM 「좋아, %\@ RAND:2 ? give it another go # keep that party going \@%!」
+					DATAFORM 「응-응, %\@ RAND:2 ? the fun's just about to begin # there's still plenty of games to be had \@%!」
+					DATAFORM 「좋아, 우리 다 속도를 따라오기 시작한 것 같지 않니?」
+					DATAFORM 「자, 우리 다른 게임 하나 더 하는 건 어때?」
+					DATAFORM 「계속 진행하자고, 응?」
+					DATAFORM 「됐다, 됐다, 다음 게임으로 가자!」
+					DATAFORM 「자, 얘들아, 내기하고 맞혀봐, 부끄러워하지 마!」
+					DATAFORM 「자기야, 네가 원하는 만큼 계속 너랑 놀아줄 수 있어!」
+					DATAFORM 「자, 자, 누가 더 하고 싶어? 전부 걸 거야? 좋아!」
+				ENDDATA
+		ENDSELECT
+	CASE "構え口上" ;rolling the dice
+		STRDATA 台詞
+			DATAFORM 「컵은 내려졌고, 준비됐나?」
+			;not sure about these two, but I think she's spoiling the result pretty much
+			DATAFORM 「%CH_PRIZE_TR:NUM_A:NUM_B%, 들어간다...」
+			DATAFORM 「%CH_PRIZE_TR:NUM_A:NUM_B%으로 굴린다...」
+			DATAFORM 「주사위가 나왔다!」
+		ENDDATA
+		;ツボかぶり
+	CASE "被り口上" ;ask to make a bet on even or odds
+		;RESULTS =  賽振り
+		台詞 = 「There it is%\@ SUB ? , Even or Odds, call it # ! They're in, place your bets \@%!」
+		;丁半選択時合いの手
+		;NUM_A=丁選択人数 NUM_B=半選択人数 SUB=張り方 0=丁 1=半
+	CASE "煽り" ;dealer hype, placing the bets
+		BIAS = ((POS > 0 && !SUB) || (POS < 0 && SUB))
+		IF ABS(POS) > 2 && BIAS
+			台詞 = 「Huuuh?! A bet on %賭け:SUB%%COND_STR(@"또", ABS(POS) > 3)%?!」/
+		ELSE
+			台詞 = 「%SPLIT_G("I see a bet on:We got a bet on")% %賭け:SUB%, I repeat, a bet on %賭け:SUB%!」/
+		ENDIF
+		SELECTCASE ABS(POS)
+			CASE 0
+				STRDATA 候補
+					DATAFORM 「짝수든 홀수든, 홀수든 짝수든?! 어서, 어서, 선택해줘!」
+					DATAFORM 「자, 둘 중 하나 혹은 둘 다 골라봐!」/「%賭け:(!SUB)%에 거는 사람? %賭け:SUB%, 누구 있나?」
+					DATAFORM 「혹시 %賭け:(!SUB)%에 걸 사람이 있나? 아니면 %賭け:(!SUB)%에 걸까? 나 기다리게 하지 마!」
+					DATAFORM 「짝수든 홀수든, 지금 당장 내기를 걸어!」
+				ENDDATA
+			CASE 1, 2
+				STRDATA 候補
+					DATAFORM 「더 걸 건 없나 %賭け:(POS > 0)%에? 아니면 %賭け:(!SUB)%는 어때? 네가 결정해!」
+					DATAFORM 「좋은 내기군, 좋은 내기야! 누가 %賭け:(POS > 0)%에 거실 사람 있어?」/「짝수 아니면 홀수, 홀수 아니면 짝수?! 자, 자, 선택을 해봐!」
+					DATAFORM 「자, 자, 계속 걸어와! %賭け:(!SUB)%에도 좀 걸어봐, 이길지도 몰라!」
+					DATAFORM 「짝수 아니면 홀수, 말해봐, 어서 와!」/「%賭け:(POS > 0)%에 거는 사람 있나? %賭け:(!SUB)%, 누구 없나?」
+				ENDDATA
+			CASE 3, 4, 5
+				STRDATA 候補
+					DATAFORM 「모두 그냥 %賭け:(POS > 0)%을 저렇게 무시할 거야? %賭け:(POS > 0)%, 여러분!」/「%賭け:(POS > 0)% 혼자 외로워하고 있잖아!」
+					DATAFORM 「야, 야, %\@ BIAS ? no one's gonna bet on %賭け:(POS > 0)% or something? # we finally got a bet going on %賭け:(POS > 0)%, is that all you got? \@%!」/「어서 와, 여러분, 누가 %賭け:(POS > 0)%에 베팅할 사람 있어? %賭け:(POS > 0)%, 서둘러줘, 여러분!」
+					DATAFORM 「뭐야, 도대체 뭐야?! %\@ BIAS ? No one likes %賭け:(POS > 0)% or what? # %賭け:(POS > 0)% just got its first bet, at last! \@%」/「누가 %賭け:(POS > 0)%에 베팅하는 소리 들려? 없어? 이봐, 누군가 제발 %賭け:(POS > 0)%에 큰 거 걸어줘!」
+					DATAFORM 「야, 잠깐만 기다려 봐! %賭け:(POS > 0)%은 아직 충분한 베팅이 안 됐어! 봤지?」/「어서 와, 여러분, %\@ BIAS ? it's no fun if everybody chooses the same # %賭け:(POS > 0)% can use some more bets, keep it coming \@%!」/「우리 %賭け:(POS > 0)%에 베팅할 거야, 아니면 어쩔 거야?! 아무것도 못 알아듣겠어!」
+				ENDDATA
+			CASE 6
+				RESULTS = 怒り
+				STRDATA 候補
+					DATAFORM 「이봐 지금, 이봐, 이봐! 이게 무슨 대단한 생각이야, 도대체 뭐야?!」/「너희들 서로 공모라도 하는 거야? 나한테는 분명 그렇게 보이거든!」
+					DATAFORM 「야-야, 지금 농담하는 거지!」/「베팅 풀의 가장 슬픈 상태가 아니라면, 이게 뭔지 모르겠어!」/「이런 종류의 게임을 하고 싶은 거니? 응?!」/「이걸 도박이라고 부르는 거야? 이 지루한 희극을?!」
+					DATAFORM 「아이고, 얘들아! 그만 좀 해, 제발!」/「도대체 어떻게 이렇게 한쪽으로 기울어진 거지?!」
+					;added
+					DATAFORM 「자, 얘들아, 장난 그만해, 진심으로 말이야...」/「이건 도박이 아니야, 이건 그냥 광대 쇼라고 해야지!!!」
+				ENDDATA
+		ENDSELECT
+		台詞 = %台詞%%候補%
+		;ツボを開く直前
+	CASE "予想終了" ;bets are in
+		LOCALS:9 = %SPLIT_G("Here we go!:Let's see it!:Let the game begin!:It's show time!:The game is on!")%
+		;サシ勝負
+		IF SUB
+			台詞 = 「%TEXTR(@"%賭け:NUM_A%, 정말이야?/ %賭け:NUM_A%, 확실해?/베팅은 모두 끝났어. %賭け:NUM_A%, 그럼? / %賭け:NUM_A%... 여기선 결정을 내린 것 같군, 여러분.")%」
+			STRDATA 候補
+				DATAFORM 「누가 이길까, 나일까 너일까, %呼称%?」/「...%LOCALS:9%!」
+				DATAFORM 「그렇단 말인가, %呼称%? 그럼 네 차례로군, 응.../「좋다, %TOLOWER(LOCALS:9)%!」
+				DATAFORM 「너는 완전히 결심한 것 같구나, %呼称%, 그것을 보는 건 정말 즐겁네...」/「좋아, %TOLOWER(LOCALS:9)%!」
+			ENDDATA
+			台詞 = %台詞%/%候補%
+			;通常
+		ELSEIF ABS(POS) < 7
+			台詞 = 「Looks like we got equal bets between Even and Odds.」/「...%LOCALS:9%!」
+			;全員同じ張り方
+		ELSE
+			RESULTS = 怒り
+			台詞 '= @"「아이고... 상황이 통제 불능이 돼버렸지만 어쩔 수 없지.」/"
+			;not sure about these two
+			台詞 += @"「이건 이 설정의 비율과 전혀 맞지 않겠지만, 뭐 어쩔 수 없지.」"
+			台詞 += @"「%賭け:(POS > 0)%의 배당금은 우리 업장의 예산에서 차감될 것입니다.」"
+			台詞 += @"「하지만... 마음대로 시스템을 속일 수 있다는 뜻은 아니다.」"
+			台詞 += @"「규칙은 지켜질 것이고, 그걸로 됐어.」"
+			台詞 += @"「그러니까 네가 이긴다 해도 은행을 부술 수는 없을 테니, 그냥 포기해!」"
+		ENDIF
+		;賽の目表示
+	CASE "勝負！" ;reveal
+		台詞 = 「%CH_PRIZE_TR:NUM_A:NUM_B%!!!」
+		LOCALS:9 = %\@ !SUB ? Even # Odds \@%
+		SIF RAND:2
+			台詞 = %台詞%/「We got %LOCALS:9% everyone%COND_STR(@"다시 말하지만, 우리에게는 %LOCALS:9%가 있어", !RAND:4)%!」
+	CASE "継続口上" ;ask to continue
+		IF NUM_A
+			STRDATA 候補
+				DATAFORM 「야 %呼称%, 이기고 있는데 우리한테 그냥 포기할 수는 없는 거잖아, 그렇지?」
+				DATAFORM 「야 %呼称%, 한 번 이겼다고 도망가는 그런 사람은 아니지, 그렇지?」
+				DATAFORM 「야 %呼称%, %\@ NUM_B ? it just got you all excited, didn't it # I see you're getting into the swing of things, ain't that right \@%?」
+				DATAFORM 「%\@ NUM_B ? You're on a roll today, ain'tcha # Looks like you still got it, eh \@% %呼称%?」
+			ENDDATA
+		ELSE
+			STRDATA 候補
+				DATAFORM 「여기서 그냥 그만두는 건 재미없잖아, 안 그래?」
+				DATAFORM 「여기서 그냥 그만두는 건 재미없잖아, 안 그래?」
+				DATAFORM 「네 생각이 뭔지는 알아... "이 판을 뒤집고 여기서 역전해야 해", 그렇지 %呼称%?」
+				DATAFORM 「다음엔 꼭 따낼 거지?」/「도박에서는 그런 마음가짐이 중요하거든.」
+				DATAFORM 「운이 나빴지만, 어쩌겠어... 그렇다고 이제 그만둘 건 아니지?」/「그런 식으로 승부를 거는 건 상당한 배짱이 필요해.」/「그러니까 어서, 그 배짱을 보여 줘!」
+			ENDDATA
+		ENDIF
+		台詞 = %候補%/「%TEXTR("Surely you wanna keep going, I take it/How about another game/One more... How about it")%?」
+		;サシ勝負持ちかけ
+	CASE "サシ持ちかけ"
+		;showdown offer
+		STRDATA 候補
+			DATAFORM 「모두를 물러나게 했을 때의 그 짜릿함은 최고지, 안 그래 %呼称%?」
+			DATAFORM 「흐음, 이번엔 우리 %呼称%이 대박을 터뜨린 것 같군!」
+			DATAFORM 「오늘 행운이 당신에게 미소 짓는 것 같군요, 나의 %呼称%. 운이 좋군!」
+		ENDDATA
+		台詞 = %候補%/「Say, how about you wager that prize money in a showdown with me?」/「Double your prize, or lose it all.」
+		STRDATA 候補
+			DATAFORM 「솔직히 말해서, 한 번의 주사위 던지기에 전부 걸어보는 게 좋겠지?」
+			DATAFORM 「이거 정말 흥미진진한 도박 같지 않아?」
+			DATAFORM 「기회가 생겼잖아! 큰 이익을 거둘 것 같은 예감이 들지 않나?」
+		ENDDATA
+		台詞 = %台詞%/%候補%/「What say you?」
+		;	ハハ
+		;（ ﾟωﾟ ）お断りします
+	CASE "サシお断り" ;refuse showdown
+		RESULTS = 泣き
+		候補 = 「Oh... Huh.」/「%TEXTR("That's a shame./What a pity./Oh well, that's good reasoning, I guess./Heh, giving me a cold shoulder, eh?/Looks like I got turned down, dear me.")%」
+		STRDATA 台詞
+			DATAFORM 「그냥 그런 거지.」
+			DATAFORM 「어쨌든, 다음 판을 기대하고 있을게.」
+			DATAFORM 「알았어, 언제나 다음 기회는 있는 법이니까.」
+			DATAFORM 「여자의 제안을 거절하는 건 정말 교활한 %呼称%이야, 알고 있겠지?」
+		ENDDATA
+		台詞 = %候補%/%台詞%
+		;サシ勝負あなたの勝ち
+	CASE "サシで負け" ;player wins, dealer loses
+		SELECTCASE RAND:4
+			CASE 0, 1
+				STRDATA 台詞
+					DATAFORM 「아이고, 나의 패배로군. 정정당당하게 말이야.」/「나에게는 당신 같은 상대가 아닌 것 같네요, %呼称%.」
+					DATAFORM 「축하해, 정말 잘했어!」/「이번엔 네 승리야, 내 %呼称%.」/「자, 너의 실력을 증명했구나!」
+					DATAFORM 「우와, 이렇게 박살 난 지 꽤 됐는데...」/「정말 대단했어, %呼称%. 그 짜릿함만으로도 충분히 가치가 있었지.」
+					DATAFORM 「아하하하, 정말 봐주지 않는구나, %呼称%?」/「혹시 그 상금으로 나한테 뭐 사줄래, 괜찮지?」
+				ENDDATA
+			CASE 2, 3
+				RESULTS = 泣き
+				STRDATA 台詞
+					DATAFORM 「……오우 망했네.」/「허무하게 당해버렸군, 응?」
+					DATAFORM 「아하하……」/「내가 진 모양이군……」/「완전히 망쳐버렸어!」
+					DATAFORM 「아야, 윽……」/「게다가 나 정말 용돈 좀 더 벌고 싶었는데 말이야……」
+				ENDDATA
+			CASE 4
+				RESULTS = 怒り
+				STRDATA 台詞
+					DATAFORM 「...쳇!」/「나 완전히 망쳤네, 확실히 그랬지.」
+					DATAFORM 「...젠장!」/「%SPLIT_G("I'm getting rusty:I'm losing my touch:My luck is running out")%, 알겠어.」
+				ENDDATA
+		ENDSELECT
+		;サシ勝負あなたの負け
+	CASE "サシで勝ち" ;dealer wins, player loses
+		STRDATA 台詞
+			DATAFORM 「정말 미안해!」/「하지만 이게 네가 해야 할 게임이고, 우리 합의했으니 나도 기꺼이 즐겨야겠어!」
+			DATAFORM 「예쓰!!!」/「...여기서 내가 버는 돈은 전부 내 주머니로 직행이지.」/「그게 내가 이렇게 열을 올리는 이유라고, 알잖아.」
+			DATAFORM 「너도 거의 성공했었는데, 아쉽다!」/「이번 건 내 월급날이니까!」
+			DATAFORM 「치정, 치정. %SPLIT_G("Looks like your luck ran out at the worst possible moment,:No one's luck lasts forever, remember that")% %呼称%.」
+			DATAFORM 「아하하, 너 엄청난 상금 기회를 놓쳤네.」/「그거 아프겠네, 미안하다.」
+			DATAFORM 「아하하, 쉬운 돈이야, 나 운 좋네!」/「이제 근사하고 비싼 술 한 잔 마시고 싶어♪」
+			;added
+			DATAFORM 「쉽게 얻은 것은 쉽게 사라지는 법이지.」/「자, 힘내요, 우울해할 필요 없어요!」/「분명 언젠가 이겨낼 거예요.」
+			DATAFORM 「덱이 당신에게 그렇게 유리한데도 지다니, 정말 고통스러웠겠네요.」/「정말 죄송해요, %呼称%♪」
+		ENDDATA
+ENDSELECT
+RETURNF 台詞
+;ダイス画像を一個一個丁寧に手作りする関数
+;標準でダイス３個、ARGが真ならダイス２個の画像をセット
+;ARG == 2なら丁半用背景画像をセット
+
+@TOBA_CREATE_DICEIMAGE(DICE:0, DICE:1 = 0, DICE:2 = 0, ARG = 0)
+#DIM DICE,3
+#DIM GID
+#DIM L_COUNT
+#DIM POS_X, 3 = 14, 67, 114
+#DIM POS_Y, 3 = 109, 125, 91
+#DIM RAND_X
+#DIM RAND_Y
+IF GID
+	SPRITEDISPOSE "SAI_RESULT"
+	GDISPOSE GID
+ENDIF
+GID= 0
+CALL COMPOSE_IMAGE(GID, @"%\@ ARG == 2 ? CH_BASE # ダミー \@%")
+FOR L_COUNT, 0, 3
+SIF L_COUNT == 1 && ARG
+	CONTINUE
+;表示位置にばらつきを持たせる
+RAND_X = ARG == 2 ? RAND(1, 16) - 9 # RAND(1, 7) - 4
+RAND_Y = ARG == 2 ? RAND(1, 16) - 9 # RAND(1, 7) - 4
+CALL COMPOSE_IMAGE(GID, @"D_SURF_{DICE:L_COUNT}", POS_X:L_COUNT + RAND_X, POS_Y:L_COUNT + RAND_Y, 46, 55)
+NEXT
+SPRITECREATE "SAI_RESULT", GID
+RETURN
+;コマ札変動を表示位置揃えて表示する関数
+
+@TOBA_RESULT_PRINT(TGT, BP, ARG = 0)
+#DIM BP
+#DIM NUM
+#DIM TGT
+#DIM COLOR
+#DIMS STRINGS
+COLOR = BP > 0 ? C_GREEN # C_D_RED
+STRINGS = %BAKUTO_NAME_TR:TGT% \@ BP > 0 ? wins%" "% # loses \@%" "%
+;custom code
+;NUM = (26 + ARG) - STRLENSU(BAKUTO_NAME_TR:TGT)
+;STRINGS = %STRINGS%%UNICODE(0x3000) * NUM%
+STRINGS = %STRINGS, 26 + ARG, LEFT%
+PRINTFORM %STRINGS%
+CALL COLORMESSAGE(@"%\@ BP > 0 ? ＋ # － \@%{ABS(BP)}", COLOR, 1, 1)
+RETURN
+;持ちゴマと遊戯回数を表示する関数
+
+@PRINT_TOBA_STATE(回数, レート, ウエイト)
+#DIM 回数
+#DIM レート
+#DIM ウエイト
+#DIM レート色 = C_AQUA, C_WHITE, C_YELLOW, C_D_PINK
+#DIMS レート表示 = "Low", "Default", "High", "Max"
+DRAWLINE
+PRINTFORML ~ %NUM_COUNT(回数, "pos", 1)% 라운드~ 현재 시간 - %時刻表示(TIME)% 
+PRINTFORML 
+SIF ウエイト
+	TWAIT 750, 0
+PRINTFORML %"Your Chips:", 26, LEFT%%三桁区切(KOMAFUDA:MASTER)%
+PRINTFORM 현재 비율: 
+CALL COLORMESSAGE(レート表示:レート, レート色:レート, 1, 1)
+PRINTFORML 
+RETURN
+;配列を{ARG}個のダイス目で埋める参照関数
+
+@TOBA_FILL_DICE(ダイス目, ARG)
+#DIM REF ダイス目, 0
+#DIM L_COUNT
+FOR L_COUNT, 0, ARG
+ダイス目:L_COUNT = RAND(1, 7)
+NEXT
+RETURN
+;賭場セッティング関数
+
+@TOBA_SETUP
+#DIM 設定済
+#DIM 代入済
+#DIM L_COUNT
+#DIM KOMA
+#DIMS 種族, 3
+#DIMS 呼び名
+;一日一回所持金確認,モブ子博徒定義
+SIF 設定済 == DAY
+	RETURN
+設定済 = DAY
+;NPC持ちゴマはあなた所持金の４割に設定
+;パッチ取り込まれたらもう少しきちんと処理したい
+KOMA = MONEY / 1000 * 4
+KOMA = MAX(KOMA, 500)
+VARSET KOMAFUDA, KOMA, 1, 7
+VARSET 種族
+FOR L_COUNT, 0, 2
+DO
+種族:L_COUNT = %TEXTR("イナバ/妖精/白狼天狗/鬼/化け狸/化け猫/化け狐/茨たぬき/販売員")%
+LOOP 種族:0 == 種族:1
+CALL モブ店員画像作成(25 + L_COUNT, 種族:L_COUNT)
+BAKUTO_WORDCOLOR:(5 + L_COUNT) = モブ子店員口上色:(25 + L_COUNT)
+BAKUTO_NAME_TR:(5 + L_COUNT) '= 種族:L_COUNT
+NEXT
+FOR L_COUNT, 0, 2
+;custom code
+IF BAKUTO_NAME_TR:(5 + L_COUNT) == "茨たぬき"
+	BAKUTO_NAME_TR:(5 + L_COUNT) = Tanuki Henchman
+ELSE
+	BAKUTO_NAME_TR:(5 + L_COUNT) '= RACE_TR(BAKUTO_NAME_TR:(5 + L_COUNT))
+ENDIF
+;set the player name
+BAKUTO_NAME_TR:0 = %CALLNAME:MASTER%
+NEXT
+;ゲーム中に１回ニ次元配列変数を定義
+SIF 代入済
+	RETURN
+代入済 = 1
+;丁半博打出目の呼称定義
+CH_PRIZE:1:0 '= "", "ピンゾロの丁", "イチニの半", "サンミチの丁", "ヨイチの半", "グイチの丁", "イチロクの半"
+CH_PRIZE:2:0 '= "", "イチニの半", "ニゾロの丁", "サニの半", "シニの丁", "グニの半", "ニロクの丁"
+CH_PRIZE:3:0 '= "", "サンミチの丁", "サニの半", "サンゾロの丁", "シソウの半", "グサンの丁", "サブロクの半"
+CH_PRIZE:4:0 '= "", "ヨイチの半", "シニの丁", "シソウの半", "シゾロの丁", "グシの半", "シロクの丁"
+CH_PRIZE:5:0 '= "", "グイチの丁", "グニの半", "グサンの丁", "グシの半", "ゴゾロの丁", "ゴロクの半"
+CH_PRIZE:6:0 '= "", "イチロクの半", "ニロクの丁", "サブロクの半", "シロクの丁", "ゴロクの半", "ロクゾロの丁"
+;custom code
+CH_PRIZE_TR:1:0 '= "", "1-1 Even", "1-2 Odds", "1-3 Even", "1-4 Odds", "1-5 Even", "1-6 Odds"
+CH_PRIZE_TR:2:0 '= "", "2-1 Odds", "2-2 Even", "2-3 Odds", "2-4 Even", "2-5 Odds", "2-6 Even"
+CH_PRIZE_TR:3:0 '= "", "3-1 Even", "3-2 Odds", "3-3 Even", "3-4 Odds", "3-5 Even", "3-6 Odds"
+CH_PRIZE_TR:4:0 '= "", "4-1 Odds", "4-2 Even", "4-3 Odds", "4-4 Even", "4-5 Odds", "4-6 Even"
+CH_PRIZE_TR:5:0 '= "", "5-1 Even", "5-2 Odds", "5-3 Even", "5-4 Odds", "5-5 Even", "5-6 Odds"
+CH_PRIZE_TR:6:0 '= "", "6-1 Odds", "6-2 Even", "6-3 Odds", "6-4 Even", "6-5 Odds", "6-6 Even"
+;回り胴順番の定義：第一引数 0=あなた 1=山童 2=河童 3=鴉天狗 4=蟒蛇が親、第二引数 FOR構文ループカウント
+TOBA_ROTATE:0:0 = 1, 2, 3, 4
+TOBA_ROTATE:1:0 = 2, 3, 4, 0
+TOBA_ROTATE:2:0 = 3, 4, 0, 1
+TOBA_ROTATE:3:0 = 4, 0, 1, 2
+TOBA_ROTATE:4:0 = 0, 1, 2, 3
+RETURN

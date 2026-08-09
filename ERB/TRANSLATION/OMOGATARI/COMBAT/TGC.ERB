@@ -1,0 +1,3643 @@
+﻿; Modular ERB: OMOGATARI/COMBAT/TGC.ERB
+;TGC: Turn-Based Grid Combat
+
+@TGC_CombatInit(localLethal = 1)
+#DIM localLethal
+#DIM DYNAMIC masterCombatantID
+#DIM DYNAMIC nEnemy
+#DIM nSide0Count
+#DIM nSide0List, 200
+#DIM nSide1Count
+#DIM nSide1List, 200
+#DIM nPriorityList, 200
+#DIM nPriorityTotal
+#DIM lcCurSide
+#DIM nlcChara
+#DIM TempBoost
+#DIM nWeap
+VARSET EasyBattleExpToGet
+VARSET CurrentBattle
+VARSET EasyBattleDamage
+lcIsLethal = localLethal
+TGC_LookingAt = MASTER
+SETBGMVOLUME BGMVOLUME
+SETSOUNDVOLUME SOUNDVOLUME
+REPEAT 2
+CALL WndMgr_DestroyWindow(-1)
+REND
+CALL TGC_Init()
+IF !nRyona && !SaveIsEZB && lcIsLethal
+	SETCOLOR C_RED
+	PRINTL
+	PRINTFORML %"-"*89%
+	PRINTFORML 치명적인 상태에서 @TGC_CombatInit이 실행되었으나, 리오나(RYONA)가 활성화되어 있지 않다!
+	PRINTFORML 이것을 보고하라!
+	PRINTFORML %"-"*89%
+	RESETCOLOR
+	RETURN
+ELSEIF !DT_ROW_LENGTH("lcCombatants")
+	SETCOLOR C_RED
+	PRINTL
+	PRINTFORML %"-"*89%
+	PRINTFORML @TGC_CombatInit이 정의되지 않은 캐릭터 없이 호출되었습니다!
+	PRINTFORML 이것을 보고하세요!
+	PRINTFORML %"-"*89%
+	RESETCOLOR
+	RETURN
+ELSEIF !lcIsLethal && !GETBIT(nWeapons,0)
+	SETCOLOR C_RED
+	PRINTL
+	PRINTFORML %"-"*89%
+	PRINTFORML DANMAKU는(는) 활성화되지 않은 상태에서 @TGC_CombatInit이 호출되었다!
+	PRINTFORML 이것을 보고하라!
+	PRINTFORML %"-"*89%
+	RESETCOLOR
+	RETURN
+ENDIF
+;set up flags
+TURNS = 0
+MissCounter = 0
+VARSET TempBoost
+VARSET IsInCover
+VARSET lcWarResult, -1
+VARSET lcPickFactionMax, -1
+VARSET LCSideNames
+VARSET lcTitle
+VARSET lcSidePower
+;set flags in case the 2hu dies by another cause (ie: bleeding or crippled head/thorax or amputated neck)
+FLAG:796 = 0
+masterCombatantID = GetCombatant(MASTER)
+DT_SELECT "lcCombatants", @"side = '{!DT_CELL_GET("lcCombatants",masterCombatantID,"side",1)}'"
+nEnemy = DT_CELL_GET("lcCombatants",RESULT:1,"chara",1)
+VARSET RESULT
+CALLF PLAY_BATTLE_MUSIC(nEnemy)
+REDRAW 0
+;check if combatants are initialized
+; SIF !DT_EXIST("lcCombatants")
+;     CALLF StartBattle()
+; SIF !GetCombatant(MASTER,1)
+; CALLF AddCombatant(MASTER,0)
+; SIF !GetCombatant(4,2)
+; CALLF AddCombatant(4,1)
+;sanity check
+;PRINTFORML DOES THE TABLE EVEN EXIST???? \@ DT_EXIST("lcCombatants") ? HELL YEA! %@"IS THERE ANYONE INSIDE? \@ DT_ROW_LENGTH("lcCombatants") ? YEAH, THERE'S AT LEAST {DT_ROW_LENGTH("lcCombatants")} OF THEM # SADLY NOT!  \@"% # NO IT FUCKING DOESN'T! \@
+SIF ATTACKER_PRIORITY() == -1
+	GOTO END
+;get unit count
+lcStartingUnits:0 = DT_SELECT("lcCombatants", @"side = 0", "", nSide0List)
+lcStartingUnits:1 = DT_SELECT("lcCombatants", @"side = 1", "", nSide0List)
+;grab the title.
+; if faction war, use names of factions (World of Fantasies vs. Eros Religious State)
+; if non-factions, use names of 3 most significant (Reimu, Marisa, Sakuya, etc. vs. Mima)
+; requires four members of a faction to be considered a "faction war"
+VARSET lcFactions
+VARSET lcPickFaction, -1
+FOR lcCurSide,0,2
+VARSET nSide0List
+nSide0Count = DT_SELECT("lcCombatants", @"side = {lcCurSide}", "", nSide0List)
+FOR LOCAL, 0, nSide0Count
+nlcChara = DT_CELL_GET("lcCombatants", nSide0List:LOCAL, "chara", 1)
+lcSidePower:lcCurSide += IntimidationFactor(nlcChara)
+FOR LOCAL:1,0,MaxFactions
+SIF FactionRank:nlcChara:(LOCAL:1)
+	lcFactions:lcCurSide:(LOCAL:1) ++
+NEXT
+NEXT
+FOR LOCAL,0, maxFactions
+SIF lcFactions:lcCurSide:(LOCAL)  < 4
+	CONTINUE
+IF lcFactions:lcCurSide:(LOCAL) > lcPickFactionMax:lcCurSide
+	lcPickFaction:lcCurSide    = LOCAL
+	lcPickFactionMax:lcCurSide = lcFactions:lcCurSide:(LOCAL)
+ENDIF
+NEXT
+IF lcPickFaction:lcCurSide != -1
+	LCSideNames:lcCurSide '= FactionName(lcPickFaction:lcCurSide)
+	SIF !STRLENS(LCSideNames:lcCurSide)
+		LCSideNames:lcCurSide '= @"진영 {lcPickFaction:lcCurSide}"
+ELSE
+	nSide0Count = DT_SELECT("lcCombatants", @"side = {lcCurSide}", "priority DESC", nSide0List)
+	LCSideNames:lcCurSide += @"%CALLNAME:(DT_CELL_GET("lcCombatants", nSide0List:0, "chara", 1))%、"
+	SIF DT_CELL_GET("lcCombatants", nSide0List:1, "chara", 1)
+		LCSideNames:lcCurSide += @"%CALLNAME:(DT_CELL_GET("lcCombatants", nSide0List:1, "chara", 1))%、"
+	SIF DT_CELL_GET("lcCombatants", nSide0List:2, "chara", 1)
+		LCSideNames:lcCurSide += @"%CALLNAME:(DT_CELL_GET("lcCombatants", nSide0List:2, "chara", 1))%、"
+	LCSideNames:lcCurSide '= LIST_IN_STRING(LCSideNames:lcCurSide)
+	SIF DT_CELL_GET("lcCombatants", nSide0List:3, "chara", 1)
+		LCSideNames:lcCurSide += @"그리고 더 많은 것들"
+ENDIF
+NEXT
+lcTitle '= @"%LCSideNames:0% 대 %LCSideNames:1%"
+IF masterCombatantID
+	CALL KOJO_MESSAGE_SEND("DANMAKU", 3, nEnemy, MASTER, -1, "戦闘前")
+	IF RESULT == -1
+		GOTO END
+	ENDIF
+ENDIF
+[IF_DEBUG]
+PRINTFORML EYEWITNESS: %TOSTR(EYEWITNESS())%, GET_TARGETNUM: %TOSTR(GET_TARGETNUM())%
+[ENDIF]
+WHILE 1
+nSide0Count = DT_SELECT("lcCombatants", @"side = 0", "", nSide0List)
+nSide1Count = DT_SELECT("lcCombatants", @"side = 1", "", nSide1List)
+FOR LOCAL, 0, nSide0Count
+nlcChara = DT_CELL_GET("lcCombatants", nSide0List:LOCAL, "chara", 1)
+CALL ResetYoujutsuResist(nlcChara)
+IF lcIsLethal
+	nWeap = charaWeaponInts:nlcChara:WeaponInventory ? charaWeaponInts:nlcChara:WeaponInventory # EQUIP:(nlcChara):Weapon
+ELSE
+	nWeap = 0
+ENDIF
+CALLF COM_WEAPSTATS(nlcChara,nWeap,1,charaWeaponInts:nlcChara:Mode,0)
+charaWeaponInts:(nlcChara):Accuracy = GetShootingAccuracy(nlcChara)
+TCVAR:(nlcChara):Weap_Dodge = GetDodgeChance(nlcChara)
+;TCVAR:ATTACKER:Attack_Power = LOCAL:10
+NEXT
+FOR LOCAL, 0, GetCombatantSize(2)
+nlcChara = DT_CELL_GET("lcCombatants", nSide1List:LOCAL, "chara", 1)
+CALL ResetYoujutsuResist(nlcChara)
+IF lcIsLethal
+	nWeap = charaWeaponInts:nlcChara:WeaponInventory ? charaWeaponInts:nlcChara:WeaponInventory # EQUIP:(nlcChara):Weapon
+ELSE
+	nWeap = 0
+ENDIF
+CALLF COM_WEAPSTATS(nlcChara,nWeap,1,charaWeaponInts:nlcChara:Mode,0)
+charaWeaponInts:(nlcChara):Accuracy = GetShootingAccuracy(nlcChara)
+TCVAR:(nlcChara):Weap_Dodge = GetDodgeChance(nlcChara)
+;TCVAR:VICTIM:Attack_Power = LOCAL:11
+NEXT
+; IF (EYEWITNESS() == 1 || GET_TARGETNUM() > 1) && ATTACKER == MASTER && lcIsLethal
+;     FLAG:797 = 1
+;     [IF_DEBUG]
+;     PRINTFORML FLAG 797 SET
+;     [ENDIF]
+; ELSE
+;     FLAG:797 = 0
+; ENDIF
+TURNS += 1
+FOR LOCAL, 0, DT_ROW_LENGTH("lcCombatants")
+;paralyzed
+IF DT_CELL_GET("lcCombatants", LOCAL, "paralysisAilment")
+	DT_CELL_SET "lcCombatants", LOCAL, "didAttack", 2
+ENDIF
+DT_CELL_SET "lcCombatants", LOCAL, "paralysisAilment", MAX(0,DT_CELL_GET("lcCombatants", LOCAL, "paralysisAilment", 0)-1), 0
+;muted
+DT_CELL_SET "lcCombatants", LOCAL, "muteAilment", MAX(0,DT_CELL_GET("lcCombatants", LOCAL, "muteAilment", 0)-1), 0
+;losing turn
+IF DT_CELL_GET("lcCombatants", LOCAL, "didAttack", 0) == 2
+	DT_CELL_SET "lcCombatants", LOCAL, "didAttack", 1
+ELSE
+	DT_CELL_SET "lcCombatants", LOCAL, "didAttack", 0
+ENDIF
+DT_CELL_SET "lcCombatants", LOCAL, "protectBuff", MAX(0,DT_CELL_GET("lcCombatants", LOCAL, "protectBuff", 0)-1), 0
+DT_CELL_SET "lcCombatants",  MAX(0,DT_CELL_GET("lcCombatants", LOCAL, "aphrodisiacAilment", 0)-1), "aphrodisiacAilment"
+NEXT
+SIF ATTACKER_PRIORITY() == -1
+	GOTO END
+lcCombatantCount = DT_SELECT("lcCombatants", @"didAttack < 1", "priority DESC", nPriorityList)
+FOR lcCount, 0, lcCombatantCount
+TGC_CurrentAttacker = DT_CELL_GET("lcCombatants", nPriorityList:lcCount, "chara", 1)
+;TGC_CurrentAttacker = MASTER
+SIF BASE:(nlcChara):0 < 500 || IsDead:(nlcChara):0 || DT_CELL_GET(@"lcCombatants", GetCombatant(nlcChara) , "nonCombatant", 1) == 2
+	CONTINUE
+lcOneMoreCount = 0
+$DoAnotherAttack
+DT_CLEAR "explosionTemp"
+DT_CLEAR "fragmentationTemp"
+TGC_PreviousAttackerWeapon = charaWeaponInts:TGC_CurrentAttacker:WeaponInventory ? charaWeaponInts:TGC_CurrentAttacker:WeaponInventory # EQUIP:(TGC_CurrentAttacker):Weapon
+IF lcIsLethal && (!DT_CELL_GET("lcCombatants", GetCombatant(TGC_CurrentAttacker), "muteAilment", 1) || !GET_INT(TGC_CurrentAttacker, "Weapon", TGC_PreviousAttackerWeapon, WeapStats_Prefix(TGC_PreviousAttackerWeapon,charaWeaponInts:TGC_CurrentAttacker:Mode)+"MP Cost"))
+	TGC_CurrentAttackerWeapon = TGC_PreviousAttackerWeapon
+ELSE
+	TGC_CurrentAttackerWeapon = 0
+ENDIF
+TGC_AttackerSurrender = 0
+CALL TGC_CombatHUD
+DT_CELL_SET "lcCombatants", nPriorityList:lcCount, "didAttack", 1, 1
+DT_CELL_SET "lcCombatants", nPriorityList:lcCount, "chargeBuff", MAX(0,DT_CELL_GET("lcCombatants", nPriorityList:lcCount, "chargeBuff", 1)-1), 1
+SIF !TGC_MarkDeadCombatants()
+	GOTO END
+SIF FLAG:796
+	GOTO END
+SIF lcOneMore
+	GOTO DoAnotherAttack
+IF RESULT == -1
+	GOTO END
+ENDIF
+NEXT
+$LoseTurn
+;turn end
+FOR LOCAL, 0, nPriorityTotal
+nlcChara = DT_CELL_GET("lcCombatants", nPriorityList:LOCAL, "chara", 1)
+CALL TimeBladderGain(nlcChara,10)
+IF SoiledSelf:nlcChara:0
+	LOCALS '= @"%PARSE("Your",,,nlcChara)% 소변을 본 것이 %PeeProtectType(nlcChara,1)% 다리에 %PARSE("your",5,,nlcChara)% 고통스러운 발진을 주고 있다..."
+	CALL RECOVER(nlcChara, -(MAXBASE:nlcChara:0-500)/16, "体力", LOCALS)
+ENDIF
+IF SoiledSelf:nlcChara:1
+	LOCALS '= @"지저분한 바지는 %PARSE("your",,,nlcChara)% 건강에 좋지 않다..."
+	CALL RECOVER(nlcChara, -(MAXBASE:nlcChara:0-500)/16, "体力", LOCALS)
+ENDIF
+IF DT_CELL_GET("lcCombatants", nPriorityList:LOCAL, "poisonAilment", 1)
+	LOCALS '= @"독이 %PARSE("you",,,nlcChara)%을(를) 먹어치고 있다..."
+	CALL RECOVER(nlcChara, -(MAXBASE:nlcChara:0-500)/8, "体力", LOCALS)
+ENDIF
+IF DT_CELL_GET("lcCombatants", nPriorityList:LOCAL, "burnAilment", 1)
+	LOCALS '= @"%PARSE("You're",,,nlcChara)%타오르고 있다..."
+	CALL RECOVER(nlcChara, -(MAXBASE:nlcChara:0-500)/8, "体力", LOCALS)
+ENDIF
+IF DT_CELL_GET("lcCombatants", nPriorityList:LOCAL, "aphrodisiacAilment", 1)
+	CFLAG:nlcChara:溜まってる度 += MAX(100,100*(DT_CELL_GET("lcCombatants", nPriorityList:LOCAL, "aphrodisiacAilment", 1)/5))
+	CALL TGC_LogAdd(@"%PARSE("Your",,,nlcChara)%몸이 흥분해간다...", C_RED)
+ENDIF
+NEXT
+SIF !TGC_MarkDeadCombatants()
+	BREAK
+SIF FLAG:796
+	BREAK
+;call this again
+TIME += 1
+WEND
+$END
+IF !lcIsLethal
+	FOR LOCAL,0,CHARANUM
+	SIF lcBaseTemp:LOCAL:0
+		BASE:LOCAL:0 = lcBaseTemp:LOCAL:0
+	NEXT
+ENDIF
+VARSET lcBaseTemp
+;war result
+;get unit count
+lcEndingUnits:0 = DT_SELECT("lcCombatants", @"side = 0 and nonCombatant = 0", "", nSide0List)
+lcEndingUnits:1 = DT_SELECT("lcCombatants", @"side = 1 and nonCombatant = 0", "", nSide0List)
+SIF !lcStartingUnits:0 && !lcStartingUnits:1
+	lcWarResult = -2
+IF lcWarResult != -2
+	lcWarResult = GetCombatantSize(2) > GetCombatantSize(1)
+	SIF !GetCombatantSize(2) && !GetCombatantSize(1)
+		lcWarResult = -1
+ELSE
+	GOTO BYPASsSUMMARY
+ENDIF
+SKIPDISP 0
+CALLF StopMusic()
+CALL lcAfterBattle
+$BYPASsSUMMARY
+CALLF StopMusic()
+SKIPDISP 0
+CALLF RemoveAllCombatants()
+CALL TGC_Cleanup
+CALL FIRE_WEAPON_CHECK_ALL
+RETURN TCVAR:MASTER:Grievous_Harm
+;==========================================
+;TGC_CombatHUD
+;==========================================
+;Heads up display for the combat system
+;Use global variables to change who is controlling.
+;==========================================
+;TGC_CurrentAttacker: What character is the attacker.
+;==========================================
+
+@TGC_CombatHUD
+#DIM DYNAMIC LINE_NUM
+; #DIM DYNAMIC ATTACKER, 100
+; #DIM DYNAMIC VICTIM, 100
+LINE_NUM = LINECOUNT
+; IF GetCombatant(TGC_CurrentAttacker,1)
+; DT_SELECT "lcCombatants", @"side = 0", "", ATTACKER
+; DT_SELECT "lcCombatants", @"side = 1", "", VICTIM
+; nSide = 0
+; ELSEIF GetCombatant(TGC_CurrentAttacker,2)
+; DT_SELECT "lcCombatants", @"side = 1", "", ATTACKER
+; DT_SELECT "lcCombatants", @"side = 0", "", VICTIM
+; nSide = 1
+; ELSE
+; ;PRINTFORMW Could not find %CALLNAME:TGC_CurrentAttacker% in either side of the combatants.
+; lcOneMore = 0
+; RETURN 1
+; ENDIF
+IF TGC_CurrentAttacker == -1
+	lcOneMore = 0
+	RETURN
+ELSEIF BASE:(TGC_CurrentAttacker):0 < 500 || IsDead:(TGC_CurrentAttacker):0 || DT_CELL_GET(@"lcCombatants", GetCombatant(TGC_CurrentAttacker) , "nonCombatant", 1)
+	lcOneMore = 0
+	RETURN
+ELSEIF IS_BABY(TGC_CurrentAttacker)
+	;baby
+	CALLF RemoveCombatant(TGC_CurrentAttacker,1)
+	CALLF RemoveCombatant(TGC_CurrentAttacker,0)
+	lcOneMore = 0
+	RETURN
+ENDIF
+lcOneMore = 0
+TGC_CurrentAction '= ""
+; TGC_AITarget = AI_GET_TARGET(TGC_CurrentAttacker,nSide)
+; IF TGC_AITarget == -1
+;     FLAG:796 = 1
+;     lcWarResult = -2
+;     RETURN
+; ENDIF
+; KilledBy:TGC_AITarget:0 = TGC_CurrentAttacker
+; KilledWith:TGC_AITarget:0 = {TGC_CurrentAttackerWeapon}
+;accident
+IF PeeBarStage(TGC_CurrentAttacker) >= 7 || PooBarStage(TGC_CurrentAttacker) >= 7
+	CALL AIB_INIT(TGC_CurrentAttacker)
+ENDIF
+IF DT_CELL_GET("lcCombatants", GetCombatant(TGC_CurrentAttacker), "didAttack", 1) == 2
+	TGC_CurrentAction '= "turnEnd"
+	RETURN
+ENDIF
+IF TGC_CurrentAttacker != MASTER
+	CALL TGC_AI(TGC_CurrentAttacker)
+ENDIF
+SKIPDISP 0
+TGC_InSkipMode = MESSKIP() && !(TGC_CurrentAttacker == MASTER || (lcDirectControl && GetCombatant(MASTER, DT_CELL_GET(@"lcCombatants", GetCombatant(TGC_CurrentAttacker), "side", 1)+1)))
+IF TGC_InSkipMode
+	IF NASLoadingLine
+		CALL ANIMATION_LOAD_NAS(lcCount, 0, lcCombatantCount, @"%CALLNAME:TGC_CurrentAttacker%의 턴을 시뮬레이션한다."); nas loading
+	ELSE
+		CALL NAS_START_LOADING()
+		CALL ANIMATION_LOAD_NAS(lcCount, 0, lcCombatantCount, @"%CALLNAME:TGC_CurrentAttacker%의 차례를 시뮬레이션한다."); nas loading
+	ENDIF
+ENDIF
+SKIPDISP TGC_InSkipMode
+WHILE 1
+REDRAW 0
+REPEAT 2
+CALL WndMgr_DestroyWindow(-1)
+REND
+IF !TGC_InSkipMode
+	;creating
+	CALL TGC_MenuParent()
+	SIF TGC_CurrentAttacker != -1
+		CALL TGC_MenuCharacter(TGC_CurrentAttacker,1,0)
+	SIF INRANGE(TGC_LookingAt,0,CHARANUM-1) && ((TGC_CurrentAttacker == MASTER && TGC_LookingAt != MASTER) || (TGC_CurrentAttacker != MASTER))
+		CALL TGC_MenuCharacter(TGC_LookingAt,2,1)
+	CALL TGC_TurnMenu()
+	SIF TGC_LookingAt != -1 || GROUPMATCH(TGC_CurrentAction, "attack", "pickSpell")
+		CALL TGC_AttackInfo(TGC_CurrentAttacker)
+	CALL TGC_SideMenu()
+	CALL TGC_BattleMap()
+	;render
+	CALL WndMgr_DisplayAll()
+ENDIF
+REDRAW 0
+CALL TGC_MenuInput()
+IF RESULT == -1
+	CLEARLINE LINECOUNT - LINE_NUM
+	RETURN -1
+ELSEIF RESULT == 1
+	CLEARLINE LINECOUNT - LINE_NUM
+	RETURN 1
+ELSEIF RESULT == 2
+	CLEARLINE LINECOUNT - LINE_NUM
+	RETURN 2
+ENDIF
+CLEARLINE LINECOUNT - LINE_NUM
+WEND
+
+@TGC_MenuParent()
+#DIM CONST MainWindowID = 0
+#DIM MainWindowW
+#DIM MainWindowH
+#DIM DYNAMIC MenuLineCount
+MainWindowW = MAXWIDTH()-1
+MainWindowH = (CLIENTHEIGHT()/GetConfig("Font Size"))
+;6f8f99
+;failsafe
+FINDELEMENT RESULT, MainWindowID, 1
+IF RESULT == -1
+	CALL WndMgr_CreateWindow(MainWindowID, 0, 0, MainWindowW, MainWindowH, 2)
+	CALL WndMgr_Attribute(MainWindowID, "BorderColor", 0x6f8f99)
+ELSE
+	CALL WndMgr_ResetWindow(MainWindowID)
+ENDIF
+
+@TGC_SideMenu
+#DIM CONST WINDOW_ID = 3
+#DIM WND_WIDTH
+#DIM WND_HEIGHT
+#DIM WND_LOCATION
+#DIM WND_X
+#DIM WND_Y
+#DIM DYNAMIC L_CNT
+#DIM DYNAMIC NORM_COLOR
+#DIM DYNAMIC WD_FONT_SIZE
+#DIM WND_MAX_BAR_LENGTH
+#DIM WND_CharaGrid
+#DIM WND_CharaTable
+NORM_COLOR = GETCONFIG("Text Color")
+WD_FONT_SIZE = GetConfig("Font Size")
+WND_WIDTH = MAXWIDTH()/4
+SIF WND_WIDTH % 2
+	WND_WIDTH--
+WND_HEIGHT = (CLIENTHEIGHT()/GetConfig("Font Size"))-11
+WND_X = 2
+WND_Y = 9
+FINDELEMENT RESULT, WINDOW_ID, 1
+IF RESULT == -1
+	CALL WndMgr_CreateWindow(WINDOW_ID, WND_X, WND_Y, WND_WIDTH, WND_HEIGHT, 2)
+	CALL WndMgr_Attribute(WINDOW_ID, "BorderColor", 0x6f8f99)
+ELSE
+	CALL WndMgr_ResetWindow(WINDOW_ID)
+ENDIF
+IF !GROUPMATCH(TGC_CurrentAction,"attack_S1", "attack_S2", "attack_S3", "turnEnd", "doSpell_S1", "doSpell_S2")
+	;bars for magic, tsp, pee, poop
+	CALL TGC_SideMenuBars(WINDOW_ID,L_CNT)
+	L_CNT = RESULT+1
+ENDIF
+SELECTCASE TGC_CurrentAction
+	CASE "move"
+		CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"이동할 장소를 선택한다.")
+		CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"")
+		CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"B:9999997취소/B")
+	CASE "attack"
+		CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"공격할 장소를 선택해라.")
+		CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"")
+		CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"B:9999997취소/B")
+	CASE "debugLocations"
+		CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"디버깅 위치")
+		CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"")
+		CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"B:9999997취소/B")
+	CASE "attack_S1", "attack_S2", "attack_S3", "turnEnd", "doSpell_S1", "doSpell_S2", "viewingLog"
+		CALLF TGC_ResetLogMaxLines
+		FOR LOCAL,WND_HEIGHT-17,-1,-1
+		;FOR LOCAL,0,WND_HEIGHT-14
+		CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, TGC_Logs:LOCAL)
+		NEXT
+	CASE "pickSpell"
+		CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"유주술을 선택한다")
+		CALL TGC_CombatMagicDisplay(TGC_CurrentAttacker,0,WINDOW_ID,L_CNT)
+		L_CNT = RESULT:1
+		CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"B:9999997취소/B")
+	CASE "diaperChanging"
+		CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"갈 기저귀를 갈 사람을 선택한다.")
+		CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"당신은 자신의 턴과 기저귀를 갈 대상의 턴을 사용할 것입니다.")
+		CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"B:9999997취소/B")
+	CASEELSE
+		;WND_CharaTable =
+		WND_CharaGrid = TGC_CurrentGridSpace(TGC_CurrentAttacker)
+		IF charaWeaponInts:(TGC_CurrentAttacker):MagSize && charaWeaponInts:(TGC_CurrentAttacker):Ammo <= 0
+			CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"C:{C_GRAY}공격 (탄약 없음)/C")
+		ELSE
+			CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"B:9000000공격/B")
+		ENDIF
+		CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"B:9000001마법/B")
+		CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"B:9000100이동한다/B")
+		;CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"@B:9000102@Go Airborne@/B@")
+		CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"")
+		CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"B:9000200아이템/B")
+		CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"B:9000201의 의사/B")
+		CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"B:9000202무기 변경/B")
+		IF charaWeaponInts:(TGC_CurrentAttacker):MagSize
+			IF charaWeaponInts:(TGC_CurrentAttacker):Ammo <= 0
+				CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"B:9000203재장전/B")
+			ELSE
+				CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"C:{C_GRAY}재장전 (무기가 가득 참)/C")
+			ENDIF
+		ENDIF
+		CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"")
+		IF CAN_ACCIDENT(TGC_CurrentAttacker,1) || CAN_ACCIDENT(TGC_CurrentAttacker,2)
+			CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"B:9000300자신을 회복한다/B")
+			CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"@ B:9000301@\@ IsPadded(TGC_CurrentAttacker) ? %PeeProtectType(TGC_CurrentAttacker,2)%을 사용한다 # 스스로 땅에 파묻힌다 \@/B@")
+			CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"@ B:9000302@Change \@EQUIP:TGC_CurrentAttacker:6 ? %PeeProtectType(TGC_CurrentAttacker,2)% # 속옷 \@/B@")
+			CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"")
+		ENDIF
+		IF Inrange(TGC_LookingAt,0,CHARANUM-1)
+			IF DT_CELL_GET("lcCombatants",GetCombatant(TGC_LookingAt),"nonCombatant",1) == 2
+				CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"C:{C_GRAY}항복 요구 (이미 항복했다)/C")
+			ELSEIF DT_CELL_GET("lcCombatants",GetCombatant(TGC_LookingAt),"nonCombatant",1) == 1
+				CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"B:9999996구속/B")
+			ELSE
+				CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"B:9999996항복 요구/B")
+			ENDIF
+		ELSE
+			CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"C:{C_GRAY}항복 요구하기 (대상 지정 필요)/C")
+		ENDIF
+		IF GROUPMATCH(DT_CELL_GET("TGC_Map", WND_CharaGrid, "x", 1),0,TGC_MapSize:0-1) || GROUPMATCH(DT_CELL_GET("TGC_Map", WND_CharaGrid, "y", 1),0,TGC_MapSize:1-1)
+			CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"B:9999997후퇴()")
+		ELSE
+			CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"C:{C_GRAY}후퇴한다(가장자리로 이동)/C")
+		ENDIF
+		CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"B:9999998제출/B")
+		CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"B:9999995대기/B")
+		CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"")
+		CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"B:9000990디버그: 위치 정보/B")
+		CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"B:9000980디버그: 캐릭터 정보/B")
+ENDSELECT
+
+@TGC_SideMenuBars(WINDOW_ID, L_CNT)
+#DIM DYNAMIC WINDOW_ID
+#DIM DYNAMIC L_CNT
+#DIM DYNAMIC WND_WIDTH
+#DIM DYNAMIC WND_MAX_BAR_LENGTH
+WND_WIDTH = MAXWIDTH()/4
+SIF WND_WIDTH % 2
+	WND_WIDTH--
+WND_MAX_BAR_LENGTH = (WND_WIDTH)-(4*2)-(13)
+CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, BASE_BAR_WND(TGC_CurrentAttacker,7,WND_MAX_BAR_LENGTH, UNICODE(0x2585), UNICODE(0x2585), BARCOLORSET("オレンジ"), RESULT:1))
+CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, BASE_BAR_WND(TGC_CurrentAttacker,8,WND_MAX_BAR_LENGTH, UNICODE(0x2585), UNICODE(0x2585), BARCOLORSET("水色"), RESULT:1))
+IF Can_Accident(TGC_CurrentAttacker,1)
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, BASE_BAR_WND(TGC_CurrentAttacker,4,WND_MAX_BAR_LENGTH, UNICODE(0x2585), UNICODE(0x2585), PeeColor_C(TGC_CurrentAttacker), RESULT:1))
+ENDIF
+IF Can_Accident(TGC_CurrentAttacker,2)
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, BASE_BAR_WND(TGC_CurrentAttacker,17,WND_MAX_BAR_LENGTH, UNICODE(0x2585), UNICODE(0x2585), BARCOLORSET("JellyOrPoo"), RESULT:1))
+ENDIF
+RETURN L_CNT
+
+@TGC_BattleMap
+#DIM CONST WINDOW_ID = 4
+#DIM WND_WIDTH
+#DIM WND_HEIGHT
+#DIM WND_LOCATION
+#DIM WND_X
+#DIM WND_Y
+#DIM WND_COLOR ;window color
+#DIM DYNAMIC C_CNT ;text string
+#DIM DYNAMIC L_CNT ;line count
+#DIM DYNAMIC G_CNT ;grid count
+#DIM DYNAMIC NORM_COLOR ;normal color
+#DIM DYNAMIC TEXT_COLOR ;new text color
+#DIM DYNAMIC WD_FONT_SIZE
+#DIM DYNAMIC C_ID ;character being displayed
+#DIM DYNAMIC G_ID ;datatable of the square
+#DIM DYNAMIC R_ID ;radius ID
+#DIMS DYNAMIC G_POS ;position ID
+#DIM DYNAMIC G_MOD ;modulo
+#DIM DYNAMIC IN_RADIUS
+#DIMS DYNAMIC RADIUS_STR
+#DIM CONST NAME_SIZE = 4 ;size of names
+WND_COLOR = 0x6f8f99
+NORM_COLOR = GETCONFIG("Text Color")
+WD_FONT_SIZE = GetConfig("Font Size")
+WND_X = 2 + (MAXWIDTH()/4)
+SIF WND_X % 2
+	WND_X--
+WND_Y = 9
+;column count
+IF TGC_MapColumns
+	WND_WIDTH = (NAME_SIZE)*TGC_MapColumns
+	WND_WIDTH += 2
+	SIF WND_WIDTH % 2
+		WND_WIDTH--
+ENDIF
+IF TGC_MapRows
+	WND_HEIGHT = ((2)*TGC_MapRows)+1
+ENDIF
+FINDELEMENT RESULT, WINDOW_ID, 1
+IF RESULT == -1
+	CALL WndMgr_CreateWindow(WINDOW_ID, WND_X, WND_Y, WND_WIDTH, WND_HEIGHT, 0)
+ELSE
+	CALL WndMgr_ResetWindow(WINDOW_ID)
+ENDIF
+;columns and rows on the grid
+;L_CNT - current line
+FOR L_CNT, 0, WND_HEIGHT
+;roughtly how many
+G_CNT = (L_CNT/2)
+LOCALS '= @"@C:{WND_COLOR}@"
+FOR C_CNT, 0, WND_WIDTH
+$RedoDraw
+G_MOD = (C_CNT)%(NAME_SIZE)
+G_POS '= @"{(C_CNT/(NAME_SIZE))},{G_CNT}"
+VARSET RESULT
+DT_SELECT "TGC_Map", @"positionID = '%G_POS%'"
+G_ID = RESULT:1
+LOCALS:1 '= DT_CELL_GETS("TGC_Map", G_ID, "charactersInside",1)
+IF !STRLENS(LOCALS:1)
+	C_ID = -1
+ELSE
+	C_ID = TOINT(SPLIT_SINGLE(LOCALS:1,0,"/"))
+ENDIF
+TEXT_COLOR = WND_COLOR
+RADIUS_STR '= ""
+;check if any radiuses are active
+FOR R_ID,VARSIZE("TGC_CastRadius")-1,-1,-1
+;does not exist
+IF !TGC_CastRadius:R_ID:1 && !STRLENS(TGC_CastRadiusSTR:R_ID)
+	TEXT_COLOR = WND_COLOR
+	CONTINUE
+ENDIF
+IN_RADIUS = TGC_InRadius(TGC_CastRadius:R_ID:1, DT_CELL_GET("TGC_Map", TGC_CastRadius:R_ID:0, "x", 1), DT_CELL_GET("TGC_Map", TGC_CastRadius:R_ID:0, "y", 1), (C_CNT/(NAME_SIZE)),  G_CNT) && !STRLENS(DT_CELL_GETS("TGC_Map", G_ID, "coverType", 1))
+IF IN_RADIUS
+	TEXT_COLOR = TGC_CastRadius:R_ID:2
+	RADIUS_STR '= TGC_CastRadiusSTR:R_ID
+	BREAK
+ELSEIF R_ID == 0
+	TEXT_COLOR = WND_COLOR
+ENDIF
+NEXT
+;all
+SELECTCASE L_CNT%2
+	CASE 0
+		IF G_MOD == 0
+			IF !INRANGE(C_ID,0,CHARANUM-1) && G_ID >= 60000000 && !IN_RADIUS
+				VARSET TGC_ObsSTR
+				VARSET TGC_Obs
+				IF STRLENS(DT_CELL_GETS(@"TGC_Map", G_ID , "coverType", 1))
+					CALLF TGC_ObstacleTypes(DT_CELL_GETS(@"TGC_Map", G_ID , "coverType", 1))
+					LOCALS += @"@C:{TGC_Obs:2 ? TGC_Obs:2 # 0x6f8f99}@%TGC_ObsSTR,NAME_SIZE%@/C@"
+				ELSE
+					CALLF TGC_FloorTypes(DT_CELL_GETS(@"TGC_Map", G_ID , "floorType", 1))
+					LOCALS += @"@C:{TGC_Obs:2 ? TGC_Obs:2 # 0x6f8f99}@%TGC_ObsSTR,NAME_SIZE%@/C@"
+				ENDIF
+				;C_CNT += (NAME_SIZE)
+			ELSEIF INRANGE(C_ID,0,CHARANUM-1)
+				IF C_ID == MASTER
+					TEXT_COLOR = C_AQUA
+				ELSEIF C_ID == TGC_LookingAt
+					TEXT_COLOR = C_ORANGE
+				ELSEIF DT_CELL_GET(@"lcCombatants", GetCombatant(C_ID) , "nonCombatant", 1) == 2
+					TEXT_COLOR = C_GREEN
+					;ELSEIF BASE:C_ID:0 < 500
+				ELSEIF DT_CELL_GET(@"lcCombatants", GetCombatant(C_ID) , "nonCombatant", 1)
+					TEXT_COLOR = C_GRAY
+				ELSEIF DT_CELL_GET(@"lcCombatants", GetCombatant(MASTER) , "side", 1) == DT_CELL_GET(@"lcCombatants", GetCombatant(C_ID) , "side", 1)
+					TEXT_COLOR = C_BLUE
+				ELSE
+					TEXT_COLOR = C_RED
+				ENDIF
+				LOCALS += @"@C:{TEXT_COLOR}@%CENTER(SUBSTRING(CALLNAME:C_ID,0,NAME_SIZE),NAME_SIZE)%@/C@"
+			ELSE
+				LOCALS += @"%"",NAME_SIZE%"
+			ENDIF
+		ELSEIF G_MOD == 1
+			C_CNT--
+			GOTO RedoDraw
+		ENDIF
+	CASE 1
+		IF G_MOD == 0
+			$PercentCheck
+			;LOCALS += @"@B:{G_ID}@@C:{TEXT_COLOR}@%CENTER(@"%G_POS%",NAME_SIZE)%@/C@@/B@@C:{0x6f8f99}@│@/C@"
+			;LOCALS += @"@B:{G_ID}@@C:{TEXT_COLOR}@%CENTER(@"%G_POS%",NAME_SIZE)%@/C@@/B@@C:{0x6f8f99}@│@/C@"
+			;LOCALS += @"@B:{G_ID}@@C:{TEXT_COLOR}@%CENTER(COND_STR(@"！",IN_RADIUS),NAME_SIZE)%@/C@@/B@@C:{0x6f8f99}@│@/C@"
+			IF IN_RADIUS
+				LOCALS += @"@B:{G_ID}@@C:{TEXT_COLOR}@%CENTER(RADIUS_STR,NAME_SIZE)%@/C@@/B@"
+			ELSEIF INRANGE(C_ID,0,CHARANUM-1)
+				SIF TGC_ClickMap
+					LOCALS += @"@B:{G_ID}@"
+				LOCALS += @"@C:{TEXT_COLOR}@%SUBSTRING(@"{(BASE:C_ID:0-500)*100/(MAXBASE:C_ID:0-500)}",0,NAME_SIZE),NAME_SIZE%@/C@"
+				SIF TGC_ClickMap
+					LOCALS += @"@/B@"
+				; ELSEIF TGC_CurrentAction != ""
+				;     ;doing an attack
+				;     LOCALS += @"@C:{TEXT_COLOR}@%"",NAME_SIZE%@/C@"
+			ELSEIF G_ID >= 60000000
+				;LOCALS += @"@B:{G_ID}@@C:{TEXT_COLOR}@%"",NAME_SIZE%@/C@@/B@"
+				VARSET TGC_ObsSTR
+				VARSET TGC_Obs
+				SIF TGC_ClickMap
+					LOCALS += @"@B:{G_ID}@"
+				IF STRLENS(DT_CELL_GETS(@"TGC_Map", G_ID , "coverType", 1))
+					CALLF TGC_ObstacleTypes(DT_CELL_GETS(@"TGC_Map", G_ID , "coverType", 1))
+					LOCALS += @"@C:{TGC_Obs:2 ? TGC_Obs:2 # 0x6f8f99}@%TGC_ObsSTR,NAME_SIZE%@/C@"
+				ELSE
+					CALLF TGC_FloorTypes(DT_CELL_GETS(@"TGC_Map", G_ID , "floorType", 1))
+					LOCALS += @"@C:{TGC_Obs:2 ? TGC_Obs:2 # 0x6f8f99}@%TGC_ObsSTR,NAME_SIZE%@/C@"
+				ENDIF
+				SIF TGC_ClickMap
+					LOCALS += @"@/B@"
+			ELSE
+				LOCALS += @"%"",NAME_SIZE%"
+			ENDIF
+		ELSEIF G_MOD == 1
+			C_CNT--
+			GOTO RedoDraw
+		ENDIF
+ENDSELECT
+C_CNT = STRLENS(REPLACE(LOCALS, "@[^@]*@", ""))
+C_CNT -= STRCOUNT(REPLACE(LOCALS, "@[^@]*@", ""),"％")
+IF LOCAL:9 == C_CNT
+	SETCOLOR C_RED
+	PRINTL
+	PRINTFORML %"-"*89%
+	PRINTFORML @TGC_CombatHud에서 무한 루프가 감지됨.
+	PRINTFORML 전투를 우아하게 종료한다.
+	PRINTFORML 마지막 줄: %REPLACE(LOCALS, "@[^@]*@", "")%
+	PRINTFORML 줄 정보: @"Line {L_CNT}/{WND_HEIGHT}, 캐릭터 {C_CNT}/{WND_WIDTH}, g_mod {G_MOD} ({C_CNT}/{NAME_SIZE} = {(C_CNT)%(NAME_SIZE)})"
+	PRINTFORML 이거 보고해라!
+	PRINTFORML %"-"*89%
+	FORCEWAIT
+	RETURN -1
+ENDIF
+LOCAL:9 = C_CNT
+NEXT
+LOCALS += @"@/C@"
+LOCALS '= REPLACE(LOCALS, "％", "%")
+CALL WndMgr_TextSet(WINDOW_ID, L_CNT, LOCALS)
+NEXT
+; │Test12│Test12│Test12│Test12│Test12│Test12│
+; ├───┼───┼───┼───┼───┼───┼
+
+@TGC_TurnMenu
+#DIM CONST WINDOW_ID = 5
+#DIM WND_WIDTH
+#DIM WND_HEIGHT
+#DIM WND_LOCATION
+#DIM WND_X
+#DIM WND_Y
+#DIM DYNAMIC L_CNT
+#DIM DYNAMIC NORM_COLOR
+#DIM DYNAMIC WD_FONT_SIZE
+#DIM WND_MAX_BAR_LENGTH
+#DIM DYNAMIC combatantSize
+#DIM C_ID
+#DIM maxCharas, 2000
+#DIMS turnLines, 10
+NORM_COLOR = GETCONFIG("Text Color")
+WD_FONT_SIZE = GetConfig("Font Size")
+WND_WIDTH = MAXWIDTH()/2
+SIF WND_WIDTH % 2
+	WND_WIDTH--
+WND_WIDTH -= 2
+WND_HEIGHT = 8
+LOCAL = MAXWIDTH()/4
+SIF LOCAL % 2
+	LOCAL--
+WND_X = (2*(LOCAL))+2
+WND_Y = 1
+FINDELEMENT RESULT, WINDOW_ID, 1
+IF RESULT == -1
+	CALL WndMgr_CreateWindow(WINDOW_ID, WND_X, WND_Y, WND_WIDTH, WND_HEIGHT, 2)
+	CALL WndMgr_Attribute(WINDOW_ID, "Border", 0)
+	;CALL WndMgr_WindowTitle(WINDOW_ID, @"TURNS:")
+ELSE
+	CALL WndMgr_ResetWindow(WINDOW_ID)
+ENDIF
+CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"TURNS: {TURNS}")
+CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"SIZE: {GetCombatantSize(1)}v{GetCombatantSize(2)} ({GetCombatantSize()})")
+LOCALS '= "PRIORITY: "
+VARSET turnLines
+LOCAL:4 = 1
+combatantSize = DT_SELECT("lcCombatants", @"didAttack < 1", "priority DESC", maxCharas)
+FOR LOCAL, 0, combatantSize
+C_ID = DT_CELL_GET("lcCombatants", maxCharas:LOCAL, "chara", 1)
+SIF BASE:(C_ID):0 < 500 || IsDead:(C_ID):0 || DT_CELL_GET(@"lcCombatants", GetCombatant(C_ID) , "nonCombatant", 1) == 2
+	CONTINUE
+LOCALS:1 '= REPLACE(PRINT_RANK_HTML(GetCombatAbility(C_ID),"MAX_6"), "<font color='#(.+)'>.+", "$1")
+LOCALS:2 '= REPLACE(PRINT_RANK_HTML(GetCombatAbility(C_ID),"MAX_6"), "<font.*?>(.*?)</font>", "$1")
+LOCALS:3 '= @"%CALLNAME:(C_ID)% (%LOCALS:2% {GetCombatAbility(C_ID)}) -> "
+IF STRLENS(turnLines:9)+STRLENS(LOCALS:3)+(LOCAL:4 == 1 ? STRLENS(LOCALS) # 0) > WND_WIDTH-4
+	turnLines:9 '= ""
+	LOCAL:4++
+	SIF LOCAL:4 > 4
+		BREAK
+	GOTO AddToLine
+ELSE
+	$AddToLine
+	IF C_ID == MASTER
+		LOCAL:5 = C_AQUA
+	ELSEIF DT_CELL_GET(@"lcCombatants", GetCombatant(MASTER) , "side", 1) == DT_CELL_GET(@"lcCombatants", GetCombatant(C_ID) , "side", 1)
+		LOCAL:5 = C_BLUE
+	ELSE
+		LOCAL:5 = C_RED
+	ENDIF
+	turnLines:(LOCAL:4) += @"@C:{LOCAL:5}@%CALLNAME:(C_ID)% (@C:{TOINT(LOCALS:1)}@%LOCALS:2%@/C@ {GetCombatAbility(C_ID)})@/C@ -> "
+	turnLines:9 += LOCALS:3
+ENDIF
+NEXT
+;turnLines += "TURN END"
+;LOCALS += @" ({combatantSize})"
+CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, LOCALS + turnLines:1)
+CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, turnLines:2)
+CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, turnLines:3)
+CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, turnLines:4)
+CALL WndMgr_TextSet(WINDOW_ID, 6, @"[지상] [공중] B:9999995[기록]에 /B")
+
+@TGC_AttackInfo(ARG)
+#DIM WINDOW_ID = 28
+#DIM WND_WIDTH
+#DIM WND_HEIGHT
+#DIM WND_LOCATION
+#DIM WND_X
+#DIM WND_Y
+#DIM DYNAMIC L_CNT
+#DIM DYNAMIC NORM_COLOR
+#DIM DYNAMIC WD_FONT_SIZE
+#DIM DYNAMIC StatsSize
+#DIM WND_MAX_BAR_LENGTH
+#DIM DYNAMIC CUR_COLOR
+#DIM DYNAMIC CUR_DMG_TYPE
+#DIM DYNAMIC CUR_DMG_TYPE_REST
+#DIM C_GRID,2
+#DIM C_POS,2
+WINDOW_ID = 28
+NORM_COLOR = GETCONFIG("Text Color")
+WD_FONT_SIZE = GetConfig("Font Size")
+StatsSize = 8
+;magic stuffs
+CALLF NAS_ESP_RESET
+IF TGC_MagicPick
+	TRYCALLFORMF NAS_ESP_{DT_CELL_GET("combatMagic", TGC_MagicPick, "spellPage",1)}
+	TRYCALLFORM NAS_ESP_{DT_CELL_GET("combatMagic", TGC_MagicPick, "spellPage",1)}_{DT_CELL_GET("combatMagic", TGC_MagicPick, "spell",1)}
+ENDIF
+;player/ally
+WND_WIDTH = 20
+WND_HEIGHT = 4
+LOCAL = ((CLIENTHEIGHT()/GetConfig("Font Size")))-13-WND_HEIGHT
+WND_X = 4
+WND_Y = LOCAL
+FINDELEMENT RESULT, WINDOW_ID, 1
+IF RESULT == -1
+	CALL WndMgr_CreateWindow(WINDOW_ID, WND_X, WND_Y, WND_WIDTH, WND_HEIGHT, 2)
+	CALL WndMgr_Attribute(WINDOW_ID, "BorderColor", 0x6f8f99)
+ELSE
+	CALL WndMgr_ResetWindow(WINDOW_ID)
+ENDIF
+CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER(CALLNAME:TGC_CurrentAttacker,WND_WIDTH-4))
+IF TGC_MagicPick
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER(NAS_ESP_NAME,WND_WIDTH-4))
+ELSE
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER(PrintWeaponName(TGC_CurrentAttacker,TGC_CurrentAttackerWeapon,-1),WND_WIDTH-4))
+ENDIF
+WINDOW_ID = 21
+L_CNT = 0
+WND_WIDTH = 8
+WND_HEIGHT = 8
+LOCAL = ((CLIENTHEIGHT()/GetConfig("Font Size")))-6-WND_HEIGHT
+WND_X = 4
+WND_Y = LOCAL
+FINDELEMENT RESULT, WINDOW_ID, 1
+IF RESULT == -1
+	CALL WndMgr_CreateWindow(WINDOW_ID, WND_X, WND_Y, WND_WIDTH, WND_HEIGHT, 2)
+	CALL WndMgr_Attribute(WINDOW_ID, "BorderColor", 0x6f8f99)
+ELSE
+	CALL WndMgr_ResetWindow(WINDOW_ID)
+ENDIF
+charaWeaponInts:TGC_CurrentAttacker:Accuracy = TGC_AccuracyDifference(TGC_CurrentAttacker,!INRANGE(TGC_LookingAt,0,CHARANUM-1) ? TGC_CurrentAttacker # TGC_LookingAt)
+CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER(BASE:TGC_CurrentAttacker:0-500,5))
+IF TGC_MagicPick && !NAS_ESP_WEAPON
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER(0,5))
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER(1,5))
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER(100,5))
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER(0,5))
+ELSE
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER(CharaWeaponInts:TGC_CurrentAttacker:Damage,5))
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER(CharaWeaponInts:TGC_CurrentAttacker:Burst,5))
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER(CharaWeaponInts:TGC_CurrentAttacker:Accuracy,5))
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER(CharaWeaponInts:TGC_CurrentAttacker:Accuracy/4,5))
+ENDIF
+CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER("100",5))
+WINDOW_ID = 29
+L_CNT = 0
+WND_WIDTH = 8
+WND_HEIGHT = 8
+LOCAL = ((CLIENTHEIGHT()/GetConfig("Font Size")))-6-WND_HEIGHT
+WND_X = 2+(WND_WIDTH)
+WND_Y = LOCAL
+FINDELEMENT RESULT, WINDOW_ID, 1
+IF RESULT == -1
+	CALL WndMgr_CreateWindow(WINDOW_ID, WND_X, WND_Y, WND_WIDTH, WND_HEIGHT, 2)
+	CALL WndMgr_Attribute(WINDOW_ID, "BorderColor", C_YELLOW)
+ELSE
+	CALL WndMgr_ResetWindow(WINDOW_ID)
+ENDIF
+CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER("STA",WND_WIDTH-4))
+CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER("DMG",WND_WIDTH-4))
+CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER("BURS",WND_WIDTH-4))
+CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER("HIT",WND_WIDTH-4))
+CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER("CRIT",WND_WIDTH-4))
+CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER("AVD",WND_WIDTH-4))
+;enemy
+WINDOW_ID = 22
+L_CNT = 0
+WND_WIDTH = 20
+WND_HEIGHT = 4
+LOCAL = ((CLIENTHEIGHT()/GetConfig("Font Size")))-3-WND_HEIGHT
+WND_X = 4
+WND_Y = LOCAL
+IF !INRANGE(TGC_LookingAt,0,CHARANUM-1)
+	CUR_COLOR = 0x6f8f99
+ELSEIF DT_CELL_GET(@"lcCombatants", GetCombatant(MASTER) , "side", 1) == DT_CELL_GET(@"lcCombatants", GetCombatant(TGC_LookingAt) , "side", 1)
+	CUR_COLOR = C_BLUE
+ELSE
+	CUR_COLOR = C_RED
+ENDIF
+FINDELEMENT RESULT, WINDOW_ID, 1
+IF RESULT == -1
+	CALL WndMgr_CreateWindow(WINDOW_ID, WND_X, WND_Y, WND_WIDTH, WND_HEIGHT, 2)
+	CALL WndMgr_Attribute(WINDOW_ID, "BorderColor", CUR_COLOR)
+ELSE
+	CALL WndMgr_ResetWindow(WINDOW_ID)
+ENDIF
+IF !INRANGE(TGC_LookingAt,0,CHARANUM-1)
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER(@"{DT_CELL_GET("TGC_Map", TGC_LookingAt, "x",1),2}, {DT_CELL_GET("TGC_Map", TGC_LookingAt, "y",1),2}",WND_WIDTH-4))
+	VARSET TGC_ObsSTR
+	VARSET TGC_Obs
+	SIF STRLENS(DT_CELL_GETS(@"TGC_Map", TGC_LookingAt , "coverType", 1))
+		CALLF TGC_ObstacleTypes(DT_CELL_GETS(@"TGC_Map", TGC_LookingAt , "coverType", 1))
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER(@"「\@ STRLENS(TGC_ObsSTR:1) ? %TGC_ObsSTR:1% # 지형 \@」",WND_WIDTH-4))
+ELSE
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER(PrintWeaponName(TGC_LookingAt,EQUIP:TGC_LookingAt:Weapon,-1),WND_WIDTH-4))
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER(CALLNAME:TGC_LookingAt,WND_WIDTH-4))
+ENDIF
+WINDOW_ID = 27
+L_CNT = 0
+WND_WIDTH = 8
+WND_HEIGHT = 8
+LOCAL = ((CLIENTHEIGHT()/GetConfig("Font Size")))-6-WND_HEIGHT
+WND_X = (WND_WIDTH*2)
+WND_Y = LOCAL
+FINDELEMENT RESULT, WINDOW_ID, 1
+IF RESULT == -1
+	CALL WndMgr_CreateWindow(WINDOW_ID, WND_X, WND_Y, WND_WIDTH, WND_HEIGHT, 2)
+	CALL WndMgr_Attribute(WINDOW_ID, "BorderColor", CUR_COLOR)
+ELSE
+	CALL WndMgr_ResetWindow(WINDOW_ID)
+ENDIF
+IF !INRANGE(TGC_LookingAt,0,CHARANUM-1)
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER("0",5))
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER("0",5))
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER("0",5))
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER("0",5))
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER("0",5))
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER("0",5))
+ELSE
+	charaWeaponInts:TGC_LookingAt:Accuracy = TGC_AccuracyDifference(TGC_LookingAt,TGC_CurrentAttacker)
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER(BASE:TGC_LookingAt:0-500,5))
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER(CharaWeaponInts:TGC_LookingAt:Damage,5))
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER(CharaWeaponInts:TGC_LookingAt:Burst,5))
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER(CharaWeaponInts:TGC_LookingAt:Accuracy,5))
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER("100",5))
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, CENTER("100",5))
+ENDIF
+;attack info
+WINDOW_ID = 23
+L_CNT = 0
+WND_WIDTH =  MAXWIDTH()/4
+WND_WIDTH -= 22
+SIF WND_WIDTH % 2
+	WND_WIDTH--
+WND_HEIGHT = 14
+LOCAL = ((CLIENTHEIGHT()/GetConfig("Font Size")))-3-WND_HEIGHT
+WND_X = 22
+WND_Y = LOCAL
+; IF DT_CELL_GET(@"lcCombatants", GetCombatant(MASTER) , "side", 1) == DT_CELL_GET(@"lcCombatants", GetCombatant(TGC_LookingAt) , "side", 1)
+;     CUR_COLOR = C_BLUE
+; ELSE
+;     CUR_COLOR = C_RED
+; ENDIF
+CUR_COLOR = 0x6f8f99
+FINDELEMENT RESULT, WINDOW_ID, 1
+IF RESULT == -1
+	CALL WndMgr_CreateWindow(WINDOW_ID, WND_X, WND_Y, WND_WIDTH, WND_HEIGHT, 2)
+	CALL WndMgr_Attribute(WINDOW_ID, "BorderColor", CUR_COLOR)
+ELSE
+	CALL WndMgr_ResetWindow(WINDOW_ID)
+ENDIF
+;get damage type
+CUR_DMG_TYPE = CharaWeaponInts:TGC_CurrentAttacker:DamageType
+IF !CUR_DMG_TYPE
+	CUR_DMG_TYPE = WEAP_DAMAGE_TYPE(EQUIP:TGC_CurrentAttacker:Weapon)
+ENDIF
+IF !INRANGE(TGC_LookingAt,0,CHARANUM-1)
+	CUR_DMG_TYPE_REST = 0
+ELSE
+	CUR_DMG_TYPE_REST = DamageResist:TGC_LookingAt:(CUR_DMG_TYPE):1
+ENDIF
+IF TGC_MagicPick && !NAS_ESP_WEAPON
+	LOCALS:2 '= REPLACE(PRINT_RANK_HTML(NAS_ESP_LevelNeed,"MAX_6"), "<font color='#(.+)'>.+", "$1")
+	LOCALS:3 '= REPLACE(PRINT_RANK_HTML(NAS_ESP_LevelNeed,"MAX_6"), "<font.*?>(.*?)</font>", "$1")
+	IF STRFIND(NAS_ESP_Type,"Passive/") > -1
+		LOCALS:4 '= "  Passive"
+	ELSE
+		LOCALS:4 '= @"  {NAS_ESP_COST,5} %BASE_TR(BASENAME:NAS_ESP_BASE)% 사용"
+	ENDIF
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"@C:{NAS_ESP_COLOR}@[%NAS_ESP_NAME_VShort,5%]@/C@ "+NAS_ESP_NAME)
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"무해한")
+	CALL WndMgr_TextSet(WINDOW_ID, WND_HEIGHT-4, @"사거리: {NAS_ESP_RANGE_COMBAT}")
+	SIF NAS_ESP_RADIUS_COMBAT
+		CALL WndMgr_TextSet(WINDOW_ID, WND_HEIGHT-5, @"AoE: {NAS_ESP_RADIUS_COMBAT}")
+ELSE
+	;regular weapon
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, PrintWeaponName(TGC_CurrentAttacker,EQUIP:TGC_CurrentAttacker:Weapon,-1))
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"%GET_STR(0,"Hediff", CUR_DMG_TYPE, "Abriv")% (@C:{YoujutsuResistCOL(,CUR_DMG_TYPE_REST)}@%MagicTypeStrength(CUR_DMG_TYPE,CUR_DMG_TYPE_REST,1)%@/C@)")
+	LOCALS:4 '= TGC_ShortWeaponDesc(TGC_CurrentAttacker)
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, SUBSTRING(LOCALS:4,0,WND_WIDTH-4))
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, SUBSTRING(LOCALS:4,WND_WIDTH-4,2*(WND_WIDTH-4)))
+	CALL WndMgr_TextSet(WINDOW_ID, WND_HEIGHT-4, @"사거리: {CharaWeaponInts:TGC_CurrentAttacker:Range}")
+	SIF CharaWeaponInts:TGC_CurrentAttacker:MultiHit
+		CALL WndMgr_TextSet(WINDOW_ID, WND_HEIGHT-5, @"AoE: {CharaWeaponInts:TGC_CurrentAttacker:MultiHit}")
+ENDIF
+IF TGC_MagicPick
+	CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, NAS_ESP_DESC)
+ENDIF
+IF GROUPMATCH(TGC_CurrentAction, "attack", "pickSpell")
+	;C_GRID = GetCombatant(MASTER)
+	IF !INRANGE(TGC_LookingAt,0,CHARANUM-1)
+		C_GRID:1 = TGC_LookingAt
+		C_POS:0 = DT_CELL_GET("TGC_Map", TGC_LookingAt, "x", 1)
+		C_POS:1 = DT_CELL_GET("TGC_Map", TGC_LookingAt, "y", 1)
+	ELSE
+		C_GRID:1 = GetCombatant(TGC_LookingAt)
+		C_POS:0 = TOINT(SPLIT_SINGLE(DT_CELL_GETS("lcCombatants", C_GRID:1, "positionID", 1), 0, ","))
+		C_POS:1 = TOINT(SPLIT_SINGLE(DT_CELL_GETS("lcCombatants", C_GRID:1, "positionID", 1), 1, ","))
+	ENDIF
+	;DEBUGPRINTFORML TGC_LogAdd(@"{TGC_RangeDifference(DT_CELL_GET("TGC_Map", TGC_CastRadius:0:0, "x", 1), DT_CELL_GET("TGC_Map", TGC_CastRadius:0:0, "y", 1))}")
+	;in radius
+	IF TGC_InRadius(TGC_CastRadius:0:1, DT_CELL_GET("TGC_Map", TGC_CastRadius:0:0, "x", 1), DT_CELL_GET("TGC_Map", TGC_CastRadius:0:0, "y", 1), C_POS:0, C_POS:1)
+		CALL WndMgr_TextSet(WINDOW_ID, WND_HEIGHT-3, @"B:{3385553}확인?/B")
+	ELSE
+		CALL WndMgr_TextSet(WINDOW_ID, WND_HEIGHT-3, @"C:{C_GRAY}확인/C")
+	ENDIF
+ENDIF
+;"Imagine five 2hus on the edge of a cliff..."
+
+@TGC_LogAdd(ARGS,TextColor=-1,TextStyle=0)
+#DIM MAX_LINE_LENGTH
+#DIM TextColor
+#DIM TextStyle
+#DIMS LINES_TEMP, 10
+VARSET LINES_TEMP
+SIF TextColor == -1
+	TextColor = GETCONFIG("Text Color")
+CALLF TGC_ResetLogMaxLines
+MAX_LINE_LENGTH = (MAXWIDTH()/4)-4-1
+SIF MAX_LINE_LENGTH % 2
+	MAX_LINE_LENGTH--
+LOCALS '= BREAKENG(ARGS,,,MAX_LINE_LENGTH)
+SPLIT LOCALS, "\n", LINES_TEMP
+;FOR LOCAL, VARSIZE("LINES_TEMP")-1,-1,-1
+FOR LOCAL, 0, VARSIZE("LINES_TEMP")
+IF STRLENS(LINES_TEMP:LOCAL)
+	SIF TextColor != GETCONFIG("Text Color")
+		LINES_TEMP:LOCAL '= @"@C:{TextColor}@%LINES_TEMP:LOCAL%@/C@"
+	SIF TextStyle
+		LINES_TEMP:LOCAL '= @"@S:{TextStyle}@%LINES_TEMP:LOCAL%@/S@"
+	ARRAYSHIFT TGC_Logs, 1, LINES_TEMP:LOCAL
+ENDIF
+NEXT
+
+@TGC_ResetLogMaxLines
+#FUNCTION
+TGC_LogMaxLines = (CLIENTHEIGHT()/GetConfig("Font Size"))-11-14
+
+@TGC_MenuCharacter(ARG,WINDOW_ID=1,WND_LOCATION)
+#DIM WINDOW_ID
+#DIM WND_WIDTH
+#DIM WND_HEIGHT
+#DIM WND_LOCATION
+#DIM WND_X
+#DIM DYNAMIC L_CNT
+#DIM DYNAMIC NORM_COLOR
+#DIM DYNAMIC WD_FONT_SIZE
+#DIM WND_MAX_BAR_LENGTH
+#DIMS buffsList,3
+NORM_COLOR = GETCONFIG("Text Color")
+WD_FONT_SIZE = GetConfig("Font Size")
+WND_WIDTH = MAXWIDTH()/4
+SIF WND_WIDTH % 2
+	WND_WIDTH--
+WND_MAX_BAR_LENGTH = (WND_WIDTH)-(4*2)-(13)
+IF !WND_LOCATION
+	WND_X = 2
+ELSE
+	WND_X = 2+WND_WIDTH
+ENDIF
+WND_HEIGHT = 8
+FINDELEMENT RESULT, WINDOW_ID, 1
+IF RESULT == -1
+	CALL WndMgr_CreateWindow(WINDOW_ID, WND_X, 1, WND_WIDTH, WND_HEIGHT, 2)
+	CALL WndMgr_Attribute(WINDOW_ID, "BorderColor", 0x6f8f99)
+ELSE
+	CALL WndMgr_ResetWindow(WINDOW_ID)
+ENDIF
+CALL WndMgr_WindowTitle(WINDOW_ID, @"%NAME:ARG%")
+LOCALS '= ""
+LOCALS:1 '= REPLACE(PRINT_RANK_HTML(GetCombatAbility(ARG),"MAX_6"), "<font color='#(.+)'>.+", "$1")
+LOCALS:2 '= REPLACE(PRINT_RANK_HTML(GetCombatAbility(ARG),"MAX_6"), "<font.*?>(.*?)</font>", "$1")
+IF ARG == MASTER
+	LOCALS '= @"이것은 당신이다 (C:{TOINT(LOCALS:1)}%LOCALS:2%/C {GetCombatAbility(ARG)})"
+ELSEIF DT_CELL_GET(@"lcCombatants", GetCombatant(ARG) , "nonCombatant", 1) == 2
+	LOCALS '= @"C:{C_GREEN} 항복함 (C:{TOINT(LOCALS:1)}%LOCALS:2%/C {GetCombatAbility(ARG)})/C"
+	CALL WndMgr_Attribute(WINDOW_ID, "BorderColor", C_GREEN)
+ELSEIF DT_CELL_GET(@"lcCombatants", GetCombatant(ARG) , "nonCombatant", 1) == 1
+	LOCALS '= @"C:{C_GREEN}기절한(C:{TOINT(LOCALS:1)}%LOCALS:2%/C {GetCombatAbility(ARG)})/C"
+	CALL WndMgr_Attribute(WINDOW_ID, "BorderColor", C_GREEN)
+ELSEIF DT_CELL_GET(@"lcCombatants", GetCombatant(MASTER) , "side", 1) == DT_CELL_GET(@"lcCombatants", GetCombatant(ARG) , "side", 1)
+	LOCALS '= @"C:{C_BLUE}아군(C:{TOINT(LOCALS:1)}%LOCALS:2%/C {GetCombatAbility(ARG)})/C"
+	CALL WndMgr_Attribute(WINDOW_ID, "BorderColor", C_BLUE)
+ELSE
+	LOCALS '= @"C:{C_RED}적 (C:{TOINT(LOCALS:1)}%LOCALS:2%/C 전투능력{GetCombatAbility(ARG)})/C"
+	CALL WndMgr_Attribute(WINDOW_ID, "BorderColor", C_RED)
+ENDIF
+CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, LOCALS)
+CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, BASE_BAR_WND(ARG,0,WND_MAX_BAR_LENGTH, UNICODE(0x2585), UNICODE(0x2585), BARCOLORSET("緑"), RESULT:1))
+CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, BASE_BAR_WND(ARG,1,WND_MAX_BAR_LENGTH, UNICODE(0x2585), UNICODE(0x2585), BARCOLORSET("青"), RESULT:1))
+VARSET buffsList
+IF IsDead:ARG:0
+	buffsList += @"@C:{C_D_RED}@DEAD@/C@"
+ELSEIF BASE:ARG:0 < 500
+	buffsList += @"@C:{C_D_RED}@FNT@/C@"
+ENDIF
+FOR LOCAL,0,7
+IF DT_CELL_GET("lcCombatants", GetCombatant(ARG), BUFF_NAMES(LOCAL,2), 1)
+	LOCALS:1 '= @"%BUFF_NAMES(LOCAL,1)%\@ DT_CELL_GET("lcCombatants", GetCombatant(ARG), BUFF_NAMES(LOCAL,2), 1) > 0 ? + #\@{DT_CELL_GET("lcCombatants", GetCombatant(ARG), BUFF_NAMES(LOCAL,2), 1)} "
+	LOCALS += LOCALS:1
+	IF DT_CELL_GET("lcCombatants", GetCombatant(ARG), BUFF_NAMES(LOCAL,2), 1) > 0
+		buffsList += @"@C:{C_RED}@%LOCALS:1%@/C@"
+	ELSE
+		buffsList += @"@C:{C_P_BLUE}@%LOCALS:1%@/C@"
+	ENDIF
+ENDIF
+NEXT
+CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, buffsList)
+VARSET buffsList
+IF DT_CELL_GET("lcCombatants", GetCombatant(ARG), "chargeBuff", 1)
+	buffsList += @"@C:{C_RED}@ATK 2.5x@/C@ "
+ENDIF
+IF DT_CELL_GET("lcCombatants", GetCombatant(ARG), "protectBuff", 1)
+	buffsList += @"@C:{C_P_PURPLE}@BLOCK@/C@ "
+ENDIF
+IF DT_CELL_GET("lcCombatants", GetCombatant(ARG), "burnAilment", 1)
+	buffsList += @"@C:{C_ORANGE}@FIRE@/C@ "
+ENDIF
+IF DT_CELL_GET("lcCombatants", GetCombatant(ARG), "poisonAilment", 1)
+	buffsList += @"@C:{C_ORANGE}@PSN@/C@ "
+ENDIF
+IF DT_CELL_GET("lcCombatants", GetCombatant(ARG), "muteAilment", 1)
+	buffsList += @"@C:{C_GRAY}@MUTE@/C@ "
+ENDIF
+IF DT_CELL_GET("lcCombatants", GetCombatant(ARG), "sleepAilment", 1)
+	buffsList += @"@C:{C_GRAY}@SLEEP@/C@ "
+ENDIF
+IF DT_CELL_GET("lcCombatants", GetCombatant(ARG), "aphrodisiacAilment", 1)
+	buffsList += @"@C:{C_PINK}@APHRO@/C@ "
+ENDIF
+IF HasBionicPart(ARG,132)
+	buffsList += @"@C:{C_GREEN}@BOMB@/C@ "
+ENDIF
+IF PeeBarStage(ARG) >= 2
+	buffsList += @"@C:{Color_Gradient_PER(0xe1cb7f,C_RED,GetPercent(PeeBarStage(ARG),7))}@PEE@/C@ "
+ENDIF
+IF PooBarStage(ARG) >= 2
+	buffsList += @"@C:{Color_Gradient_PER(CF_JELLYORPOO(),C_RED,GetPercent(PooBarStage(ARG),7))}@POO@/C@ "
+ENDIF
+IF SoiledSelf:ARG:0 && SoiledSelf:ARG:1
+	buffsList += @"@C:{C_D_RED}@SOIL@/C@ "
+ELSEIF SoiledSelf:ARG:0
+	buffsList += @"@C:{0xe1cb7f}@SOIL@/C@ "
+ELSEIF SoiledSelf:ARG:1
+	buffsList += @"@C:{CF_JELLYORPOO()}@SOIL@/C@ "
+ENDIF
+;horni
+IF CFLAG:ARG:溜まってる度 >= 500
+	buffsList += @"@C:{Color_Gradient_PER(C_GRAY,C_PINK,CFLAG:ARG:溜まってる度/10)}@HORNY@/C@ "
+ENDIF
+;pleasure
+FOR LOCAL,0,6
+SIF PALAM:ARG:LOCAL < PleasureRequired(ARG)/2
+	CONTINUE
+LOCALS:1 '= @"%TOUPPER(PALAM_TR(PALAMNAME:LOCAL, "PalamSh"))% "
+LOCALS += LOCALS:1
+buffsList += @"@C:{Color_Gradient_PER(C_GRAY,C_PINK,GETPERCENT(PALAM:ARG:LOCAL-(PleasureRequired(ARG)/2),PleasureRequired(ARG)/2))}@%LOCALS:1%@/C@ "
+NEXT
+CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, buffsList)
+LOCALS '= PrintWeaponName(ARG,EQUIP:ARG:Weapon,1)
+SIF charaWeaponInts:(ARG):MagSize
+	LOCALS += @" ({charaWeaponInts:(ARG):Ammo}/{charaWeaponInts:(ARG):MagSize})"
+CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, LOCALS)
+
+@BASE_BAR_WND(ARG, ARG:1, ARG:2, ARGS = "*", ARGS:1 = ".", ARG:3, ARG:4)
+#FUNCTIONS
+#DIM DYNAMIC NORM_COLOR
+#DIM DYNAMIC BAR_LENGTHS,2
+#DIMS DYNAMIC BBW
+NORM_COLOR = GETCONFIG("Text Color")
+BAR_LENGTHS:0 = BASE:ARG:(ARG:1)
+BAR_LENGTHS:1 = MAXBASE:ARG:(ARG:1)
+IF ARG:1 == 0
+	;stamina
+	BAR_LENGTHS:0 -= 500
+	BAR_LENGTHS:1 -= 500
+ENDIF
+BBW '= @"@C:{NORM_COLOR}@%BASE_TR(BASENAME:(ARG:1))%@/C@"
+BBW += @"%PRINT_BAR_WND(BAR_LENGTHS:0, BAR_LENGTHS:1,  ARG:2, ARGS, ARGS:1, ARG:3, ARG:4)%"
+BBW += @"({BAR_LENGTHS:0,5}/{BAR_LENGTHS:1,5})"
+RETURNF BBW
+
+@PRINT_BAR_WND(ARG, ARG:1, ARG:2, ARGS = "*", ARGS:1 = ".", ARG:3, ARG:4)
+#FUNCTIONS
+#DIM DYNAMIC NORM_COLOR
+NORM_COLOR = GETCONFIG("Text Color")
+SIF !ARG:1
+	ARG:1 = 1
+LOCALS '= "@F:MS Gothic@"
+LOCAL:1 = ARG * ARG:2 / ARG:1
+FOR LOCAL, 1, ARG:2 + 1
+IF LOCAL:1 >= LOCAL
+	;filled
+	IF !LOCAL:3
+		SIF STRLENS(LOCALS) > 13
+			LOCALS += @"@/C@"
+		LOCALS += @"@C:{ARG:3}@"
+		LOCAL:3 = 1
+	ENDIF
+	LOCALS += @"%ARGS%"
+ELSE
+	;not filled
+	IF !LOCAL:4
+		SIF STRLENS(LOCALS) > 13
+			LOCALS += @"@/C@"
+		LOCALS += @"@C:{ARG:4}@"
+		LOCAL:4 = 1
+	ENDIF
+	LOCALS += @"%ARGS%"
+ENDIF
+NEXT
+LOCALS += @"@/C@@/F@"
+VARSET LOCAL
+RETURNF LOCALS
+
+@TGC_MenuInput
+#DIM nInput
+#DIM AimedShot
+#DIM nSide
+#DIM DYNAMIC BiggestBurst
+#DIM DYNAMIC nDmgType
+#DIM DYNAMIC nDMG
+#DIM DYNAMIC PickCard
+#DIM DYNAMIC TruncatedAttacks,15
+#DIM DYNAMIC PR_WEAPON
+#DIM FA_LINECOUNT
+#DIM DYNAMIC FA_SUB
+#DIM DYNAMIC FA_MENUBYP
+#DIMS OUTPUT
+#DIM DYNAMIC FA_RESIST
+#DIM DYNAMIC FA_TARGETEVAL
+#DIM DYNAMIC IS_VALID_FIGHTER
+#DIM DYNAMIC FA_DEF_WEAPON
+#DIM DYNAMIC ASDS_MAX
+#DIM DYNAMIC PossibleToAttack
+#DIM DYNAMIC LimitingAtkCap
+SELECTCASE TGC_CurrentAction
+	CASE "attack_S1"
+		TWAIT 500, 1
+		CALL TGC_GetDamageType(0)
+		TGC_AttackCurLoop = 0
+		TGC_CurrentAction '= "attack_S2"
+		RETURN
+	CASE "attack_S2"
+		LimitingAtkCap = charaWeaponInts:(TGC_CurrentAttacker):MagSize && charaWeaponInts:(TGC_CurrentAttacker):Ammo < charaWeaponInts:(TGC_CurrentAttacker):Burst ? charaWeaponInts:(TGC_CurrentAttacker):Ammo # charaWeaponInts:(TGC_CurrentAttacker):Burst
+		WHILE TGC_AttackCurLoop < LimitingAtkCap
+		TGC_AttackCurLoop++
+		CALL TGC_FIRE_WEAPON_SHOT(INRANGE(TGC_AITarget,0,CHARANUM-1) ? TGC_CurrentGridSpace(TGC_AITarget) # TGC_AITarget)
+		LOCAL:17 = MIN(500/(charaWeaponInts:(TGC_CurrentAttacker):Burst+1),50)
+		SIF !nNASQOL:1
+			TWAIT LOCAL:17, 1
+		RETURN
+		WEND
+		TGC_CurrentAction '= "attack_S3"
+		RETURN
+	CASE "attack_S3"
+		;danmaku buffs and shit
+		;K is for total damage
+		VARSET K
+		FOR FA_TARGETEVAL,0, CHARANUM
+		SIF !lcDamageDeal:(FA_TARGETEVAL):0 && !lcDamageDeal:(FA_TARGETEVAL):97 && !lcDamageDeal:(FA_TARGETEVAL):98 && !lcDamageDeal:(FA_TARGETEVAL):99
+			CONTINUE
+		IF TGC_CurrentAttacker == MASTER
+			EasyBattleDamage = (lcDamageDeal:(FA_TARGETEVAL):0)
+			EasyBattleExpToGet += EasyBattleDamage
+			;EasyBattleSave:2 += (lcDamageDeal:(FA_TARGETEVAL):0)/2 ;money
+		ENDIF
+		IF lcIsLethal
+			IF STRCOUNT(GET_STR((TGC_CurrentAttacker), "Weapon", TGC_CurrentAttackerWeapon, WeapStats_Prefix(TGC_CurrentAttackerWeapon,charaWeaponInts:TGC_CurrentAttacker:Mode)+"Class"), "Blunt")
+				nDmgType = 6
+			ELSEIF STRCOUNT(GET_STR((TGC_CurrentAttacker), "Weapon", TGC_CurrentAttackerWeapon, WeapStats_Prefix(TGC_CurrentAttackerWeapon,charaWeaponInts:TGC_CurrentAttacker:Mode)+"Class"), "Blade")
+				nDmgType = 2
+			ELSEIF GET_STR((TGC_CurrentAttacker), "Weapon", TGC_CurrentAttackerWeapon, WeapStats_Prefix(TGC_CurrentAttackerWeapon,charaWeaponInts:TGC_CurrentAttacker:Mode)+"Type") == "Firearm"
+				nDmgType = 1
+			ENDIF
+			IF CharaWeaponInts:TGC_CurrentAttacker:DamageType
+				nDmgType = CharaWeaponInts:TGC_CurrentAttacker:DamageType
+			ELSEIF GET_INT((TGC_CurrentAttacker), "Weapon", TGC_CurrentAttackerWeapon, WeapStats_Prefix(TGC_CurrentAttackerWeapon,charaWeaponInts:TGC_CurrentAttacker:Mode)+"Incendiary")
+				nDmgType = 3
+			ENDIF
+		ELSE
+			nDmgType = 1
+		ENDIF
+		IF (lcDamageDeal:(FA_TARGETEVAL):0) > 0
+			FA_RESIST = DamageResist:(FA_TARGETEVAL):(nDmgType):1 - DT_CELL_GET(@"lcCombatants", GetCombatant(TGC_CurrentAttacker) , "pierceBuff", 1)
+			FA_RESIST = LIMIT(FA_RESIST,-3,7)
+			;PRINTFORML %CALLNAME:FA_TARGETEVAL%'s Resistance: {DamageResist:(FA_TARGETEVAL):(nDmgType):1}, Pierce: {DT_CELL_GET(@"lcCombatants", GetCombatant(TGC_CurrentAttacker) , "pierceBuff", 1)}
+			IF FA_RESIST && lcIsLethal
+				LOCALS '= PeeAndPoo(DamageResist:(FA_TARGETEVAL):(nDmgType):1,DT_CELL_GET(@"lcCombatants", GetCombatant(TGC_CurrentAttacker) , "pierceBuff", 1),@"%CALLNAME:(FA_TARGETEVAL)%'s【%MagicTypeStrength(nDmgType,DamageResist:(FA_TARGETEVAL):(nDmgType):1,2)%】",@"%CALLNAME:(TGC_CurrentAttacker)%의【Pierce\@ DT_CELL_GET(@"lcCombatants", GetCombatant(TGC_CurrentAttacker) , "pierceBuff", 1) > 0 ? + #  \@{DT_CELL_GET(@"lcCombatants", GetCombatant(TGC_CurrentAttacker) , "pierceBuff", 1)}】")
+				CALL TGC_LogAdd(@"%LOCALS%은 {YoujutsuResistMULT(FA_RESIST)}가 받는 대미지를 \%배로 늘린다.", YoujutsuResistCOL(nDmgType,FA_RESIST), 1)
+				lcDamageDeal:(FA_TARGETEVAL):0 = lcDamageDeal:(FA_TARGETEVAL):0*YoujutsuResistMULT(FA_RESIST)/100
+			ENDIF
+			IF TALENT:(FA_TARGETEVAL):271 && (lcDamageDeal:(FA_TARGETEVAL):0) > 0
+				SETCOLOR C_YELLOW
+				CALL LC_PRINT(@"%CALLNAME:(FA_TARGETEVAL)%의 【익스텐드】가 받는 피해를 절반으로 줄인다", , 2,)
+				RESETCOLOR
+				lcDamageDeal:(FA_TARGETEVAL):0 /= 2
+			ELSEIF GETBIT(CFLAG:(FA_TARGETEVAL):弾幕特能, 5) && (lcDamageDeal:(FA_TARGETEVAL):0) > 0
+				CALL TGC_LogAdd(@"%CALLNAME:(FA_TARGETEVAL)%의「삶에 대한 깊은 지식」이 받은 피해를 세 번째로 자른다.", C_YELLOW)
+				lcDamageDeal:(FA_TARGETEVAL):0 *= 3
+				lcDamageDeal:(FA_TARGETEVAL):0 /= 4
+			ENDIF
+			IF GETBIT(CFLAG:(FA_TARGETEVAL):弾幕特能, 4) && ((lcDamageDeal:(FA_TARGETEVAL):0) < ((MAXBASE:(FA_TARGETEVAL):体力-500)/3)) && lcDamageDeal:(FA_TARGETEVAL):97 >= (BASE:(FA_TARGETEVAL):体力-500)
+				CALL TGC_LogAdd(@"%CALLNAME:(FA_TARGETEVAL)%의 「변칙성, 강함, 혼란, 그리고 정령」이 활성화한다!", C_RED, 1)
+				IF TGC_CurrentAttackerWeapon == 0
+					LOCALS '= "danmaku"
+					LOCALS:1 '= "fired at"
+				ELSEIF STRFIND(PrintWeaponType(TGC_CurrentAttacker,TGC_CurrentAttackerWeapon),"Firearm/") > -1
+					LOCALS '= "bullets"
+					LOCALS:1 '= "fired at"
+				ELSEIF STRFIND(PrintWeaponType(TGC_CurrentAttacker,TGC_CurrentAttackerWeapon),"Youjutsu/") > -1
+					LOCALS '= "magic"
+					LOCALS:1 '= "casted at"
+				ELSEIF STRFIND(PrintWeaponType(TGC_CurrentAttacker,TGC_CurrentAttackerWeapon),"Melee/") > -1
+					LOCALS '= "strikes"
+					LOCALS:1 '= "swung at"
+				ELSE
+					LOCALS '= "attacks"
+					LOCALS:1 '= "targeted at"
+				ENDIF
+				CALL TGC_LogAdd(@"%LOCALS% %PARSE("you",,,TGC_CurrentAttacker)% %LOCALS:1% %CALLNAME:(FA_TARGETEVAL)%는 연결하기 직전에 사라진다!")
+				;口上呼び出し
+				CALL KOJO_MESSAGE_SEND("DANMAKU", 1, (FA_TARGETEVAL), MASTER, -1, "怪力乱神")
+				lcDamageDeal:(FA_TARGETEVAL):0 = LIMIT(lcDamageDeal:(FA_TARGETEVAL):0,0,MAX(0,(BASE:(FA_TARGETEVAL):体力-501)))
+				ASDSCounter++
+				RESETCOLOR
+			ENDIF
+			IF FA_RESIST  < 0 && !lcOneMore && TGC_CurrentAttacker != FA_TARGETEVAL && lcDamageDeal:(FA_TARGETEVAL):0
+				CALL TGC_LogAdd(@"약점! %CALLNAME:TGC_CurrentAttacker%가 한 턴 더 얻었다!", C_AQUA)
+				lcOneMore = 1
+			ENDIF
+			IF lcDamageDeal:(FA_TARGETEVAL):97
+				MissCounter = 0
+			ENDIF
+			IF (lcDamageDeal:(FA_TARGETEVAL):0) > 0
+				SELECTCASE TALENT:(FA_TARGETEVAL):40
+					CASE -2
+						TIMES (lcDamageDeal:(FA_TARGETEVAL):0), 0.25
+						CALL TGC_LogAdd(@"%CALLNAME:(FA_TARGETEVAL)%의【강인함】은 받는 피해를 4분의 1로 줄인다.", C_YELLOW)
+					CASE -1
+						TIMES (lcDamageDeal:(FA_TARGETEVAL):0), 0.5
+						CALL TGC_LogAdd(@"%CALLNAME:(FA_TARGETEVAL)%의【Toughness】는 받는 피해를 절반으로 줄인다.", C_YELLOW)
+					CASE 1
+						TIMES (lcDamageDeal:(FA_TARGETEVAL):0), 1.15
+						CALL TGC_LogAdd(@"%CALLNAME:(FA_TARGETEVAL)%의 【섬세함】은 받는 피해를 15\%만큼 증가시킨다.", C_YELLOW)
+				ENDSELECT
+			ENDIF
+		ENDIF
+		BASE:(FA_TARGETEVAL):体力 = MIN(MAXBASE:(FA_TARGETEVAL):体力,BASE:(FA_TARGETEVAL):体力-(lcDamageDeal:(FA_TARGETEVAL):0))
+		IF BASE:(FA_TARGETEVAL):体力-500 <= 0
+			LOCAL:5 = 0
+		ELSE
+			LOCAL:5 = BASE:(FA_TARGETEVAL):体力-500
+		ENDIF
+		LOCAL:6--
+		IF TGC_CurrentAttackerWeapon == 0
+			LOCALS '= "shot"
+		ELSEIF STRFIND(PrintWeaponType(TGC_CurrentAttacker,TGC_CurrentAttackerWeapon),"Firearm/") > -1
+			LOCALS '= "shot"
+		ELSEIF STRFIND(PrintWeaponType(TGC_CurrentAttacker,TGC_CurrentAttackerWeapon),"Youjutsu/") > -1
+			LOCALS '= "casted at"
+		ELSEIF STRFIND(PrintWeaponType(TGC_CurrentAttacker,TGC_CurrentAttackerWeapon),"Melee/") > -1
+			LOCALS '= "striked"
+		ELSE
+			LOCALS '= "attacked"
+		ENDIF
+		;CALL LC_PRINT(@"\@ TGC_CurrentAttacker == MASTER ? You # %CALLNAME:TGC_CurrentAttacker% \@ %LOCALS% %CALLNAME:(FA_TARGETEVAL)% {LOCAL:6} %PLNOUN("time",LOCAL:6)% and hit {lcDamageDeal:(FA_TARGETEVAL):97} %PLNOUN("time",lcDamageDeal:(FA_TARGETEVAL):97)% ({lcDamageDeal:(FA_TARGETEVAL):99} misses, {lcDamageDeal:(FA_TARGETEVAL):98} dodges).", , 1,)
+		IF lcDamageDeal:(FA_TARGETEVAL):0 > 0
+			ASDSCounter = 0
+			LOCALS =
+			FOR LOCAL:17, 0, 100
+			SIF BDY_PART_NAME(LOCAL:17) == ""
+				CONTINUE
+			SIF !lcDamageDeal:(FA_TARGETEVAL):(LOCAL:17)
+				CONTINUE
+			LOCALS += @"{lcDamageDeal:(FA_TARGETEVAL):(LOCAL:17)}의 %BDY_PART_NAME(LOCAL:17)%에 대미지를 준다."
+			NEXT
+			CALL TGC_LogAdd(@"%PARSE("You",,,TGC_CurrentAttacker)% 했다 %LIST_IN_STRING(LOCALS)%.")
+			;easybattle money
+			K += lcDamageDeal:(FA_TARGETEVAL):0
+			KilledWith:(FA_TARGETEVAL):0 '= PrintWeaponName(TGC_CurrentAttacker,TGC_CurrentAttackerWeapon,-1,2)
+		ENDIF
+		CALL TGC_LogAdd(@"{lcDamageDeal:(FA_TARGETEVAL):0} 피해({LOCAL:5}/{MAXBASE:(FA_TARGETEVAL):体力-500})를 입혔다.")
+		K:6 = MESSKIP()
+		;SKIPDISP TALENT:(FA_TARGETEVAL):Raider && K:6
+		IF HasBionicPart(FA_TARGETEVAL,132) && lcDamageDeal:(FA_TARGETEVAL):0 > 0
+			CALL TGC_LogAdd(@"%CALLNAME:FA_TARGETEVAL% 안의 폭탄이 폭발한다!")
+			CALL SUICIDE_BOMB(FA_TARGETEVAL,232)
+		ENDIF
+		CALL CrippleEffects(FA_TARGETEVAL)
+		IF IsDead:(FA_TARGETEVAL):0 && !lcOneMore && FA_TARGETEVAL != TGC_CurrentAttacker && !DT_CELL_GET(@"lcCombatants", GetCombatant(FA_TARGETEVAL) , "nonCombatant", 1)
+			CALL TGC_LogAdd(@"치명타! %CALLNAME:TGC_CurrentAttacker%는 한 턴을 더 갖는다!", C_AQUA,1)
+			lcOneMore = 1
+		ENDIF
+		;toilet desp
+		CALL CombatLeakOnHit(FA_TARGETEVAL,lcDamageDeal:(FA_TARGETEVAL):0)
+		IF (BASE:(FA_TARGETEVAL):体力 <= 500 || IsDead:(FA_TARGETEVAL):0) && !DT_CELL_GET(@"lcCombatants", GetCombatant(FA_TARGETEVAL) , "nonCombatant", 1)
+			SIF DT_CELL_GET(@"lcCombatants", GetCombatant(FA_TARGETEVAL) , "lives", 1) <= 1 || lcIsLethal
+				CALLF TGC_MarkDeadCombatants()
+			CALL ENDFIGHT(TGC_CurrentAttacker,FA_TARGETEVAL)
+		ENDIF
+		NEXT
+		SIF STRLENS(charaWeaponSTRs:TGC_CurrentAttacker:UserEffect)
+			TRYCALLFORM %charaWeaponSTRs:TGC_CurrentAttacker:UserEffect%(TGC_CurrentAttacker)
+		TGC_CurrentAction '= "turnEnd"
+		RETURN
+	CASE "doSpell_S1"
+		TGC_AttackCurLoop = 0
+		CALL PROCESS_YOUJUTSU_COMMAND(TGC_CurrentAttacker,TGC_AITarget,DT_CELL_GET("combatMagic", TGC_MagicPick, "spellPage",1),DT_CELL_GET("combatMagic", TGC_MagicPick, "spell",1),1)
+		IF RESULT == -9530
+			TGC_CurrentAction '= ""
+		ELSE
+			TGC_CurrentAction '= "doSpell_S2"
+		ENDIF
+		RETURN
+	CASE "doSpell_S2"
+		IF FINDELEMENT(NAS_ESP_Type,"PickArea/") > -1
+			CALL TGC_CastMagicSelf(INRANGE(TGC_AITarget,0,CHARANUM-1) ? TGC_CurrentGridSpace(TGC_AITarget) # TGC_AITarget)
+		ELSE
+			CALL TGC_FIRE_WEAPON_SHOT(INRANGE(TGC_AITarget,0,CHARANUM-1) ? TGC_CurrentGridSpace(TGC_AITarget) # TGC_AITarget)
+		ENDIF
+		;TRYCALLFORM EsperMenuResult_{PYC_PAGE}(PYC_CASTER,PYC_TARGET,PYC_SPELL)
+		TGC_CurrentAction '= "turnEnd"
+		RETURN
+	CASE "turnEnd"
+		CALLF TGC_ClearRadius(0)
+		CALLF ClearAttackRadiuses
+		TGC_MagicPick = 0
+		CALLF NAS_ESP_RESET
+		VARSET lcDamageDeal
+		IF TGC_ImportantMessage
+			FORCEWAIT
+			TGC_ImportantMessage = 0
+			TGC_SkippingBoringShit = 0
+		ELSE
+			IF ISSKIP()
+				;TWAIT 500, 0
+			ELSE
+				TWAIT 500, 0
+				;TWAIT 3000, 0
+			ENDIF
+		ENDIF
+		IF TGC_UsedTimeSkip
+			TGC_UsedTimeSkip = 0
+			TGC_CurrentAction '= ""
+			RETURN
+		ELSE
+			RETURN 2
+		ENDIF
+	CASE "wait"
+		CALL TGC_LogAdd(@"%CALLNAME:TGC_CurrentAttacker%는 기다린다.")
+		TGC_CurrentAction '= "turnEnd"
+		RETURN
+	CASE "reload"
+		CALL WeaponReload((TGC_CurrentAttacker))
+		TGC_CurrentAction '= "turnEnd"
+		RETURN
+ENDSELECT
+SIF TGC_InSkipMode
+	RETURN
+INPUT
+nInput = RESULT
+SELECTCASE RESULT
+	CASE 3385553
+		SIF !GROUPMATCH(TGC_CurrentAction,"attack","pickSpell")
+			RETURN
+		CALLF TGC_ClearRadius(0)
+		CALLF ClearAttackRadiuses
+		TGC_AITarget = TGC_LookingAt
+		IF TGC_MagicPick
+			CALLF NAS_ESP_RESET
+			TRYCALLFORMF NAS_ESP_{DT_CELL_GET("combatMagic", TGC_MagicPick, "spellPage",1)}
+			TRYCALLFORM NAS_ESP_{DT_CELL_GET("combatMagic", TGC_MagicPick, "spellPage",1)}_{DT_CELL_GET("combatMagic", TGC_MagicPick, "spell",1)}
+		ENDIF
+		IF (TGC_CurrentAction == "attack") || (TGC_CurrentAction == "pickSpell" && NAS_ESP_Weapon)
+			TGC_CurrentAction '= "attack_S1"
+			CALL TGC_GetDamageType(1)
+		ELSE
+			TGC_CurrentAction '= "doSpell_S1"
+		ENDIF
+	CASE 9000000
+		TGC_CurrentAction '= "attack"
+		CALLF TGC_CreateRadius(TGC_CurrentGridSpace(TGC_CurrentAttacker),charaWeaponInts:TGC_CurrentAttacker:Range,0,C_ORANGE)
+	CASE 9000001
+		TGC_CurrentAction '= "pickSpell"
+	CASE 9000100
+		TGC_CurrentAction '= "move"
+		CALLF TGC_CreateRadius(TGC_CurrentGridSpace(TGC_CurrentAttacker),TGC_CharacterMoveRadius(TGC_CurrentAttacker),0,C_GREEN)
+	CASE 9000200
+		CALL QoL_490_ITEMMENU(TGC_CurrentAttacker,TGC_CurrentAttacker)
+		SIF RESULT == -1
+			RETURN
+		TGC_CurrentAction '= "turnEnd"
+		RETURN
+	CASE 9000201
+		IF INRANGE(TGC_LookingAt,0,CHARANUM-1)
+			TARGET = TGC_LookingAt
+		ELSE
+			TARGET = TGC_CurrentAttacker
+		ENDIF
+		CALL ADD_CUSTOM_COM988
+		RETURN
+	CASE 9000990
+		TGC_CurrentAction '= "debugLocations"
+	CASE 9000980
+		LOCAL = GetCombatant(TGC_LookingAt)
+		PRINTFORML 캐릭터: {TGC_LookingAt} %NAME:TGC_LookingAt%
+		PRINTFORML 측: {DT_CELL_GET("lcCombatants", LOCAL, "side", 1)}
+		PRINTFORML 우선순위: {DT_CELL_GET("lcCombatants", LOCAL, "priority", 1)}
+		PRINTFORML 공격했는지: {DT_CELL_GET("lcCombatants", LOCAL, "didAttack", 1)}
+		PRINTFORML 위치ID: %DT_CELL_GETS("lcCombatants", LOCAL, "positionID", 1)%
+		; LOCAL:1 = DT_COLUMN_NAMES("lcCombatants")
+		; FOR LOCAL:2,0,LOCAL:1
+		;     PRINTFORML %RESULTS:(LOCAL:2)%: %DT_CELL_GETS("lcCombatants", LOCAL, RESULTS:(LOCAL:2), 1)%
+		; NEXT
+		WAIT
+	CASE 9999996
+		IF !INRANGE(TGC_LookingAt,0,CHARANUM-1)
+			;null pointer, return
+			;CALLF TGC_ClearRadius(0)
+			PRINTFORMW 항복을 요구하려면 대상을 지정해야 한다.
+			RETURN
+		ELSEIF DT_CELL_GET("lcCombatants",GetCombatant(TGC_CurrentAttacker),"side",1) == DT_CELL_GET("lcCombatants",GetCombatant(TGC_LookingAt),"side",1)
+			;friendly fire
+			PRINTFORMW 아군을 항복시킬 수 없다.
+			RETURN
+		ELSEIF DT_CELL_GET("lcCombatants",GetCombatant(TGC_LookingAt),"nonCombatant",1) == 2
+			;null pointer, return
+			;CALLF TGC_ClearRadius(0)
+			PRINTFORMW %CALLNAME:TGC_LookingAt%는 이미 항복했다.
+			RETURN
+		ELSEIF DT_CELL_GET("lcCombatants",GetCombatant(TGC_LookingAt),"nonCombatant",1) == 1
+			;null pointer, return
+			;CALLF TGC_ClearRadius(0)
+			;PRINTFORMW Fallen characters cannot surrender.
+			PRINTFORMW 당신은 %CALLNAME:TGC_LookingAt%에게 이동하여 %HIM_HER(TGC_LookingAt)%을 밧줄로 제압한다.
+			GOTO SurrenderingPass
+		ENDIF
+		TCVAR:TGC_CurrentAttacker:Attack_Power = 2*GetCombatAbility(TGC_CurrentAttacker) + (ABL:TGC_CurrentAttacker:指/2)
+		TCVAR:TGC_LookingAt:Attack_Power = 2*GetCombatAbility(TGC_LookingAt) + (ABL:TGC_LookingAt:指/2)
+		CALL SHOW_POWERFAVOR(TCVAR:TGC_CurrentAttacker:Attack_Power,TGC_CurrentAttacker)
+		SIF TCVAR:TGC_CurrentAttacker:Attack_Power
+			CALL POWERBUFFS(TGC_CurrentAttacker)
+		DRAWLINE
+		CALL SHOW_POWERFAVOR(TCVAR:TGC_LookingAt:Attack_Power,TGC_LookingAt)
+		SIF TCVAR:TGC_LookingAt:Attack_Power
+			CALL POWERBUFFS(TGC_LookingAt)
+		IF RAND(100) <= 50 + (10*(-(TCVAR:TGC_LookingAt:Attack_Power-TCVAR:TGC_CurrentAttacker:Attack_Power)))
+			PRINTFORMW 당신은 %CALLNAME:TGC_LookingAt%을 자신에게 항복하도록 설득한다.
+			PRINTFORML %CALLNAME:TGC_LookingAt%은(는) %HIS_HER(TGC_LookingAt)% 무기를 떨어뜨리고 양손을 올린다.
+			PRINTFORML %CALLNAME:(TGC_CurrentAttacker)%은(는) %CALLNAME:TGC_LookingAt%이 항복한 것을 기뻐하며, %HIM_HER(TGC_LookingAt)%를 사용한다...
+			;FLAG:796 = 1
+			$SurrenderingPass
+			TCVAR:TGC_LookingAt:Grievous_Harm = 1
+			SIF !TFLAG:妄想中 && TGC_CurrentAttacker != MASTER
+				CALL FightLosePenalty((TGC_CurrentAttacker),TGC_LookingAt)
+			DT_CELL_SET "lcCombatants", GetCombatant(TGC_LookingAt), "nonCombatant", 2, 1
+			; CALLF RemoveCombatant(TGC_LookingAt,1)
+			; CALLF RemoveCombatant(TGC_LookingAt,0)
+			SIF !GetCombatantSize(2) || !GetCombatantSize(1)
+				TGC_CurrentAction '= "turnEnd"
+			RETURN
+		ELSE
+			PRINTFORMW %CALLNAME:TGC_LookingAt%는 당신의 설득에 납득하지 못했다.
+			RETURN
+		ENDIF
+	CASE 9999995
+		TGC_CurrentAction '= "wait"
+		RETURN
+	CASE 9999998
+		PRINTFORMW 당신은 자신에게 말할 수 없는 짓을 하는 적에게 복종한다.
+		;PRINTFORMW Either you faint and return to the Nursery, or continue from where you were before.
+		DT_SELECT "lcCombatants", @"side = {!DT_CELL_GET("lcCombatants",GetCombatant(MASTER),"side",1) }", "priority DESC"
+		LOCAL:1 =  DT_CELL_GET("lcCombatants",RESULT:1,"chara",1)
+		; LCSideNames:lcCurSide += @"%CALLNAME:(DT_CELL_GET("lcCombatants", nSide0List:0, "chara", 1))%、"
+		$CharaSubmit
+		FLAG:796 = 1
+		TCVAR:(TGC_CurrentAttacker):Grievous_Harm = 1
+		SIF !TFLAG:妄想中
+			CALL FightLosePenalty(LOCAL:1,(TGC_CurrentAttacker))
+		TGC_CurrentAction '= "turnEnd"
+		lcWarResult = !DT_CELL_GET("lcCombatants",GetCombatant(MASTER),"side",1)
+		RETURN
+	CASE 9999997
+		SELECTCASE TGC_CurrentAction
+			CASE ""
+				LOCAL = TGC_CurrentGridSpace(TGC_CurrentAttacker)
+				IF GROUPMATCH(DT_CELL_GET("TGC_Map", LOCAL, "x", 1),0,TGC_MapSize:0-1) || GROUPMATCH(DT_CELL_GET("TGC_Map", LOCAL, "y", 1),0,TGC_MapSize:1-1)
+					PRINTFORMW 당신은 안전하게 도망친다.
+					FLAG:796 = 1
+					lcWarResult = -2
+					CALL ENDFIGHT(TGC_CurrentAttacker, (TGC_CurrentAttacker))
+					TGC_CurrentAction '= "turnEnd"
+					RETURN
+				ELSE
+					PRINTFORML 벗어날 수 없어!
+					PRINTFORMW 먼저 지도 가장자리로 이동해!
+					RETURN
+				ENDIF
+			CASEELSE
+				CALL TGC_GoBackToStartMenu
+				TGC_CurrentAction '= ""
+		ENDSELECT
+	CASE 9999995
+		SELECTCASE TGC_CurrentAction
+			CASE "viewingLog"
+				CALL TGC_GoBackToStartMenu
+				TGC_CurrentAction '= ""
+			CASEELSE
+				TGC_CurrentAction '= "viewingLog"
+		ENDSELECT
+	CASE 9000202
+		CALL Weapon_Chose_State(TGC_CurrentAttacker)
+	CASE 9000203
+		TGC_CurrentAction '= "reload"
+	CASE 9000300
+		IF !PeeBarStage(TGC_CurrentAttacker) && !PooBarStage(TGC_CurrentAttacker)
+			PRINTFORMW 아직 갈 필요는 없다.
+			TGC_CurrentAction '= ""
+			RETURN
+		ENDIF
+		PRINTFORMW %PARSE("You hide",,,TGC_CurrentAttacker)%어떤 엄폐물 아래에 있고, %COND_STR(@"%PARSE("take",,,TGC_CurrentAttacker)% off %PARSE("your",5,,TGC_CurrentAttacker)% underwear, ",EQUIP:TGC_CurrentAttacker:6)%그리고 %PARSE("relieve yourself",5,,TGC_CurrentAttacker)%이었다.
+		IF PooBarStage(TGC_CurrentAttacker) >= 2
+			DT_CELL_SET "TGC_Map", TGC_CurrentGridSpace(TGC_CurrentAttacker), "floorType", "filthShit", 1
+		ELSEIF PeeBarStage(TGC_CurrentAttacker) >= 1
+			DT_CELL_SET "TGC_Map", TGC_CurrentGridSpace(TGC_CurrentAttacker), "floorType", "filthPee", 1
+		ENDIF
+		CALL TOILETING_END(TGC_CurrentAttacker,PeeBarStage(TGC_CurrentAttacker) >= 1,PooBarStage(TGC_CurrentAttacker) >= 2,1)
+		TGC_CurrentAction '= "turnEnd"
+		RETURN
+	CASE 9000301
+		IF !PeeBarStage(TGC_CurrentAttacker) && !PooBarStage(TGC_CurrentAttacker)
+			PRINTFORMW 아직 갈 필요는 없다.
+			TGC_CurrentAction '= ""
+			RETURN
+		ENDIF
+		CALL AIB_INIT(TGC_CurrentAttacker,,,,1)
+		IF DT_CELL_GET("lcCombatants", GetCombatant(TGC_CurrentAttacker), "didAttack", 1)
+			TGC_CurrentAction '= "turnEnd"
+		ENDIF
+		RETURN
+	CASE 9000302
+		TGC_CurrentAction '= "diaperChanging"
+		CALLF TGC_CreateRadius(TGC_CurrentGridSpace(TGC_CurrentAttacker),TGC_CharacterMoveRadius(TGC_CurrentAttacker),0,C_GREEN)
+		RETURN
+	CASE IS >= 5000000000000000000
+		SELECTCASE TGC_CurrentAction
+			CASE "pickSpell"
+				; get spell id
+				TGC_MagicPick = nInput - 5000000000000000000
+				CALLF NAS_ESP_RESET
+				TRYCALLFORMF NAS_ESP_{DT_CELL_GET("combatMagic", TGC_MagicPick, "spellPage",1)}
+				TRYCALLFORM NAS_ESP_{DT_CELL_GET("combatMagic", TGC_MagicPick, "spellPage",1)}_{DT_CELL_GET("combatMagic", TGC_MagicPick, "spell",1)}
+				IF NAS_ESP_Weapon
+					TGC_CurrentAttackerWeapon = NAS_ESP_Weapon
+					CALLF EquipWeapon(TGC_CurrentAttacker,TGC_CurrentAttackerWeapon)
+					CALLF TGC_CreateRadius(TGC_CurrentGridSpace(TGC_CurrentAttacker),charaWeaponInts:TGC_CurrentAttacker:Range,0,C_ORANGE)
+				ELSE
+					CALLF TGC_CreateRadius(TGC_CurrentGridSpace(TGC_CurrentAttacker),NAS_ESP_RANGE_COMBAT,0,C_ORANGE)
+				ENDIF
+		ENDSELECT
+	CASE IS >= 60000000
+		SELECTCASE TGC_CurrentAction
+			CASE "debugLocations"
+				PRINTFORML 캐릭터: %DT_CELL_GETS("TGC_Map", nInput, "charactersInside", 1)%
+				PRINTFORML X: {DT_CELL_GET("TGC_Map", nInput, "x", 1)}
+				PRINTFORML Y: {DT_CELL_GET("TGC_Map", nInput, "y", 1)}
+				PRINTFORML 위치 ID: %DT_CELL_GETS("TGC_Map", nInput, "positionID", 1)%
+				PRINTFORML 커버 타입: %DT_CELL_GETS("TGC_Map", nInput, "coverType", 1)%
+				PRINTFORML 바닥 타입: %DT_CELL_GETS("TGC_Map", nInput, "floorType", 1)%
+				WAIT
+			CASE "move"
+				IF TGC_InRadius(TGC_CastRadius:0:1, DT_CELL_GET("TGC_Map", TGC_CastRadius:0:0, "x", 1), DT_CELL_GET("TGC_Map", TGC_CastRadius:0:0, "y", 1), DT_CELL_GET("TGC_Map", RESULT, "x", 1), DT_CELL_GET("TGC_Map", RESULT, "y", 1))
+					LOCAL = TGC_RangeDifference(DT_CELL_GET("TGC_Map", TGC_CastRadius:0:0, "x", 1), DT_CELL_GET("TGC_Map", TGC_CastRadius:0:0, "y", 1), DT_CELL_GET("TGC_Map", RESULT, "x", 1), DT_CELL_GET("TGC_Map", RESULT, "y", 1))
+					CALL TGC_MoveChara(TGC_CurrentAttacker,DT_CELL_GET("TGC_Map", nInput, "x", 1),DT_CELL_GET("TGC_Map", nInput, "y", 1))
+					CALL TGC_LogAdd(@"%PARSE("You move",,,TGC_CurrentAttacker)%에서 {DT_CELL_GET("TGC_Map", nInput, "x", 1)}, {DT_CELL_GET("TGC_Map", nInput, "y", 1)}")
+					IF CharacterHasSpell(TGC_CurrentAttacker,22,1)
+						CALL RECOVER_NAS(TGC_CurrentAttacker,(-10*LOCAL)*100/CapacityStats:TGC_CurrentAttacker:3,8,"Timeskip")
+						TGC_UsedTimeSkip = 1
+						CALLF TGC_ClearRadius(0)
+					ENDIF
+					TGC_CurrentAction '= "turnEnd"
+				ELSE
+					PRINTFORMW 범위를 벗어났다.
+				ENDIF
+			CASE "", "attack", "pickSpell", "diaperChanging"
+				LOCALS:1 '= DT_CELL_GETS("TGC_Map", nInput, "charactersInside",1)
+				IF !STRLENS(LOCALS:1)
+					TGC_LookingAt = nInput
+					charaWeaponInts:TGC_CurrentAttacker:Accuracy = TGC_AccuracyDifference(TGC_CurrentAttacker,!INRANGE(TGC_LookingAt,0,CHARANUM-1))
+					SIF INRANGE(TGC_LookingAt,0,CHARANUM-1)
+						charaWeaponInts:TGC_LookingAt:Accuracy = TGC_AccuracyDifference(TGC_LookingAt,TGC_CurrentAttacker)
+					IF TGC_CurrentAction == "attack" || (TGC_CurrentAction == "pickSpell")
+						CALL CreateAttackRadiuses(TGC_LookingAt)
+					ELSE
+						CALLF ClearAttackRadiuses
+					ENDIF
+					; SIF TGC_CurrentAction == "diaperChanging"
+					;     GOTO diaperChanging
+					RETURN
+				ELSE
+					SELECTCASE STRCOUNT(LOCALS:1, "/")
+						CASE 1
+							TGC_LookingAt = TOINT(SPLIT_SINGLE(LOCALS:1,0,"/"))
+							;magic stuffs
+							CALLF NAS_ESP_RESET
+							IF TGC_MagicPick
+								TRYCALLFORMF NAS_ESP_{DT_CELL_GET("combatMagic", TGC_MagicPick, "spellPage",1)}
+								TRYCALLFORM NAS_ESP_{DT_CELL_GET("combatMagic", TGC_MagicPick, "spellPage",1)}_{DT_CELL_GET("combatMagic", TGC_MagicPick, "spell",1)}
+							ENDIF
+							SIF TGC_CurrentAction == "attack" || (TGC_CurrentAction == "pickSpell")
+								CALL CreateAttackRadiuses(TGC_LookingAt)
+							SIF TGC_CurrentAction == "diaperChanging"
+								GOTO diaperChanging
+						CASEELSE
+							PRINTFORML 여러 사람이 같은 자리에 있다.
+							FOR LOCAL,0,STRCOUNT(LOCALS:1, "/")
+							LOCAL:1 = TOINT(SPLIT_SINGLE(LOCALS:1,LOCAL,"/"))
+							LOCAL:2 = GetCombatant(LOCAL:1)
+							PRINTFORM [{LOCAL:1,3}] - %CALLNAME:(LOCAL:1),16,LEFT% | 
+							IF LOCAL:1 == MASTER
+								PRINTFORM 자신
+							ELSEIF DT_CELL_GET(@"lcCombatants", GetCombatant(LOCAL:1) , "nonCombatant", 1)
+								SELECTCASE DT_CELL_GET(@"lcCombatants", GetCombatant(LOCAL:1) , "nonCombatant", 1)
+									CASE 2
+										SETCOLOR C_GREEN
+										PRINTFORM 항복했다
+										RESETCOLOR
+									CASE 1
+										SETCOLOR C_GREEN
+										PRINTFORM 쓰러짐
+										RESETCOLOR
+								ENDSELECT
+							ELSEIF DT_CELL_GET("lcCombatants",GetCombatant(MASTER),"side",1) == DT_CELL_GET("lcCombatants",GetCombatant(LOCAL:1),"side",1)
+								SETCOLOR C_BLUE
+								PRINTFORM 아군
+								RESETCOLOR
+							ELSE
+								SETCOLOR C_RED
+								PRINTFORM 적
+								RESETCOLOR
+							ENDIF
+							PRINTFORM  | 
+							LOCALS '= ""
+							IF IsDead:(LOCAL:1):0
+								LOCALS '= @"DEAD"
+							ELSEIF BASE:(LOCAL:1):0 <= 500
+								LOCALS '= @"UNCONSCIOUS"
+							ELSE
+								LOCALS '= @"STA {BASE:(LOCAL:1):0-500}/{MAXBASE:(LOCAL:1):0-500}"
+							ENDIF
+							PRINTFORML %LOCALS%
+							NEXT
+							PRINTL
+							PRINTFORML [-1] 뒤로가기
+							INPUT
+							SELECTCASE RESULT
+								CASE -1
+									RETURN
+								CASEELSE
+									SIF STRFIND(LOCALS:1,@"{RESULT}/") == -1
+										RETURN
+									TGC_LookingAt = RESULT
+									SELECTCASE TGC_CurrentAction
+										CASE "attack"
+											CALL CreateAttackRadiuses(TGC_LookingAt)
+										CASE "diaperChanging"
+											$diaperChanging
+											IF !INRANGE(TGC_LookingAt,0,CHARANUM-1)
+												;null pointer, return
+												CALLF TGC_ClearRadius(0)
+												RETURN
+											ENDIF
+											IF TGC_InRadius(TGC_CastRadius:0:1, DT_CELL_GET("TGC_Map", TGC_CastRadius:0:0, "x", 1), DT_CELL_GET("TGC_Map", TGC_CastRadius:0:0, "y", 1), DT_CELL_GET("TGC_Map", nInput, "x", 1), DT_CELL_GET("TGC_Map", nInput, "y", 1))
+												CALL Com_DiaperGrab(TGC_LookingAt)
+												IF RESULT
+													DT_CELL_SET "lcCombatants", TGC_LookingAt, "didAttack", 2, 1
+													TGC_CurrentAction '= "turnEnd"
+													RETURN
+												ELSE
+													TGC_CurrentAction '= ""
+												ENDIF
+											ELSE
+												PRINTFORMW 범위를 벗어났다.
+											ENDIF
+											CALLF TGC_ClearRadius(0)
+									ENDSELECT
+							ENDSELECT
+					ENDSELECT
+				ENDIF
+		ENDSELECT
+ENDSELECT
+
+@TGC_GoBackToStartMenu
+SELECTCASE TGC_CurrentAction
+	CASE ""
+	CASE "move", "attack"
+		CALLF TGC_ClearRadius(0)
+		CALLF ClearAttackRadiuses
+	CASE "pickSpell"
+		CALLF TGC_ClearRadius(0)
+		CALLF ClearAttackRadiuses
+		TGC_MagicPick = 0
+		CALLF NAS_ESP_RESET
+	CASEELSE
+ENDSELECT
+
+@CreateAttackRadiuses(ARG)
+#DIM gridSpace
+IF INRANGE(ARG,0,CHARANUM-1)
+	gridSpace = TGC_CurrentGridSpace(ARG)
+ELSE
+	gridSpace = ARG
+ENDIF
+IF TGC_MagicPick
+	CALLF NAS_ESP_RESET
+	TRYCALLFORMF NAS_ESP_{DT_CELL_GET("combatMagic", TGC_MagicPick, "spellPage",1)}
+	TRYCALLFORM NAS_ESP_{DT_CELL_GET("combatMagic", TGC_MagicPick, "spellPage",1)}_{DT_CELL_GET("combatMagic", TGC_MagicPick, "spell",1)}
+	SIF NAS_ESP_Weapon
+		GOTO HasWeapon
+	CALLF TGC_CreateRadius(gridSpace,NAS_ESP_RADIUS_COMBAT,1,C_RED)
+ELSE
+	$HasWeapon
+	CALLF TGC_CreateRadius(gridSpace,charaWeaponInts:TGC_CurrentAttacker:MultiHit,1,C_RED)
+	CALLF TGC_CreateRadius(gridSpace,charaWeaponInts:TGC_CurrentAttacker:ExplosiveSize,2,C_RED,"*")
+ENDIF
+
+@ClearAttackRadiuses
+#FUNCTION
+CALLF TGC_ClearRadius(1)
+CALLF TGC_ClearRadius(2)
+
+@TGC_DoAction
+SELECTCASE TGC_CurrentAction
+	CASE "attack"
+		TGC_CurrentAction '= "attack_S1"
+ENDSELECT
+
+@TGC_FIRE_WEAPON_SHOT(shootingAt)
+#DIM DYNAMIC shootingAt
+#DIM  DYNAMIC weaponIsFired
+#DIM  DYNAMIC hitIsDirect
+#DIM  DYNAMIC currentAccuracy
+#DIM  DYNAMIC castingMagic
+#DIM  DYNAMIC pelletCount
+castingMagic = (TGC_CurrentAction == "doSpell_S2")
+weaponIsFired = 0
+IF !castingMagic
+	pelletCount = charaWeaponInts:(TGC_CurrentAttacker):Pellets+1
+	IF lcIsLethal
+		IF TGC_CurrentAttackerWeapon && charaWeaponInts:(TGC_CurrentAttacker):MagSize
+			weaponIsFired = 1
+			charaWeaponInts:(TGC_CurrentAttacker):Ammo --
+		ELSEIF charaWeaponInts:(TGC_CurrentAttacker):MPCost && TALENT:(TGC_CurrentAttacker):ESP
+			BASE:(TGC_CurrentAttacker):法力 -= charaWeaponInts:(TGC_CurrentAttacker):MPCost
+		ENDIF
+	ELSE
+		IF GETBIT(TALENT:TGC_CurrentAttacker:ESP,0)
+			BASE:(TGC_CurrentAttacker):法力 --
+		ENDIF
+	ENDIF
+ELSE
+	;magics
+	;because it doesn't count the ending number we must add one
+	pelletCount = 2
+ENDIF
+IF castingMagic
+	currentAccuracy = 100
+ELSE
+	currentAccuracy = TGC_AccuracyDifference(TGC_CurrentAttacker,0,shootingAt)
+ENDIF
+FOR LOCAL:7, 1, pelletCount
+hitIsDirect = 0
+IF RAND(100) < currentAccuracy
+	;hit
+	;CALL TGC_LogAdd(@"direct hit! (AoE {charaWeaponInts:(TGC_CurrentAttacker):MultiHit})")
+	LOCAL:9 = shootingAt
+	CALL TGC_CREATE_HIT_EXPLOSION(TGC_CurrentAttacker,shootingAt,1,shootingAt)
+	CALL TGC_CREATE_HIT_FRAGMENT(TGC_CurrentAttacker,shootingAt,1,shootingAt)
+	$AttackSpace
+	;CALLF TGC_CreateRadius(LOCAL:9,charaWeaponInts:(TGC_CurrentAttacker):MultiHit,2,C_RED,"⁂",0)
+	FOR LOCAL:8, 0, DT_ROW_LENGTH("TGC_Map")
+	IF !STRLENS(DT_CELL_GETS("TGC_Map", LOCAL:8, "charactersInside"))
+		CONTINUE
+	ENDIF
+	FOR LOCAL:11, 0, STRCOUNT(DT_CELL_GETS("TGC_Map", LOCAL:8, "charactersInside"), "/")
+	LOCAL:10 = TOINT(SPLIT_SINGLE(DT_CELL_GETS("TGC_Map", LOCAL:8, "charactersInside"), LOCAL:11, "/"))
+	IF DT_CELL_GET("TGC_Map", LOCAL:8, "id") == LOCAL:9 || TGC_InRadius(charaWeaponInts:(TGC_CurrentAttacker):MultiHit, DT_CELL_GET("TGC_Map", LOCAL:9, "x", 1), DT_CELL_GET("TGC_Map", LOCAL:9, "y", 1), DT_CELL_GET("TGC_Map", LOCAL:8, "x"), DT_CELL_GET("TGC_Map", LOCAL:8, "y"))
+		;CALL TGC_LogAdd(@"can hit at %DT_CELL_GETS("TGC_Map", LOCAL:8, "positionID")%")
+		IF castingMagic
+			CALL TGC_ReGetMagicInfo
+			;CALL TGC_LogAdd(@"TARGET: {LOCAL:10} %CALLNAME:(LOCAL:10)% | ID: {TGC_MagicPick} | Spell: {NAS_ESP_SINGLE_VARIANT ? NAS_ESP_SINGLE_VARIANT # DT_CELL_GET("combatMagic", TGC_MagicPick, "spell",1)}", C_YELLOW)
+			TRYCALLFORM EsperMenuResult_{DT_CELL_GET("combatMagic", TGC_MagicPick, "spellPage",1)}(TGC_CurrentAttacker,LOCAL:10,NAS_ESP_SINGLE_VARIANT > -1 ? NAS_ESP_SINGLE_VARIANT # DT_CELL_GET("combatMagic", TGC_MagicPick, "spell",1))
+		ELSE
+			CALL TGC_HitByCharacter(LOCAL:10, LOCAL:9)
+		ENDIF
+	ENDIF
+	IF DT_EXIST("fragmentationTemp") || DT_EXIST("explosionTemp")
+		SIF DT_CELL_GET("lcCombatants", LOCAL:10, "chara", 1) == TGC_AITarget
+			CONTINUE
+		;CALL HIT_BY_FRAGMENT(LOCAL:10,1,0)
+		CALL TGC_HIT_BY_EXPLOSION(LOCAL:10,1,0)
+		CALL TGC_HIT_BY_FRAGMENT(LOCAL:10,1,0)
+	ENDIF
+	NEXT
+	NEXT
+ELSE
+	;miss
+	;CALL TGC_LogAdd(@"%CALLNAME:TGC_CurrentAttacker% missed! you suck!")
+	IF !nNASQOL:1
+		CALL TGC_LogAdd(@"빗나갔다!")
+	ENDIF
+	;still cause an explosion, but in a few tiles away
+	;get space
+	LOCAL:9 = shootingAt
+	LOCAL:21 = LIMIT(DT_CELL_GET("TGC_Map", LOCAL:9, "x", 1)+RAND(-4,5),0,TGC_MapSize:0)
+	LOCAL:22 = LIMIT(DT_CELL_GET("TGC_Map", LOCAL:9, "y", 1)+RAND(-4,5),0,TGC_MapSize:1)
+	DT_SELECT "TGC_Map", @"x = '{LOCAL:21}' and y = '{LOCAL:22}'"
+	LOCAL:23 = RESULT:1
+	;#; DEBUGPRINTFORML miss! attempting to create explosion at {LOCAL:21}, {LOCAL:22} ({LOCAL:23})
+	CALL TGC_CREATE_HIT_EXPLOSION(TGC_CurrentAttacker,0,0,LOCAL:23)
+	CALL TGC_CREATE_HIT_FRAGMENT(TGC_CurrentAttacker,0,0,LOCAL:23)
+	GOTO AttackSpace
+ENDIF
+;first we check if we actually hit where we want to go
+NEXT
+
+@TGC_CastMagicSelf(shootingAt)
+#DIM shootingAt
+TRYCALLFORM TGC_MagicResult_{DT_CELL_GET("combatMagic", TGC_MagicPick, "spellPage",1)}(TGC_CurrentAttacker,shootingAt,NAS_ESP_SINGLE_VARIANT > -1 ? NAS_ESP_SINGLE_VARIANT # DT_CELL_GET("combatMagic", TGC_MagicPick, "spell",1))
+
+@TGC_ReGetMagicInfo
+CALLF NAS_ESP_RESET
+TRYCALLFORMF NAS_ESP_{DT_CELL_GET("combatMagic", TGC_MagicPick, "spellPage",1)}
+TRYCALLFORM NAS_ESP_{DT_CELL_GET("combatMagic", TGC_MagicPick, "spellPage",1)}_{DT_CELL_GET("combatMagic", TGC_MagicPick, "spell",1)}
+
+@TGC_HitByCharacter(ARG, gridID:0, BypassAccuracy=0)
+#DIM GetDamageType
+#DIM TruncatedAttacks
+#DIM DYNAMIC locX, 2
+#DIM DYNAMIC locY, 2
+#DIM DYNAMIC gridID, 2
+#DIM DYNAMIC AlwaysHits
+#DIM DYNAMIC BypassAccuracy
+#DIM DYNAMIC AttackIsDodged
+#DIM DYNAMIC AttackGoesToAnother
+#DIM DYNAMIC AttackIsMissed
+#DIM DYNAMIC nDMG
+#DIM DYNAMIC AimedShot
+#DIM DYNAMIC nDMGMultiplier
+#DIM DYNAMIC nDMGPart
+#DIMS DYNAMIC nDMGPartBroad
+TruncatedAttacks = nNASQOL:1
+;get location info
+gridID:1 = TGC_CurrentGridSpace(ARG)
+locX:0 = DT_CELL_GET("TGC_Map", gridID:0, "x", 1)
+locY:0 = DT_CELL_GET("TGC_Map", gridID:0, "y", 1)
+locX:1 = DT_CELL_GET("TGC_Map", gridID:1, "x", 1)
+locY:1 = DT_CELL_GET("TGC_Map", gridID:1, "y", 1)
+;accuracy
+charaWeaponInts:(TGC_CurrentAttacker):Accuracy = TGC_AccuracyDifference(TGC_CurrentAttacker,ARG)
+;damage info
+GetDamageType = CharaWeaponInts:TGC_CurrentAttacker:DamageType
+SIF !GetDamageType
+	GetDamageType = WEAP_DAMAGE_TYPE(EQUIP:TGC_CurrentAttacker:Weapon)
+SIF !GetDamageType
+	GetDamageType = 1
+;===================
+SIF NASCheat:5 && ARG == MASTER
+	GOTO AlwaysMiss
+SIF BypassAccuracy == 1
+	GOTO AlwaysHit
+IF RAND:(100) > (charaWeaponInts:(TGC_CurrentAttacker):Accuracy) || charaWeaponInts:(TGC_CurrentAttacker):Accuracy <= 0
+	$AlwaysMiss
+	CALL INTERACTIVE_TUTORIAL_GET(102,201,"Misses",4)
+	CALL INTERACTIVE_TUTORIAL_GET(102,202,"Misses",4)
+	SIF !TruncatedAttacks
+		CALL TGC_LogAdd(@"빗나갔다!")
+	lcDamageDeal:(ARG):99 ++
+	$MissCheck
+	;little chance that missed bullet goes into another touhou
+	; IF RAND(100) < (CharaWeaponInts:TGC_CurrentAttacker:DivertToOther ? CharaWeaponInts:TGC_CurrentAttacker:DivertToOther# 50)
+	;     SIF !TruncatedAttacks
+	;         PRINTFORML The missed attack comes straight into another target!
+	; ENDIF
+	AttackIsMissed = 1
+	GOTO ExplosiveCheck
+ELSEIF RAND:(100) <= TCVAR:(ARG):Weap_Dodge
+	SIF !TruncatedAttacks
+		CALL TGC_LogAdd(@"회피!")
+	MissCounter ++
+	lcDamageDeal:(ARG):98 ++
+	AttackIsDodged = 1
+	GOTO MissCheck
+ENDIF
+$AlwaysHit
+nDMG = charaWeaponInts:(TGC_CurrentAttacker):Damage
+;defense
+;SELECTCASE nDmgType
+;CASE 1,2,6
+nDMG = nDMG*100/BUFF_MULTIPLIER(DT_CELL_GET("lcCombatants", GetCombatant(ARG), "defenseBuff", 1))
+;desperation, up to stage 6
+SELECTCASE PeeBarStage(ARG)
+	CASE 2
+		TIMES nDMG, 1.25
+	CASE 3
+		TIMES nDMG, 1.5
+	CASE 4
+		TIMES nDMG, 1.75
+	CASE 5
+		TIMES nDMG, 2.0
+	CASE 6
+		TIMES nDMG, 2.25
+ENDSELECT
+SELECTCASE PooBarStage(ARG)
+	CASE 2
+		TIMES nDMG, 1.25
+	CASE 3
+		TIMES nDMG, 1.5
+	CASE 4
+		TIMES nDMG, 1.75
+	CASE 5
+		TIMES nDMG, 2.0
+	CASE 6
+		TIMES nDMG, 2.25
+ENDSELECT
+;===============
+lcDamageDeal:(ARG):97 ++
+IF AimedShot
+	$BalisticAimed
+	nDMGPart = AimedShotInfo(AimedShot)
+	nDMGMultiplier = RESULT:1
+	nDMGPartBroad '= RESULTS:1
+	nDMG = charaWeaponInts:(TGC_CurrentAttacker):Damage
+	IF lcIsLethal
+		;DamageMitigate(TARGET,MASTER,1371,1,0,0,1)
+		nDMG = DamageMitigate(ARG,TGC_CurrentAttacker,nDMG,nDMGPart,0,0,1)
+		STAIN:ARG:5 |= 64
+		SIF !charaWeaponInts:(TGC_CurrentAttacker):NonLethal
+			CALLF BroadDamage((ARG),nDMGPartBroad,charaWeaponInts:(TGC_CurrentAttacker):Damage,GetDamageType,(TGC_CurrentAttacker),printweaponname(TGC_CurrentAttacker,,-1))
+	ENDIF
+	lcDamageDeal:(ARG):0 += (nDMG*nDMGMultiplier/100)
+	lcDamageDeal:(ARG):(nDMGPart) += (nDMG*nDMGMultiplier/100)
+	SIF !TruncatedAttacks
+		CALL TGC_LogAdd(@"%CALLNAME:TGC_CurrentAttacker%은 %CALLNAME:(ARG)%에게 %CALLNAME:(ARG)%의 피해를 주었다.")
+	;CALL TGC_CREATE_HIT_EXPLOSION(TGC_CurrentAttacker,ARG,AimedShot,TGC_CurrentGridSpace(ARG))
+ELSE
+	SELECTCASE RAND(100)
+		CASE IS < charaWeaponInts:(TGC_CurrentAttacker):Accuracy/4
+			AimedShot = 1
+		CASE IS < charaWeaponInts:(TGC_CurrentAttacker):Accuracy/2
+			SELECTCASE RAND:4
+				CASE 0
+					AimedShot = 7
+				CASE 1
+					AimedShot = 8
+				CASE 2
+					AimedShot = 3
+				CASE 3
+					AimedShot = 4
+			ENDSELECT
+		CASEELSE
+			SELECTCASE RAND:3
+				CASE 0
+					AimedShot = 5
+				CASE 1
+					AimedShot = 2
+				CASE 2
+					AimedShot = 6
+			ENDSELECT
+	ENDSELECT
+	GOTO BalisticAimed
+ENDIF
+SIF STRLENS(charaWeaponSTRs:TGC_CurrentAttacker:HitEffect)
+	TRYCALLFORM %charaWeaponSTRs:TGC_CurrentAttacker:HitEffect%(ARG,TGC_CurrentAttacker)
+$ExplosiveCheck
+;theoretically having a very easy integer that we can change that automatically determines multi-hit
+; IF AttackIsMissed
+;     CALL CREATE_HIT_FRAGMENTS(TGC_CurrentAttacker,ARG,0)
+;     CALL CREATE_HIT_EXPLOSION(TGC_CurrentAttacker,ARG,0)
+; ENDIF
+; CALL HIT_BY_FRAGMENT(ARG,1,AimedShot)
+CALL TGC_HIT_BY_EXPLOSION(ARG,1,AimedShot)
+CALL TGC_HIT_BY_FRAGMENT(ARG,1,AimedShot)
+RETURN -AttackIsMissed - (5*AttackGoesToAnother) - (AttackIsDodged)
+
+@TGC_CREATE_HIT_EXPLOSION(DealerID,RecipientID=-1,directHit,currentLocation)
+#DIM GetDamageType
+#DIM DealerID
+#DIM RecipientID
+#DIM nDMG
+#DIM directHit
+#DIM currentLocation
+SIF !charaWeaponInts:DealerID:IsExplosive
+	RETURN
+IF !DT_EXIST("explosionTemp")
+	DT_CREATE "explosionTemp"
+	DT_COLUMN_ADD "explosionTemp", "damage", "int32"
+	DT_COLUMN_ADD "explosionTemp", "damageType", "int32"
+	DT_COLUMN_ADD "explosionTemp", "size", "int32"
+	DT_COLUMN_ADD "explosionTemp", "owner", "int32"
+	DT_COLUMN_ADD "explosionTemp", "intendedVictim", "int32"
+	DT_COLUMN_ADD "explosionTemp", "checkedByTouhou", "int32"
+	DT_COLUMN_ADD "explosionTemp", "directHit", "int32"
+	DT_COLUMN_ADD "explosionTemp", "areaID", "int64"
+ENDIF
+;#; DEBUGPRINTFORML attempting to create explosion at {DT_CELL_GET("TGC_Map", currentLocation, "x", 1)}, {DT_CELL_GET("TGC_Map", currentLocation, "y", 1)} ({currentLocation})
+FOR LOCAL,0,charaWeaponInts:DealerID:IsExplosive
+nDMG = charaWeaponInts:(DealerID):ExplosiveDamage
+GetDamageType = charaWeaponInts:(DealerID):ExplosiveDamageType
+SIF !GetDamageType
+	GetDamageType = 2
+DT_ROW_ADD @"explosionTemp", "owner",           DealerID, "intendedVictim",  RecipientID, "damage",          nDMG, "damageType",      GetDamageType, "size",            charaWeaponInts:(DealerID):ExplosiveSize, "checkedByTouhou", 0, "directHit",       directHit, "areaID",   currentLocation,
+NEXT
+
+@TGC_CREATE_HIT_FRAGMENT(DealerID,RecipientID=-1,directHit,currentLocation)
+#DIM GetDamageType
+#DIM DealerID
+#DIM RecipientID
+#DIM nDMG
+#DIM directHit
+#DIM currentLocation
+SIF !charaWeaponInts:DealerID:Fragmentation
+	RETURN
+IF !DT_EXIST("fragmentationTemp")
+	DT_CREATE "fragmentationTemp"
+	DT_COLUMN_ADD "fragmentationTemp", "damage", "int32"
+	DT_COLUMN_ADD "fragmentationTemp", "damageType", "int32"
+	DT_COLUMN_ADD "fragmentationTemp", "size", "int32"
+	DT_COLUMN_ADD "fragmentationTemp", "owner", "int32"
+	DT_COLUMN_ADD "fragmentationTemp", "intendedVictim", "int32"
+	DT_COLUMN_ADD "fragmentationTemp", "checkedByTouhou", "int32"
+	DT_COLUMN_ADD "fragmentationTemp", "directHit", "int32"
+	DT_COLUMN_ADD "fragmentationTemp", "areaID", "int64"
+ENDIF
+;#; DEBUGPRINTFORML attempting to create fragments at {DT_CELL_GET("TGC_Map", currentLocation, "x", 1)}, {DT_CELL_GET("TGC_Map", currentLocation, "y", 1)} ({currentLocation})
+FOR LOCAL,0,charaWeaponInts:DealerID:Fragmentation
+nDMG = charaWeaponInts:(DealerID):FragmentationDamage
+GetDamageType = charaWeaponInts:(DealerID):FragmentationDamageType
+SIF !GetDamageType
+	GetDamageType = 2
+DT_ROW_ADD @"fragmentationTemp", "owner",           DealerID, "intendedVictim",  RecipientID, "damage",          nDMG, "damageType",      GetDamageType, "size",            charaWeaponInts:(DealerID):FragmentationSize, "checkedByTouhou", 0, "directHit",       directHit, "areaID",   currentLocation,
+NEXT
+; I want to propose a lot of damage close to epicenter and a sharp falloff after a bit (all dependant on weapon)
+; but I think a linear-ish model makes more sense
+; at the very least I think they should be distinct from AoE magic in that the center of an explosion is more effective, but magic spreads better
+; like, mafrei deals 100% everywhere it affects, while same base explosion does say 125% where it lands but falls off with every tile
+
+@TGC_HIT_BY_EXPLOSION(RecipientID,inCombat,shotTargetPart,isAlwaysLethal=0,AlwaysHits=0)
+#DIM DealerID
+#DIM RecipientID
+#DIM explosionsList, 500
+#DIM FragmentsTotal
+#DIM nDMG
+#DIM GetDamageType
+#DIM F_ID
+#DIM DYNAMIC nDMGMultiplier
+#DIMS DYNAMIC nDMGPartBroad
+#DIM DYNAMIC nDMGPart
+#DIM DYNAMIC inCombat
+#DIM DYNAMIC shotTargetPart
+#DIM DYNAMIC isAlwaysLethal
+#DIM DYNAMIC AlwaysHits
+#DIM DYNAMIC RandomSpread
+#DIM DYNAMIC explosionSize
+#DIM DYNAMIC explosionAccuracy
+#DIM DYNAMIC nDMGRangeMultiplier
+#DIM DYNAMIC rangeDifference
+#DIM DYNAMIC gridID, 2
+#DIM DYNAMIC posX, 2
+#DIM DYNAMIC posY, 2
+SELECTCASE shotTargetPart
+	CASE 0
+		RandomSpread = 1
+	CASEELSE
+		RandomSpread = 0
+ENDSELECT
+IF DT_EXIST("explosionTemp")
+	VARSET explosionsList
+	FragmentsTotal = DT_SELECT("explosionTemp",,,explosionsList)
+	nDMGRangeMultiplier = 100
+	gridID:0 = TGC_CurrentGridSpace(RecipientID)
+	posX:0 = DT_CELL_GET("TGC_Map", gridID:0, "x",1)
+	posY:0 = DT_CELL_GET("TGC_Map", gridID:0, "y",1)
+	FOR LOCAL,0,FragmentsTotal
+	SIF RandomSpread
+		shotTargetPart = RAND(1,9)
+	nDMGPart = AimedShotInfo(shotTargetPart)
+	nDMGMultiplier = RESULT:1
+	nDMGPartBroad '= RESULTS:1
+	F_ID = explosionsList:LOCAL
+	nDMG = DT_CELL_GET("explosionTemp", F_ID, "damage",1)
+	GetDamageType = DT_CELL_GET("explosionTemp", F_ID, "damageType",1)
+	DealerID = DT_CELL_GET("explosionTemp", F_ID, "owner",1)
+	explosionSize = MAX(1,DT_CELL_GET("explosionTemp", F_ID, "size",1))
+	gridID:1 = DT_CELL_GET("explosionTemp", F_ID, "areaID",1)
+	posX:1 = DT_CELL_GET("TGC_Map", gridID:1, "x",1)
+	posY:1 = DT_CELL_GET("TGC_Map", gridID:1, "y",1)
+	;get the range difference
+	rangeDifference = TGC_RangeDifference(posX:0, posY:0, posX:1, posY:1)
+	;rangeDifference = (ABS(posX:0-posX:1) + ABS(posY:0-posY:1))
+	SIF rangeDifference > explosionSize
+		CONTINUE
+	;nDMGRangeMultiplier = (explosionSize-rangeDifference)*100/explosionSize
+	nDMGRangeMultiplier = (explosionSize-rangeDifference)*100/explosionSize
+	; not happening
+	SIF nDMGRangeMultiplier <= 0
+		GOTO HitMiss
+	;explosionAccuracy = (explosionSize-rangeDifference)*100/explosionSize
+	explosionAccuracy = 100
+	;nDMGRangeMultiplier = nDMGRangeMultiplier*MIN(explosionAccuracy,100)/100
+	;;#; DEBUGPRINTFORML explosion: %NAME:RecipientID% (int {DT_CELL_GET("explosionTemp", F_ID, "intendedVictim",1)}), part {shotTargetPart} (int: {DT_CELL_GET("explosionTemp", F_ID, "directHit",1)}), distance {rangeDifference}/{explosionSize}
+	IF RAND(100) < explosionAccuracy
+		nDMGPartBroad '= "fullbody"
+		GOTO HitDirect
+	ELSE
+		$HitMiss
+		; DT_CELL_SET "explosionTemp", F_ID, "checkedByTouhou", DT_CELL_GET("explosionTemp", F_ID, "checkedByTouhou",1)+1, 1
+		; IF DT_CELL_GET("explosionTemp", F_ID, "checkedByTouhou",1) >= ExplosionSizeTohuous(DT_CELL_GET("explosionTemp", F_ID, "size",1))
+		;     DT_ROW_REMOVE "explosionTemp", F_ID
+		; ENDIF
+		CONTINUE
+	ENDIF
+	;direct hit
+	IF DT_CELL_GET("explosionTemp", F_ID, "directHit",1) == shotTargetPart
+		$HitDirect
+		;;#; DEBUGPRINTFORML explosion hit %CALLNAME:RecipientID% for {nDMG} (multiplier {nDMGMultiplier}) on part {nDMGPart}
+		IF lcIsLethal || isAlwaysLethal
+			SIF !charaWeaponInts:(DealerID):NonLethal
+				CALLF BroadDamage((RecipientID),explosionSize >= 3 ? "fullbody" # nDMGPartBroad,nDMG*nDMGRangeMultiplier/100,GetDamageType,(DealerID),printWeaponName(DealerID,,-1)+" explosion")
+		ENDIF
+		lcDamageDeal:(RecipientID):0 += (nDMG*nDMGMultiplier*nDMGRangeMultiplier/10000)
+		lcDamageDeal:(RecipientID):(nDMGPart) += (nDMG*nDMGMultiplier*nDMGRangeMultiplier/10000)
+		; DT_CELL_SET "explosionTemp", F_ID, "checkedByTouhou", DT_CELL_GET("explosionTemp", F_ID, "checkedByTouhou",1)+1, 1
+		; IF DT_CELL_GET("explosionTemp", F_ID, "checkedByTouhou",1) >= ExplosionSizeTohuous(explosionSize)
+		;     DT_ROW_REMOVE "explosionTemp", F_ID
+		; ENDIF
+	ENDIF
+	NEXT
+ENDIF
+
+@TGC_HIT_BY_FRAGMENT(RecipientID,inCombat,shotTargetPart,isAlwaysLethal=0,AlwaysHits=0)
+#DIM DealerID
+#DIM RecipientID
+#DIM explosionsList, 500
+#DIM FragmentsTotal
+#DIM nDMG
+#DIM GetDamageType
+#DIM F_ID
+#DIM DYNAMIC nDMGMultiplier
+#DIMS DYNAMIC nDMGPartBroad
+#DIM DYNAMIC nDMGPart
+#DIM DYNAMIC inCombat
+#DIM DYNAMIC shotTargetPart
+#DIM DYNAMIC isAlwaysLethal
+#DIM DYNAMIC AlwaysHits
+#DIM DYNAMIC RandomSpread
+#DIM DYNAMIC explosionSize
+#DIM DYNAMIC explosionAccuracy
+#DIM DYNAMIC nDMGRangeMultiplier
+#DIM DYNAMIC rangeDifference
+#DIM DYNAMIC gridID, 2
+#DIM DYNAMIC posX, 2
+#DIM DYNAMIC posY, 2
+SELECTCASE shotTargetPart
+	CASE 0
+		RandomSpread = 1
+	CASEELSE
+		RandomSpread = 0
+ENDSELECT
+IF DT_EXIST("fragmentationTemp")
+	VARSET explosionsList
+	FragmentsTotal = DT_SELECT("fragmentationTemp",,,explosionsList)
+	nDMGRangeMultiplier = 100
+	gridID:0 = TGC_CurrentGridSpace(RecipientID)
+	posX:0 = DT_CELL_GET("TGC_Map", gridID:0, "x",1)
+	posY:0 = DT_CELL_GET("TGC_Map", gridID:0, "y",1)
+	FOR LOCAL,0,FragmentsTotal
+	SIF RandomSpread
+		shotTargetPart = RAND(1,9)
+	nDMGPart = AimedShotInfo(shotTargetPart)
+	nDMGMultiplier = RESULT:1
+	nDMGPartBroad '= RESULTS:1
+	F_ID = explosionsList:LOCAL
+	nDMG = DT_CELL_GET("fragmentationTemp", F_ID, "damage",1)
+	GetDamageType = DT_CELL_GET("fragmentationTemp", F_ID, "damageType",1)
+	DealerID = DT_CELL_GET("fragmentationTemp", F_ID, "owner",1)
+	explosionSize = MAX(1,DT_CELL_GET("fragmentationTemp", F_ID, "size",1))
+	gridID:1 = DT_CELL_GET("fragmentationTemp", F_ID, "areaID",1)
+	posX:1 = DT_CELL_GET("TGC_Map", gridID:1, "x",1)
+	posY:1 = DT_CELL_GET("TGC_Map", gridID:1, "y",1)
+	;get the range difference
+	rangeDifference = TGC_RangeDifference(posX:0, posY:0, posX:1, posY:1)
+	SIF rangeDifference > explosionSize
+		CONTINUE
+	;100% since fragments don't have damage fall off
+	explosionAccuracy = (explosionSize-rangeDifference)*100/explosionSize
+	;explosionAccuracy = 100
+	;nDMGRangeMultiplier = nDMGRangeMultiplier*MIN(explosionAccuracy,100)/100
+	;;#; DEBUGPRINTFORML fragment: %NAME:RecipientID% (int {DT_CELL_GET("fragmentationTemp", F_ID, "intendedVictim",1)}), part {shotTargetPart} (int: {DT_CELL_GET("fragmentationTemp", F_ID, "directHit",1)}), distance {rangeDifference}/{explosionSize}
+	IF RAND(100) < explosionAccuracy
+		nDMGPartBroad '= "fullbody"
+		GOTO HitDirect
+	ELSE
+		$HitMiss
+		; DT_CELL_SET "fragmentationTemp", F_ID, "checkedByTouhou", DT_CELL_GET("fragmentationTemp", F_ID, "checkedByTouhou",1)+1, 1
+		; IF DT_CELL_GET("fragmentationTemp", F_ID, "checkedByTouhou",1) >= ExplosionSizeTohuous(DT_CELL_GET("fragmentationTemp", F_ID, "size",1))
+		;     DT_ROW_REMOVE "fragmentationTemp", F_ID
+		; ENDIF
+		CONTINUE
+	ENDIF
+	;direct hit
+	$HitDirect
+	;;#; DEBUGPRINTFORML fragment hit %CALLNAME:RecipientID% for {nDMG} (multiplier {nDMGMultiplier}) on part {nDMGPart}
+	IF lcIsLethal || isAlwaysLethal
+		SIF !charaWeaponInts:(DealerID):NonLethal
+			CALLF BroadDamage((RecipientID), nDMGPartBroad, nDMG*nDMGRangeMultiplier/100,GetDamageType,(DealerID),printWeaponName(DealerID,,-1)+" fragment")
+	ENDIF
+	lcDamageDeal:(RecipientID):0 += (nDMG*nDMGMultiplier*nDMGRangeMultiplier/10000)
+	lcDamageDeal:(RecipientID):(nDMGPart) += (nDMG*nDMGMultiplier*nDMGRangeMultiplier/10000)
+	; DT_CELL_SET "explosionTemp", F_ID, "checkedByTouhou", DT_CELL_GET("explosionTemp", F_ID, "checkedByTouhou",1)+1, 1
+	; IF DT_CELL_GET("explosionTemp", F_ID, "checkedByTouhou",1) >= ExplosionSizeTohuous(explosionSize)
+	;     DT_ROW_REMOVE "explosionTemp", F_ID
+	; ENDIF
+	NEXT
+ENDIF
+
+@TGC_AccuracyDifference(ARG,ARG:1,targetGrid = 0)
+#FUNCTION
+#DIM attackerAccuracy
+#DIM DYNAMIC posX, 2
+#DIM DYNAMIC posY, 2
+#DIM DYNAMIC combatantID, 2
+#DIM DYNAMIC rangeDifference
+#DIM DYNAMIC maxRange
+#DIM DYNAMIC targetGrid
+combatantID:0 = GetCombatant(ARG)
+posX:0 = TOINT(SPLIT_SINGLE(DT_CELL_GETS("lcCombatants", combatantID:0, "positionID", 1), 1, ","))
+posY:0 = TOINT(SPLIT_SINGLE(DT_CELL_GETS("lcCombatants", combatantID:0, "positionID", 1), 1, ","))
+IF targetGrid
+ELSE
+	combatantID:1 = GetCombatant(ARG:1)
+	posX:1 = TOINT(SPLIT_SINGLE(DT_CELL_GETS("lcCombatants", combatantID:1, "positionID", 1), 1, ","))
+	posY:1 = TOINT(SPLIT_SINGLE(DT_CELL_GETS("lcCombatants", combatantID:1, "positionID", 1), 1, ","))
+ENDIF
+;calculate the difference in terms of range
+rangeDifference = (ABS(posX:0-posX:1) + ABS(posY:0-posY:1))
+attackerAccuracy = GetShootingAccuracy(ARG)
+maxRange = charaWeaponInts:ARG:Range
+;range curve
+SELECTCASE rangeDifference
+	CASE 0, 1
+		;POINT BLANK
+		attackerAccuracy = MAX(attackerAccuracy,5)
+		attackerAccuracy *= 4
+	CASE IS <= maxRange*20/100
+		; before 2/10ths the range, there will be slightly better accuracy.
+		attackerAccuracy = attackerAccuracy*120/100
+	CASE IS <= maxRange*40/100
+		attackerAccuracy = attackerAccuracy*100/100
+	CASE IS <= maxRange*60/100
+		attackerAccuracy = attackerAccuracy*90/100
+	CASE IS <= maxRange*75/100
+		attackerAccuracy = attackerAccuracy*75/100
+	CASE IS <= maxRange*80/100
+		; at 8/10ths the range, it will be drastically
+		attackerAccuracy = attackerAccuracy*55/100
+	CASE IS <= maxRange*90/100
+		; at 9/10ths the range, it will be about useless
+		attackerAccuracy = attackerAccuracy*33/100
+	CASE IS <= maxRange
+		; at 9/10ths the range, it will be about useless
+		attackerAccuracy = attackerAccuracy*25/100
+ENDSELECT
+SIF !targetGrid
+	RETURNF attackerAccuracy
+;size curve
+SELECTCASE TALENT:(ARG:1):100
+	CASE -5
+		;inchling
+		attackerAccuracy = attackerAccuracy*16/100
+	CASE -4
+		;baby sized
+		attackerAccuracy = attackerAccuracy*33/100
+	CASE -3
+		;toddler sized
+		attackerAccuracy = attackerAccuracy*55/100
+	CASE -2
+		;child sized
+		attackerAccuracy = attackerAccuracy*75/100
+	CASE -1
+		;petite
+		attackerAccuracy = attackerAccuracy*90/100
+	CASE 1
+		;tall
+		attackerAccuracy = attackerAccuracy*110/100
+	CASE 2
+		attackerAccuracy = attackerAccuracy*170/100
+	CASE 3
+	CASE 4
+	CASE 5
+		;giant
+		attackerAccuracy = attackerAccuracy*400/100
+ENDSELECT
+RETURNF attackerAccuracy
+
+@TGC_GetDamageType(getLogs)
+#DIM nDmgType
+#DIM getLogs
+#DIMS logInfo
+#DIMS weaponTypeStr
+#DIMS weaponName
+IF lcIsLethal
+	weaponName = %PrintWeaponName(TGC_CurrentAttacker,TGC_CurrentAttackerWeapon,-1)%
+	IF STRCOUNT(GET_STR((TGC_CurrentAttacker), "Weapon", TGC_CurrentAttackerWeapon, WeapStats_Prefix(TGC_CurrentAttackerWeapon,charaWeaponInts:TGC_CurrentAttacker:Mode)+"Class"), "Blunt")
+		weaponTypeStr '= "melee"
+		nDmgType = 6
+	ELSEIF STRCOUNT(GET_STR((TGC_CurrentAttacker), "Weapon", TGC_CurrentAttackerWeapon, WeapStats_Prefix(TGC_CurrentAttackerWeapon,charaWeaponInts:TGC_CurrentAttacker:Mode)+"Class"), "Blade")
+		weaponTypeStr '= "melee"
+		nDmgType = 2
+	ELSEIF GET_STR((TGC_CurrentAttacker), "Weapon", TGC_CurrentAttackerWeapon, WeapStats_Prefix(TGC_CurrentAttackerWeapon,charaWeaponInts:TGC_CurrentAttacker:Mode)+"Type") == "Firearm"
+		weaponTypeStr '= "firearm"
+		nDmgType = 1
+	ELSEIF GET_STR((TGC_CurrentAttacker), "Weapon", TGC_CurrentAttackerWeapon, WeapStats_Prefix(TGC_CurrentAttackerWeapon,charaWeaponInts:TGC_CurrentAttacker:Mode)+"Type") == "Youjutsu"
+		weaponTypeStr '= "youjutsu"
+	ELSE
+	ENDIF
+	IF CharaWeaponInts:TGC_CurrentAttacker:DamageType
+		nDmgType = CharaWeaponInts:TGC_CurrentAttacker:DamageType
+	ELSEIF GET_INT((TGC_CurrentAttacker), "Weapon", TGC_CurrentAttackerWeapon, WeapStats_Prefix(TGC_CurrentAttackerWeapon,charaWeaponInts:TGC_CurrentAttacker:Mode)+"Incendiary")
+		nDmgType = 3
+	ENDIF
+ELSE
+	weaponName = %GET_STR((TGC_CurrentAttacker), "Weapon", 0, "名前")%
+	weaponTypeStr '= "firearm"
+	nDmgType = 1
+ENDIF
+IF getLogs
+	IF !INRANGE(TGC_LookingAt,0,CHARANUM-1)
+		LOCALS '= "지형"
+	ELSE
+		LOCALS '= CALLNAME:TGC_AITarget
+	ENDIF
+	SELECTCASE weaponTypeStr
+		CASE "firearm"
+			logInfo '= @"%PARSE("You fire",,,TGC_CurrentAttacker)% 꺼짐 %PRINT_PLUR("shot",charaWeaponInts:(TGC_CurrentAttacker):Burst)% 꺼짐 %PARSE("your",5,,TGC_CurrentAttacker)% %weaponName% 에서 %LOCALS%."
+		CASE "melee"
+			logInfo '= @"%PARSE("You swing your",,,TGC_CurrentAttacker)% %weaponName% %PRINT_PLUR("time",charaWeaponInts:(TGC_CurrentAttacker):Burst)%에서 %LOCALS%."
+		CASE "youjutsu"
+			logInfo '= @"%PARSE("You cast",,,TGC_CurrentAttacker)% %PRINT_PLUR("shot",charaWeaponInts:(TGC_CurrentAttacker):Burst)% 꺼짐 %PARSE("your",5,,TGC_CurrentAttacker)% %weaponName% 에서 %LOCALS%."
+		CASEELSE
+			logInfo '= @"%PARSE("You use your",,,TGC_CurrentAttacker)% %weaponName% %PRINT_PLUR("times",charaWeaponInts:(TGC_CurrentAttacker):Burst)%에서 %LOCALS%했다."
+	ENDSELECT
+	CALL TGC_LogAdd(logInfo)
+ENDIF
+
+@TGC_CreateMapTable
+#DIMS nTableName
+nTableName '= "TGC_Map"
+DT_CREATE nTableName
+DT_COLUMN_ADD nTableName, "x", "int16"
+DT_COLUMN_ADD nTableName, "y", "int16"
+DT_COLUMN_ADD nTableName, "coverHealth", "int32"
+DT_COLUMN_ADD nTableName, "positionID"
+DT_COLUMN_ADD nTableName, "coverType"
+DT_COLUMN_ADD nTableName, "floorType"
+DT_COLUMN_ADD nTableName, "charactersInside"
+;==========================================
+;TGC_CreateMap
+;==========================================
+;Creates a map for the grid combat system.
+;==========================================
+;MapCol: Columns the map should have
+;MapRow: Rows the map should have
+;==========================================
+
+@TGC_CreateMap(MapCol=10, MapRow=10)
+#DIM DYNAMIC MapCol
+#DIM DYNAMIC MapRow
+#DIMS DYNAMIC MapTags
+#DIM DYNAMIC currentRow
+#DIM DYNAMIC currentCol
+TGC_MapColumns = MapCol
+TGC_MapRows = MapRow
+FOR currentRow,0,MapRow
+FOR currentCol,0,MapCol
+DT_ROW_ADD "TGC_Map", "x", currentCol, "y", currentRow, "positionID", @"{currentCol},{currentRow}", "coverType", @"", "charactersInside", @"",
+;DEBUGPRINTFORML made entry {RESULT}
+NEXT
+NEXT
+;CALL TGC_GenerateObstacles(3)
+CALL TGC_GenerateObstacles(RAND(1,4))
+
+@TGC_Cleanup
+DT_RELEASE "TGC_Map"
+DT_RELEASE "lcCombatants"
+VARSET TGC_CastRadius
+VARSET TGC_LookingAt
+VARSET TGC_CurrentAction
+
+@TGC_CurrentGridSpace(ARG)
+#FUNCTION
+DT_SELECT "TGC_Map", @"positionID = '%DT_CELL_GETS("lcCombatants", getCombatant(ARG), "positionID", 1)%'"
+RETURNF RESULT:1
+;==========================================
+;TGC_MoveChara
+;==========================================
+;Moves a character in the grid combat system.
+;==========================================
+;ARG: Character that should be moved
+;x: X position to move to
+;y: Y position to move to
+;==========================================
+
+@TGC_MoveChara(ARG,locX,locY)
+#DIMS prevLocation
+#DIM charaTable
+#DIM locationTable,2
+#DIM locX
+#DIM locY
+#DIM locZ
+charaTable = getCombatant(ARG)
+prevLocation '= DT_CELL_GETS("lcCombatants", charaTable, "positionID", 1)
+DT_SELECT "TGC_Map", @"positionID = '%prevLocation%'"
+locationTable:0 = RESULT:1
+;DEBUGPRINTFORML id PREV: {locationTable:0} | prev: %prevLocation%
+DT_CELL_SET "TGC_Map", locationTable:0, "charactersInside", REPLACE(DT_CELL_GETS("TGC_Map",locationTable:0,"charactersInside",1),@"{ARG}/", ""), 1
+DT_SELECT "TGC_Map", @"positionID = '{locX},{locY}'"
+locationTable:1 = RESULT:1
+;DEBUGPRINTFORML id NEXT: {locationTable:1} | x: {locX} | y: {locY}
+DT_CELL_SET "TGC_Map", locationTable:1, "charactersInside", DT_CELL_GETS("TGC_Map",locationTable:1,"charactersInside",1)+@"{ARG}/", 1
+DT_CELL_SET "lcCombatants", charaTable, "positionID", @"{locX},{locY}", 1
+;DT_CELL_SET "lcCombatants", charaTable, "claimed", 1, 1
+;==========================================
+;TGC_Init
+;==========================================
+;Initializes the grid combat system.
+;==========================================
+
+@TGC_Init
+CALLF StartBattle
+SIF !DT_EXIST("TGC_Map")
+	CALL TGC_CreateMapTable
+;CALL TGC_CreateMap(12,12)
+;1536x864
+;CALL TGC_CreateMap(22,14)
+TGC_MapSize:0 = (CLIENTWIDTH()/GetConfig("Font Size"))
+TGC_MapSize:0 = TGC_MapSize:0-(TGC_MapSize:0/4)-4
+TGC_MapSize:0 /= 2
+;vertical size
+TGC_MapSize:1 = (CLIENTHEIGHT()/GetConfig("Line Height"))
+TGC_MapSize:1 = TGC_MapSize:1-(TGC_MapSize:1/8)-3
+TGC_MapSize:1 /= 2
+CALL TGC_CreateMap(TGC_MapSize:0,TGC_MapSize:1)
+CALLF AddCombatant(MASTER,0)
+CALL TGC_MoveChara(MASTER,0,0)
+; CALLF AddCombatant(4,0)
+; CALL TGC_MoveChara(4,5,4)
+; CALLF AddCombatant(158,0)
+; CALL TGC_MoveChara(158,5,4)
+; CALLF AddCombatant(9,1)
+; CALL TGC_MoveChara(9,0,1)
+CFLAG:9:313 = 0
+; FOR LOCAL,0,49
+;     $Redo
+;     LOCAL:1 = RAND:CHARANUM
+;     SIF GetCombatant(LOCAL:1) || BASE:(LOCAL:1):0 < 500 || IsDead:(LOCAL:1):0
+;         GOTO Redo
+;     CFLAG:(LOCAL:1):313 = 0
+;     LOCAL:2 = RAND:2
+;     CALLF AddCombatant(LOCAL:1,LOCAL:2)
+;     ;CALL AddCombatantWithMessage(LOCAL:1,LOCAL:2)
+;     SELECTCASE LOCAL:2
+;     CASE 0
+;         CALL TGC_MoveChara(LOCAL:1,RAND(0,TGC_MapColumns*1/4),RAND:TGC_MapRows)
+;     CASE 1
+;         CALL TGC_MoveChara(LOCAL:1,RAND(TGC_MapColumns*3/4, TGC_MapColumns),RAND:TGC_MapRows)
+;     ENDSELECT
+; NEXT
+FOR LOCAL,0,DT_ROW_LENGTH("lcCombatants")
+SELECTCASE DT_CELL_GET("lcCombatants",LOCAL,"side")
+	CASE 0
+		CALL TGC_MoveChara(DT_CELL_GET("lcCombatants",LOCAL,"chara"),RAND(0,TGC_MapColumns*1/4),RAND:TGC_MapRows)
+	CASE 1
+		CALL TGC_MoveChara(DT_CELL_GET("lcCombatants",LOCAL,"chara"),RAND(TGC_MapColumns*3/4, TGC_MapColumns),RAND:TGC_MapRows)
+ENDSELECT
+NEXT
+; ######
+; ######
+; ######
+;==========================================
+;TGC_CreateRadius
+;==========================================
+;Creates a radius cone around the specified grid space.
+;==========================================
+;ARG: Grid space
+;radius: How big the radius is
+;radiusID: What ID the radius is in.
+;==========================================
+
+@TGC_CreateRadius(ARG,radius,radiusID,colorID = C_GREEN,radiusSTR = "！",isVisible = 1)
+#FUNCTION
+#DIM radius
+#DIM radiusID
+#DIM colorID
+#DIM isVisible
+#DIMS radiusSTR
+TGC_CastRadius:radiusID:0 = ARG
+TGC_CastRadius:radiusID:1 = radius
+TGC_CastRadius:radiusID:2 = colorID
+TGC_CastRadius:radiusID:3 = isVisible
+TGC_CastRadiusSTR:radiusID '= radiusSTR
+;==========================================
+;TGC_ClearRadius
+;==========================================
+;Clears radius data
+;==========================================
+;radiusID: What radius ID to clear.
+;==========================================
+
+@TGC_ClearRadius(radiusID)
+#FUNCTION
+#DIM radius
+#DIM radiusID
+TGC_CastRadius:radiusID:0 = 0
+TGC_CastRadius:radiusID:1 = 0
+TGC_CastRadius:radiusID:2 = 0
+TGC_CastRadius:radiusID:3 = 0
+TGC_CastRadiusSTR:radiusID '= ""
+;radius code stuff goes here
+; so when you make the radius larger, eg. r=8, you still want it to be a diamond? bc every up/down/left/right move "costs" 1?
+; then the math is very simple, just dX + dY (dX being absolute value of start_x minus end_x, same for dY)
+;==========================================
+;TGC_InRadius
+;==========================================
+;Checks whether a grid space is within a radius using Taxicab geometry
+;==========================================
+;radius: How big the radius is
+;posX:0: Original X
+;posY:0: Original Y
+;posX:1: New X
+;posY:1: New Y
+;==========================================
+
+@TGC_InRadius(radius, posX:0, posY:0, posX:1, posY:1)
+#FUNCTION
+#DIM DYNAMIC posX, 2
+#DIM DYNAMIC posY, 2
+#DIM DYNAMIC radius
+#DIM DYNAMIC difference
+difference = TGC_RangeDifference(posX:0, posY:0, posX:1, posY:1)
+;DEBUGPRINTFORML radius: {radius} | difference: {difference} | condition: {difference <= radius}
+RETURNF difference <= radius
+
+@TGC_RangeDifference(posX:0, posY:0, posX:1, posY:1)
+#FUNCTION
+#DIM DYNAMIC posX, 2
+#DIM DYNAMIC posY, 2
+#DIM DYNAMIC radius
+#DIM DYNAMIC difference
+difference = (ABS(posX:0-posX:1) + ABS(posY:0-posY:1))
+RETURNF difference
+
+@TGC_CreateBattleInfo
+
+@TGC_CharacterMoveRadius(ARG)
+#FUNCTION
+SIF CharacterHasSpell(ARG,22,1)
+	RETURNF __INT_MAX__
+RETURNF MAX(1,6*CapacityStats:ARG:3/100)
+
+@TGC_CombatMagicDisplay(ARG,ARG:1,WINDOW_ID,L_CNT)
+#DIM CCM_LIST
+#DIM WINDOW_ID
+#DIM L_CNT
+VARSET tempHediffList
+DT_SELECT "combatMagic", @"chara = {ARG}",,tempHediffList
+FOR LOCAL,0,4+(EsperRank(ARG))
+CCM_LIST = tempHediffList:LOCAL
+LOCALS:1 =
+IF CCM_LIST
+	VARSET NAS_ESP_NAME
+	VARSET NAS_ESP_COLOR
+	TRYCALLFORM NAS_ESP_{DT_CELL_GET("combatMagic", CCM_LIST, "spellPage",1)}_{DT_CELL_GET("combatMagic", CCM_LIST, "spell",1)}
+	SIF STRFIND(NAS_ESP_Type,"Passive/") > -1
+		CONTINUE
+	LOCALS:1 '= NAS_ESP_NAME
+	SIF !STRLENS(NAS_ESP_NAME)
+		LOCALS:1 '= @"주문을 찾을 수 없음: 클래스 {DT_CELL_GET("combatMagic", CCM_LIST, "spellPage",1)}, 주문 {DT_CELL_GET("combatMagic", CCM_LIST, "spell",1)}"
+ELSEIF ARG:1 != 2
+	CONTINUE
+ENDIF
+SIF !STRLENS(LOCALS:1)
+	CONTINUE
+TRYCALLFORMF NAS_ESP_{DT_CELL_GET("combatMagic", CCM_LIST, "spellPage",1)}
+LOCALS:2 '= REPLACE(PRINT_RANK_HTML(NAS_ESP_LevelNeed,"MAX_6"), "<font color='#(.+)'>.+", "$1")
+LOCALS:3 '= REPLACE(PRINT_RANK_HTML(NAS_ESP_LevelNeed,"MAX_6"), "<font.*?>(.*?)</font>", "$1")
+IF STRFIND(NAS_ESP_Type,"Passive/") > -1
+	LOCALS:4 '= "  Passive"
+ELSE
+	LOCALS:4 '= @"  {NAS_ESP_COST,5} %BASE_TR(BASENAME:NAS_ESP_BASE)% 사용"
+ENDIF
+CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"%COND_STR(@"@B:{CCM_LIST+5000000000000000000}@",ARG:1 != 2)%@C:{NAS_ESP_COLOR}@[%NAS_ESP_NAME_VShort,5%]@/C@ %LOCALS:1,35,LEFT% @C:{TOINT(LOCALS:2)}@%LOCALS:3%@/C@ {NAS_ESP_LevelNeed,2} %LOCALS:4% %COND_STR("@/B@",ARG:1 != 2)%")
+NEXT
+CALL WndMgr_TextSet(WINDOW_ID, L_CNT++, @"")
+RESULT:1 = L_CNT
+
+@TGC_MarkDeadCombatants
+#FUNCTION
+#DIM C_ID
+#DIM DYNAMIC nEntry
+FOR nEntry, 0, DT_ROW_LENGTH("lcCombatants")
+C_ID = DT_CELL_GET("lcCombatants", nEntry, "chara")
+IF BASE:C_ID:0 < 500 || IsDead:C_ID:0 || (DT_CELL_GET("lcCombatants", nEntry, "lives") <= 0 && !lcIsLethal) || CFLAG:C_ID:313
+	DT_CELL_SET "lcCombatants", DT_CELL_GET("lcCombatants", nEntry, "id"), "nonCombatant", 1, 1
+ENDIF
+NEXT
+IF GetCombatantSize(1) == 0 || GetCombatantSize(2) == 0
+	RETURNF 0
+ENDIF
+RETURNF 1
+;Obstacle types:
+;Walls
+; Drywall (concealment only)
+; Wooden wall (VPAM 3)
+; Brick wall (VPAM 9)
+;Trees
+; Tree (VPAM 5)
+;Rocks
+; Brick wall (VPAM 9)
+;Impassable Terrain
+; Will stop all bullets
+; Cannot go through. Must pass.
+;Water
+; Bullets can pass through
+; Characters take a massive movement penalty (uses 4! spaces)
+; (if a river, make vampires unable to cross)
+;Escape caves
+; Acts as places where you can retreat to
+;=======================================
+;TGC_GenerateObstacles
+;=======================================
+;generate a number of obstacles depending on our terrain type
+;home (lots of walls)
+;street (lots of buildings)
+;forest (lots of trees, some mountains)
+;plains (mostly nothing)
+
+@TGC_GenerateObstacles(ARG)
+#DIM DYNAMIC tileList, 2000
+#DIM DYNAMIC tileCount
+#DIM DYNAMIC obsTileList, 100
+#DIM DYNAMIC obsTileCount
+#DIM DYNAMIC obs_GenLoop, 2
+;tileCount = DT_SELECT("TGC_Map", "x = 12 and y = 5", "", tileList)
+SELECTCASE ARG
+	CASE 0
+		;blank
+	CASE 1
+		;cabin in the woods
+		;make all grass
+		FOR obs_GenLoop,0,DT_ROW_LENGTH("TGC_Map")
+		DT_CELL_SET "TGC_Map", obs_GenLoop, "floorType", "grass", 0
+		NEXT
+		tileCount = DT_SELECT("TGC_Map", @"x = {(TGC_MapSize:0/2)-2} and y = {(TGC_MapSize:1/2)-2}", "", tileList)
+		CALL TGC_GenerateObstacleStructure(tileList,"building",0)
+		FOR obs_GenLoop,0,TGC_MapSize:0/3
+		FOR obs_GenLoop:1,0,TGC_MapSize:1/3
+		tileCount = DT_SELECT("TGC_Map", @"x = {MAX(0,(3*obs_GenLoop)-1)} and y = {MAX(0,(3*obs_GenLoop:1)-1)}", "", tileList)
+		CALL TGC_GenerateObstacleStructure(tileList,"tree",1)
+		NEXT
+		NEXT
+		;dirt pathway
+		tileCount = DT_SELECT("TGC_Map", @"x = {(TGC_MapSize:0/2)-1} and y >= {(TGC_MapSize:1/2)+2}", "", tileList)
+		FOR obs_GenLoop,0,tileCount
+		DT_CELL_SET "TGC_Map", tileList:obs_GenLoop, "floorType", "roadDirt", 1
+		DT_CELL_SET "TGC_Map", tileList:obs_GenLoop, "coverType", "", 1
+		NEXT
+	CASE 2
+		;crossroads
+		;road cross 1
+		tileCount = DT_SELECT("TGC_Map", @"y >= {(TGC_MapSize:1/2)-2} and y <= {(TGC_MapSize:1/2)+1}", "", tileList)
+		FOR obs_GenLoop,0,tileCount
+		DT_CELL_SET "TGC_Map", tileList:obs_GenLoop, "floorType", "road", 1
+		DT_CELL_SET "TGC_Map", tileList:obs_GenLoop, "coverType", "", 1
+		NEXT
+		;road cross 2
+		tileCount = DT_SELECT("TGC_Map", @"x >= {(TGC_MapSize:0/2)-2} and x <= {(TGC_MapSize:0/2)+1}", "", tileList)
+		FOR obs_GenLoop,0,tileCount
+		DT_CELL_SET "TGC_Map", tileList:obs_GenLoop, "floorType", "road", 1
+		DT_CELL_SET "TGC_Map", tileList:obs_GenLoop, "coverType", "", 1
+		NEXT
+		;random buildings
+		FOR obs_GenLoop,0,4
+		LOCAL:1 = GROUPMATCH(obs_GenLoop,1,3) ? (TGC_MapSize:0/2)+2 # 0
+		LOCAL:2 = GROUPMATCH(obs_GenLoop,2,3) ? (TGC_MapSize:1/2)+2 # 0
+		SELECTCASE RAND:4
+			CASE 0
+				;housing block
+				tileCount = DT_SELECT("TGC_Map", @"x = {LOCAL:1} and y = {LOCAL:2}", "", tileList)
+				CALL TGC_GenerateObstacleStructure(tileList,"building",0,obs_GenLoop >= 2 ? 2 # 0)
+				tileCount = DT_SELECT("TGC_Map", @"x = {LOCAL:1+5} and y = {LOCAL:2+0}", "", tileList)
+				CALL TGC_GenerateObstacleStructure(tileList,"building",0,obs_GenLoop >= 2 ? 2 # 0)
+				tileCount = DT_SELECT("TGC_Map", @"x = {LOCAL:1+10} and y = {LOCAL:2+0}", "", tileList)
+				CALL TGC_GenerateObstacleStructure(tileList,"building",0,obs_GenLoop >= 2 ? 2 # 0)
+				tileCount = DT_SELECT("TGC_Map", @"x = {LOCAL:1} and y = {LOCAL:2+(TGC_MapSize:1/2)-6}", "", tileList)
+				CALL TGC_GenerateObstacleStructure(tileList,"building",0,obs_GenLoop >= 2 ? 2 # 0)
+				tileCount = DT_SELECT("TGC_Map", @"x = {LOCAL:1+5} and y = {LOCAL:2+(TGC_MapSize:1/2)-6}", "", tileList)
+				CALL TGC_GenerateObstacleStructure(tileList,"building",0,obs_GenLoop >= 2 ? 2 # 0)
+				tileCount = DT_SELECT("TGC_Map", @"x = {LOCAL:1+10} and y = {LOCAL:2+(TGC_MapSize:1/2)-6}", "", tileList)
+				CALL TGC_GenerateObstacleStructure(tileList,"building",0,obs_GenLoop >= 2 ? 2 # 0)
+			CASE 1
+				;super market
+				tileCount = DT_SELECT("TGC_Map", @"x = {LOCAL:1} and y = {LOCAL:2}", "", tileList)
+				CALL TGC_GenerateObstacleStructure(tileList,"building",1,obs_GenLoop >= 2 ? 2 # 0)
+			CASE 2
+				;shops
+				tileCount = DT_SELECT("TGC_Map", @"x = {LOCAL:1} and y = {LOCAL:2}", "", tileList)
+				CALL TGC_GenerateObstacleStructure(tileList,"building",2,obs_GenLoop >= 2 ? 2 # 0)
+				tileCount = DT_SELECT("TGC_Map", @"x = {LOCAL:1+8} and y = {LOCAL:2}", "", tileList)
+				CALL TGC_GenerateObstacleStructure(tileList,"building",2,obs_GenLoop >= 2 ? 2 # 0)
+			CASE 3
+				;apartment
+				tileCount = DT_SELECT("TGC_Map", @"x = {LOCAL:1} and y = {LOCAL:2}", "", tileList)
+				CALL TGC_GenerateObstacleStructure(tileList,"building",3,0)
+		ENDSELECT
+		NEXT
+		;rotation test
+		; tileCount = DT_SELECT("TGC_Map", @"x = {0} and y = {(TGC_MapSize:1/2)+2}", "", tileList)
+		; CALL TGC_GenerateObstacleStructure(tileList,"building",0,2)
+		; tileCount = DT_SELECT("TGC_Map", @"x = {5} and y = {(TGC_MapSize:1/2)+2}", "", tileList)
+		; CALL TGC_GenerateObstacleStructure(tileList,"building",0,1)
+		; tileCount = DT_SELECT("TGC_Map", @"x = {10} and y = {(TGC_MapSize:1/2)+2}", "", tileList)
+		; CALL TGC_GenerateObstacleStructure(tileList,"building",0,3)
+	CASE 3
+		; river and a bridge
+		;make all grass
+		FOR obs_GenLoop,0,DT_ROW_LENGTH("TGC_Map")
+		DT_CELL_SET "TGC_Map", obs_GenLoop, "floorType", "grass", 0
+		NEXT
+		;river at the middle
+		;set up river. LOCAL:1 is the starting position
+		tileCount = DT_SELECT("TGC_Map", @"x = {(TGC_MapSize:0/2)} and y = {0}", "", tileList)
+		LOCAL:1 = tileList
+		LOCAL:2 = (TGC_MapSize:0/2)
+		DT_CELL_SET "TGC_Map", tileList, "floorType", "river", 1
+		;now that we have the initial position, we can make the river go across the y axis.
+		FOR obs_GenLoop,0,TGC_MapSize:1
+		LOCAL:2 = obs_GenLoop ? LOCAL:2 + (RAND(-1,2)) # LOCAL:2
+		FOR obs_GenLoop:1,-3,4
+		tileCount = DT_SELECT("TGC_Map", @"x = {(LOCAL:2)+(obs_GenLoop:1)} and y = {obs_GenLoop}", "", tileList)
+		IF GROUPMATCH(obs_GenLoop:1,-3,3)
+			;beach
+			DT_CELL_SET "TGC_Map", tileList, "floorType", "sand", 1
+		ELSE
+			DT_CELL_SET "TGC_Map", tileList, "floorType", "river", 1
+		ENDIF
+		;save the middle position
+		SIF obs_GenLoop:1 == 0 && DT_CELL_GET("TGC_Map", tileList, "y",1) == TGC_MapSize:1/2
+			LOCAL:3 = tileList
+		NEXT
+		NEXT
+		;bridge
+		DT_CELL_SET "TGC_Map", LOCAL:3, "floorType", "bridgeWood", 1
+		LOCAL:2 = DT_CELL_GET("TGC_Map",LOCAL:3,"x",1)
+		LOCAL:4 = DT_CELL_GET("TGC_Map",LOCAL:3,"y",1)
+		FOR obs_GenLoop,-1,2
+		FOR obs_GenLoop:1,-3,4
+		tileCount = DT_SELECT("TGC_Map", @"x = {(LOCAL:2)+(obs_GenLoop:1)} and y = {LOCAL:4+obs_GenLoop}", "", tileList)
+		DT_CELL_SET "TGC_Map", tileList, "floorType", "bridgeWood", 1
+		NEXT
+		NEXT
+		;bridge path
+		LOCAL:2 = DT_CELL_GET("TGC_Map",LOCAL:3,"x",1)-4
+		LOCAL:4 = DT_CELL_GET("TGC_Map",LOCAL:3,"y",1)
+		FOR obs_GenLoop, LOCAL:2,-1,-1
+		LOCAL:4 = obs_GenLoop != LOCAL:2 ? LOCAL:4 + (RAND(-1,2)) # LOCAL:4
+		tileCount = DT_SELECT("TGC_Map", @"x = {(LOCAL:2)-(obs_GenLoop)} and y = {LOCAL:4}", "", tileList)
+		DT_CELL_SET "TGC_Map", tileList, "floorType", "road", 1
+		NEXT
+		LOCAL:2 = DT_CELL_GET("TGC_Map",LOCAL:3,"x",1)+4
+		LOCAL:4 = DT_CELL_GET("TGC_Map",LOCAL:3,"y",1)
+		FOR obs_GenLoop, LOCAL:2,TGC_MapColumns
+		LOCAL:4 = obs_GenLoop != LOCAL:2 ? LOCAL:4 + (RAND(-1,2)) # LOCAL:4
+		tileCount = DT_SELECT("TGC_Map", @"x = {(LOCAL:2)+(obs_GenLoop)} and y = {LOCAL:4}", "", tileList)
+		DT_CELL_SET "TGC_Map", tileList, "floorType", "road", 1
+		NEXT
+		;rocks near the beach
+		;trees
+		FOR obs_GenLoop,0,TGC_MapSize:0
+		FOR obs_GenLoop:1,0,TGC_MapSize:1
+		tileCount = DT_SELECT("TGC_Map", @"x = {obs_GenLoop} and y = {obs_GenLoop:1}", "", tileList)
+		IF DT_CELL_GETS("TGC_Map",tileList,"floorType",1) == "grass" && !RAND:3
+			CALLF TGC_ObstacleTypes("tree")
+			DT_CELL_SET "TGC_Map", tileList, "coverType", "tree", 1
+			DT_CELL_SET "TGC_Map", tileList, "coverHealth", TGC_Obs:1, 1
+		ENDIF
+		NEXT
+		NEXT
+	CASE 55923
+		; VARSET tileList
+		; tileCount = DT_SELECT("TGC_Map", "", "", tileList)
+		; FOR LOCAL,0,TGC_MapSize:0+4
+		;     FOR LOCAL:1,0,TGC_MapSize:1
+		;         DT_CELL_SET "TGC_Map", tileList:((LOCAL:1*TGC_MapSize:0)+LOCAL), "floorType", "road", 1
+		;     NEXT
+		; NEXT
+		; FOR LOCAL,0,tileCount
+		;     DT_CELL_SET "TGC_Map", tileList:(LOCAL), "floorType", "road", 1
+		; NEXT
+ENDSELECT
+;=======================================
+;TGC_GenerateObstacleStructure
+;=======================================
+;ARG:0: root position, usually the top left
+;ARGS: obstacle type
+;ARG:1: subtype
+;ARG:2: subtype variation
+;rotationAngle: rotation of the building (0 original, 1 90 deg, 2 180 deg, 3 270 deg)
+
+@TGC_GenerateObstacleStructure(ARG,ARGS,ARG:1,rotationAngle)
+#DIM DYNAMIC obsX
+#DIM DYNAMIC obsY
+#DIMS DYNAMIC obsTiles, 20, 20
+#DIMS DYNAMIC floorTiles, 20, 20
+#DIMS DYNAMIC obsTileStorage, 20, 20
+#DIMS DYNAMIC floorTileStorage, 20, 20
+#DIM DYNAMIC startGridLoc,2
+#DIM DYNAMIC currentGridLoc,2
+#DIM DYNAMIC reservedGridLocs,300
+#DIM DYNAMIC reservedGridLocCount
+#DIM DYNAMIC rotationAngle
+VARSET obsTiles
+VARSET floorTiles
+;DT_CELL_SET "TGC_Map", locationTable:0, "coverType", REPLACE(DT_CELL_GETS("TGC_Map",locationTable:0,"charactersInside",1),@"{ARG}/", ""), 1
+startGridLoc:0 = DT_CELL_GET("TGC_Map", ARG, "x", 1)
+startGridLoc:1 = DT_CELL_GET("TGC_Map", ARG, "y", 1)
+SELECTCASE ARGS
+	CASE "wall"
+	CASE "building"
+		SELECTCASE ARG:1
+			CASE 0
+				;2x2 home, uses 4x4 tiles
+				obsX = 4
+				obsY = 4
+				obsTiles:0:0 '= "wallWood"
+				obsTiles:1:0 '= "wallWood"
+				obsTiles:2:0 '= "wallWood"
+				obsTiles:3:0 '= "wallWood"
+				obsTiles:0:1 '= "wallWood"
+				obsTiles:3:1 '= "wallWood"
+				obsTiles:0:2 '= "wallWood"
+				obsTiles:3:2 '= "wallWood"
+				obsTiles:0:3 '= "wallWood"
+				obsTiles:2:3 '= "wallWood"
+				obsTiles:3:3 '= "wallWood"
+				floorTiles:1:1 '= "floorWood"
+				floorTiles:2:1 '= "floorWood"
+				floorTiles:1:2 '= "floorWood"
+				floorTiles:2:2 '= "floorWood"
+				floorTiles:1:3 '= "floorWood"
+			CASE 1
+				;super market
+				obsX = 15
+				obsY = 9
+				obsTiles:0:0 '= "wallBrick"
+				obsTiles:0:1 '= "wallBrick"
+				obsTiles:0:2 '= "wallBrick"
+				obsTiles:0:3 '= "wallBrick"
+				obsTiles:0:4 '= "wallBrick"
+				obsTiles:0:5 '= "wallBrick"
+				obsTiles:0:6 '= "wallBrick"
+				obsTiles:0:7 '= "wallBrick"
+				obsTiles:0:8 '= "wallBrick"
+				obsTiles:1:0 '= "wallBrick"
+				obsTiles:2:0 '= "wallBrick"
+				obsTiles:3:0 '= "wallBrick"
+				obsTiles:4:0 '= "wallBrick"
+				obsTiles:5:0 '= "wallBrick"
+				obsTiles:6:0 '= "wallBrick"
+				obsTiles:7:0 '= "wallBrick"
+				obsTiles:8:0 '= "wallBrick"
+				obsTiles:9:0 '= "wallBrick"
+				obsTiles:10:0 '= "wallBrick"
+				obsTiles:11:0 '= "wallBrick"
+				obsTiles:12:0 '= "wallBrick"
+				obsTiles:13:0 '= "wallBrick"
+				obsTiles:14:0 '= "wallBrick"
+				obsTiles:14:1 '= "wallBrick"
+				obsTiles:14:2 '= "wallBrick"
+				obsTiles:14:3 '= "wallBrick"
+				obsTiles:14:4 '= "wallBrick"
+				obsTiles:14:5 '= "wallBrick"
+				obsTiles:14:6 '= "wallBrick"
+				obsTiles:14:7 '= "wallBrick"
+				obsTiles:14:8 '= "wallBrick"
+				obsTiles:0:8 '= "wallBrick"
+				obsTiles:1:8 '= "wallBrick"
+				obsTiles:2:9 '= "wallBrick"
+				obsTiles:3:9 '= "wallBrick"
+				obsTiles:4:8 '= "wallBrick"
+				obsTiles:5:8 '= "wallBrick"
+				obsTiles:6:8 '= "wallBrick"
+				obsTiles:7:8 '= "wallBrick"
+				obsTiles:8:8 '= "wallBrick"
+				obsTiles:9:8 '= "wallBrick"
+				obsTiles:10:8 '= "wallBrick"
+				obsTiles:11:9 '= "wallBrick"
+				obsTiles:12:9 '= "wallBrick"
+				obsTiles:13:8 '= "wallBrick"
+				obsTiles:14:8 '= "wallBrick"
+				;registers
+				obsTiles:2:5 '= "metalShelf"
+				obsTiles:2:6 '= "metalShelf"
+				obsTiles:4:5 '= "metalShelf"
+				obsTiles:4:6 '= "metalShelf"
+				obsTiles:6:5 '= "metalShelf"
+				obsTiles:6:6 '= "metalShelf"
+				obsTiles:8:5 '= "metalShelf"
+				obsTiles:8:6 '= "metalShelf"
+				obsTiles:10:5 '= "metalShelf"
+				obsTiles:10:6 '= "metalShelf"
+				obsTiles:12:5 '= "metalShelf"
+				obsTiles:12:6 '= "metalShelf"
+				;shelves
+				obsTiles:2:3 '= "metalShelf"
+				obsTiles:3:3 '= "metalShelf"
+				obsTiles:4:3 '= "metalShelf"
+				obsTiles:5:3 '= "metalShelf"
+				obsTiles:6:3 '= "metalShelf"
+				obsTiles:7:3 '= "metalShelf"
+				obsTiles:8:3 '= "metalShelf"
+				obsTiles:9:3 '= "metalShelf"
+				obsTiles:10:3 '= "metalShelf"
+				obsTiles:11:3 '= "metalShelf"
+				obsTiles:12:3 '= "metalShelf"
+				obsTiles:2:1 '= "metalShelf"
+				obsTiles:3:1 '= "metalShelf"
+				obsTiles:4:1 '= "metalShelf"
+				obsTiles:5:1 '= "metalShelf"
+				obsTiles:6:1 '= "metalShelf"
+				obsTiles:7:1 '= "metalShelf"
+				obsTiles:8:1 '= "metalShelf"
+				obsTiles:9:1 '= "metalShelf"
+				obsTiles:10:1 '= "metalShelf"
+				obsTiles:11:1 '= "metalShelf"
+				obsTiles:12:1 '= "metalShelf"
+				FOR LOCAL,0,obsX
+				FOR LOCAL:1,0,obsY
+				floorTiles:LOCAL:(LOCAL:1) '= "floorWood"
+				NEXT
+				NEXT
+			CASE 2
+				;storefront
+				obsX = 7
+				obsY = 9
+				obsTiles:0:0 '= "wallBrick"
+				obsTiles:0:1 '= "wallBrick"
+				obsTiles:0:2 '= "wallBrick"
+				obsTiles:0:3 '= "wallBrick"
+				obsTiles:0:4 '= "wallBrick"
+				obsTiles:0:5 '= "wallBrick"
+				obsTiles:0:6 '= "wallBrick"
+				obsTiles:0:7 '= "wallBrick"
+				obsTiles:0:8 '= "wallBrick"
+				obsTiles:6:0 '= "wallBrick"
+				obsTiles:6:1 '= "wallBrick"
+				obsTiles:6:2 '= "wallBrick"
+				obsTiles:6:3 '= "wallBrick"
+				obsTiles:6:4 '= "wallBrick"
+				obsTiles:6:5 '= "wallBrick"
+				obsTiles:6:6 '= "wallBrick"
+				obsTiles:6:7 '= "wallBrick"
+				obsTiles:6:8 '= "wallBrick"
+				obsTiles:1:0 '= "wallBrick"
+				obsTiles:2:0 '= "wallBrick"
+				obsTiles:3:0 '= "wallBrick"
+				obsTiles:4:0 '= "wallBrick"
+				obsTiles:5:0 '= "wallBrick"
+				obsTiles:6:0 '= "wallBrick"
+				obsTiles:1:8 '= "wallBrick"
+				obsTiles:2:8 '= "wallBrick"
+				obsTiles:4:8 '= "wallBrick"
+				obsTiles:5:8 '= "wallBrick"
+				obsTiles:6:8 '= "wallBrick"
+				;shelves
+				obsTiles:2:7 '= "metalShelf"
+				obsTiles:1:1 '= "metalShelf"
+				obsTiles:1:2 '= "metalShelf"
+				obsTiles:1:4 '= "metalShelf"
+				obsTiles:1:5 '= "metalShelf"
+				obsTiles:3:1 '= "metalShelf"
+				obsTiles:3:2 '= "metalShelf"
+				obsTiles:3:4 '= "metalShelf"
+				obsTiles:3:5 '= "metalShelf"
+				obsTiles:5:1 '= "metalShelf"
+				obsTiles:5:2 '= "metalShelf"
+				obsTiles:5:4 '= "metalShelf"
+				obsTiles:5:5 '= "metalShelf"
+			CASE 3
+				;apartments, top facing
+				obsX = 15
+				obsY = 9
+				obsTiles:0:0 '= "wallBrick"
+				obsTiles:0:1 '= "wallBrick"
+				obsTiles:0:2 '= "wallBrick"
+				obsTiles:0:3 '= "wallBrick"
+				SIF startGridLoc:0 == 0
+					obsTiles:0:4 '= "wallBrick"
+				obsTiles:0:5 '= "wallBrick"
+				obsTiles:0:6 '= "wallBrick"
+				obsTiles:0:7 '= "wallBrick"
+				obsTiles:0:8 '= "wallBrick"
+				obsTiles:1:0 '= "wallBrick"
+				obsTiles:2:0 '= "wallBrick"
+				obsTiles:3:0 '= "wallBrick"
+				obsTiles:4:0 '= "wallBrick"
+				obsTiles:5:0 '= "wallBrick"
+				obsTiles:6:0 '= "wallBrick"
+				;obsTiles:7:0 '= "wallBrick"
+				obsTiles:8:0 '= "wallBrick"
+				obsTiles:9:0 '= "wallBrick"
+				obsTiles:10:0 '= "wallBrick"
+				obsTiles:11:0 '= "wallBrick"
+				obsTiles:12:0 '= "wallBrick"
+				obsTiles:13:0 '= "wallBrick"
+				obsTiles:14:0 '= "wallBrick"
+				obsTiles:14:1 '= "wallBrick"
+				obsTiles:14:2 '= "wallBrick"
+				obsTiles:14:3 '= "wallBrick"
+				obsTiles:14:4 '= "wallBrick"
+				obsTiles:14:5 '= "wallBrick"
+				obsTiles:14:6 '= "wallBrick"
+				obsTiles:14:7 '= "wallBrick"
+				obsTiles:14:8 '= "wallBrick"
+				obsTiles:0:8 '= "wallBrick"
+				obsTiles:1:8 '= "wallBrick"
+				obsTiles:2:8 '= "wallBrick"
+				obsTiles:3:8 '= "wallBrick"
+				obsTiles:4:8 '= "wallBrick"
+				obsTiles:5:8 '= "wallBrick"
+				obsTiles:6:8 '= "wallBrick"
+				SIF startGridLoc:1+obsY >= TGC_MapSize:1-1
+					obsTiles:7:8 '= "wallBrick"
+				obsTiles:8:8 '= "wallBrick"
+				obsTiles:9:8 '= "wallBrick"
+				obsTiles:10:8 '= "wallBrick"
+				obsTiles:11:8 '= "wallBrick"
+				obsTiles:12:8 '= "wallBrick"
+				obsTiles:13:8 '= "wallBrick"
+				SIF startGridLoc:0 == TGC_MapSize:1-1
+					obsTiles:14:8 '= "wallBrick"
+				;rooms
+				obsTiles:2:3 '= "wallBrick"
+				obsTiles:3:3 '= "wallBrick"
+				obsTiles:3:2 '= "wallBrick"
+				obsTiles:3:1 '= "wallBrick"
+				obsTiles:5:3 '= "wallBrick"
+				obsTiles:6:3 '= "wallBrick"
+				obsTiles:6:2 '= "wallBrick"
+				obsTiles:6:1 '= "wallBrick"
+				obsTiles:9:3 '= "wallBrick"
+				obsTiles:8:3 '= "wallBrick"
+				obsTiles:8:2 '= "wallBrick"
+				obsTiles:8:1 '= "wallBrick"
+				obsTiles:12:3 '= "wallBrick"
+				obsTiles:11:3 '= "wallBrick"
+				obsTiles:11:2 '= "wallBrick"
+				obsTiles:11:1 '= "wallBrick"
+				obsTiles:2:5 '= "wallBrick"
+				obsTiles:3:5 '= "wallBrick"
+				obsTiles:3:6 '= "wallBrick"
+				obsTiles:3:7 '= "wallBrick"
+				obsTiles:5:5 '= "wallBrick"
+				obsTiles:6:5 '= "wallBrick"
+				obsTiles:6:6 '= "wallBrick"
+				obsTiles:6:7 '= "wallBrick"
+				obsTiles:9:5 '= "wallBrick"
+				obsTiles:8:5 '= "wallBrick"
+				obsTiles:8:6 '= "wallBrick"
+				obsTiles:8:7 '= "wallBrick"
+				obsTiles:12:5 '= "wallBrick"
+				obsTiles:11:5 '= "wallBrick"
+				obsTiles:11:6 '= "wallBrick"
+				obsTiles:11:7 '= "wallBrick"
+				FOR LOCAL,0,obsX
+				FOR LOCAL:1,0,obsY
+				floorTiles:LOCAL:(LOCAL:1) '= "floorWood"
+				NEXT
+				NEXT
+		ENDSELECT
+	CASE "tree"
+		SELECTCASE ARG:1
+			CASE 0
+				;a single tree.
+				obsX = 1
+				obsY = 1
+				obsTiles:0:0 '= "tree"
+			CASE 1
+				;a 3x3 random grid of trees
+				obsX = 3
+				obsY = 3
+				SIF !RAND:3
+					obsTiles:0:0 '= "tree"
+				SIF !RAND:3
+					obsTiles:1:0 '= "tree"
+				SIF !RAND:3
+					obsTiles:2:0 '= "tree"
+				SIF !RAND:3
+					obsTiles:0:1 '= "tree"
+				SIF !RAND:3
+					obsTiles:1:1 '= "tree"
+				SIF !RAND:3
+					obsTiles:2:1 '= "tree"
+				SIF !RAND:3
+					obsTiles:0:2 '= "tree"
+				SIF !RAND:3
+					obsTiles:1:2 '= "tree"
+				SIF !RAND:3
+					obsTiles:2:2 '= "tree"
+		ENDSELECT
+ENDSELECT
+ARRAYCOPY "obsTiles", "obsTileStorage"
+ARRAYCOPY "floorTiles", "floorTileStorage"
+SELECTCASE rotationAngle
+	CASE 1
+		FOR LOCAL,0,obsX
+		FOR LOCAL:1,0,obsY
+		obsTiles:LOCAL:(LOCAL:1) '= obsTileStorage:(LOCAL:1):LOCAL
+		floorTiles:LOCAL:(LOCAL:1) '= floorTileStorage:(LOCAL:1):LOCAL
+		NEXT
+		NEXT
+	CASE 2
+		FOR LOCAL,0,obsX
+		FOR LOCAL:1,0,obsY
+		obsTiles:LOCAL:(LOCAL:1) '= obsTileStorage:LOCAL:((obsY-1)-LOCAL:1)
+		floorTiles:LOCAL:(LOCAL:1) '= floorTileStorage:LOCAL:((obsY-1)-LOCAL:1)
+		NEXT
+		NEXT
+	CASE 3
+		FOR LOCAL,0,obsX
+		FOR LOCAL:1,0,obsY
+		obsTiles:LOCAL:(LOCAL:1) '= obsTileStorage:((obsX-1)-LOCAL:1):((obsY-1)-LOCAL)
+		floorTiles:LOCAL:(LOCAL:1) '= floorTileStorage:((obsX-1)-LOCAL:1):((obsY-1)-LOCAL)
+		NEXT
+		NEXT
+	CASEELSE
+		;original/invalid
+ENDSELECT
+IF !TGC_ObstacleHasSpace(ARG,obsX,obsY)
+	;DEBUGPRINTFORML TGC_GenerateObstacleStructure: Couldn't reserve {obsX} X, {obsY} Y spaces for object %ARGS% ID {ARG:1}
+	RETURN 0
+ENDIF
+;CREATE!
+startGridLoc:0 = DT_CELL_GET("TGC_Map", ARG, "x", 1)
+startGridLoc:1 = DT_CELL_GET("TGC_Map", ARG, "y", 1)
+;get reserved grids
+reservedGridLocCount = DT_SELECT("TGC_Map", @"x >= {startGridLoc:0} and x <= {startGridLoc:0+obsX} and y >= {startGridLoc:1} and y < {startGridLoc:1+obsY}", "", reservedGridLocs)
+;check all
+FOR LOCAL, 0, reservedGridLocCount
+currentGridLoc:0 = DT_CELL_GET("TGC_Map", reservedGridLocs:LOCAL, "x", 1)
+currentGridLoc:1 = DT_CELL_GET("TGC_Map", reservedGridLocs:LOCAL, "y", 1)
+;DEBUGPRINTFORML TGC_GenerateObstacleStructure: Set coverType for grid {reservedGridLocs:LOCAL} to %obsTiles:(currentGridLoc:0-startGridLoc:0):(currentGridLoc:1-startGridLoc:1)%
+;cover
+LOCALS '= obsTiles:(currentGridLoc:0-startGridLoc:0):(currentGridLoc:1-startGridLoc:1)
+CALLF TGC_ObstacleTypes(LOCALS)
+DT_CELL_SET "TGC_Map", reservedGridLocs:LOCAL, "coverType", LOCALS, 1
+DT_CELL_SET "TGC_Map", reservedGridLocs:LOCAL, "coverHealth", TGC_Obs:1, 1
+;floor
+LOCALS '= floorTiles:(currentGridLoc:0-startGridLoc:0):(currentGridLoc:1-startGridLoc:1)
+SIF STRLENS(LOCALS)
+	DT_CELL_SET "TGC_Map", reservedGridLocs:LOCAL, "floorType", LOCALS, 1
+NEXT
+;DEBUGPRINTFORML TGC_GenerateObstacleStructure: Reserved {obsX} X, {obsY} Y spaces for object %ARGS% ID {ARG:1}
+RETURN 1
+;Obstacle types:
+;Walls
+; Drywall (concealment only)
+; Wooden wall (VPAM 3)
+; Brick wall (VPAM 11)
+;Trees
+; Tree (VPAM 5)
+;Rocks
+; Brick wall (VPAM 9)
+;Impassable Terrain
+; Will stop all bullets
+; Cannot go through. Must pass.
+;ARG: Map location ID
+
+@TGC_ObstacleTypes(ARGS)
+#FUNCTION
+#DIM obsArmor ;armor the obstacle provides
+#DIM obsHealth ;health the obstacle has
+#DIM obsCanPassThrough ; bit 0: characters, bit 1: projectiles
+#DIMS obsSymbol; symbol used
+#DIMS obsLabel
+#DIM obsColor; color for the symbol
+SELECTCASE ARGS
+	CASE "tree"
+		obsLabel '= "Tree"
+		obsArmor = 5
+		obsHealth = 3500
+		obsSymbol '= "▲▲"
+		obsColor = 0x42692f
+	CASE "wallWood"
+		obsLabel '= "Wood Wall"
+		obsArmor = 3
+		obsHealth = 3500
+		obsSymbol '= "■■"
+		obsColor = 0x6f595d
+	CASE "wallBrick"
+		obsLabel '= "Brick Wall"
+		obsArmor = 3
+		obsHealth = 3500
+		obsSymbol '= "■■"
+		obsColor = C_RED
+	CASE "sandBag"
+		obsLabel '= "Sandbags"
+		obsArmor = 8
+		obsHealth = 5000
+		obsSymbol '= "SB"
+		obsColor = C_ORANGE
+	CASE "metalShelf"
+		obsLabel '= "Metal Shelf"
+		obsArmor = 5
+		obsHealth = 5000
+		obsSymbol '= "===="
+		obsColor = 0xb0bebc
+		; CASE "wallBrick"
+		;     obsArmor = 11
+		;     obsHealth = 9000
+		;     obsCanPassThrough = 0
+ENDSELECT
+TGC_Obs:0 = obsArmor
+TGC_Obs:1 = obsHealth
+TGC_Obs:2 = obsColor
+TGC_ObsSTR '= obsSymbol
+TGC_ObsSTR:1 '= obsLabel
+
+@TGC_FloorTypes(ARGS)
+#FUNCTION
+#DIM obsMoveCost ;spaces it costs to move
+#DIM obsCanPassThrough ; bit 0: characters, bit 1: projectiles
+#DIMS obsSymbol; symbol used
+#DIMS obsLabel
+#DIM obsColor; color for the symbol
+SELECTCASE ARGS
+	;Outside
+	CASE "road"
+		obsLabel '= "Asphalt Road"
+		obsSymbol '= "◦◦◦◦"
+		obsColor = C_GRAY
+		obsMoveCost = 1
+	CASE "roadDirt"
+		obsLabel '= "Dirt Road"
+		obsSymbol '= "◦◦◦◦"
+		obsColor = C_GRAY
+		obsMoveCost = 1
+	CASE "grass"
+		obsLabel '= "Grass"
+		obsSymbol '= "◦◦◦◦"
+		obsColor = 0x1b2415
+		obsMoveCost = 1
+	CASE "river"
+		obsLabel '= "River"
+		obsSymbol '= "◦◦◦◦"
+		obsColor = C_AQUA
+		obsMoveCost = 4
+	CASE "sand"
+		obsLabel '= "Sand"
+		obsSymbol '= "◦◦◦◦"
+		obsColor = C_YELLOW
+		obsMoveCost = 2
+	CASE "bridgeWood"
+		obsLabel '= "Wood Bridge"
+		obsSymbol '= "####"
+		obsColor = 0x6f595d
+		obsMoveCost = 1
+		;Inside
+	CASE "floorWood"
+		obsLabel '= "Wood Floor"
+		obsSymbol '= "++++"
+		obsColor = 0x382e30
+		obsMoveCost = 1
+		;Filth
+	CASE "filthCum"
+		obsLabel '= "Semen"
+		obsSymbol '= "⌘⌘"
+		obsColor = C_WHITE
+		obsMoveCost = 1
+	CASE "filthPee"
+		obsLabel '= "Pee"
+		obsSymbol '= "⌘⌘"
+		obsColor = C_YELLOW
+		obsMoveCost = 4
+	CASE "filthShit"
+		obsLabel '= "Poop"
+		obsSymbol '= "⌘⌘"
+		obsColor = CF_JellyOrPoo()
+		obsMoveCost = 4
+	CASEELSE
+		obsLabel '= "Terrain"
+		obsSymbol '= "◦◦◦◦"
+		obsColor = 0x6f8f99
+		obsMoveCost = 2
+ENDSELECT
+TGC_Obs:2 = obsColor
+TGC_ObsSTR '= obsSymbol
+TGC_ObsSTR:1 '= obsLabel
+;ARG:0: root position, usually the top left
+;ARG:1: X space needed
+;ARG:2: Y space needed
+
+@TGC_ObstacleHasSpace(ARG, ARG:1, ARG:2)
+#FUNCTION
+#DIM currentGridLoc,2
+#DIM reservedGridLocs,300
+#DIM reservedGridLocCount
+currentGridLoc:0 = DT_CELL_GET("TGC_Map", ARG, "x", 1)
+currentGridLoc:1 = DT_CELL_GET("TGC_Map", ARG, "y", 1)
+;not enough space
+SIF currentGridLoc:0+ARG:1 > TGC_MapSize:0 || currentGridLoc:1+ARG:2 > TGC_MapSize:1
+	RETURNF 0
+;get reserved grids
+reservedGridLocCount = DT_SELECT("TGC_Map", @"x >= {currentGridLoc:0} and x <= {currentGridLoc:0+ARG:1} and y >= {currentGridLoc:1} and y < {currentGridLoc:1+ARG:1}", "", reservedGridLocs)
+;check all
+FOR LOCAL, 0, reservedGridLocCount
+;obstacle blocked, do not generate.
+SIF STRLENS(DT_CELL_GETS("TGC_Map", reservedGridLocs:LOCAL, "coverType", 1))
+	RETURNF 0
+NEXT
+;clear
+RETURNF 1
+
+@TGC_ClickMap
+#FUNCTION
+SELECTCASE TGC_CurrentAction
+	CASE "attack_S1", "attack_S2", "attack_S3"
+		RETURNF 0
+	CASE "doSpell_S1", "doSpell_S2"
+		RETURNF 0
+	CASE "turnEnd", "wait"
+		RETURNF 0
+	CASEELSE
+		RETURNF 1
+ENDSELECT
+; Option for opponents to ask for surrender if you're hurt enough
+; Based on the stats that are already there? I guess someone who prefers non lethal will be more likely to do that
+; Variable thresholds for "hurt enough" depending on the current stats
+; More paranoia could maybe make that happen less
+; It replaces their attack but if you do attack them instead of surrendering they just knock you/kill you instead
+
+@TGC_NPCDemandSurrender(Surrenderer,Surrendee)
+#DIM Surrenderer
+#DIM Surrendee
+IF Surrendee == MASTER
+	PRINTFORML %CALLNAME:Surrenderer% 점 %HIS_HER(Surrenderer)% %PrintWeaponName(Surrenderer)% 너에게 달려들며 항복하라고 요구한다.
+	CALL ASK_M( "복종하라", 1, "저항하다", 1, "TSP와 실행", 1, "투항 및 구속", 1 )
+	SELECTCASE RESULT
+		CASE 0
+			PRINTFORMW 당신은 %CALLNAME:Surrenderer%의 명령에 복종하고 손을 올린다.
+			PRINTFORMW %HE_SHE(Surrenderer,1)%이/가 당신에게 걸어와 팔을 제압한다.
+		CASE 1
+			PRINTFORMW 당신은 %CALLNAME:Surrenderer%의 명령을 무시하고 계속 공격한다.
+			PRINTFORMW %CALLNAME:Surrenderer%는 이제 \@ nNecro ? 죽이기 # 기절시키기 \@ 위해 공격할 것이다.
+		CASE 2
+			PRINTFORMW 당신의 시간 능력을 사용하여 %CALLNAME:Surrenderer%에게 이동하고 %HIM_HER(Surrenderer)%을 실행한다.
+		CASE 3
+			PRINTFORMW 당신의 시간 능력을 사용하여 %CALLNAME:Surrenderer%에게 이동하여 밧줄로 %HIM_HER(Surrenderer)%를 제압한다.
+			TCVAR:Surrenderer:Grievous_Harm = 1
+			SIF !TFLAG:妄想中 && Surrendee != MASTER
+				CALL FightLosePenalty((Surrendee),Surrenderer)
+			DT_CELL_SET "lcCombatants", GetCombatant(Surrenderer), "nonCombatant", 2, 1
+	ENDSELECT
+ENDIF
+; im thinking of conscious imobolizations as well
+; like you shoot off their arm or leg and they will most likely surrender
+; and if they can't move then they'll also surrender automaticly
+; at max bravery they will not surrender unless they are killed or knocked out
+; at no bravery they will surrender if they get hit at all (above a minimum threshold of like 50)
+
+@TGC_WILL_SURRENDER(ARG)
+;COMBAT_BRAVERY(ARG)
+;critically injured.
+;overwhelming force
+;damaged
+
+@TGC_SURRENDER(Surrenderer,Surrendee)
+#DIMS SurrenderLine
+#DIM Surrenderer
+#DIM Surrendee
+PRINTDATAL
+	DATAFORM %CALLNAME:Surrendee%은(는) 양손을 들고 무릎을 꿇으며 %HIS_HER(Surrendee)%의 무기를 떨어뜨린다.
+	DATAFORM %CALLNAME:Surrendee%은(는) %HIS_HER(Surrendee)%의 무기를 떨어뜨리고 두 손을 모두 올린다.
+ENDDATA
+SurrenderLine = HTML_GETPRINTEDSTR()
+CLEARLINE 1
+PRINTFORMSW SurrenderLine
+;FLAG:796 = 1
+$SurrenderingPass
+TCVAR:TGC_LookingAt:Grievous_Harm = 1
+;SIF !TFLAG:妄想中 && TGC_CurrentAtSurrenderertacker != MASTER
+CALL FightLosePenalty((Surrenderer),Surrendee)
+DT_CELL_SET "lcCombatants", GetCombatant(Surrendee), "nonCombatant", 2, 1
+SIF !GetCombatantSize(2) || !GetCombatantSize(1)
+	TGC_CurrentAction '= "turnEnd"
+;New turn stuff
+; Team 1 vs Team 2 (3v4)
+; == Team 1 (Allies) ==
+; [  4] - Mima             | Self        | STA 19000/19000 | ArmTeck VMM-7RB (500/500)
+; [  4] - Johnson          | Ally        | STA 2000/2000   | Broughton M602 (30/30)
+; [189] - Andes            | Surrendered | STA 2000/2000   | Tricorne CBR-H (50/50)
+; == Team 2 (Enemies) ==
+; [ 46] - Meira            | Enemy       | STA 1900/1900   | Fists
+; [ 80] - Akyuu            | Enemy       | STA 500/500     | Danamku
+; [ 98] - Yorihime         | Downed      | UNCONSCIOUS     | LUNINCO LAC358
+; [ 98] - Kellogg          | Downed      | DEAD            | Windurger S324 (6/6)
+
+@TGC_ShortWeaponDesc(ARG)
+#FUNCTIONS
+#DIM nWeapon
+#DIMS weaponType
+#DIM WeaponInv
+#DIM WeaponPreset
+#DIMS BrandString
+nWeapon = CharaWeaponInts:ARG:WeaponInventory ? CharaWeaponInts:ARG:WeaponInventory # EQUIP:ARG:Weapon
+IF nWeapon > 600000000000000000
+	;weaponinventory entry
+	WeaponInv = nWeapon
+	;WeaponPreset = DT_CELL_GET("WeaponInventory", ARG, "detectedPreset", 1)
+	nWeapon = DT_CELL_GET("WeaponInventory", nWeapon, "def", 1)
+ELSEIF nWeapon >= VAR_TEMP_MAX
+	WeaponPreset = nWeapon % 1000
+	nWeapon = GET_INT(0,"WeaponPreset",WeaponPreset,@"기본 무기")
+ENDIF
+CALLF UNDIES_GET_BRAND(nWeapon, 24)
+BrandString '= RESULTS:2
+weaponType '= toLower(GET_STR(0,"Weapon", nWeapon, "Class"))
+SELECTCASE GET_STR(0,"Weapon", nWeapon, "Class")
+	CASE "Rifle"
+		IF CharaWeaponInts:ARG:Burst >= 4
+			weaponType '= "automatic rifle"
+		ELSEIF CharaWeaponInts:ARG:Burst >= 2
+			weaponType '= "semi-automatic rifle"
+		ELSE
+			weaponType '= "single-fire rifle"
+		ENDIF
+		SELECTCASE TGC_WEAPON_CALIBER(nWeapon)
+			CASE 1
+				IF CharaWeaponInts:ARG:Burst >= 4
+					weaponType '= "sub-machine gun"
+				ELSE
+					weaponType '= "pistol-caliber carbine"
+				ENDIF
+			CASE 2
+				IF CharaWeaponInts:ARG:Burst >= 4
+					weaponType '= "assault rifle"
+				ENDIF
+			CASE 4
+				IF CharaWeaponInts:ARG:Burst >= 4
+					weaponType '= "automatic anti-material rifle"
+				ELSE
+					weaponType '= "anti-material rifle"
+				ENDIF
+		ENDSELECT
+		IF CharaWeaponStrs:ARG:Ammo == "84x245mmR RCL"
+			IF CharaWeaponInts:ARG:MagSize > 1
+				weaponType '= "multi-rocket launcher"
+			ELSE
+				weaponType '= "rocket launcher"
+			ENDIF
+		ENDIF
+ENDSELECT
+RETURNF BrandString+" "+CharaWeaponStrs:ARG:Ammo+" "+weaponType
+
+@TGC_WEAPON_CALIBER(ARGS)
+#FUNCTION
+ARGS '= TOLOWER(ARGS)
+;Pistol
+SIF GROUPMATCH(ARGS, "5.6x15mmr", "9x19mm", "9x18mm", "9x17mm", "10x25mm", "11.43x23mm", "5.7x28mm", "9x33mmr", "10.9x29mmr", "9x29mmr", "8.3x30mm", "7.62x20mm")
+	RETURNF 1
+;Intermediate
+SIF GROUPMATCH(ARGS, "5.56x45mm", "7.62x39mm","5.6x15mmr", "5.45x39mm", "5.8x62mm", "6.8x51mm")
+	RETURNF 2
+;Full
+SIF GROUPMATCH(ARGS, "7.62x54mmr", "7.62x51mm", "7.62x63mm", "11x60mmR")
+	RETURNF 3
+;Anti-Material
+SIF GROUPMATCH(ARGS, "12.7x99mm", "20x108mm sabot")
+	RETURNF 4
+;Shotgun
+SIF GROUPMATCH(ARGS, "18.5x70mm", "23x75mmr", "7.62x32mm sabot")
+	RETURNF 5
+;Heavy
+SIF GROUPMATCH(ARGS, "3in ball", "84x245mmr rcl")
+	RETURNF 6
+;Specialty
+SIF GROUPMATCH(ARGS, "11x17.8mmr", "mp", "11.63x40mm", "laser", "7.7x58mm", "12.7x35mm", "40x46mm", "14mm", "12.7x35mm")
+	RETURNF 9
+; SIF GROUPMATCH(ARGS, "4kw laser", "2kw laser", "8.58x70mm", "14mm")
+;     RETURN 1
+; SIF GROUPMATCH(ARGS,  "72x359mm", "6.5x48mm", "17.3mm", "12.7x33mmrb")
+;     RETURN 1
+; SIF GROUPMATCH(ARGS, "7.62x25mm", "12x32mm", "6x24mm", "8x50mm", "12.7x41mmsr", "100x695mmr", "10.75x58mmr", "7.65x25mm")
+;     RETURN 1
+RETURNF 0
+; ;Kappa Armory 5.56x45mm assault rifle
+; ;LUNINCO 7.62x51mm

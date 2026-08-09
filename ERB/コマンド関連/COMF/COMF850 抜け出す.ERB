@@ -1,0 +1,128 @@
+﻿; Modular ERB: COMF/COMF850 抜け出す.ERB
+;抜け出す
+
+@COM850
+#DIM なだめ判定
+#DIM 抜け出せない
+なだめ判定 = 0
+抜け出せない = 0
+CALL LS_SLIP_OUT() ;Custom code, alternative conditions during Lunatic Survival.
+SELECTCASE RESULT
+	CASE 1
+		RETURN 1
+	CASE 2
+		GOTO END
+ENDSELECT
+IF TCVAR:好きにして || FLAG:DoL
+	PRINTFORMW 당신은 발로 차고 몸부림친다.
+	IF RAND:100 < RAND:QOL_STRUGGLE_DIFFICULTY(TARGET) ;qol custom code
+		PRINTFORMW 하지만 모든 것이 허사였다...
+		CALL KOJO_MESSAGE_SEND("EVENT",10,TARGET,3,1)
+		DOWNBASE:MASTER:気力 += 50
+		DOWNBASE:MASTER:体力 += 50
+		SOURCE:加虐 += 100
+		TCVAR:嗜虐フラグ = 1
+		TIME += 5
+		RETURN 1
+	ENDIF
+ELSEIF TFLAG:泡風呂
+	CALL 泡風呂終了判定("攻守交代時終了")
+ELSEIF TFLAG:抱きつきモード
+	PRINTFORML 당신은 %조사처리(CALLNAME:TARGET,"를")% 뿌리친다.
+	;その他
+	IF CFLAG:TARGET:性格傾向 == 5 || !FLAG:カウンター地の文制御
+		PRINTFORML %HE_SHE(TARGET,1)%은 실망한 듯 보인다.
+		;気弱系
+	ELSEIF CFLAG:TARGET:性格傾向 == 1
+		PRINTFORML %HE_SHE(TARGET,1)%이 조금 슬퍼 보인다...
+		;強気系
+	ELSEIF CFLAG:TARGET:性格傾向 == 2
+		PRINTFORML %HE_SHE(TARGET,1)%은 차갑게 웃는다...
+		;素直系
+	ELSEIF CFLAG:TARGET:性格傾向 == 3
+		PRINTFORML %HE_SHE(TARGET,1)%은 당신의 반응을 즐긴다...
+		;真面目系
+	ELSEIF CFLAG:TARGET:性格傾向 == 4
+		PRINTFORML %HE_SHE(TARGET,1)%은/는 흥분해서 미안하다고 사과했다.
+	ENDIF
+ELSE
+	FOR LOCAL,1,CHARANUM
+	IF CFLAG:LOCAL:現在位置 == CFLAG:MASTER:現在位置 && CFLAG:LOCAL:溜まってる度 >= 500
+		なだめ判定 = LOCAL
+		BREAK
+	ENDIF
+	NEXT
+	IF !なだめ判定
+		PRINTFORML 당신은 %CALLNAME:TARGET%%COND_STR(@" and the others", GET_TARGETNUM() > 1)%로부터 벗어난다.
+	ELSE
+		IF (TALENT:MASTER:性別 & 1) && (TALENT:性別 & 1) && TIME_PROGRESS(TFLAG:押し倒され開始時間) >= 360
+			PRINTFORMW '%CALLNAME:なだめ判定%'가 조금 만족스럽지 않은 표정을 지을 때, %HE_SHE(なだめ判定)%는 힘을 풀고 당신에게서 손을 놓는다...
+			TFLAG:抱きつきモード = 0
+			TCVAR:抱きつき禁止時間 = 70 + MAX(10 - ABL:欲望, 0) * 3 - MAX((CFLAG:積極性 + CFLAG:恥じらい) * 5, 30)
+		ELSEIF !TALENT:MASTER:非童貞 && TALENT:MASTER:2 & 2
+			PRINTFORMW %CALLNAME:なだめ判定%이(가) 당신에게 머물도록 설득한다.
+			PRINTFORMW %CALLNAME:なだめ判定%이(가) 당신에게 머물도록 설득한다.
+			CALL KOJO_MESSAGE_SEND("EVENT",10,なだめ判定,3,9) ;addition custom code
+			CFLAG:なだめ判定:溜まってる度 += 50
+			BASE:なだめ判定:気力 -= 200
+			TIME += 5
+			;addition custom code, slip-out
+			CALL TSP_SLIP_OUT(なだめ判定)
+			SIF RESULT
+				GOTO END
+			;------------------------------
+			RETURN 1
+		ELSEIF TALENT:MASTER:処女 || TALENT:なだめ判定:処女
+			PRINTFORMW %CALLNAME:なだめ判定%은 어색하게 당신을 놓아준다...
+			BASE:なだめ判定:気力 -= 100
+			BASE:なだめ判定:ムード = 0
+		ELSE
+			PRINTFORMW %CALLNAME:なだめ判定%은(는) 아직 당신을 놓아줄 생각이 없는 것 같다...
+			CALL KOJO_MESSAGE_SEND("EVENT",10,なだめ判定,3,2)
+			DOWNBASE:MASTER:気力 += 100
+			DOWNBASE:MASTER:体力 += 50
+			TIME += 5
+			;addition custom code, slip-out
+			CALL TSP_SLIP_OUT(なだめ判定)
+			SIF RESULT
+				GOTO END
+			;------------------------------
+			RETURN 1
+		ENDIF
+	ENDIF
+ENDIF
+$END
+CALL 押し倒され終了
+
+@押し倒され終了(ARGS)
+FOR LOCAL,0,CHARANUM
+IF CFLAG:LOCAL:うふふ == 2 || LOCAL == TARGET
+	IF ARGS == "満足"
+		CALL KOJO_MESSAGE_SEND("EVENT",30,LOCAL,2)
+	ELSEIF ARGS == "疲れた"
+		CALL KOJO_MESSAGE_SEND("EVENT",30,LOCAL,1)
+		;押し倒されモード終了
+	ELSEIF CFLAG:LOCAL:うふふ == 2 && LOCAL != 0 && !TFLAG:抱きつきモード && CFLAG:MASTER:現在位置 == CFLAG:LOCAL:現在位置
+		CALL KOJO_MESSAGE_SEND("EVENT",10,LOCAL,2,0)
+		;抱きつきモード満足終了
+	ELSEIF TFLAG:抱きつきモード && TARGET == LOCAL
+		CALL KOJO_MESSAGE_SEND("EVENT",10,LOCAL,2,1)
+		;抱きつきモード強制終了
+	ELSEIF TFLAG:102 == 1 && TARGET == LOCAL
+		CALL KOJO_MESSAGE_SEND("EVENT",10,LOCAL,2,2)
+	ENDIF
+	SIF CFLAG:LOCAL:うふふ == 2
+		CALL SET_DERAY(5,LOCAL)
+	BASE:LOCAL:ムード = BASE:LOCAL:ムード / 2
+	BASE:LOCAL:理性 = MIN(BASE:LOCAL:理性 + 300, MAXBASE:LOCAL:理性)
+	CFLAG:LOCAL:うふふ = 0
+	;ウフフ時系装備リセット
+	CALL ENDUFUFU(LOCAL)
+ENDIF
+NEXT
+TFLAG:102 = 1
+TFLAG:106 = 0
+;MASTERとの接触位置をリセット
+CALL TOUCH_SET(0,0,0,1)
+TIME += 5
+RETURN 1

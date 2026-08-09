@@ -1,0 +1,106 @@
+﻿; Modular ERB: OMOGATARI/REQUESTS/Request43_Babysitting.ERB
+;WIP WIP WIP
+;存否関数
+;F関数はTRYCALL系が使えないので通常関数で存否配列を作っちゃう
+
+@EXIST_一般依頼43
+#LOCALSIZE 1
+#LOCALSSIZE 1
+;オブジェクト本体
+;ここでARGで渡されるのはCLIENT_IDです
+
+@一般依頼43(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+RETURNF
+SELECTCASE O_DATA
+	CASE "依頼名"
+		CALLF MAKE_STR(V_NAME, "Babysitting")
+	CASE "依頼内容表示"
+		LOCALS '= @"%CALLNAME:ARG%의 아이를 돌봐라"
+		CALLF MAKE_STR(V_NAME, @"%LOCALS%")
+	CASE "依頼報酬表示"
+		CALLF MAKE_STR(V_NAME, @"호의 + 퇴행 보석")
+	CASE "依頼実行コマンド名"
+		CALLF MAKE_STR(V_NAME, "Change")
+	CASE "依頼内容"
+		CALLF MAKE_INT(V_NAME, MAKE_IRAI_DATA(ARG, "person"))
+	CASE "依頼サブ"
+	CASE "依頼期限"
+		;発生時ではなく受託時に確定します
+		CALLF MAKE_INT(V_NAME, 0)
+	CASE "依頼発生率"
+		;これは他の一般依頼との相対確率なんで10％ではありません
+		;percentage change of being shown. (set to 100 to always show)
+		;CALLF MAKE_INT(V_NAME, 100)
+		CALLF MAKE_INT(V_NAME, 50)
+	CASE "依頼発生条件"
+		CALLF MAKE_INT(V_NAME, 1)
+	CASE "依頼受託可能条件"
+		;あなたの戦闘能力が1以上
+		IF (!nOmutsu && !GETBIT(nPee,1) && !GETBIT(nScat,2)) || (IsPadded(ARG,"diaper") && !SoiledDiaper(ARG)) || ARG == 93
+			CALLF MAKE_INT(V_NAME, 0)
+		ELSEIF SoiledDiaper(ARG) || ((ABL:ARG:DiaperAttraction >= 5 || IS_BABY(ARG)) && !IsPadded(ARG)) || PeeHold:ARG:2 <= -2 || PooHold:ARG:2 <= -2
+			CALLF MAKE_INT(V_NAME, 1)
+		ENDIF
+	CASE "依頼実行可能条件"
+		IF IsPadded(ARG,"diaper") && !SoiledDiaper(ARG)
+			CALLF MAKE_INT(V_NAME, 0)
+		ELSE
+			CALLF MAKE_INT(V_NAME, 1)
+		ENDIF
+		;成功/失敗処理はCARRYOUTで直接書く
+		;SOURCEやITEM入手、消費が煩雑になるので
+	CASE "依頼消滅条件"
+		;cancel
+		SIF Add_Request_Should_Discard(ARG)
+			CALLF MAKE_INT(V_NAME, 1)
+	CASE "依頼人連れ出し可能"
+ENDSELECT
+
+@IRAI_一般43(CHARA, IRAI_ID, SCENE)
+#DIM  CHARA
+#DIM  IRAI_ID
+#DIMS SCENE
+#DIM  CLIENT_ID
+#DIM  CHK_SLOT
+#DIM  OPPONENT_REMAIN
+#DIM  DIAPER
+CLIENT_ID = IRAI_ID_TO_CLIENT(IRAI_ID)
+CHK_SLOT  = SEARCH_IRAI_SLOT(IRAI_ID)
+SELECTCASE SCENE
+	CASE "依頼条件表示"
+		;何か専用の表示情報を設けたい時用
+		;受託済みの依頼表示で使用されます
+		;
+		;PRINT系だけでSOURCEとかは入れちゃダメ、WAITも無しで
+		;ここ以外の表示項目は
+		;PRINTFORML 　　　　　：
+		;となっているのでスペースを揃えたほうが見栄えが良いです
+	CASE "依頼実行時"
+		;このCASEに限り、RESULTが意味を持ちます
+		;依頼実行時のRESULTにはIRAI_CONST_RESULT()を使用してください
+		;可能な引数は"キャンセル", "実行して成功", "実行して失敗", "実行して未解決"です
+		;独自処理を仕込みたい時は"実行して未解決"で先延ばしするなりしてください
+		;
+		;
+		;実行できないパターン
+		;拠点では屋内だとダメ（原作だとめっちゃやってるけど）
+		;ほぼ弾幕勝負のコピペ
+		RETURN IRAI_CONST_RESULT("実行して成功")
+	CASE "依頼成功時"
+		;成功報告時の報酬など
+		SOURCE:歓楽 = 3000
+		CALL CHANGE_CFLAG(2, CHARA, 10 + RAND:5)
+		CALL CHANGE_CFLAG(4, CHARA, 15 + RAND:5)
+		RELATION:CHARA:MASTER = LIMIT(RELATION:CHARA:MASTER+5,10,300)
+	CASE "依頼失敗時"
+		;失敗報告時の処理
+		;過酷な依頼なので少しだけ
+		PRINTFORML %CALLNAME:CHARA%는 당신이 아기를 돌보지 않은 것에 대해 속상해하는 것 같다.
+		CALL CHANGE_CFLAG(2, CHARA, -3)
+		CALL CHANGE_CFLAG(4, CHARA, -2)
+ENDSELECT

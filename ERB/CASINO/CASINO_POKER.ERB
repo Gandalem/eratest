@@ -1,0 +1,186 @@
+﻿; Modular ERB: CASINO_POKER.ERB
+;紅魔カジノ作者（morph）による改造
+;基本的には実処理は変更せずに記述法を変えただけ
+;
+;備考：シャッフルのタイミングについて
+;BJで採用しているような方式にすればプレイヤーに勝たせることもできるんだけど
+;・最高倍率がx300
+;・後半になるほどプレイヤー有利になる（今までの捨て札から予想できる）
+;・プレイヤーは自由にBETを変化させられる
+;この条件でシャッフルを毎回しない形式にするとプレイヤーが勝ちすぎる予感がする
+;最初の5回は1BET、残りは最高BETで勝負とか猛威をふるうのでは？
+;とはいえ現状のPOKERはBETによる駆け引きもなく
+;ゲーム性（プレイヤーからの介入要素）に乏しいような気もするなー
+
+@CASINO_POKER
+#DIM PL = 0   ;プレイヤーに割り振る番号、とりあえず1人プレイなので0でよし
+#DIM P_BET    ;BET金額
+#DIM ORI_BET  ;特に使ってないっぽい
+#DIM HOLD     ;BIT利用、手札0～4のHOLD状況
+#DIM PK_RATE  ;役による倍率
+#DIM TOTAL, 3 ;結果、TOTAL:1＝損失、TOTAL:2＝利益
+VARSET TOTAL
+;参加プレイヤーはひとり
+NUM_CARD_PL = 1
+IF !MONEY:2
+	PRINTFORML 요정 메이드
+	PRINTFORML 　「고객님께, 이 카지노에서는 "카리스마"라는 특별한 통화만을 사용합니다.」
+	PRINTFORMW 　「불편을 드려 죄송하지만, 부디 카리스마를 구매해 주십시오.」
+	RETURN
+ENDIF
+CALL CASINO_INPUTLOOP("カード賭け金")
+IF !RESULT
+	P_BET = 0
+ELSE
+	P_BET = RESULT
+	ORI_BET = RESULT
+	TOTAL:1 += P_BET
+	CALL CASINO_MONEY("カリスマ", -P_BET)
+ENDIF
+WHILE P_BET
+VARSET HOLD
+CALL PLAY_CARDS("SHUFFLE")
+PRINTFORML 
+PRINTFORMW 요정 하녀가 덱을 섞었다.
+;手札をリセットして5枚引く
+CALL PLAY_CARDS("RESET_HAND")
+CALL PLAY_CARDS("POKER_FIRST_HAND", PL)
+DO
+CALL CARD_DISP("HAND_BUTTON", PL)
+PRINTFORML 
+FOR LOCAL, 0, 5
+IF GETBIT(HOLD, LOCAL)
+	PRINTBUTTON "[　HOLD　]", LOCAL
+ELSE
+	PRINTBUTTON "[ＣＨＡＮＧＥ]", LOCAL
+ENDIF
+NEXT
+PRINTFORML 
+DRAWLINE
+PRINTFORML [9] - 　ＤＲＡＷ　
+INPUT
+SELECTCASE RESULT
+	CASE 9
+		BREAK
+	CASE 0 TO 4
+		INVERTBIT HOLD, RESULT
+ENDSELECT
+LOOP 1
+IF HOLD == 0b11111
+ELSE
+	PRINTFORMW 카드가 교환될 것이다.
+	FOR LOCAL, 0, 5
+	SIF GETBIT(HOLD, LOCAL)
+		CONTINUE
+	CALL PLAY_CARDS("REHIT", PL, LOCAL)
+	NEXT
+ENDIF
+PRINTFORML 
+CALL CARD_DISP("HAND", PL)
+WAIT
+;結果の判定
+PK_RATE = CARD_PLAYER("GET_POKER_RATE", PL)
+P_BET = P_BET * PK_RATE / 100
+FONTSTYLE 3
+SETCOLOR C_YELLOW
+SELECTCASE PK_RATE
+	;RATEは％値
+	CASE 30000
+		LOCALS = ＲＯＹＡＬ ＦＬＵＳＨ！
+	CASE 5000
+		LOCALS = ＳＴＲＡＩＧＨＴ ＦＬＵＳＨ！
+	CASE 3000
+		;これだけスカーレットカラーにしてみる
+		SETCOLOR C_RED
+		LOCALS = ４ ＯＦ Ａ ＫＩＮＤ！
+	CASE 2000
+		LOCALS = ＦＵＬＬ ＨＯＵＳＥ！
+	CASE 1000
+		LOCALS = ＦＬＵＳＨ！
+	CASE 500
+		LOCALS = ＳＴＲＡＩＧＨＴ！
+	CASE 300
+		LOCALS = ３ ＯＦ Ａ ＫＩＮＤ！
+	CASE 100
+		LOCALS = ＴＷＯ　ＰＡＩＲ
+	CASE 50
+		LOCALS = ＯＮＥ　ＰＡＩＲ
+	CASE 0
+		LOCALS = ＮＯ　ＰＡＩＲ
+ENDSELECT
+PRINTFORML 
+PRINTFORML %LOCALS%
+PRINTFORML 
+RESETCOLOR
+FONTREGULAR
+PRINTFORMW ＲＥＷＡＲＤ：{P_BET}
+CALL CASINO_MONEY("カリスマ", P_BET)
+TOTAL:2 += P_BET
+TIME += 5
+;ゲームの続行判定
+SIF NEMUKE() >= 700
+	BREAK
+SIF MONEY:2 <= 0
+	BREAK
+PRINTFORML 　「자, 이제 게임을 계속하시겠습니까?」
+PRINTFORML 
+CALL CASINO_INPUTLOOP("カード続行")
+SELECTCASE RESULT
+	CASE 0
+		P_BET = 0
+	CASE 1
+		IF MONEY:2 < P_BET
+			PRINTFORML 요정 메이드
+			PRINTFORML 　「당신은 카리스마가 충분하지 않은 것 같군요...」
+			PRINTFORML 　「내기를 변경해 주세요.」
+			PRINTFORML 
+			CALL CASINO_INPUTLOOP("カード賭け金")
+			P_BET = RESULT
+			ORI_BET = RESULT
+			SIF RESULT
+				PRINTFORML 
+		ELSE
+			P_BET = ORI_BET
+		ENDIF
+	CASE 2
+		PRINTFORML 요정 메이드
+		PRINTFORML 　「내 베팅을 해 주세요.」
+		PRINTFORML 
+		CALL CASINO_INPUTLOOP("カード賭け金")
+		P_BET = RESULT
+		ORI_BET = RESULT
+		SIF RESULT
+			PRINTFORML 
+ENDSELECT
+IF P_BET
+	TOTAL:1 += P_BET
+	CALL CASINO_MONEY("カリスマ", -P_BET)
+	PRINTFORML 요정 하녀
+	PRINTFORML 　「당신의 {P_BET} 카리스마 베팅이 받아들여졌습니다.」
+	PRINTFORMW 　「게임을 계속 진행하시겠습니까.」
+ENDIF
+WEND
+IF NEMUKE() >= 700
+	PRINTFORML 
+	PRINTFORML 요정 메이드
+	PRINTFORML 　「어... 손님?」
+	PRINTFORML 　「오늘은 긴 하루였어요.」
+	PRINTFORML 　「지금은 게임을 그만둬야 할 것 같아요.」
+	PRINTFORMW 　「다른 때 다시 뵙기를 고대하겠습니다.」
+ELSEIF MONEY:2 <= 0
+	PRINTFORML 
+	PRINTFORML 요정 메이드
+	PRINTFORML 　「유감스럽게도, 당신은 매력을 다 써버린 것 같다...」
+	PRINTFORMW 　「다음에 또 만날 수 있기를 기대하겠다.」
+ELSE
+	PRINTFORML 요정 하녀
+	PRINTFORML 　「분명하죠.」
+	PRINTFORMW 　「앞으로도 계속 이용해 주시기를 고대하겠습니다.」
+ENDIF
+;カモはまとめて精算, カモシステムをよく理解していないのでまずかったらすみません……
+;賭け金を使っていたらリザルト表示
+IF TOTAL:1
+	CALL CASINO_MONEY("カモ", TOTAL:1)
+	CALL CASINO_DISP("RESULT", TOTAL:1, TOTAL:2)
+ENDIF
+VARSET TOTAL

@@ -1,0 +1,612 @@
+﻿; Modular ERB: Addition/Add_HateMarkForgiveness.ERB
+;////////////////////////////////////////////////////////////////////////////////////////////////
+;Replacement for after date hate mark forgiveness system, called from QoLDateEvent
+;The problem of the original system is that the requirements weren't clear,
+;and the cost continued to grow with each level of Intimacy, making it essentially impossible
+;to reliably achieve forgiveness. The fact that you needed to have the same Gems that would
+;increase Intimacy (even at a half requirement) made it extra difficult, and those Gems weren't
+;even accrued during the date!
+;This system aims to address all these issues, in addition to making it possible to pay with
+;various other gems depending on character's disposition, similar to classic training games
+;////////////////////////////////////////////////////////////////////////////////////////////////
+
+@Add_HateMarkForgiveness(ARG,NASOver)
+#DIM nHateMarkForgivenessReq = 0, 5000, 20000, 50000, 250000, 1000000 ;default requirements
+#DIM DYNAMIC nReq ;calculated requirement
+#DIM DYNAMIC NASOver ;NAS: for out of date use
+;first, temporarily set ARG as TARGET for ease
+LOCAL:9 = TARGET
+TARGET = ARG
+SIF !MARK:反発刻印 ;failsafe
+	RETURN -3
+;NAS Conditionals
+SIF MARK:3 >= 5
+	RETURN -3
+SIF NASOver
+	GOTO FORCE_SET
+;================
+;preface - this function assumes that all the prerequisite requirements were already fulfilled to reach the forgiveness stage as seen in QoLDateEvent, specifically DateEvent_Checksum for mood factors and such
+IF addDateGemsRecorded:TARGET:0 ;cancel out if gem recording process was already completed (once per day)
+	SIF nDateScoreDisplay
+		CALL COLORMESSAGE(@" 실패, 오늘 이미 사용함", C_RED, 2, 1)
+	RETURN -1
+ENDIF
+addDateGemsRecorded:TARGET:0 = 1 ;set here after seeing this screen, once per day per character
+IF CFLAG:ブチギレ ;fail, got angry
+	SIF nDateScoreDisplay
+		CALL COLORMESSAGE(@" 실패, 화가 난다", C_RED, 2, 1)
+	RETURN -2
+ENDIF
+;part 1, transparency
+;Show what gems needed for forgiveness during date
+$FORCE_SET
+nReq = nHateMarkForgivenessReq:(MARK:反発刻印)
+SIF MARK:反発刻印 == 1 && MARK:反発取得履歴 > 0 ;8000 if there's history for lv1
+	nReq = 8000
+DEBUGPRINTFORML --------------------------------------------------------
+DEBUGPRINTFORML 증오의 낙인 용서 과정
+DEBUGPRINTFORML 초기 요구 사항 - {nReq}
+;scale price per 3 intimacy levels to track the progression because it's easier to gain needed gems, up to x10 of the required cost
+IF ABL:親密 >= 3
+	LOCAL = ABL:親密
+	LOCAL:1 = 0
+	WHILE LOCAL >= 3
+	SIF nReq >= nHateMarkForgivenessReq:(MARK:反発刻印)*10
+		BREAK
+	DEBUGPRINTFORML 루프 {LOCAL:1++}
+	nReq = MULTIPLY(nReq, 110)
+	LOCAL -= 3
+	WEND
+ENDIF
+DEBUGPRINTFORML 친밀도 스케일링 - {nReq}
+;----------
+CALL COLOR_LINE
+IF NASOver
+	;not in a date
+	PRINTFORML %조사처리(CALLNAME:TARGET,"와")% 동등한 조건으로 협상한다.
+ELSE
+	PRINTFORML 좋은 데이트를 한 후, %조사처리(CALLNAME:TARGET,"는")% 당신에게 기회를 줄 의향이 있는 듯하다.
+ENDIF
+PRINTFORML 용서의 대가는...
+CALL COLOR_LINE
+PRINTFORML 수정자들:
+;----------
+;penalty for obedience less that hate lv mark
+LOCAL = MARK:反発刻印
+SIF TALENT:恋慕 || TALENT:愛欲 ;triple at 2nd grade fall state
+	LOCAL *= 3
+IF ABL:従順 < LOCAL
+	;can get prohibitively expensive, the classic games won't let you even lower the hate mark in this case
+	WHILE ABL:従順 < LOCAL
+	TIMES nReq, 2.00
+	LOCAL -= MAX(ABL:従順, 1)
+	WEND
+	CALL COLORMESSAGE(@"낮은 순종",C_RED,1,1)
+	DEBUGPRINTFORML 순종 스케일링 - {nReq}
+ENDIF
+;penalty for low submission mark
+IF MARK:不埒刻印 < MARK:反発刻印
+	TIMES nReq, 3.00
+	CALL COLORMESSAGE(@"음란한 불순함의 표식",C_RED,1,1)
+ENDIF
+DEBUGPRINTFORML 음란한 표식 스케일링 - {nReq}
+;nas penalty for bad affinity
+IF RELATION:ARG:MASTER < 100 && RELATION:ARG:MASTER
+	nReq *= 100
+	nReq /= RELATION:ARG:MASTER
+	CALL COLORMESSAGE(@"{RELATION:ARG:MASTER}\% 친화력",C_RED,1,1)
+ENDIF
+DEBUGPRINTFORML 친밀도 조정됨 - {nReq}
+;initial modifiers
+IF TALENT:度胸 > 0 ;気丈
+	TIMES nReq , 3.00
+	CALL COLORMESSAGE(@"【%GET_TALENTNAME_TR(GETNUM(TALENT,  "度胸"), 1)%】",C_RED,1,1)
+ENDIF
+IF TALENT:態度 < 0 ;素直
+	TIMES nReq , 0.50
+	CALL COLORMESSAGE(@"【%GET_TALENTNAME_TR(GETNUM(TALENT,  "態度"), -1)%】",C_GREEN,1,1)
+ENDIF
+IF TALENT:応答 > 0 ;生意気
+	TIMES nReq , 1.50
+	CALL COLORMESSAGE(@"【%GET_TALENTNAME_TR(GETNUM(TALENT,  "応答"), 1)%】",C_YELLOW,1,1)
+ENDIF
+IF TALENT:機嫌 < 0
+	TIMES nReq , 1.30
+	CALL COLORMESSAGE(@"【%GET_TALENTNAME_TR(GETNUM(TALENT,  "機嫌"), -1)%】",C_RED,1,1)
+ELSEIF TALENT:機嫌 > 0
+	TIMES nReq , 0.70
+	CALL COLORMESSAGE(@"【%GET_TALENTNAME_TR(GETNUM(TALENT,  "機嫌"), 1)%】",C_GREEN,1,1)
+ENDIF
+IF TALENT:MASTER:謎の魅力
+	TIMES nReq , 0.80
+	CALL COLORMESSAGE(@"당신의【%TALENT_TR(GETNUM(TALENT,  "謎の魅力"))%}",C_GREEN,1,1)
+ENDIF
+IF TALENT:MASTER:魅力
+	TIMES nReq , 0.90
+	CALL COLORMESSAGE(@"당신의【%TALENT_TR(GETNUM(TALENT,  "魅力"))%}",C_GREEN,1,1)
+ENDIF
+IF CFLAG:体目当て
+	TIMES nReq , 0.95
+	CALL COLORMESSAGE(@"욕망을 독점하는 미라다의 천년석이 빛나기 시작한다...!",C_GREEN,1,1)
+ENDIF
+IF TALENT:恋慕
+	TIMES nReq , 0.50
+	CALL COLORMESSAGE(@"【%GET_TALENTNAME_TR(GETNUM(TALENT,  "恋慕"), 1)%】",C_GREEN,1,1)
+ENDIF
+IF TALENT:恋人
+	TIMES nReq , 0.80
+	CALL COLORMESSAGE(@"【%GET_TALENTNAME_TR(GETNUM(TALENT,  "恋人"), 1)%】",C_GREEN,1,1)
+ENDIF
+IF TALENT:ヤリマン
+	TIMES nReq , 0.80
+	CALL COLORMESSAGE(@"【%GET_TALENTNAME_TR(GETNUM(TALENT,  "ヤリマン"), 1)%】",C_GREEN,1,1)
+ENDIF
+;親愛 todo married 0.70
+IF IS_CHILD(MASTER) && !IS_CHILD(TARGET)
+	TIMES nReq , 0.80
+	CALL COLORMESSAGE(@"너의 유치함",C_GREEN,1,1)
+ENDIF
+DEBUGPRINTFORML 초기 수정자 스케일링 완료 - {nReq}
+LOCAL = BASE:理性 - 1000
+SIF BASE:理性 <= 0
+	LOCAL *=2
+IF BASE:理性 >= 500
+	LOCAL:1 = C_RED
+	LOCAL *=3
+ELSEIF BASE:理性 > 0
+	LOCAL:1 = C_YELLOW
+ELSE
+	LOCAL:1 = C_GREEN
+ENDIF
+nReq -= LOCAL
+CALL COLORMESSAGE(@"이유: {BASE:理性}",LOCAL:1,1,1)
+DEBUGPRINTFORML 이유가 조정됨 - {nReq}
+LOCAL = BASE:酒気 * 100 / MAXBASE:酒気
+IF LOCAL
+	SIF LOCAL > 70
+		LOCAL *= 2
+	nReq -= LOCAL
+	CALL COLORMESSAGE(@"취함", C_GREEN,1,1)
+	DEBUGPRINTFORML 취한 비늘 달린 자 - {nReq}
+ENDIF
+;accrue bonus for favor/trust values, up to 15% per each
+IF CFLAG:好感度 >= 1000 ;per 1k for favor
+	LOCAL = CFLAG:好感度
+	LOCAL:1 = nReq
+	DO
+	nReq = MULTIPLY(nReq, 99) ;1%
+	SIF MULTIPLY(LOCAL:1, 85) <= nReq
+		BREAK
+	LOOP LOCAL - 1000
+	DEBUGPRINTFORML 호의 스케일링 - {nReq}
+ENDIF
+IF CFLAG:信頼度 >= 300 ;per 300 for trust
+	LOCAL = CFLAG:信頼度
+	LOCAL:1 = nReq
+	DO
+	nReq = MULTIPLY(nReq, 99) ;1%
+	SIF MULTIPLY(LOCAL:1, 85) <= nReq
+		BREAK
+	LOOP LOCAL - 300
+	DEBUGPRINTFORML 신뢰도 스케일링 - {nReq}
+ENDIF
+;actions like if bought gift/had good sex/kissed etc/went to a restaurant
+IF addDateActionsDone:TARGET:date_Gift
+	TIMES nReq, 0.85
+	LOCAL:1 = C_GREEN
+ELSE
+	LOCAL:1 = C_GRAY
+ENDIF
+CALL COLORMESSAGE(@"완벽한 선물",LOCAL:1,1,1)
+IF addDateActionsDone:TARGET:date_Sex && (EX:TotalEX >= 10 + EX:三重絶頂 + EX:四重絶頂 + EX:五重絶頂) ;the ex counter would count stuff that happened before, but oh well
+	TIMES nReq, 0.90
+	LOCAL:1 = C_GREEN
+ELSE
+	LOCAL:1 = C_GRAY
+ENDIF
+CALL COLORMESSAGE(@"만족스러운 섹스",LOCAL:1,1,1)
+IF addDateActionsDone:TARGET:date_Kiss
+	TIMES nReq, 0.75
+	LOCAL:1 = C_GREEN
+ELSE
+	LOCAL:1 = C_GRAY
+ENDIF
+CALL COLORMESSAGE(@"숨 막히는 키스",LOCAL:1,1,1)
+IF addDateActionsDone:TARGET:date_EatOut
+	TIMES nReq, 0.95
+	LOCAL:1 = C_GREEN
+ELSE
+	LOCAL:1 = C_GRAY
+ENDIF
+CALL COLORMESSAGE(@"식당 방문",LOCAL:1,1,1)
+IF addDateActionsDone:TARGET:date_Lunch
+	TIMES nReq, 0.95
+	LOCAL:1 = C_GREEN
+ELSE
+	LOCAL:1 = C_GRAY
+ENDIF
+CALL COLORMESSAGE(@"맛있는 점심",LOCAL:1,1,1)
+IF addDateActionsDone:TARGET:date_ChristianImageboard
+	TIMES nReq, 0.95
+	LOCAL:1 = C_GREEN
+ELSE
+	LOCAL:1 = C_GRAY
+ENDIF
+CALL COLORMESSAGE(@"손을 잡았다",LOCAL:1,1,1)
+;maintain at least 10% of the original req after all modifiers
+LOCAL = MULTIPLY(nHateMarkForgivenessReq:(MARK:反発刻印), 10)
+SIF nReq < LOCAL
+	nReq = LOCAL
+DEBUGPRINTFORML 정규화 - {nReq}
+;----------
+;show the progress bar
+CALL CENTERLINE
+PRINTFORML
+PRINTFORML
+PRINTFORML
+PRINTFORML
+ALIGNMENT CENTER
+PRINTFORM 증오의 낙인 LV{MARK:反発刻印} 용서도:　
+CALL PRINTFORGIVENESSBAR, addDateForgivenessProgress:TARGET:0, nReq
+PRINTFORML 　{addDateForgivenessProgress:TARGET:0}/{nReq}
+ALIGNMENT LEFT
+PRINTFORML
+PRINTFORML
+PRINTFORML
+PRINTFORML
+CALL CENTERLINE
+;----------
+CALL Add_HMF_Payment(nReq)
+;return target back (just in case, likely it was equal to ARG from the start)
+TARGET = LOCAL:9
+;part 2, satisfying the requirement
+;Care gem will always cost 1, it's the default currency
+;Submission gem costs half
+;other possible currencies get bonuses accordingly, increasing their cost up to 5
+;desire gems (lust-based talents, abl)
+;dominance (her sadism + your masochism)
+;loyalty for obedience + submission mark + devoted
+
+@Add_HMF_Payment(nReq)
+#DIM nReq
+#DIM DYNAMIC nChosen
+#DIM nGemSum, 5
+#DIM nSum
+#DIM DYNAMIC nCalculateGem, 100
+#DIM nGemPayRange = GETNUM(PALAM, "好意"), GETNUM(PALAM, "屈服"), GETNUM(PALAM, "欲情"), GETNUM(PALAM, "優越"), GETNUM(PALAM, "恭順")
+#DIMS strGemPayName = "Care Gems", "Submission Gems", "Desire Gems", "Dominance Gems", "Loyalty Gems"
+#DIM nTab = 35
+#DIM nGemMultiplier = 100, 50, 100, 100, 100
+#DIMS strGemMultiplier = "1", "0.5", "1", "1", "1"
+;convert the palam levels gained DURING the date into gems as your paying currency
+FOR LOCAL,0,100
+SIF !STRLENS(PALAMNAME:LOCAL)
+	CONTINUE
+;calculate the gain by finding the difference between current palam lv vs their value at the start of the date
+nCalculateGem:LOCAL = PALAM:LOCAL - addGemDateRecord:TARGET:LOCAL
+DEBUGPRINTFORML Palam 값 {LOCAL}: {nCalculateGem:LOCAL}
+;get gem gain and override
+nCalculateGem:LOCAL = CALC_JUEL(nCalculateGem:LOCAL, LOCAL)
+;NAS: use legacy gems
+nCalculateGem:LOCAL += JUEL:TARGET:LOCAL
+NEXT
+;calculate the multipliers
+;desire
+SIF ABL:欲望 >= 10
+	nGemMultiplier:2 += 100
+SIF TALENT:ヤリマン
+	nGemMultiplier:2 += 100
+SIF TALENT:自慰狂い
+	nGemMultiplier:2 += 100
+SIF TALENT:淫壺
+	nGemMultiplier:2 += 100
+SIF TALENT:尻穴狂い
+	nGemMultiplier:2 += 100
+SIF TALENT:淫乳
+	nGemMultiplier:2 += 100
+SIF TALENT:キス魔
+	nGemMultiplier:2 += 100
+SIF TALENT:愛欲
+	nGemMultiplier:2 += 100
+SIF TALENT:セフレ
+	nGemMultiplier:2 += 100
+SIF nGemMultiplier:2 > 500
+	nGemMultiplier:2 = 500
+strGemMultiplier:2 = %TOSTR(nGemMultiplier:2/100)%
+;dominance
+SIF ABL:MASTER:マゾっ気 >= 5
+	nGemMultiplier:3 += 100
+SIF ABL:サドっ気 >= 5
+	nGemMultiplier:3 += 100
+SIF TALENT:サド
+	nGemMultiplier:3 += 200
+SIF TALENT:MASTER:マゾ
+	nGemMultiplier:3 += 200
+SIF nGemMultiplier:3 > 500
+	nGemMultiplier:3 = 500
+strGemMultiplier:3 = %TOSTR(nGemMultiplier:3/100)%
+;loyalty
+SIF ABL:従順 >= 10
+	nGemMultiplier:4 += 100
+SIF MARK:不埒刻印 >= 3
+	nGemMultiplier:4 += 100
+SIF TALENT:献身的
+	nGemMultiplier:4 += 100
+SIF TALENT:妄信
+	nGemMultiplier:4 += 200
+SIF TALENT:即落ち
+	nGemMultiplier:4 += 200
+SIF nGemMultiplier:4 > 500
+	nGemMultiplier:4 = 500
+strGemMultiplier:4 = %TOSTR(nGemMultiplier:4/100)%
+;select the gems, highlight the selected buttons, hit apply to proceed to the next part
+gLineCount = LINECOUNT
+REDRAW 0
+DO
+SIF LINECOUNT - gLineCount > 0
+	CLEARLINE LINECOUNT - gLineCount
+FOR LOCAL, 0, VARSIZE("nGemPayRange")
+SIF GETBIT(nChosen, LOCAL)
+	SETCOLOR C_AQUA
+PRINTFORML [{LOCAL + 100}] %strGemPayName:LOCAL, nTab, LEFT%：{nCalculateGem:(nGemPayRange:LOCAL), 9, LEFT} x%strGemMultiplier:LOCAL%
+RESETCOLOR
+NEXT
+CALL COLOR_LINE
+VARSET nGemSum
+nSum = 0
+IF nChosen
+	PRINTFORML 총계:
+	FOR LOCAL, 0, VARSIZE("nGemPayRange")
+	IF GETBIT(nChosen, LOCAL)
+		nGemSum:LOCAL += nCalculateGem:(nGemPayRange:LOCAL)
+		IF nGemMultiplier:LOCAL != 100
+			nGemSum:LOCAL = MULTIPLY(nGemSum:LOCAL, nGemMultiplier:LOCAL)
+		ENDIF
+		PRINTFORML %strGemPayName:LOCAL%은(는) \@ nGemMultiplier:LOCAL != 100 ? {nCalculateGem:(nGemPayRange:LOCAL)} * %strGemMultiplier:LOCAL% = {nGemSum:LOCAL} # {nGemSum:LOCAL} \@
+		nSum += nGemSum:LOCAL
+	ELSE
+		PRINTFORML
+	ENDIF
+	NEXT
+	LOCAL = nCalculateGem:GETNUM(PALAM, "反感") + nCalculateGem:GETNUM(PALAM, "不快") + nCalculateGem:GETNUM(PALAM, "抑鬱")
+	IF LOCAL ;The toll must be paid for upsetting the lady!
+		PRINTFORML 음수 파라미터 페널티: -{LOCAL}
+		nSum -= LOCAL
+	ELSE
+		PRINTFORML
+	ENDIF
+	IF addDateForgivenessProgress:TARGET:0 > 0
+		PRINTFORML 용서 진행도: +{addDateForgivenessProgress:TARGET:0}
+		nSum += addDateForgivenessProgress:TARGET:0
+	ELSE
+		PRINTFORML
+	ENDIF
+	PRINTFORML -----------------------------------
+	SIF nSum >= nReq
+		SETCOLOR C_GREEN
+	PRINTFORM {nSum, 12, RIGHT} 대 {nReq}
+	RESETCOLOR
+	;todo - in case a single selected gem count is higher than the price, allow only for that amount to be deducted <- less convoluted that way than trying to figure out a way to do it for a sum of selected gems, and figuring out which gem should be fully expended and which shouldn't, etc
+	SIF nSum > nReq
+		CALL COLORMESSAGE(@"  과도하게 투자된 값은 이월되지만, 증오의 표식 레벨 0부터 감소하기 시작한다!",C_YELLOW,0,0)
+	PRINTFORML
+ELSE
+	REPEAT 10
+	PRINTFORML
+	REND
+ENDIF
+CALL COLOR_LINE
+PRINTFORML
+PRINTFORML [998] \@ nChosen ? 선택 해제 # 선택 \@ 전체
+PRINTFORML
+PRINTFORML [999] 확인
+INPUT
+;----------
+;part 3, concluding the transaction
+;set a cool animation with the bar slowly filling up, RETURN 1 in case of success which will then return the dialogue response for date forgiveness (the sole point of this mechanic)
+;NOTE that you can only remove one hate mark per date, once per day
+SELECTCASE RESULT
+	CASE 100 TO 105 ;select
+		SIF nCalculateGem:(nGemPayRange:(RESULT-100)) <= 0
+			CONTINUE
+		INVERTBIT nChosen, RESULT - 100
+	CASE 998 ;clear
+		IF nChosen
+			nChosen = 0
+			CONTINUE
+		ENDIF
+		FOR LOCAL, 0, 6
+		INVERTBIT nChosen, LOCAL
+		NEXT
+	CASE 999 ;confirm
+		IF nSum < 0
+			PRINTFORMW 마이너스로는 지불할 수 없습니다! 지불할 여유가 없다면 선택을 해제하세요.
+			CONTINUE
+		ENDIF
+		IF nSum && nSum < addDateForgivenessProgress:TARGET:0
+			PRINTFORMW 합계가 현재 진행도를 상쇄할 것입니다! 용서 과정을 건너뛰고 싶다면 선택을 지우세요.
+			CONTINUE
+		ENDIF
+		DEBUGPRINTFORML --------------------------------------------------------
+		DEBUGPRINTFORML 팔람 감소:
+		FOR LOCAL, 0, VARSIZE("nGemPayRange")
+		IF GETBIT(nChosen, LOCAL)
+			DEBUGPRINTFORM 팔람 {LOCAL} {PALAM:(nGemPayRange:LOCAL)} - {PALAM:(nGemPayRange:LOCAL) - addGemDateRecord:TARGET:(nGemPayRange:LOCAL)} 
+			;subtract the chosen palams
+			PALAM:(nGemPayRange:LOCAL) -= PALAM:(nGemPayRange:LOCAL) - addGemDateRecord:TARGET:(nGemPayRange:LOCAL)
+			JUEL:TARGET:(nGemPayRange:LOCAL) -= JUEL:TARGET:(nGemPayRange:LOCAL)
+			DEBUGPRINTFORML = {PALAM:(nGemPayRange:LOCAL)}
+		ENDIF
+		NEXT
+		;animate the bar filling up after you hit apply
+		LOCAL = addDateForgivenessProgress:TARGET:0
+		SIF nSum
+			addDateForgivenessProgress:TARGET:0 = nSum
+		LOCAL:1 = STRLENS(TOSTR(addDateForgivenessProgress:TARGET:0))
+		LOCAL:2 = addDateForgivenessProgress:TARGET:0 - LOCAL
+		gLineCount = LINECOUNT
+		REDRAW 0
+		ALIGNMENT CENTER
+		DO
+		LOCAL += MULTIPLY(1, LOCAL:2)
+		SIF LOCAL > addDateForgivenessProgress:TARGET:0
+			LOCAL = addDateForgivenessProgress:TARGET:0
+		SIF LINECOUNT - gLineCount > 0
+			CLEARLINE LINECOUNT - gLineCount
+		PRINTFORM 증오의 낙인 LV{MARK:反発刻印} 용서:　
+		CALL PRINTFORGIVENESSBAR, LOCAL, nReq
+		PRINTFORML 　{LOCAL, LOCAL:1}/{nReq}
+		TWAIT 15, 0
+		LOOP LOCAL < addDateForgivenessProgress:TARGET:0
+		ALIGNMENT LEFT
+		PRINTFORML
+		IF addDateForgivenessProgress:TARGET:0 >= nReq
+			SIF nDateScoreDisplay
+				CALL COLORMESSAGE(@" 성공!", C_GREEN, 2, 1)
+			PRINTFORML
+			MARK:反発刻印 --
+			CALL KOJO_MESSAGE_SEND("SP_EVENT",3,TARGET,(MARK:反発刻印 + 1))
+			PRINTL
+			IF MARK:反発刻印
+				PRINTFORMW %조사처리(CALLNAME:TARGET,"의")% 반발각인 레벨이 {MARK:反発刻印}으로 낮아졌다!
+			ELSE
+				PRINTFORMW %조사처리(CALLNAME:TARGET,"의")% 레벨 1 증오 마크가 제거되었다!
+			ENDIF
+			;IF !ADD_ACHIEVEMENT_OBTAINFLAG:Achievement_HateMarkDateForgiveness
+			IF !SaveAchievementCompleted("insightDateForgiveness")
+				;CALL ANIMATION_ROLL_TEXT( @"Achievement Unlocked：[Internal Calculator]!", 0 ) ;addition custom code
+				;ADD_ACHIEVEMENT_OBTAINFLAG:Achievement_HateMarkDateForgiveness = 1
+				CALL AL_NOTIFY_ACHIEVEMENT_COMPLETION("insightDateForgiveness") ;achievement menu rework custom code
+			ENDIF
+		ELSE
+			CALL COLORMESSAGE(@" 실패, 포인트가 충분하지 않다", C_RED, 2, 1)
+		ENDIF
+		RETURN addDateForgivenessProgress:TARGET:0 >= nReq ? 1 # 0
+ENDSELECT
+LOOP 1
+
+@Add_HMF_DateGemRecord(ARG)
+FOR LOCAL,0,100
+SIF !STRLENS(PALAMNAME:LOCAL)
+	CONTINUE
+addGemDateRecord:ARG:LOCAL = PALAM:ARG:LOCAL
+NEXT
+;------------------------------------------------------
+;process the extra flags
+;when starting the day
+
+@EVENTTRAIN
+#LATER
+;decay the progress
+FOR LOCAL, 1, CHARANUM
+IF !MARK:LOCAL:反発刻印 && addDateForgivenessProgress:LOCAL:0 > 0
+	addDateForgivenessProgress:LOCAL:0 = MULTIPLY(addDateForgivenessProgress:LOCAL:0, 90)
+	SIF addDateForgivenessProgress:LOCAL:0 < 0
+		addDateForgivenessProgress:LOCAL:0 = 0
+ENDIF
+NEXT
+FOR LOCAL, 0, VARSIZE("addGemDateRecord")
+CVARSET addGemDateRecord, LOCAL, 0
+NEXT
+FOR LOCAL, 0, VARSIZE("addDateActionsDone")
+CVARSET addDateActionsDone, LOCAL, 0
+NEXT
+CVARSET addDateGemsRecorded
+hmf_HeartFeltApologyUsed = 0
+
+@PRINTFORGIVENESSBAR, ARG, ARG:1
+ARG:4 = 255
+ARG:5 = 84
+ARG:6 = 22
+CALL COLOR_BAR(ARG,ARG:1,100,ARG:4,ARG:5,ARG:6,-160,10,18,6,2,UNICODE(0x25AE),UNICODE(0x25AE))
+
+@Add_HMF_TestScreen(ARG)
+TARGET = ARG
+MARK:反発刻印 = 1
+addDateForgivenessProgress:TARGET:0 = 1500
+FOR LOCAL,0,100
+SIF !STRLENS(PALAMNAME:LOCAL)
+	CONTINUE
+PALAM:LOCAL = RAND:10000
+addGemDateRecord:TARGET:LOCAL = PALAM:LOCAL
+PALAM:LOCAL += RAND:30000
+NEXT
+CALL Add_HateMarkForgiveness(TARGET)
+WAIT
+
+@HMF_HeartfeltApology(ARG)
+#DIM OUTCOME
+#DIM CAN_DO_SH ;NAS because youjutsu
+CALL YoujutsuMagicCanDo(MASTER,19,0)
+CAN_DO_SH = RESULT
+IF ((ADD_ACHIEVEMENT_TOGGLED:Achievement_HateMarkApology && !hmf_HeartFeltApologyUsed) || (CAN_DO_SH)) && TFLAG:反発刻印取得 == 1 && MARK:ARG:3 == 1 ;custom code, hypnosis rework
+	PRINTFORML 당신은 갑자기 자신이 %CALLNAME:ARG%를 너무 심하게 밀어붙였을지도 모른다는 것을 깨닫는다.
+	PRINTFORML 하지만 %HE_SHE(ARG)%가 %HIS_HER(ARG)%의 마음속 분노를 제대로 처리하기도 전에, 사과할 기회를 발견한다!
+	CALL ASK_M("'진심 어린 사과'를 발동한다", ADD_ACHIEVEMENT_TOGGLED:Achievement_HateMarkApology && !hmf_HeartFeltApologyUsed, "캐스팅 [적의심 억제]", CAN_DO_SH, "취소", 1) ;custom code
+	OUTCOME = RESULT
+	SIF OUTCOME == 2
+		RETURN
+	IF OUTCOME == 0
+		PRINTFORML 사소한 일로 여자들에게 화를 냈던 때들을 기억하며, 다시는 그런 일이 일어나지 않도록 다짐한다!
+		PRINTFORML 무릎을 꿇고 %CALLNAME:ARG%에게 연신 사과하며, %HIS_HER(ARG)%의 동정심에 호소한다!
+	ELSE
+		PRINTFORML 당신은 집중하고, %CALLNAME:ARG%의 눈을 응시하며, 자신이 한 일이 정말로 화낼 가치가 없다고 단호한 목소리로 %HIM_HER(ARG)%에게 말한다.
+		CALL PROCESS_HYPNOSIS_COMMAND(0, ARG)
+		IF RESULT < 0
+			PRINTFORML …유감스럽게도, 작동하지 않았다.
+			RETURN 0
+		ENDIF
+	ENDIF
+	PRINTFORML
+	;気弱系
+	IF CFLAG:ARG:性格傾向 == 1
+		PRINTFORML %HE_SHE(ARG,1)%은 당황하며, %HIS_HER(ARG)% 얼굴이 귀까지 올라오는 홍조로 달아오르며 당신에게 일어나라고 재촉한다.
+		PRINTFORML 당신은 %HE_SHE(ARG)%가 용서해 줄 때까지 거부했고, 잠시 후 %HE_SHE(ARG)%는 마침내 물러선다.
+		;強気系
+	ELSEIF CFLAG:ARG:性格傾向 == 2
+		PRINTFORML %HE_SHE(ARG,1)%은 당신의 터무니없는 행동에 똑같이 불쾌해하는 듯했지만, %HE_SHE(ARG)%가 당신의 고집을 이길 수 없음을 깨닫고 결국 굴복한다.
+		;素直系
+	ELSEIF CFLAG:ARG:性格傾向 == 3
+		PRINTFORML %HIS_HER(ARG,1)%의 눈이 커지며 당신이 그런 일을 할 거라고는 예상하지 못했다.
+		PRINTFORML %HE_SHE(ARG,1)%은 농담으로 그것을 무마하며 결국 별일 아니었다고 인정한다.
+		;真面目系
+	ELSEIF CFLAG:ARG:性格傾向 == 4
+		PRINTFORML %HE_SHE(ARG,1)%은(는) 당신을 일으켜 주면서, 이 정도의 사소한 일에 빌 가치가 없다고 말하기 전에 약간 꾸짖는다.
+		;その他
+	ELSEIF CFLAG:ARG:性格傾向 == 5
+		PRINTFORML %BREAKENG(@"%HE_SHE(ARG,1)%처음에는 무슨 일이 일어나는지 이해하지 못하는 것 같지만, %HE_SHE(ARG)%가 당신이 얼마나 전념하고 진지한지를 보게 되면, %HE_SHE(ARG)%는 당신을 용서하기로 결정한다.")%
+	ENDIF
+	WAIT
+	PRINTFORML
+	PRINTFORML %CALLNAME:ARG%의 Lv1 증오의 낙인이 제거되었다!
+	PRINTFORMW 휴... 위기는 모면했다!
+	CALLF CALMME(ARG)
+	IF OUTCOME == 0 ;custom code
+		hmf_HeartFeltApologyUsed = 1
+		TFLAG:反発刻印取得 = -1
+	ELSE
+		TFLAG:反発刻印取得 = -2
+	ENDIF
+	;PRINTFORMW After: CFLAG:ARG:不機嫌 - {CFLAG:ARG:不機嫌} BASE:怒り - {BASE:ARG:怒り} cflag:ブチギレ - {cflag:ARG:ブチギレ}
+	;note for dialogue - this can be checked and the response can be made by checking TFLAG:反発刻印取得 == -1, TFLAG:反発刻印取得 == -2, and/or hmf_HeartFeltApologyUsed (see Marisa)
+	RETURN 1
+ENDIF
+
+@HMF_Thresholds(刻印取得値, ARG)
+#DIM REF 刻印取得値
+IF ADD_ACHIEVEMENT_TOGGLED:Achievement_HateMarkRedemption ;increased thresholds with cheevo
+	SIF MARK:ARG:反発取得履歴
+		刻印取得値 = INRANGE(刻印取得値, 500, 1200) ? 0 # 刻印取得値
+	SIF MARK:ARG:反発取得履歴 > 1
+		刻印取得値 = INRANGE(刻印取得値, 1501, 2500) ? 1000 # 刻印取得値
+	SIF MARK:ARG:反発取得履歴 > 2
+		刻印取得値 = INRANGE(刻印取得値, 3001, 5000) ? 2000 # 刻印取得値
+ELSE
+	;com custom code - changed lv3 req from 2k to 3k
+	SIF MARK:ARG:反発取得履歴
+		刻印取得値 = INRANGE(刻印取得値, 500, 700) ? 0 # 刻印取得値
+	SIF MARK:ARG:反発取得履歴 > 1
+		刻印取得値 = INRANGE(刻印取得値, 1001, 1600) ? 1000 # 刻印取得値
+	SIF MARK:ARG:反発取得履歴 > 2
+		刻印取得値 = INRANGE(刻印取得値, 3001, 3500) ? 2000 # 刻印取得値
+ENDIF

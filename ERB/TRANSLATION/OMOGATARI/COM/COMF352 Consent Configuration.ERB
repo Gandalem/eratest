@@ -1,0 +1,332 @@
+﻿; Modular ERB: OMOGATARI/COM/COMF352 Consent Configuration.ERB
+;-------------------------------------------------
+;告白する
+;日常系コマンド、レベル2
+;-------------------------------------------------
+;i have a vindetta against sex friend agreement
+;it's getting put into the confess menu because fuck you
+;- Mr Pops Alot
+
+@COM352_NAS
+#DIM proposeType
+#DIM 理性判定値
+#DIM 欲望判定値
+#DIM 酒酔い
+#DIM SF_DO
+LOCAL = 0
+SF_DO = 0
+;Custom Code
+IF FLAG:甲斐性無 && !FLAG:LUSTMODE
+	DRAWLINE
+	PRINTFORMW 당신은 그것을 할 담력이 부족합니다.
+	RETURN -1
+ENDIF
+;告白対象確認
+CALL ASK_M( @"고백 \@ TALENT:恋人 ? %@" (Already【%GET_TALENTNAME_TR(7,1)%】)"% #  \@\@ GETBIT(TFLAG:一日一回, 12) ? %@" (Already tried to confess)"% #  \@\@ GETBIT(TFLAG:一日一回, 12) ? %@" (Too many lovers: /{FLAG:追加恋人枠})"% #  \@", !TALENT:恋人 && !GETBIT(TFLAG:一日一回, 12) && CAN_MAKE_恋人(), @"제안한다\@ !TALENT:恋人 ? %@" (%CALLNAME:TARGET% needs to be【%GET_TALENTNAME_TR(7,1)%】)"% #  \@", TALENT:恋人 && !TALENT:225, "섹프 계약", !TALENT:セフレ && !TALENT:愛欲 && !TALENT:恋慕 && !TALENT:恋人, @"\@ PushDownFilter:TARGET:0 ? 동의를 준다 # 동의를 철회한다 \@\@ !GETBIT(CFLAG:TARGET:既成事実 , 1) ? %@" (%CALLNAME:TARGET% hasn't given you consent for sex)"% #  \@", GETBIT(CFLAG:TARGET:既成事実 , 1), @"\@ GETBIT(nRape,0) ? TSP 강간 설정 # ????? \@.", GETBIT(nRape,0), @"\@ nHypno ? 최면 설정 # ????? \@", nHypno, @"이혼을 요구한다\@ !TALENT:恋人 ? %@" (%CALLNAME:TARGET% needs to be【%GET_TALENTNAME_TR(7,1)%】)"% #  \@", TALENT:恋人, "여기서 나 좀 나가게 해줘!", 1 )
+proposeType = RESULT
+;show extra info if you're not dum dum
+IF ABL:MASTER:教養 >= UniversalRank("B") && GROUPMATCH(proposeType,0,1)
+	PRINTFORML 수용성 레벨: {CFLAG:合意判定}
+	PRINTFORML 애정경험: {EXP:愛情経験}
+	PRINTFORML
+	CALL COLORMESSAGE("예측: ",C_YELLOW,0)
+	SELECTCASE proposeType
+		CASE 0
+			IF CFLAG:合意判定 < 350 + FuckReserved(TARGET) * 100
+				CALL COLORMESSAGE("실패! 동의도 평가가 충분하지 않다.",C_RED,1)
+			ELSEIF TFLAG:192 < 0
+				CALL COLORMESSAGE("실패! 지금은 고백할 수 없다.",C_RED,1)
+			ELSE
+				CALL COLORMESSAGE("통과!",C_GREEN,1)
+			ENDIF
+		CASE 1
+			IF EXP:愛情経験 > 250 + FuckReserved(TARGET) * 100
+				CALL COLORMESSAGE("통과!",C_GREEN,1)
+			ELSE
+				CALL COLORMESSAGE("실패! 애정경험이 충분하지 않다",C_RED,1)
+			ENDIF
+		CASE 2
+			$SF_Prop
+			欲望判定値 = MIN(ABL:TARGET:欲望, 10) * 50
+			CALL SF_DESIRE_MOD(@"%ABL_TR(GETNUM(ABL,  "欲望"))% {ABL:TARGET:欲望}", 欲望判定値)
+			欲望判定値 += MIN(ABL:TARGET:従順, 10) * 20
+			CALL SF_DESIRE_MOD(@"%ABL_TR(GETNUM(ABL,  "従順"))% {ABL:TARGET:従順}", 欲望判定値)
+			欲望判定値 += MIN(EXP:TARGET:絶頂経験, 5000) / 10
+			CALL SF_DESIRE_MOD(@"%EXP_TR(GETNUM(EXP,  "絶頂経験"))% {EXP:TARGET:絶頂経験}", 欲望判定値)
+			欲望判定値 += GETPALAMLV(PALAM:TARGET:欲情,15) * (30 + TALENT:TARGET:快感応答 * 10)
+			CALL SF_DESIRE_MOD(@"%PALAM_TR("欲情")%", 欲望判定値)
+			欲望判定値 += MAX(MARK:TARGET:快楽刻印, MARK:TARGET:時姦刻印) * 200
+			CALL SF_DESIRE_MOD(@"%MARK_TR(GETNUM(MARK,  "快楽刻印"))%/%MARK_TR(GETNUM(MARK,  "時姦刻印"))%", 欲望判定値)
+			IF TCVAR:TARGET:発情 || TCVAR:TARGET:媚薬
+				欲望判定値 += 300
+				CALL SF_DESIRE_MOD(@"발정기/최음제", 欲望判定値)
+			ENDIF
+			;WAIT
+			理性判定値 = 250 + BASE:TARGET:理性 / 2
+			CALL SF_REASON_MOD(@"이유: {BASE:TARGET:理性}", 理性判定値)
+			;酒酔い
+			酒酔い = BASE:酒気 * 100 / MAXBASE:酒気
+			IF 酒酔い
+				SIF 酒酔い > 70
+					酒酔い *= 2
+				理性判定値 -= 酒酔い
+				CALL SF_REASON_MOD(@"취함", 理性判定値)
+			ENDIF
+			IF !CFLAG:TARGET:既成事実 & 合意_うふふ
+				理性判定値 += 300
+				CALL SF_REASON_MOD(@"【동의 부족】", 理性判定値)
+			ENDIF
+			IF TALENT:TARGET:SexKnow == -1 || TALENT:TARGET:SexKnow >= 5
+				理性判定値 -= 500
+				CALL SF_REASON_MOD(@"【%TALENT_TR(GETNUM(TALENT,  "SexKnow"))%】", 理性判定値)
+			ENDIF
+			IF TALENT:TARGET:プライド
+				理性判定値 += TALENT:TARGET:プライド * 150
+				CALL SF_REASON_MOD(@"【%TALENT_TR(GETNUM(TALENT,  "プライド"))%】", 理性判定値)
+			ENDIF
+			IF TALENT:TARGET:貞操 > 0
+				理性判定値 += 200
+				CALL SF_REASON_MOD(@"【%GET_TALENTNAME_TR(GETNUM(TALENT,  "貞操"), 1)%】", 理性判定値)
+			ENDIF
+			IF TALENT:TARGET:貞操 < 0
+				理性判定値 -= 200
+				CALL SF_REASON_MOD(@"【%GET_TALENTNAME_TR(GETNUM(TALENT,  "貞操"), -1)%】", 理性判定値)
+			ENDIF
+			IF MARK:TARGET:反発刻印
+				理性判定値 += MARK:TARGET:反発刻印 * 100
+				CALL SF_REASON_MOD(@"【%MARK_TR(GETNUM(MARK,  "反発刻印"))%】", 理性判定値)
+			ENDIF
+			IF TALENT:TARGET:機嫌 < 0
+				理性判定値 += 300
+				CALL SF_REASON_MOD(@"【%GET_TALENTNAME_TR(GETNUM(TALENT,  "機嫌"), -1)%】", 理性判定値)
+			ENDIF
+			IF TALENT:TARGET:処女
+				理性判定値 += 300
+				CALL SF_REASON_MOD(@"【%TALENT_TR(GETNUM(TALENT,  "処女"))%】", 理性判定値)
+			ENDIF
+			IF TALENT:TARGET:倒錯的
+				理性判定値 -= 200
+				CALL SF_REASON_MOD(@"【%TALENT_TR(GETNUM(TALENT,  "倒錯的"))%】", 理性判定値)
+			ENDIF
+			IF TALENT:MASTER:謎の魅力
+				理性判定値 -= 150
+				CALL SF_REASON_MOD(@"당신의【%TALENT_TR(GETNUM(TALENT,  "謎の魅力"))%}", 理性判定値)
+			ENDIF
+			IF TALENT:MASTER:魅力
+				理性判定値 -= 150
+				CALL SF_REASON_MOD(@"당신의【%TALENT_TR(GETNUM(TALENT,  "魅力"))%}", 理性判定値)
+			ENDIF
+			IF FuckReserved(TARGET)
+				理性判定値 += 200
+				CALL SF_REASON_MOD(@"【%TALENT_TR(GETNUM(TALENT,  "一線越えない"))%】", 理性判定値)
+			ELSEIF HasBionicPart(MASTER,67) && TALENT:TARGET:一線越えない
+				理性判定値 -= 200
+				CALL SF_REASON_MOD(@"당신의【순결한 조화기】", 理性判定値)
+			ENDIF
+			IF OTOKOGIRAI(TARGET)
+				理性判定値 += 300
+				CALL SF_REASON_MOD(@"성적 지향", 理性判定値)
+			ENDIF
+			IF CFLAG:TARGET:体目当て
+				理性判定値 -= 400
+				CALL SF_REASON_MOD(@"욕망을 독점하는 미라다의 천년석이 빛나기 시작한다...!", 理性判定値)
+			ENDIF
+			IF HasBionicPart(MASTER,82)
+				理性判定値 = 理性判定値 / 2
+				CALL SF_REASON_MOD(@"트로이의 영혼이 활성화한다...!", 理性判定値)
+			ENDIF
+			SIF SF_DO
+				GOTO SF_RESULT
+	ENDSELECT
+ENDIF
+SELECTCASE proposeType
+	CASE 0
+		;harem custom code
+		PRINTFORML %조사처리(CALLNAME:TARGET,"에게")% 고백하기. \@ FLAG:追加恋人枠 >= 150 ? %@" You can have as many lovers as you want."% # %@" You can only have "%%PRINT_PLUR("lover", FLAG:追加恋人枠 + 1)%! ) \@
+		PRINTL 확정?
+		CALL ASK_YN("No","고백한다")
+		IF !RESULT
+			TFLAG:192 = 0
+			TFLAG:193 = 0
+			RETURN -1
+		ENDIF
+		$CONFESS
+		;パラメータにより成功基礎値判定
+		SETBIT TFLAG:一日一回, 12
+		SELECTCASE TFLAG:192
+			;通常
+			CASE 0
+				IF TALENT:恋人
+					IF EXP:愛情経験 > 250 + FuckReserved(TARGET) * 100
+						TFLAG:193 = 1
+					ELSE
+						TFLAG:193 = 0
+					ENDIF
+				ELSE
+					IF CFLAG:合意判定 > 350 + FuckReserved(TARGET) * 100
+						TFLAG:193 = 1
+					ELSE
+						TFLAG:193 = 0
+					ENDIF
+				ENDIF
+				;強制成功or大成功
+			CASE 1
+				TFLAG:193 = 1
+				;強制失敗
+			CASE -1
+				TFLAG:193 = 0
+				;コマンド終了
+			CASE -2
+				TFLAG:193 = 0
+				RETURN 0
+		ENDSELECT
+		IF TFLAG:193 == 1
+			SOURCE:歓楽 = 1000
+			SOURCE:受動 = 500 + 100 * ABL:従順
+			SOURCE:征服 = 500 + 100 * ABL:サドっ気
+		ENDIF
+	CASE 1
+		PRINTFORML %조사처리(CALLNAME:TARGET,"에게")% 제안한다. %PARSE("You")%는 {FLAG:追加恋人枠 + 1}만 가질 수 있다 \@ FLAG:追加恋人枠 ? 아내 # 배우자 \@.
+		PRINTL 확정할까?
+		CALL ASK_YN("No","제안하다")
+		IF !RESULT
+			RETURN -1
+		ENDIF
+		GOTO CONFESS
+	CASE 2
+		PRINTFORML 당신의 섹프가 되어 줄 %조사처리(CALLNAME:TARGET,"를")% 제안합니다.
+		PRINTFORML 하루에 한 번만 시도할 수 있습니다.
+		PRINTW 확인하시겠습니까?
+		CALL ASK_YN("취소","제안을 만든다")
+		IF !RESULT
+			RETURN -1
+		ENDIF
+		RESULT = 0
+		SF_DO = 1
+		GOTO SF_Prop
+		$SF_RESULT
+		TRYCALLFORM KOJO_SF_CONTRACT_{TARGET}("補正")
+		IF RESULT
+			理性判定値 = MAX(理性判定値 + RESULT, 0)
+			CALL SHOW_REASONWALL(理性判定値)
+		ENDIF
+		PRINTFORMW 
+		IF 欲望判定値 > 理性判定値
+			TALENT:TARGET:セフレ = 1
+			TRYCALLFORM KOJO_SF_CONTRACT_{TARGET}("成功")
+			CALL COLORMESSAGE(@"%조사처리(CALLNAME:TARGET,"는")%(는) 당신의 섹프가 되기로 동의한다...",C_PINK,1,1)
+			CALL ASK_DIARY(@"%조사처리(CALLNAME:TARGET,"에게")% 섹프 계약을 제안하고 %HIM_HER(TARGET)%의 동의를 얻었다.")
+		ELSE
+			TRYCALLFORM KOJO_SF_CONTRACT_{TARGET}("失敗")
+			PRINTFORMW 당신은 거절당한다...
+			SOURCE:反感 += 1000
+		ENDIF
+	CASE 3
+		PushDownFilter:TARGET:0 = !PushDownFilter:TARGET:0
+		PRINTFORMDW %조사처리(CALLNAME:TARGET,"의")% 무작위 푸시 다운은 이제 \@ PushDownFilter:TARGET:0 ? 금지된다 # 허용된다 \@. 
+		RETURN -1
+	CASE 4
+		; [AUTO-NEUTRALIZED] CALL ASK_M ( @"\@ PushDownFilter:TARGET:2 는 TSP 강간 동의를 박탈할 것인가 # TSP 강간 동의를 줄 것인가 \@\@ !GETBIT(CFLAG:TARGET:既成事実 , 1) ? %@" (%CALLNAME:TARGET% hasn't given you consent for sex)"% #\@", GETBIT(CFLAG:TARGET:既成事実 , 1) && MAXBASE:MASTER:TSP, @"\@ PushDownFilter:TARGET:1 ? Revoke Reverse TSP Rape Consent # Give Reverse TSP Rape Consent \@\@ !GETBIT(CFLAG:TARGET:既成事実 , 1) ? %@" (%CALLNAME:TARGET% hasn't given you consent for sex)"% #\@\@ !MAXBASE:TARGET:TSP ? %@" (%CALLNAME:TARGET% cannot stop time)"% #\@", MAXBASE:TARGET:TSP && GETBIT(CFLAG:TARGET:既成事実 , 1), "떠나기", 1 )
+		SELECTCASE RESULT
+			CASE 0
+				PushDownFilter:TARGET:1 = !PushDownFilter:TARGET:1
+				PRINTFORMDW TSP 위반이 %CALLNAME:TARGET%에게는 이제 \@ PushDownFilter:TARGET:1 ? 허용된다 # 금지된다 \@. 
+			CASE 1
+				PushDownFilter:TARGET:1 = !PushDownFilter:TARGET:1
+				PRINTFORMDW %조사처리(CALLNAME:TARGET,"의")% TSP 위반은 이제 \@ PushDownFilter:TARGET:1 ? 허용된다 # 금지된다_. \@ 
+		ENDSELECT
+		RETURN -1
+	CASE 5
+		; [AUTO-NEUTRALIZED] CALL ASK_M ( @"[@PushDownFilter:TARGET:3은] 그것을 \@ Revoke Hypnosis Consent # Give Hypnosis Consent \@\@ !GETBIT(CFLAG:TARGET:既成事実 , 1) ? %@" (%CALLNAME:TARGET% hasn't given you consent for sex)"% #\@", GETBIT(CFLAG:TARGET:既成事実 , 1) && GETBIT(TALENT:MASTER:ESP,19), @"\@ PushDownFilter:TARGET:4 ? 최면당한 존재의 동의를 철회한다 # 최면당한 존재의 동의를 준다 \@\@ !GETBIT(CFLAG:TARGET:既成事実 , 1) ? %@" (%CALLNAME:TARGET% hasn't given you consent for sex)"% #  \@\@ !GETBIT(TALENT:TARGET:ESP,19) ? %@" (%CALLNAME:TARGET% cannot use hypnosis)"% #  \@", GETBIT(TALENT:TARGET:ESP,19) && GETBIT(CFLAG:TARGET:既成事実 , 1), "떠나기", 1 )
+		SELECTCASE RESULT
+			CASE 0
+				PushDownFilter:TARGET:3 = !PushDownFilter:TARGET:3
+				PRINTFORMDW %CALLNAME:TARGET%에 대한 최면은 이제 \@ PushDownFilter:TARGET:3 ? 허용된다 # 금지된다 \@. 
+			CASE 1
+				PushDownFilter:TARGET:4 = !PushDownFilter:TARGET:4
+				PRINTFORMDW %CALLNAME:TARGET%로부터의 최면은 이제 \@ PushDownFilter:TARGET:4 ? 허용된다 # 금지된다 \@. 
+		ENDSELECT
+		TFLAG:192 = 0
+		TFLAG:193 = 0
+		RETURN -1
+	CASE 6
+		SETCOLOR C_RED
+		PRINTFORML 당신은 정말로 %조사처리(CALLNAME:TARGET,"와")% 이혼하고 싶습니까?
+		PRINTFORML 당신은 【%GET_TALENTNAME_TR(7,1,TARGET)%】, 【%GET_TALENTNAME_TR(225,1,TARGET)%】을 잃게 되고 대신 【%GET_TALENTNAME_TR(225,TALENT:225 ? -1 # -2,TARGET)%】을 얻게 될 것입니다.
+		RESETCOLOR
+		CALL ASK_YN()
+		SELECTCASE RESULT
+			CASE 0
+				SETCOLOR C_RED
+				PRINTFORML 정말로 확신하는 거야?
+				RESETCOLOR
+				CALL ASK_YN()
+				SELECTCASE RESULT
+					CASE 0
+						PRINTFORMW 당신은 %조사처리(CALLNAME:TARGET,"에게")% 이혼을 요청한다.
+						TALENT:7 = 0
+						TALENT:225 = TALENT:225 ? -1 # -2
+						PRINTFORMW %조사처리(CALLNAME:TARGET,"는")% 이제 당신의 【%GET_TALENTNAME_TR(225,TALENT:225 ? -2 # -1,TARGET)%】이다...
+				ENDSELECT
+		ENDSELECT
+	CASEELSE
+		TFLAG:192 = 0
+		TFLAG:193 = 0
+		RETURN -1
+ENDSELECT
+;bug fix, to display description
+TIME += 10
+RETURN 1
+;-------------------------------------------------
+;実行判定
+;-------------------------------------------------
+
+@COM_ABLE352_NAS
+;停止中は不可
+SIF FLAG:70 && !MAXBASE:TARGET:TSP
+	RETURN 0
+;妄想中は告白できない
+SIF TFLAG:妄想中 == 1
+	RETURN 0
+;告白する実行判定
+SIF !TFLAG:100
+	RETURN 0
+;一括管理
+SIF GLOBAL_COMABLE(352)
+	RETURN RESULT
+;二人きりでないとだめ
+SIF GET_TARGETNUM() > 1
+	RETURN 0
+; ;馴れ合い強度2
+; NAS: Useless limitation
+; SIF TCVAR:MASTER:馴れ合い < 2
+; 	RETURN 0
+;;すでに恋人の場合はだめ
+;SIF TALENT:恋人 && TALENT:225
+;	RETURN 0
+;NAS: Removed
+; SIF GETBIT(TFLAG:一日一回, 12)
+; 	RETURN 0
+; ;恋人の数が上限に達していてはだめ
+; SIF !CAN_MAKE_恋人()
+; 	RETURN 0
+SIF TALENT:TARGET:行きずり
+	RETURN 0
+;睡眠中
+SIF CFLAG:睡眠
+	RETURN 0
+;添い寝中
+SIF CFLAG:添い寝中
+	RETURN 0
+;気力0
+SIF BASE:MASTER:気力 <= 0
+	RETURN 0
+RETURN 1
+
+@SF_REASON_MOD(ARGS, ARG)
+CALL COLORMESSAGE(@"%ARGS%",C_YELLOW,1,1)
+CALL SHOW_REASONWALL(ARG)
+
+@SF_DESIRE_MOD(ARGS, ARG)
+CALL COLORMESSAGE(@"%ARGS%",C_PINK,1,1)
+CALL SHOW_LOVEPOWER(ARG, 100, "Carnality")

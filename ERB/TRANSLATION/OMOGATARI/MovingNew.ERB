@@ -1,0 +1,1052 @@
+﻿; Modular ERB: OMOGATARI/MovingNew.ERB
+
+@NAS_CALC_MOVE(ARG, 最終目的地, makePath = 0, nForce = 0)
+#DIM 暫定目的地,10
+#DIM 暫定目的地決定回数
+#DIM 最終目的地
+#DIM 直前位置
+#DIM 出発地点
+#DIM 経過時間
+#DIM 中継地点,20
+#DIM HelpStack,20
+#DIM HelpVar
+#DIM 中継回数
+#DIM RELAY_COUNT
+#DIM 直前の目的地
+#DIM TSP消費倍率
+#DIM makePath
+#DIM nForce
+;ARG:0	出発位置
+;ARG:1	最終目的地
+VARSET LOCAL
+VARSET 中継地点
+VARSET HelpStack
+暫定目的地 = 最終目的地
+経過時間 = 0
+中継回数 = 0
+TFLAG:マップ切り替え = 0
+出発地点 = CFLAG:ARG:現在位置
+IF DevTest == 2
+	;#; SETCOLOR C_ORANGE
+	;#; PRINTFORML %CALLNAME:ARG% moving to {暫定目的地} %NAME_FROM_PLACE(暫定目的地)% from {CFLAG:ARG:300} %NAME_FROM_PLACE(CFLAG:ARG:300)%
+	;#; RESETCOLOR
+ENDIF
+IF (CAN_MOVE(CFLAG:ARG:現在位置, 暫定目的地) & 1)
+	直前位置 = ARG
+	経過時間 = 1
+	RESULT = 最終目的地
+	GOTO GoMakePath
+ELSE
+	TRYCALLFORM SKIP_MOVE_{MAIN_MAP}(最終目的地)
+ENDIF
+SIF !STRLENS(NAME_FROM_PLACE(CFLAG:ARG:300)) ; empty places, go back to entrance.
+	CFLAG:ARG:300 = ENTRANCE
+出発地点 = CFLAG:ARG:現在位置
+直前の目的地 = -1
+SIF 出発地点 >= MAXROOM ; no road-tos
+	RETURN 999
+SIF 出発地点/100 != MAIN_MAP ; not main map
+	RETURN 999
+SIF !STRLENS(NAME_FROM_PLACE(最終目的地)) ; empty places
+	RETURN 999
+SIF CFLAG:ARG:出禁 || IsDead:ARG:0 ; banned or dead
+	RETURN 999
+SIF (!MAP_CAN_MOVE(最終目的地, ARG) || !MAP_CAN_MOVE(出発地点, ARG)) && GET_MAPID(最終目的地) == 19 ; cannot move there from or to
+	RETURN 999
+SIF IS_BABY(ARG)
+	RETURN 999
+FOR 中継回数,0,20
+VARSET HelpVar
+WHILE !(CAN_MOVE(出発地点, 暫定目的地) & 1)
+TRYCALLFORM SKIP_MOVE_{MAIN_MAP}(暫定目的地,出発地点)
+[IF_DEBUG]
+IF DevTest == 2
+	PRINTFORML {暫定目的地}%STR_TR(8000 + 暫定目的地)%로 직접 이동할 수 없어 대신 {RESULT}%STR_TR(8000 + RESULT)%로 간다.
+ENDIF
+[ENDIF]
+HelpStack:HelpVar = RESULT
+HelpVar++
+IF 直前の目的地 == RESULT
+	SETCOLOR C_RED
+	PRINTL
+	PRINTFORML %"-"*89%
+	PRINTFORML 지도 탐색 오류로 무한 이동 루프가 발생했습니다.
+	PRINTFORML 캐릭터: {ARG} %NAME:ARG%
+	PRINTFORML 현재 위치: {CFLAG:ARG:現在位置} %NAME_FROM_PLACE(CFLAG:ARG:現在位置)%
+	PRINTFORML 목적지: {最終目的地} %NAME_FROM_PLACE(最終目的地)%
+	PRINTFORML 이동 중인 곳: {暫定目的地} %NAME_FROM_PLACE(暫定目的地)%
+	PRINTFORML 경로:
+	FOR LOCAL, 19, -1, -1
+	SIF !STRLENS(NAME_FROM_PLACE(中継地点:LOCAL)) ; empty places
+		CONTINUE
+	PRINTFORML %"　↑"% #{LOCAL}. {中継地点:LOCAL} %NAME_FROM_PLACE(中継地点:LOCAL)%
+	NEXT
+	PRINTFORML 스택 트레이스:
+	FOR LOCAL, 19, -1, -1
+	SIF !STRLENS(NAME_FROM_PLACE(HelpStack:LOCAL)) ; empty places
+		CONTINUE
+	PRINTFORML %"　↑"% #{LOCAL}. {HelpStack:LOCAL} %NAME_FROM_PLACE(HelpStack:LOCAL)%
+	NEXT
+	PRINTFORML 이 보고를 해라!
+	PRINTFORML %"-"*89%
+	RESETCOLOR
+	THROW
+ENDIF
+直前の目的地 = 暫定目的地
+暫定目的地 = RESULT
+WEND
+VARSET HelpVar
+VARSET HelpStack
+[IF_DEBUG]
+IF DevTest == 2
+	SETCOLOR C_YELLOW
+	PRINTFORML 임시 목적지 번호 {中継回数+1}는 %NAME_FROM_PLACE(暫定目的地)%로 결정되었다.
+	RESETCOLOR
+ENDIF
+[ENDIF]
+$ForceEndLoop
+直前の目的地 = -1
+経過時間 += 1
+中継地点:中継回数 = 暫定目的地
+SIF CAN_MOVE(暫定目的地,最終目的地) & 1
+	BREAK
+出発地点 = 暫定目的地
+暫定目的地 = 最終目的地
+NEXT
+IF 経過時間 >= 20
+	SETCOLOR C_D_ORANGE
+	PRINTL
+	PRINTFORML %"-"*89%
+	PRINTFORML NAS_CALC_MOVE에서 내비게이션 오류가 발생하여 강제로 이동 루프가 종료되었다.
+	PRINTFORML 캐릭터: {ARG} %NAME:ARG%
+	PRINTFORML 현재 위치: {CFLAG:ARG:現在位置} %NAME_FROM_PLACE(CFLAG:ARG:現在位置)%
+	PRINTFORML 목적지: {最終目的地} %NAME_FROM_PLACE(最終目的地)%
+	PRINTFORML 스택 트레이스:
+	FOR LOCAL, 19, -1, -1
+	SIF !STRLENS(NAME_FROM_PLACE(中継地点:LOCAL)) ; empty places
+		CONTINUE
+	PRINTFORML %"　↑"% #{LOCAL}. {中継地点:LOCAL} %NAME_FROM_PLACE(中継地点:LOCAL)%
+	NEXT
+	PRINTFORML 이것을 보고하라!
+	PRINTFORML %"-"*89%
+	RESETCOLOR
+	IF DevTest == 2
+		;#; RESULT:1 = CFLAG:ARG:現在位置
+		;#; RESULT:2 = 最終目的地
+	ENDIF
+ENDIF
+直前位置 = 暫定目的地
+$GoMakePath
+IF makePath
+	CALLF CreateMovementPath(ARG)
+	charaMovementStep:ARG:0 = 0
+	;;#;SIF !CFLAG:MASTER:313
+	;;#; PRINTFORML Making path for {ARG} %NAME:ARG% to go to {最終目的地} %NAME_FROM_PLACE(最終目的地)%
+	FOR LOCAL, 0, 20
+	SIF !中継地点:LOCAL
+		CONTINUE
+	DT_ROW_ADD @"Movement_{ARG}", "step", LOCAL, "place", 中継地点:LOCAL
+	;;#; PRINTFORML #{LOCAL}. {中継地点:LOCAL} %NAME_FROM_PLACE(中継地点:LOCAL)%
+	NEXT
+	DT_ROW_ADD @"Movement_{ARG}", "step", LOCAL, "place", 最終目的地
+ENDIF
+RETURN 経過時間
+
+@OptimalPlace(ARG, RoomType=-1)
+#DIM DYNAMIC TestRoom
+#DIM DYNAMIC MinRoom
+#DIM DYNAMIC BestRoom
+#DIM DYNAMIC RoomType
+#DIM DYNAMIC nCost
+#DIM DYNAMIC smallCost
+#DIM DYNAMIC checkOccupied
+#DIM DYNAMIC wasOccupied
+smallCost = 99
+;see if we can check ocupud
+SELECTCASE RoomType
+	CASE 7
+		checkOccupied = 1
+ENDSELECT
+;do not
+SIF CFLAG:ARG:現在位置 >= MAXROOM
+	RETURN 0
+$Recheck
+CALL FISHER_YATES_SHAFFLE(MAXROOM - MINROOM())
+FOR LOCAL, 0, MAXROOM - MINROOM()
+TestRoom = SHAFFLE_ARRAY:LOCAL + (MAIN_MAP * 100) + 1
+SIF !MAP_CAN_MOVE(TestRoom, ARG)
+	CONTINUE
+SELECTCASE RoomType
+	CASE -1
+		;outdoors
+		SIF !OUTROOF(TestRoom)
+			CONTINUE
+	CASE 2
+		SIF !BATHROOM(TestRoom)
+			CONTINUE
+	CASE 7
+		SIF !IS_TOILET(TestRoom, ARG)
+			CONTINUE
+		SIF ToiletIsOccupied(TestRoom) && !wasOccupied
+			CONTINUE
+	CASE 14
+		SIF !LAUNDRY_ROOM(TestRoom)
+			CONTINUE
+	CASE 19
+		SIF !MEASUREMENTCHECK(TestRoom) && !BATHROOM(TestRoom) && (ROOMDATA:(TestRoom % 100) && !(TestRoom == CFLAG:ARG:311))
+			CONTINUE
+	CASE 0 TO 63
+		;other cases
+		SIF !GETBIT(ROOMDATA:(TestRoom%100), RoomType)
+			CONTINUE
+ENDSELECT
+SIF !STRLENS(NAME_FROM_PLACE(TestRoom))
+	CONTINUE
+;calculate movement cost
+CALL NAS_CALC_MOVE(ARG,TestRoom)
+nCost = RESULT
+smallCost = MIN(nCost,smallCost)
+SIF nCost == smallCost
+	BestRoom = TestRoom
+NEXT
+IF checkOccupied && !BestRoom
+	checkOccupied = 0
+	wasOccupied = 1
+	GOTO Recheck
+ENDIF
+RESULT:2 = wasOccupied
+RESULT:1 = smallCost
+RETURN BestRoom
+
+@NAS_FORCEMOVE(ARG)
+#DIM 留まり率
+#DIM 移動先
+#DIM 移動決定
+#DIM 無差別移動
+#DIM 強制移動
+#DIM END
+#DIM N_ID
+#DIM G_POINT
+#DIM MoveFrom
+#DIM StepMoveTo
+#DIM MoveTo
+#DIM MoveTime
+#DIM nPlace
+#DIM DebugShow
+#DIM BestToilet,6
+#DIM DYNAMIC GoMoveOut
+#DIM DYNAMIC GoInDiaper
+VARSET LOCAL
+END = 0
+GoMoveOut = 0
+StepMoveTo = CFLAG:ARG:現在位置
+;only at home
+SIF !AT_HOME(ARG)
+	END = 1
+;no moving in time stop, uncon, dead.
+SIF FLAG:時間停止 || CFLAG:ARG:衰弱 || CFLAG:ARG:お招き || CFLAG:ARG:睡眠 || IsDead:ARG:0 || CFLAG:ARG:うふふ || CFLAG:ARG:出禁
+	END = 1
+;sleeping together
+SIF CFLAG:添い寝中
+	END = 1
+;being lead around
+SIF CFLAG:ARG:同行
+	END = 1
+;baby
+SIF IS_BABY(ARG)
+	END = 1
+;終了処置
+IF END
+	TCVAR:ARG:なるべく動かない = 0
+	RETURN
+ENDIF
+N_ID = CFLAG:ARG:現在位置
+無差別移動 = 0
+強制移動 = 0
+留まり率 = 0
+; ;NAS: bladder and bowel desepration
+留まり率 -= (35*MAX(PeeBarStage(ARG),PooBarStage(ARG)))
+;留まり率 = 1000
+;お風呂にいる
+IF BATHROOM(N_ID)
+	;お風呂なう
+	IF CFLAG:ARG:風呂
+		TCVAR:ARG:なるべく動かない = 0
+		RETURN
+		;あがる
+	ELSE
+		無差別移動 = 1
+	ENDIF
+ENDIF
+;トイレは10分経過したら出てくる,利尿剤が効いてると出てこない
+IF IN_TOILET(N_ID) && TIME_PROGRESS(TIME:1) >= 10 && !TCVAR:ARG:利尿剤
+	IF TCVAR:ARG:利尿剤
+		TCVAR:ARG:なるべく動かない = 1
+	ELSEIF TIME_PROGRESS(TIME:1) >= 10 && !TCVAR:ARG:利尿剤
+		無差別移動 = 1
+	ENDIF
+ENDIF
+;too desperate
+SIF PeeBarStage(ARG) >= 5 || PooBarStage(ARG) >= 5
+	無差別移動 = 1
+;なるべく動かないなら終了
+IF TCVAR:ARG:なるべく動かない && !無差別移動
+	TCVAR:ARG:なるべく動かない = 0
+	RETURN
+ENDIF
+;DEBUGPRINTFORML getting movement stuff for {ARG} %CALLNAME:ARG%
+;順番シャッフル
+CALL FISHER_YATES_SHAFFLE(MAXROOM - MINROOM())
+移動決定 = 0
+WHILE 1
+;引力点の設定を行う
+TCVAR:ARG:引力点 = 0
+;debug flag
+[IF_DEBUG]
+DebugShow = 1
+[ENDIF]
+;addition custom code, duplicated characters
+TRYCALLFORM CHARAMOVE_DATA_{NO:ARG}(8)
+CALL KOJO_MESSAGE_SEND("GRAVITY", 1, ARG)
+;NAS: Wetting stuff
+IF PeeBarStage(ARG) >= 7 && CAN_ACCIDENT(ARG,1)
+	;PRINTFORML {BASE:ARG:尿意} >= {GetMaxBladder(ARG)}
+	IF CAN_SEE(ARG) && !CFLAG:MASTER:睡眠 && nNPCToileting
+		;PRINTFORML %CALLNAME:ARG% couldn't make it and %FSYN("pee:ed")% themselves...
+		CALL NeedForPee(ARG)
+	ELSE
+		CALL OMORASHI_END(ARG, 1)
+	ENDIF
+ENDIF
+IF PooBarStage(ARG) >= 7 && CAN_ACCIDENT(ARG,2)
+	IF CAN_SEE(ARG) && !CFLAG:MASTER:睡眠 && nNPCToileting
+		;PRINTFORML %CALLNAME:ARG% couldn't make it and %FSYN("poo:ed")% themselves...
+		CALL NeedForPee(ARG)
+	ELSE
+		CALL OMORASHI_END(ARG, 0, 1)
+	ENDIF
+ENDIF
+;-----------------------------------------------
+IF charaMovementStep:ARG:0 < DT_ROW_LENGTH(@"Movement_{ARG}") && DT_EXIST(@"Movement_{ARG}")
+	;DEBUGPRINTFORML trying to move {ARG} %CALLNAME:ARG%
+	;;#; PRINTFORML Trying to move %CALLNAME:ARG%
+	CALL PathMoveStage(ARG)
+	RETURN
+ELSEIF !STRLENS(SHOW_TOP(ARG)) && !TCVAR:ARG:Exhibitionist_Nudist_Sense
+	;NAS: naked 2hu
+	;DEBUGPRINTFORML trying to move {ARG} %CALLNAME:ARG% for naked top
+	IF MEASUREMENTCHECK(CFLAG:ARG:現在位置) || BATHROOM(CFLAG:ARG:現在位置) || (ROOMDATA:(移動先 % 100) && (移動先 == CFLAG:ARG:311))
+		IF !CFLAG:MASTER:睡眠 || DebugShow
+			PRINTFORM %CALLNAME:ARG%는 옷장으로 간다
+			PRINT 【
+			PRINTFORMS THE_CASE_SHIFT(NAME_FROM_PLACE(CFLAG:ARG:現在位置))
+			PRINTW 옷을 다시 입기 위해서.
+		ENDIF
+		CALL CTRL_CLOTHES_SET(ARG, "現在衣装の変更_普段着")
+		CALL CHANGE_CLOTHES(ARG, "衣装リセット")
+		BREAK
+	ENDIF
+	;get closest potty
+	CALL OptimalPlace(ARG, 19)
+	移動先 = RESULT
+	;do not move in sex
+	SIF 移動先 == CFLAG:MASTER:初期位置 && 移動先 != CFLAG:ARG:初期位置 && 移動先 == CFLAG:MASTER:現在位置 && CFLAG:MASTER:うふふ
+		CONTINUE
+	CALL キャラ移動率(ARG, 移動先, 留まり率)
+	IF RESULT * TIME_PROGRESS(TIME:1) > RAND:1000
+	ELSE
+		RETURN
+	ENDIF
+	IF MEASUREMENTCHECK(移動先) || BATHROOM(移動先) || (ROOMDATA:(移動先 % 100) && (移動先 == CFLAG:ARG:311))
+		IF !CFLAG:MASTER:睡眠
+			PRINTFORM %CALLNAME:ARG%가 간다 
+			PRINT 【
+			PRINTFORMS THE_CASE_SHIFT(NAME_FROM_PLACE(移動先))
+			PRINTW 옷을 다시 입기 위해서.
+		ENDIF
+		移動決定 = 移動先
+		charaMovementStep:ARG:1 = 19
+	ENDIF
+ELSEIF ((SoiledSelf:ARG:0 || SoiledSelf:ARG:1) || WantsToGoBath(ARG)) && PottyLinePosition(ARG) == -1
+	;force to go
+	;after a leaky or messy accident
+	;DEBUGPRINTFORML trying to move {ARG} %CALLNAME:ARG% for being dirty
+	;IF BATHROOM(CFLAG:ARG:現在位置) || CFLAG:MASTER:睡眠
+	IF BATHROOM(CFLAG:ARG:現在位置)
+		IF !CFLAG:MASTER:睡眠 || DebugShow
+			PRINTFORM %CALLNAME:ARG%은(는) 몸을 치운다
+			PRINT 【
+			PRINTFORMS THE_CASE_SHIFT(NAME_FROM_PLACE(CFLAG:ARG:現在位置))
+			PRINTFORMW 】%COND_STR("after their accident",(SoiledSelf:ARG:0 || SoiledSelf:ARG:1))%.
+		ENDIF
+		CALL ODEKAKE_OFURO(ARG)
+		BREAK
+	ENDIF
+	;get closest potty
+	CALL OptimalPlace(ARG, 2)
+	移動先 = RESULT
+	;IF ROOMDATA:(移動先 % 100) && 場所_風呂
+	;do not move in sex
+	SIF 移動先 == CFLAG:MASTER:初期位置 && 移動先 != CFLAG:ARG:初期位置 && 移動先 == CFLAG:MASTER:現在位置 && CFLAG:MASTER:うふふ
+		CONTINUE
+	CALL キャラ移動率(ARG, 移動先, 留まり率)
+	IF RESULT * TIME_PROGRESS(TIME:1) > RAND:1000
+	ELSE
+		RETURN
+	ENDIF
+	IF BATHROOM(移動先)
+		IF !CFLAG:MASTER:睡眠 && (CAN_SEE(ARG) || DebugShow)
+			PRINTFORM %CALLNAME:ARG%은/는 간다 
+			PRINT 【
+			PRINTFORMS THE_CASE_SHIFT(NAME_FROM_PLACE(移動先))
+			PRINTFORMW 그들의 몸을 청소하기 위해 %COND_STR(" after their accident",(SoiledSelf:ARG:0 || SoiledSelf:ARG:1))%로 간다.
+		ENDIF
+		GoMoveOut = 0
+		;get if the toilet is already occupied
+		IF ROOMDATA:(移動先 % 100) & 場所_プライベート
+			FOR LOCAL, 0, CHARANUM
+			IF CFLAG:LOCAL:現在位置 == 移動先 && LOCAL != ARG && LOCAL != MASTER
+				SIF (CAN_SEE(ARG) || DebugShow) && !CFLAG:MASTER:睡眠
+					PRINTFORMW %CALLNAME:LOCAL%가 이미 거기에 있는 것 같다...
+				GoMoveOut = 1
+				BREAK
+			ENDIF
+			NEXT
+		ENDIF
+		IF GoMoveOut
+			IF CFLAG:MASTER:現在位置 == 移動先
+				移動決定 = 移動先
+			ELSE
+				FOR LOCAL, MINROOM(), MAXROOM
+				SIF CAN_MOVE(移動先, LOCAL) & 1
+					移動決定 = LOCAL
+				CALL EnterPottyLine(ARG,移動先,移動決定)
+				BREAK
+				NEXT
+			ENDIF
+		ELSE
+			移動決定 = 移動先
+			charaMovementStep:ARG:1 = 3
+		ENDIF
+	ENDIF
+	; ELSEIF PottyLinePosition(ARG) > -1 && WantsToUseDiaperOverPotty(ARG,1)
+	; 	;wants to use diaper over potty in line
+	; 	IF (CAN_SEE(ARG) || DebugShow) && !CFLAG:MASTER:睡眠
+	; 		CALL INTENTIONAL_ACCIDENT(ARG,PeeBarStage(ARG) >= 2,PooBarStage(ARG) >= 2)
+	; 	ELSE
+	; 		CALL OMORASHI_END(ARG, PeeBarStage(ARG) >= 2,PooBarStage(ARG) >= 2,,-1)
+	; 	ENDIF
+ELSEIF WantsToGoPotty(ARG)
+	;go to the potty
+	;DEBUGPRINTFORML trying to move {ARG} %CALLNAME:ARG% to the potty
+	;force to go
+	;movement cost at 999
+	M = 999
+	;go potty if 2hu is in the potty
+	;IF IS_TOILET(CFLAG:ARG:現在位置, ARG) || CFLAG:MASTER:睡眠
+	IF IS_TOILET(CFLAG:ARG:現在位置, ARG)
+		IF (CAN_SEE(ARG) || DebugShow) && !CFLAG:MASTER:睡眠
+			PRINTFORM %CALLNAME:ARG%가 간다
+			PRINT 【
+			PRINTFORMS THE_CASE_SHIFT(NAME_FROM_PLACE(CFLAG:ARG:現在位置))
+			PRINTW 자신들의 용변을 볼 곳이 있는 화장실로 간다.
+			IF CAN_SEE(ARG)
+				CALL GoToilet(ARG,PeeBarStage(ARG) >= 2 && GETBIT(nPee,1),PooBarStage(ARG) >= 2 && GETBIT(nScat,2))
+			ELSE
+				CALL DumpingShit(ARG)
+			ENDIF
+		ELSE
+			CALL DumpingShit(ARG)
+		ENDIF
+		BREAK
+	ENDIF
+	;get closest potty
+	VARSET BestToilet, 99
+	CALL OptimalPlace(ARG, 7)
+	BestToilet:2 = RESULT:2
+	BestToilet:1 = RESULT:1
+	BestToilet:0 = RESULT
+	; PRINTFORML TOILET FOR {ARG} %CALLNAME:ARG% | PLACE {BestToilet:0} %NAME_FROM_PLACE(BestToilet:0)%
+	IF ((TALENT:ARG:ToiletIgnorant && (PeeBarStage(ARG) >= 2 || PooBarStage(ARG) >= 2) ) || ((PeeBarStage(ARG) >= 5 || PooBarStage(ARG) >= 5) && RAND(100) < 20))
+		;relieve self outside
+		CALL OptimalPlace(ARG, -1)
+		BestToilet:5 = RESULT:2
+		BestToilet:4 = RESULT:1
+		BestToilet:3 = RESULT
+	ENDIF
+	GoInDiaper = WantsToUseDiaperOverPotty(ARG,BestToilet:1)
+	IF GoInDiaper
+		IF (CAN_SEE(ARG) || DebugShow) && !CFLAG:MASTER:睡眠
+			CALL INTENTIONAL_ACCIDENT(ARG,PeeBarStage(ARG) >= 2,PooBarStage(ARG) >= 2)
+		ELSE
+			CALL OMORASHI_END(ARG, PeeBarStage(ARG) >= 2,PooBarStage(ARG) >= 2)
+		ENDIF
+		RETURN
+	ELSEIF BestToilet:4 < 99
+		;public pee
+		移動先 = BestToilet:3
+		; IF MIN(BestToilet:1,BestToilet:4) == BestToilet:1 && !BestToilet:2 && !TALENT:ARG:ToiletIgnorant
+	ELSEIF MIN(BestToilet:1,BestToilet:4) == BestToilet:1 && !TALENT:ARG:ToiletIgnorant
+		移動先 = BestToilet:0
+	ELSE
+		;no valid
+		RETURN
+	ENDIF
+	;移動先 = SHAFFLE_ARRAY:LOCAL + MAIN_MAP * 100 + 1
+	;do not move during sex
+	SIF 移動先 == CFLAG:MASTER:初期位置 && 移動先 != CFLAG:ARG:初期位置 && 移動先 == CFLAG:MASTER:現在位置 && CFLAG:MASTER:うふふ
+		CONTINUE
+	CALL キャラ移動率(ARG, 移動先, 留まり率)
+	;PRINTFORML %CALLNAME:ARG% moving result: {RESULT}
+	IF RESULT * TIME_PROGRESS(TIME:1) > RAND:1000
+	ELSE
+		RETURN
+	ENDIF
+	IF IS_TOILET(移動先, ARG)
+		IF (CAN_SEE(ARG) || DebugShow) && !CFLAG:MASTER:睡眠
+			PRINTFORM %CALLNAME:ARG%은(는) ~을 향해 직진한다.
+			PRINT 【
+			PRINTFORMS THE_CASE_SHIFT(NAME_FROM_PLACE(移動先))
+			PRINTW 화장실에 가기 위해서.
+		ENDIF
+		GoMoveOut = 0
+		;get if the toilet is already occupied
+		;only check private
+		IF ROOMDATA:(移動先 % 100) & 場所_プライベート
+			FOR LOCAL, 0, CHARANUM
+			SIF LOCAL == MASTER
+				CONTINUE
+			IF CFLAG:LOCAL:現在位置 == 移動先 && LOCAL != ARG
+				SIF (CAN_SEE(ARG) || DebugShow) && !CFLAG:MASTER:睡眠
+					PRINTFORMW %CALLNAME:LOCAL%가 이미 거기에 있는 것 같다...
+				GoMoveOut = 1
+				BREAK
+			ENDIF
+			NEXT
+		ENDIF
+		IF GoMoveOut
+			IF CFLAG:MASTER:現在位置 == 移動先
+				移動決定 = 移動先
+			ELSE
+				FOR LOCAL, MINROOM(), MAXROOM
+				IF CAN_MOVE(移動先, LOCAL) & 1
+					移動決定 = LOCAL
+					CALL EnterPottyLine(ARG,移動先,移動決定)
+					BREAK
+				ENDIF
+				NEXT
+			ENDIF
+		ELSE
+			移動決定 = 移動先
+			charaMovementStep:ARG:1 = 7
+		ENDIF
+	ELSE
+		;IF OUTROOF(移動先) && !RAND:4
+		IF (CAN_SEE(ARG) || DebugShow) && !CFLAG:MASTER:睡眠
+			PRINTFORM %CALLNAME:ARG%은/는 간다
+			PRINT 【
+			;#; PRINTFORM {移動先}
+			PRINTFORMS THE_CASE_SHIFT(NAME_FROM_PLACE(移動先))
+			PRINTW 밖에서 용변을 보려고 한다.
+			CALL PottyOutside(ARG,PeeBarStage(ARG) >= 2 && GETBIT(nPee,1),PooBarStage(ARG) >= 2 && GETBIT(nScat,2))
+		ELSE
+			CALL DumpingShit(ARG)
+		ENDIF
+		移動決定 = 移動先
+		BREAK
+		;ENDIF
+	ENDIF
+ELSE
+	;non
+	RETURN
+ENDIF
+;強制移動時は移動決定するまでループ
+IF 強制移動 && !移動決定
+	CONTINUE
+ELSEIF 移動決定 && !DT_EXIST(@"Movement_{ARG}")
+	;CALL キャラ移動処理２(ARG, 移動先, N_ID)
+	CALL NAS_CALC_MOVE(ARG, 移動決定, 1)
+	CALL PathMoveStage(ARG)
+	RETURN
+ELSE
+	TCVAR:ARG:なるべく動かない = 0
+	RETURN
+ENDIF
+WEND
+
+@CreateMovementPath(ARG)
+#FUNCTION
+#DIMS nTableName
+nTableName '= @"Movement_{ARG}"
+DT_CREATE nTableName
+DT_COLUMN_ADD nTableName, "step", "int16"
+DT_COLUMN_ADD nTableName, "place", "int16"
+;--------------------------
+;PathMoveStage
+;Makes the Touhou move in their path every 2 minutes (dependent on movement)
+;--------------------------
+
+@PathMoveStage(ARG)
+#DIM MoveTime
+SIF charaMovementStep:ARG:0 >= DT_ROW_LENGTH(@"Movement_{ARG}") || !DT_EXIST(@"Movement_{ARG}")
+	RETURN
+;NAS: preoccupied path
+MoveTime = 100*CapacityStats:ARG:3/100*(TIME_PROGRESS(TIME:1)/2)/100
+;;#; PRINTFORML %NAME:ARG% has {MoveTime} time slots
+FOR LOCAL, 0, MoveTime
+IF charaMovementStep:ARG:0 >= DT_ROW_LENGTH(@"Movement_{ARG}")
+	;reached destination, delete table
+	CALL PathMoveEnd(ARG)
+	DT_RELEASE @"Movement_{ARG}"
+	charaMovementStep:ARG:0 = 0
+	RETURN
+ENDIF
+;;#; PRINTFORML #{charaMovementStep:ARG:0}. Moving %NAME:ARG% to {DT_CELL_GET(@"Movement_{ARG}", charaMovementStep:ARG:0, "place")} %NAME_FROM_PLACE(DT_CELL_GET(@"Movement_{ARG}", charaMovementStep:ARG:0, "place"))%
+CFLAG:ARG:300 = DT_CELL_GET(@"Movement_{ARG}", charaMovementStep:ARG:0, "place")
+charaMovementStep:ARG:0 ++
+NEXT
+RETURN
+
+@PathEndingPlace(ARG)
+#FUNCTION
+RETURNF DT_CELL_GET(@"Movement_{ARG}", DT_ROW_LENGTH(@"Movement_{ARG}")-1, "place")
+
+@PathMoveEnd(ARG)
+#DIM DYNAMIC nEndPlace
+nEndPlace = PathEndingPlace(ARG)
+SELECTCASE charaMovementStep:ARG:1
+	CASE 3
+		SIF BATHROOM(nEndPlace)
+			CALL ODEKAKE_OFURO(ARG)
+	CASE 7
+		SIF IS_TOILET(nEndPlace, ARG)
+			CALL DumpingShit(ARG)
+	CASE 19
+		IF MEASUREMENTCHECK(nEndPlace) || BATHROOM(nEndPlace) || (ROOMDATA:(nEndPlace % 100) && (nEndPlace == CFLAG:ARG:311))
+			CALL CTRL_CLOTHES_SET(ARG, "現在衣装の変更_普段着")
+			CALL CHANGE_CLOTHES(ARG, "衣装リセット")
+		ENDIF
+ENDSELECT
+charaMovementStep:ARG:1 = 0
+
+@ForceGoAndMove(ARG, nPlace)
+#DIM nPlace
+DT_RELEASE @"Movement_{ARG}"
+charaMovementStep:ARG:0 = 0
+CALL NAS_CALC_MOVE(ARG, nPlace, 1)
+CALL PathMoveStage(ARG)
+;Checks if the place is a toilet
+;CHARA is needed because it determines what bedroom to go to.
+;This is different from IN_TOILET since this requires a CHARA param
+
+@IS_TOILET(ARG, CHARA)
+#FUNCTION
+#DIM CHARA
+;Toilet Ban Mode
+SIF nOmutsu >= 4
+	RETURNF 0
+;room is toilet
+SIF ROOMDATA:(ARG % 100) & 場所_トイレ
+	RETURNF 1
+;with extra toilets enabled bedrooms are toilets.
+SIF (ROOMDATA:(ARG % 100) && (ARG == CFLAG:CHARA:311)) && GETBIT(nExtraRooms,0)
+	RETURNF 1
+
+@CharacterInPlace(ARG)
+#FUNCTION
+#DIM DYNAMIC CIP_COUNT
+VARSET CIP_COUNT
+FOR LOCAL, 0, CHARANUM
+IF CFLAG:LOCAL:現在位置 == ARG
+	CIP_COUNT ++
+ENDIF
+NEXT
+RETURNF CIP_COUNT
+
+@ToiletIsOccupied(ARG)
+#FUNCTION
+SIF !(ROOMDATA:(ARG % 100) & 場所_プライベート)
+	RETURNF 0
+RETURNF CharacterInPlace(ARG)
+
+@MN_ROOMTYPE(ARG)
+#FUNCTIONS
+SELECTCASE ARG
+	CASE -1
+		RETURNF "Outside"
+	CASE 0
+		RETURNF "Bedroom"
+	CASE 1
+		RETURNF "Indoors"
+	CASE 2
+		RETURNF "Bathroom"
+	CASE 3
+		RETURNF "Kitchen"
+	CASE 4
+		RETURNF "Training Romom"
+	CASE 5
+		RETURNF "Study Area"
+	CASE 6
+		RETURNF "Rest Area"
+	CASE 7
+		RETURNF "Toilet"
+	CASE 8
+		RETURNF ""
+	CASE 9
+		RETURNF "Moon Viewable"
+	CASE 10
+		RETURNF "Pray Area"
+	CASE 11
+		RETURNF "Garden"
+	CASE 12
+		RETURNF "Water Drawable"
+	CASE 13
+		RETURNF ""
+	CASE 14
+		RETURNF "Laundry"
+	CASE 15
+		RETURNF ""
+	CASE 16
+		RETURNF "Spacious"
+	CASE 17
+		RETURNF ""
+	CASE 18
+		RETURNF ""
+	CASE 19
+		RETURNF "Dressing Room"
+	CASE 20
+		RETURNF "Mob Area"
+	CASE 21
+		RETURNF "Mob Area 2"
+	CASE 22
+		RETURNF "Mob Area 3"
+	CASE 23
+		RETURNF "Moves Rarely"
+	CASE 24
+		RETURNF "Private"
+	CASE 25
+		RETURNF "Public"
+	CASE 26
+		RETURNF "Dining"
+	CASE 27
+		RETURNF "Roofed"
+	CASE 28
+		RETURNF "Western Style"
+	CASE 29
+		RETURNF "Food Stealing"
+	CASE 30
+		RETURNF "Moves Frequently"
+	CASE 31
+		RETURNF "One Room"
+	CASE 32
+		RETURNF "Kotatsu"
+ENDSELECT
+;position covered by the way they are added in the table
+
+@PottyLineInit
+#FUNCTION
+#DIM customChar
+#DIMS nTableName
+nTableName '= @"PottyLine"
+DT_CREATE nTableName
+DT_COLUMN_ADD nTableName, "location", "int16"
+DT_COLUMN_ADD nTableName, "character", "int16"
+DT_COLUMN_ADD nTableName, "waitingPlace", "int16"
+
+@AdvancePottyLine(pottyPosition)
+#DIM pottyPosition
+#DIM pottyChara
+#DIM pottyTableID
+#DIM pottyQueueLength
+pottyQueueLength = DT_SELECT("PottyLine", @"location = {pottyPosition}", "", TempHediffList)
+IF pottyQueueLength
+	IF !ToiletIsOccupied(pottyPosition)
+		pottyTableID = TempHediffList:0
+		pottyChara = DT_CELL_GET("PottyLine", pottyTableID, "character",1)
+		PRINTFORMW %PARSE("You",,,pottyChara)% %PARSE("enter",,,pottyChara)% 화장실.
+		CFLAG:(pottyChara):300 = pottyPosition
+		SIF BATHROOM(pottyPosition)
+			CALL ODEKAKE_OFURO(pottyChara)
+		SIF IS_TOILET(pottyPosition, pottyChara)
+			CALL DumpingShit(pottyChara)
+		DT_ROW_REMOVE "PottyLine", pottyTableID
+		IF !DT_SELECT("PottyLine", @"location = {pottyPosition}")
+			PRINTFORMW 대기열이 이제 비었다.
+		ELSE
+			PRINTFORMW 대기열은 현재 {DT_SELECT("PottyLine", @"location = {pottyPosition}")}명이다.
+		ENDIF
+	ENDIF
+	pottyQueueLength = DT_SELECT("PottyLine", @"location = {pottyPosition}","",TempHediffList)
+	FOR LOCAL:4,0,pottyQueueLength
+	pottyTableID = TempHediffList:(LOCAL:4)
+	pottyChara = DT_CELL_GET("PottyLine", pottyTableID, "character",1)
+	LOCAL:5 = DT_CELL_GET("PottyLine", pottyTableID, "waitingPlace",1)
+	IF !INRANGE(pottyChara,0,CHARANUM-1)
+		;null character
+		DT_ROW_REMOVE "PottyLine", pottyTableID
+		CONTINUE
+	ENDIF
+	;#;PRINTFORMDL QUEUE #{LOCAL:4+1} (PottyLinePosition {PottyLinePosition(pottyChara,pottyPosition)}) FOR {pottyPosition} %NAME_FROM_PLACE(pottyPosition)% | CHARACTER {pottyChara} %NAME:(pottyChara)% | WAITING IN {CFLAG:(pottyChara):300} %NAME_FROM_PLACE(CFLAG:(pottyChara):300)% | SUPPOSED TO BE WAITING IN {LOCAL:5} %NAME_FROM_PLACE(LOCAL:5)%
+	IF CFLAG:(pottyChara):300 != LOCAL:5 && !DT_EXIST(@"Movement_{pottyChara}")
+		PRINTFORMW %PARSE("You",,,pottyChara)%과 %PARSE("exit",,,pottyChara)%는 그 줄이다.
+		DT_ROW_REMOVE "PottyLine", pottyTableID
+		$RedoQueue
+		IF !DT_SELECT("PottyLine", @"location = {pottyPosition}")
+			PRINTFORMW 대기열은 이제 비었다.
+		ELSE
+			PRINTFORMW 대기열은 이제 %PRINT_PLUR("person",DT_SELECT("PottyLine", @"location = {pottyPosition}"))% 길이이다.
+		ENDIF
+	ELSEIF !SHIRAHU(pottyChara)
+		PRINTFORMW %PARSE("You",,,pottyChara)%은 더 이상 의식이 없는 %PARSE("you are",5,,pottyChara)%로 인해 줄에서 빠졌다.
+		DT_ROW_REMOVE "PottyLine", pottyTableID
+		GOTO RedoQueue
+	ENDIF
+	NEXT
+ENDIF
+
+@EnterPottyLine(ARG,ARG:1,ARG:2=0)
+#DIM waitingPlace
+waitingPlace = ARG:2 ? ARG:2 # CFLAG:ARG:300
+PRINTFORMDW %PARSE("You enter",,,ARG)%화장실 가는 줄.
+;clear all other slots for the toilet
+LOCAL:1 = DT_SELECT("PottyLine", @"character = {ARG}")
+FOR LOCAL,1,LOCAL:1
+DT_ROW_REMOVE "PottyLine", RESULT:LOCAL
+NEXT
+DT_ROW_ADD @"PottyLine", "location",     ARG:1, "character",    ARG, "waitingPlace", waitingPlace,
+;#;PRINTFORML QUEUE FOR %NAME_FROM_PLACE(ARG:1)% | CHARACTER {ARG} %NAME:ARG% | WAITING IN {waitingPlace} %NAME_FROM_PLACE(waitingPlace)%
+
+@PottyLinePosition(ARG,pottyLine=-1)
+#FUNCTION
+#DIM DYNAMIC pottyLinePeople,100
+#DIM DYNAMIC pottyLineLength
+#DIM DYNAMIC pottyLine
+IF !DT_EXIST("PottyLine")
+	CALLF PottyLineInit
+ENDIF
+; DT_SELECT("PottyLine", @"character = {MASTER}")
+IF pottyLine == -1
+	DT_SELECT "PottyLine", @"character = {ARG}"
+	pottyLine = DT_CELL_GET("PottyLine", RESULT:1, "location", 1)
+ENDIF
+pottyLineLength = DT_SELECT("PottyLine", @"location = {pottyLine}", "", pottyLinePeople)
+IF !pottyLineLength
+	RETURNF -1
+ELSEIF pottyLineLength > VARSIZE("pottyLinePeople")
+	;line too fucking long, definitely bugged
+	DT_CLEAR "pottyLinePeople"
+	RETURNF -1
+ENDIF
+FOR LOCAL,0,MIN(pottyLineLength,VARSIZE("pottyLinePeople"))
+SIF DT_CELL_GET("PottyLine", pottyLinePeople:LOCAL, "character",1) == ARG
+	RETURNF LOCAL
+NEXT
+RETURNF -1
+
+@EnterPottyLinePromptPlayer(ARG)
+#DIM DYNAMIC pottyLineLength
+IF !DT_EXIST("PottyLine")
+	CALLF PottyLineInit
+ENDIF
+pottyLineLength = DT_SELECT("PottyLine", @"location = {ARG}", "")
+PRINTFORMDL %NAME_FROM_PLACE(ARG)%의 줄에 들어가시겠습니까?
+IF !pottyLineLength
+	PRINTFORMDW 당신은 줄에서 첫 번째 사람이 될 것이다.
+ELSE
+	PRINTFORMDW 당신은 줄의 %ORDINAL(pottyLineLength+1)%번째 사람이 될 것이다.
+ENDIF
+CALL ASK_YN
+IF !RESULT
+	CALL EnterPottyLine(MASTER,ARG)
+ENDIF
+
+@WantsToGoPotty(ARG)
+#FUNCTION
+#DIM DYNAMIC rngChance
+SIF GET_INT(ARG, "Religion", TALENT:ARG:Religion, "Incontinence") == 3 && nReligions
+	RETURNF 0
+SIF PottyLinePosition(ARG) > -1
+	RETURNF 0
+SELECTCASE MAX(CAN_ACCIDENT(ARG,1) ? PeeBarStage(ARG) # 0, CAN_ACCIDENT(ARG,2) ? PooBarStage(ARG) # 0)
+	CASE 0, 1
+		;empty
+		RETURNF 0
+	CASE 2
+		;noticeable
+		rngChance = 200
+	CASE 3
+		;squirming
+		rngChance = 450
+	CASE 4
+		;desperate
+		rngChance = 800
+	CASE 5
+		;bursting
+		rngChance = 1000
+	CASE 6
+		;leaking, WILL GOOOOO
+		rngChance = 1000
+	CASEELSE
+		;wetting, too late...
+		RETURNF 0
+ENDSELECT
+RETURNF RAND(1000) < rngChance
+;Determines when the Touhou wants to use their padding instead of going in the potty
+;- Padded legends always wet, will not mess until messing addiction is at 5 or higher
+
+@WantsToUseDiaperOverPotty(ARG,closestToilet=__INT_MAX__)
+#FUNCTION
+#DIM DYNAMIC closestToilet
+#DIM DYNAMIC giveUpChance
+#DIM DYNAMIC diaperHoldsAccident
+#DIM DYNAMIC HasPiss
+#DIM DYNAMIC HasScat
+#DIM DYNAMIC retBit
+#DIM DYNAMIC omoGuardianProc
+#DIM DYNAMIC highestDesperation
+#DIM DYNAMIC theThreshold
+HasPiss = PeeBarStage(ARG) >= 2
+HasScat = PooBarStage(ARG) >= 2
+diaperHoldsAccident = ((HasPiss && DiapeCharges:ARG:0 >= BASE:MASTER:4) || !HasPiss) && ((HasScat && DiapePooCharges:ARG:0 >= BASE:MASTER:Poo) || !HasScat)
+SIF HasPiss
+	SETBIT retBit, 0
+SIF HasScat
+	SETBIT retBit, 1
+highestDesperation = MAX(PeeBarStage(ARG),PooBarStage(ARG))
+IF GETBIT(TALENT:ARG:OmoGuardian,2) && diaperHoldsAccident
+	;padded legends always wet in their diapees.
+	IF HasScat
+		;		- Padded legends will not mess until messing addiction is at 5 or higher
+		IF GETBIT(TALENT:ARG:OmoGuardian,1) || ABL:ARG:PooAddict
+			omoGuardianProc = 1
+		ENDIF
+	ELSE
+		omoGuardianProc = 1
+	ENDIF
+ELSEIF HasScat && GETBIT(TALENT:ARG:OmoGuardian,1)
+	;messy legends always mess
+	omoGuardianProc = 1
+ELSEIF HasPiss && GETBIT(TALENT:ARG:OmoGuardian,0)
+	;leaky legends always wet
+	omoGuardianProc = 1
+ENDIF
+;if they have IBS and are diapered they will use it.
+IF DT_SELECT(@"Hediff", @"chara = {ARG} and type = 54") && HasScat && diaperHoldsAccident
+	RETURNF retBit
+ENDIF
+;leaky legends go when they need to pee except if they need to poop too
+;messy legends go when they need to poop
+IF omoGuardianProc
+	IF IsPadded(ARG) && diaperHoldsAccident
+		RETURNF retBit
+	ELSE
+		;if they are not padded or going in their padding will make it leak
+		;this give it a much higher chance to just go and have their accident.
+		giveUpChance = 6000
+	ENDIF
+ELSE
+	IF IsPadded(ARG) && diaperHoldsAccident
+		; RETURNF retBit
+		;not padded
+		SELECTCASE HasScat ? ABL:ARG:PooAddict # ABL:ARG:PeeAddict
+			CASE 0
+				giveUpChance = 0
+			CASEELSE
+				;+3% per point (at 9 this is 39%)
+				;once leaky/messy legend is acquired this spikes to 60%
+				giveUpChance = 1800+(500*(HasScat ? ABL:ARG:PooAddict # ABL:ARG:PeeAddict))
+		ENDSELECT
+	ELSE
+		;not padded
+		SELECTCASE HasScat ? ABL:ARG:PooAddict # ABL:ARG:PeeAddict
+			CASE 0
+				giveUpChance = 0
+			CASEELSE
+				;+3% per point (at 9 this is 39%)
+				;once leaky/messy legend is acquired this spikes to 60%
+				giveUpChance = 1000+(300*(HasScat ? ABL:ARG:PooAddict # ABL:ARG:PeeAddict))
+		ENDSELECT
+	ENDIF
+ENDIF
+;if they are in a line and its like at least an hour long queue they will use their padding
+IF PottyLinePosition(ARG) > -1 && diaperHoldsAccident
+	SELECTCASE highestDesperation
+		CASE 4
+			theThreshold = 9
+		CASE 5
+			theThreshold = 6
+		CASE 6
+			theThreshold = 3
+		CASE 7
+			theThreshold = 0
+		CASEELSE
+			theThreshold = __INT_MAX__
+	ENDSELECT
+	SIF PottyLinePosition(ARG) > theThreshold
+		RETURNF retBit
+ENDIF
+;if a toilet is too far compared to their desperation they will use their padding.
+;if they are working and diapered they will use their padding.
+;sex stuff is covered by UFUFU_OMORASHI
+;normal circumstances
+IF RAND(10000) < giveUpChance
+	RETURNF retBit
+ENDIF
+
+@AutoGoPlaceShits(ARG,nTypeInput)
+#DIM CONST nBits = 7,2,5,3,4,11,12,14
+#DIMS CONST nLabels = "Toilet", "Bath", "Study Area", "Kitchen", "Training Spot", "Garden", "Water Spot", "Laundry"
+#DIM DYNAMIC bestSpot
+#DIM DYNAMIC nTypeInput
+CALL OptimalPlace(ARG, nBits:nTypeInput)
+bestSpot = RESULT
+IF !bestSpot
+	CALL COLORMESSAGE(@"현재 지도에서 【%nLabels:nTypeInput%】을(를) 찾을 수 없었다.",C_ORANGE,1)
+	CALL COLORMESSAGE(@"이것은 버그가 아니다.",C_ORANGE,2)
+	RETURN
+ENDIF
+SELECTCASE nTypeInput
+	CASE 0
+		;NAS: auto toilet
+		SIF !IS_TOILET(CFLAG:ARG:現在位置,ARG)
+			CALL SKIP_MOVE(CFLAG:ARG:現在位置, bestSpot)
+		RETURN
+	CASE 1
+		;auto bath
+		SIF !BATHROOM(CFLAG:ARG:現在位置)
+			CALL SKIP_MOVE(CFLAG:ARG:現在位置, bestSpot)
+		RETURN
+	CASE 2
+		;auto study
+		SIF !勉強可(CFLAG:ARG:現在位置)
+			CALL SKIP_MOVE(CFLAG:ARG:現在位置, bestSpot)
+		RETURN
+	CASE 3
+		;auto kitchen
+		SIF !KITCHEN(CFLAG:ARG:現在位置)
+			CALL SKIP_MOVE(CFLAG:ARG:現在位置, bestSpot)
+		RETURN
+	CASE 4
+		;auto training
+		SIF !戦闘訓練可(CFLAG:ARG:現在位置)
+			CALL SKIP_MOVE(CFLAG:ARG:現在位置, bestSpot)
+		RETURN
+	CASE 5
+		;auto garden
+		SIF !家庭菜園可(CFLAG:ARG:現在位置)
+			CALL SKIP_MOVE(CFLAG:ARG:現在位置, bestSpot)
+		RETURN
+	CASE 6
+		;auto draw
+		SIF !水汲み可(CFLAG:ARG:現在位置)
+			CALL SKIP_MOVE(CFLAG:ARG:現在位置, bestSpot)
+		RETURN
+	CASE 7
+		;auto laundry
+		SIF !LAUNDRY_ROOM(CFLAG:ARG:現在位置)
+			CALL SKIP_MOVE(CFLAG:ARG:現在位置, bestSpot)
+		RETURN
+	CASEELSE
+		CALL COLORMESSAGE(@"@AutoGoPlaceShits에 유효하지 않은 입력이 있습니다. 보고하세요!",C_ORANGE,2)
+		RETURN
+ENDSELECT

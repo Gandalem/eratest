@@ -1,0 +1,743 @@
+﻿; Modular ERB: 個人口上/042 Hatate [はたて]/はたて/M_KOJO_K42_日記.ERB
+;日記口上
+;一日の終了時の流れ
+;@DIARY_TEXT_K42（日記本文）→@DIARY_AFTER_CHECK_K42（フラグの処理）
+;◆日記の仕様◆
+;※１@DIARY_BEFORE_CHECK_K42で日記のフラグが立つ。
+;→未読フラグ(2)が立っていると一日の終わりにデイリーイベントとして日記が読まれる（既読になる）。
+;→※２未読フラグ(3)が立っていると[日記を読む]で読む事ができる。読むと既読(1)になる。
+;※１各所イベント口上やコマンド口上でフラグを立たせても良いです。
+;※２基本的には未読(2)推奨です。既読(1)、未読(3)はワンステップ必要。
+;[日記を読む]には、持ち主が[恋慕]なら自由に読むことができ、
+;そうでない場合は恋慕でない人物がその場に居ない時、もしくは時間停止することで盗み読みできる。
+;拠点住民でないキャラは恋慕であれば自宅（お招き部屋）で読むことができる。
+;MAX_DIARY_PAGE:42:0　キャラ番号42の日記の最大ページ数　限度は101（1～100）
+;DIARY:42:YY　　　　　キャラ番号42の日記番号YYの情報
+;　　 3=未読　　　　　デイリーイベントで読まれない。[日記を読む]で読むと既読になる。
+;　　 2=未読　　　　　デイリーイベントで読まれる。読まれるまでは[日記を読む]では読めない。読まれると既読になる。
+;　　 1=既読　　　　　デイリーイベントで読まれない。[日記を読む]で読める。
+;　　 0=読めない　　　未解禁。
+;PAGESET:42:YY　　　　キャラ番号42の実際に書かれたYYページ目の日記番号。
+;=============================
+
+@DIARY_K42_EXIST
+;存在判定
+;0だと日記は書かれません。
+;=============================
+RETURN 1
+;=============================
+
+@DIARY_AFTER_CHECK_K42
+;デイリーイベントで日記が読まれた際の後処理。
+;フラグの管理等自由に扱って良い。
+;条件フラグのリセットや判定追加もここに
+;たとえば：今日構ったフラグ
+;今日構った日記が表示した後、構ったフラグをリセット。
+; CFLAG:42:今日構ったフラグ = 0
+;あるいは何かの状態が続くことがフラグの場合
+;例：好感度がほぼ変わらない日が続くと
+;「あなた」の態度が冷たいな～みたいな日記を書く
+; SIF CFLAG:42:好感度 <= LAST_LP+3
+;   NOTOUCH_DAY ++
+;=============================
+;=============================
+
+@DIARY_BEFORE_CHECK_K42
+;常時チェックされる日記の状態情報。
+;ここでDIARY:42:YYの更新を行う。
+;※DIARY:42:0番は使えません。
+;ここで汎用発生条件を記入する
+;コマンド別の発生条件はM_KOJOの各ファイル中で追加してください。
+;基本的に発生条件には"DIARY:42:YY == 0"を入れること。
+;そうしないと同じ日記が書かれたりしてしまう。
+;DIARY:42:YY　　　　キャラ番号42の日記番号YYの情報
+;　　 3=未読　　　　デイリーイベントで読まれない。[日記を読む]で読むと既読になる。
+;　　 2=未読　　　　デイリーイベントで読まれる。読まれるまでは[日記を読む]では読めない。読まれると既読になる。
+;　　 1=既読　　　　デイリーイベントで読まれない。[日記を読む]で読める。
+;　　 0=読めない　　未解禁。
+;○未読(2)にする場合（基本）
+;未読(2)にするとデイリーイベントとして発生し、一日の終わりに１つだけ読まれる。
+;複数のページが未読(2)になっている場合は番号が小さいものが読まれ、それ以外はリセット(0)される。
+;その為、複数同時に発生すると、発生したのに読まれずリセットされる場合もある。
+;未読(2)にするには単純にフラグに2を入れるだけで良い。
+;例１)初対面
+;SIF DIARY:42:YY == 0 && CFLAG:42:面識
+;	DIARY:42:YY = 2
+;○未読(3)にする場合（応用）
+;未読(3)にするとデイリーイベントとして読まれず、書かれた時点で[日記を読む]によって読めるようになる。
+;プレイヤーが自主的に読まない限り読まれず、一日に複数ページ加筆される場合もある。
+;未読(3)にするにはフラグに3を入れた上で、CALL CHARA_DIARY_PAGESETTING(42, YY)をする必要がある。
+;例２）好感度100以上
+;IF DIARY:42:YY == 0 && CFLAG:42:好感度 >= 100
+;	DIARY:42:YY = 3
+;	CALL CHARA_DIARY_PAGESETTING(42, YY)
+;ENDIF
+;例３）例２の日記が読まれた上で好感度1000以上
+;これをするとYYを読んだ直後にZZが書き込まれることも起こる。
+;IF DIARY:42:ZZ == 0 && DIARY:42:YY == 1 && CFLAG:42:好感度 >= 1000
+;	DIARY:42:ZZ = 3
+;	CALL CHARA_DIARY_PAGESETTING(42, ZZ)
+;ENDIF
+;▽おせっかいな注釈
+;ファーストキスは基本的に全員[キス未経験]を所持しているので、"!TALENT:42:キス未経験"で判定できます。
+;デート帰りのキスで分岐したいならデート帰りのキス口上でフラグを立てます。
+;その場合、通常のファーストキス喪失と重複しないように気をつけましょう。
+;処女喪失は初期設定で処女喪失している場合もあるので、処女喪失口上の方でフラグを立てた方が良いです。
+;その他告白・陥落等のイベントは各種イベント口上でフラグを立てます。初対面はそっちでも大丈夫です。
+;日付を正確に測るには別途フラグが必要です。例えば初めて会った日とか。
+;=============================
+;MAXPAGEはここで記入する
+MAX_DIARY_PAGE:[[はたて]]:0 = 100
+;はたては新聞だと意外と硬い文章なので、日記もそれに準じた形にする
+;感情が揺さぶられるとたまにくだけた文章になるときもある
+;文章のレベルが低いと思ったらそれは口上作者のせい
+;出会い
+SIF DIARY:42:1 == 0 && CFLAG:42:面識 && CFLAG:42:1014 >= 1
+	DIARY:42:1 = 2
+;思慕
+SIF DIARY:42:2 == 0 && TALENT:[[はたて]]:思慕
+	DIARY:42:2 = 2
+;恋慕
+SIF DIARY:42:3 == 0 && TALENT:[[はたて]]:恋慕
+	DIARY:42:3 = 2
+;初デート
+SIF DIARY:42:4 == 0 && CFLAG:[[はたて]]:K42C_デート回数 == 1
+	DIARY:42:4 = 2
+;デート10回目
+SIF DIARY:42:5 == 0 && CFLAG:[[はたて]]:K42C_デート回数 == 10
+	DIARY:42:5 = 2
+;デート50回目
+SIF DIARY:42:6 == 0 && CFLAG:[[はたて]]:K42C_デート回数 == 50
+	DIARY:42:6 = 2
+;デート100回目
+SIF DIARY:42:7 == 0 && CFLAG:[[はたて]]:K42C_デート回数 == 100
+	DIARY:42:7 = 2
+;ファーストキス
+SIF DIARY:42:8 == 0 && !TALENT:42:キス未経験
+	DIARY:42:8 = 2
+;はたてが振られた
+SIF DIARY:42:9 == 0 && CFLAG:42:1007 == 1
+	DIARY:42:9 = 2
+;恋人
+SIF DIARY:42:10 == 0 && TALENT:[[はたて]]:恋人
+	DIARY:42:10 = 2
+;ロストバージン
+SIF DIARY:42:11 == 0 && CFLAG:[[はたて]]:1300 == 1
+	DIARY:42:11 = 2
+;結婚
+SIF DIARY:42:12 == 0 && CFLAG:[[はたて]]:1100 == 1
+	DIARY:42:12 = 2
+;妊娠願望
+SIF DIARY:42:13 == 0 && TALENT:[[はたて]]:妊娠願望
+	DIARY:42:13 = 2
+;妊娠
+SIF DIARY:42:14 == 0 && TALENT:[[はたて]]:妊娠 && CFLAG:[[はたて]]:1091 >= 1
+	DIARY:42:14 = 2
+;臨月
+SIF DIARY:42:15 == 0 && CFLAG:42:妊娠経過日数 >= 60
+	DIARY:42:15 = 2
+;恋慕出産
+SIF DIARY:42:16 == 0 && CFLAG:[[はたて]]:1090 == 1
+	DIARY:42:16 = 2
+;思慕出産
+SIF DIARY:42:17 == 0 && CFLAG:[[はたて]]:1090 == 2
+	DIARY:42:17 = 2
+;陥落なし出産
+SIF DIARY:42:18 == 0 && CFLAG:[[はたて]]:1090 == 3
+	DIARY:42:18 = 2
+;無自覚出産
+SIF DIARY:42:19 == 0 && CFLAG:[[はたて]]:1090 == 4
+	DIARY:42:19 = 2
+;IF CFLAG:42:出産経過日 >= CHILD_離乳
+SIF DIARY:42:20 == 0 && CFLAG:42:出産経過日 == CHILD_離乳
+	DIARY:42:20 = 2
+;IF CFLAG:42:出産経過日 >= CHILD_玩具
+SIF DIARY:42:21 == 0 && CFLAG:42:出産経過日 == CHILD_玩具
+	DIARY:42:21 = 2
+;IF CFLAG:42:出産経過日 >= CHILD_つかまり立ち
+SIF DIARY:42:22 == 0 && CFLAG:42:出産経過日 == CHILD_つかまり立ち
+	DIARY:42:22 = 2
+;IF CFLAG:42:出産経過日 >= CHILD_よちよち
+SIF DIARY:42:23 == 0 && CFLAG:42:出産経過日 == CHILD_よちよち
+	DIARY:42:23 = 2
+;IF CFLAG:42:出産経過日 >= CHILD_喋る
+SIF DIARY:42:24 == 0 && CFLAG:42:出産経過日 == CHILD_喋る
+	DIARY:42:24 = 2
+;IF CFLAG:42:出産経過日 >= CHILD_語彙
+SIF DIARY:42:25 == 0 && CFLAG:42:出産経過日 == CHILD_語彙
+	DIARY:42:25 = 2
+;IF CFLAG:42:出産経過日 >= CHILD_しつけ
+SIF DIARY:42:26 == 0 && CFLAG:42:出産経過日 == CHILD_しつけ
+	DIARY:42:26 = 2
+;IF CFLAG:42:出産経過日 >= CHILD_就学
+SIF DIARY:42:27 == 0 && CFLAG:42:出産経過日 == CHILD_就学
+	DIARY:42:27 = 2
+;IF CFLAG:42:出産経過日 >= CHILD_自立前
+SIF DIARY:42:28 == 0 && CFLAG:42:出産経過日 == CHILD_自立前
+	DIARY:42:28 = 2
+;IF CFLAG:42:出産経過日 >= CHILD_自立
+SIF DIARY:42:29 == 0 && CFLAG:42:出産経過日 == CHILD_自立
+	DIARY:42:29 = 2
+;贈り物をもらった
+SIF DIARY:42:30 == 0 && CFLAG:[[はたて]]:1020 >= 1
+	DIARY:42:30 = 2
+;音楽批評①
+SIF DIARY:42:31 == 0 && CFLAG:42:1003 == 1
+	DIARY:42:31 = 2
+;音楽批評②
+SIF DIARY:42:32 == 0 && CFLAG:42:1003 == 2
+	DIARY:42:32 = 2
+;音楽批評③
+SIF DIARY:42:33 == 0 && CFLAG:42:1003 == 3
+	DIARY:42:33 = 2
+;初めての絶頂
+SIF DIARY:42:34 == 0 && EXP:[[はたて]]:絶頂経験 > 5 && EXP:[[はたて]]:無自覚絶頂経験 == 0
+	DIARY:42:34 = 2
+;セフレ
+SIF DIARY:42:35 == 0 && TALENT:[[はたて]]:セフレ
+	DIARY:42:35 = 2
+;愛人
+SIF DIARY:42:36 == 0 && TALENT:[[はたて]]:セフレ == 2
+	DIARY:42:36 = 2
+;愛欲
+SIF DIARY:42:37 == 0 && TALENT:[[はたて]]:愛欲
+	DIARY:42:37 = 2
+;愛欲の果ての叶わぬ恋慕
+SIF DIARY:42:38 == 0 && CFLAG:42:1412 == 1
+	DIARY:42:38 = 2
+;=============================
+
+@DIARY_TEXT_K42, PAGENUM, MODE, PAGECOUNT
+;日記の内容
+;PAGENUM   = 日記番号（日記のパターン）
+;MODE      = "デイリー":一日終了時のデイリーイベントでの読み上げ
+;          = "コマンド":[日記を読む]コマンドでの読み上げ
+;PAGECOUNT = 何ページ目に書かれているか
+;=============================
+#DIM PAGENUM
+#DIMS MODE
+#DIM PAGECOUNT
+;口上色指定あるならコメントアウトを外す
+CALL M_KOJO_COLOR_K42
+;グループマッチに日記のIDを入れて、表示させたい顔絵を表示する
+;表情・服装・特殊画像をオプション指定で表示（省略可）
+;書式は\resources\顔.CSVと下の例を参照
+;以下はサンプル
+IF MODE == "デイリー"
+	IF GROUPMATCH(PAGENUM, 13, 14, 15, 16, 17)
+		CALL PRINT_FACE, 42, "笑顔", "裸", "_1"
+	ELSEIF GROUPMATCH(PAGENUM, 11, 34, 35, 36)
+		CALL PRINT_FACE, 42, "性交", "裸", "_1"
+	ELSEIF GROUPMATCH(PAGENUM, 1, 2, 3, 4, 5, 6, 7, 12, 16, 17, 30)
+		CALL PRINT_FACE, 42, "笑顔", "服"
+	ELSEIF GROUPMATCH(PAGENUM, 8)
+		CALL PRINT_FACE, 42, "性交", "服", "_1"
+	ENDIF
+ENDIF
+PRINTFORMDL - %CALLNAME:42%의 일기 페이지.{PAGECOUNT} --------------------------------------------------------------------------------------
+PRINTL
+;※PAGENUM:0は使えません
+SELECTCASE PAGENUM
+	CASE 1
+		PRINTFORML ○월 ×일
+		PRINTFORML %조사처리(CALLNAME:MASTER,"와")%를 처음 만나다
+		IF TALENT:MASTER:性別 == 2
+			IF CFLAG:1014 == 1
+				PRINTFORML 갑자기 사람의 치마 속을 들여다보는 변태잖아.
+				PRINTFORML 내 매력에 저렇게 되고 싶어 하는 건 모르는 것도 아니지만, 솔직히 기분 나빠.
+				PRINTFORML 그렇다고는 해도, 혼자 요괴의 산까지 찾아오는 녀석이야. 의외로 쓸모가 있을지도 몰라.
+				PRINTFORML 인간을 상대하는 건 조금 거슬리지만, 나의 꽃과 열매 염보를 위해서라면, 적당히 이용해 주도록 하자.
+			ELSEIF CFLAG:1014 == 2
+				PRINTFORML 나를 보는 시선이 음란하다.
+				PRINTFORML 나의 매력에 저렇게 되고 싶어 한다는 것은 부정하지 못하지만, 솔직히 기분 나쁘다.
+				PRINTFORML 하지만 혼자서 요괴의 산까지 찾아올 정도의 녀석이다. 의외로 이용할 만할지도 모르겠다.
+				PRINTFORML 인간과 엮이는 것은 다소 성가시지만, 잘 이용한다면 흥미로운 정보를 얻을 수 있을 것이다.
+				PRINTFORML 나, 화과자 넨보를 위해서라면, 충분히 이용해 주도록 하겠다.
+			ENDIF
+		ELSE
+			PRINTFORML 인간의 소녀와 친구가 되면, 나의 정보량도 급격히 늘어날 것이다.
+			PRINTFORML 외계에는 원격 조작으로 사진을 촬영할 수 있는 도구가 있다고 한다.
+			PRINTFORML 즉, %조사처리(CALLNAME:MASTER,"를")% 거쳐서 나는 넨사진의 범위가 넓어지게 된다.
+			PRINTFORML 뭐, 친구가 되어줬으면 하는 말에 거짓은 없으니까, 친구를 위해 그녀에게 눈이 되어 받도록 하자.
+		ENDIF
+	CASE 2
+		PRINTFORML 최근 %MASTERNAME:42%의 것이 신경 쓰인다
+		IF TALENT:MASTER:性別 == 2
+			PRINTFORML 처음에는 취재원으로서 이용해주려고 생각했다.
+			PRINTFORML 하지만 최근에는 그런 것 없이 만나는 경우가 많다.
+			PRINTFORML 그리고 그것을 기대하는 내가 있다.
+			PRINTFORML 이것이 '좋아한다'는 것일까. 누군가에게 알려줬으면 좋겠다.
+		ELSE
+			PRINTFORML 나는 성적인 부분에 있어서는 정상적이라고 생각했다.
+			PRINTFORML 그런데 최근에는 그녀의 얼굴이나 입술의 움직임, 몸짓을 눈으로 쫓게 되었다.
+			PRINTFORML 게다가, 그녀 역시 자신을 의식하는 듯하다. 눈빛이나 몸짓만 봐도 알 수 있었다.
+			PRINTFORML 이것이 사랑의 시작이라면, 나는 잘못된 길로 들어선 것일까?
+		ENDIF
+	CASE 3
+		PRINTFORML 나는, %MASTERNAME:42%에게 사랑에 빠져 있다.
+		IF TALENT:MASTER:性別 == 2
+			PRINTFORML 트러블 자국도 주름도 흔히 같이 언급되는 것이라, 지금은 %MASTERNAME:42%의 모든 것이 사랑스럽게 느껴진다.
+			PRINTFORML 이전의 나였다면, 분명 지금의 나를 코웃음 치며 비웃었을 것이다.
+			PRINTFORML 하지만, 상관없다.
+			PRINTFORML 좋아하게 된 사람이, 인간이었다. 단지, 그것뿐인 이야기이다.
+		ELSE
+			PRINTFORML 자신이 동성애자로서의 자각은 없었지만, 아무래도 그쪽 감정도 있었던 것 같다
+			PRINTFORML 어쩔 수 없다. 그녀는 동성인 나에게서 봐도 귀엽고, 매력적인 것이니까
+			PRINTFORML 좋아하는 상대가 우연히 동성이었던 것뿐이다
+			PRINTFORML 그저, 그것뿐이다
+		ENDIF
+	CASE 4
+		PRINTFORML %MASTERNAME:42%와의 첫 데이트
+		PRINTFORML 애초에, 내 인생에서도 첫 데이트였다.
+		PRINTFORML 같은 종족에게 초대를 받은 적도 있었으나, 얼버무린 핑계를 대며 거절했다.
+		PRINTFORML 어째서인지, %MASTERNAME:42%와의 데이트는 수락하고 만 건지 알 수 없다.
+		PRINTFORML 단지, 첫 데이트가 나름대로 즐거웠다는 점만 기록해 두겠다.
+	CASE 5
+		PRINTFORML %MASTERNAME:42%와 열 번째 데이트
+		PRINTFORML 나 자신이 감정을 잘 다스리는 편이라고 생각하는데, 자꾸만 %MASTERNAME:42%의 달콤한 말에 속아 넘어가 버린다.
+		PRINTFORML ……라며 변명하고 있지만, %MASTERNAME:42%와의 데이트를 기대하는 것도 사실이다.
+		PRINTFORML 사람에게도 나를 즐겁게 해주는 존재가 있다니.
+		PRINTFORML 자, 다음 데이트는 언제일까.
+	CASE 6
+		PRINTFORML %MASTERNAME:42%와 오십번째 데이트
+		PRINTFORML ……조금 너무 많지 않을까.
+		PRINTFORML 원래 은둔형 외톨이 체질인 나다. 낯선 자극을 받아서, 홍역에 걸린 것 같은 기분이다.
+		PRINTFORML 물론, 요괴인 나는 홍역 따위에는 걸리지 않지만.
+		PRINTFORML 다음에는 내가 먼저 사귀기로 하자.
+	CASE 7
+		PRINTFORML ……마침내, 백 번째를 맞이했다
+		PRINTFORML 인정해야겠다. 나는 분명히 %MASTERNAME:42%에게 호감을 느끼고 있다
+		PRINTFORML 그것이 연애 감정인지 우정인지는 둘째치고, 함께 있는 것이 즐거운 것은 틀림없다
+		PRINTFORML 이제는 내가 먼저 데이트를 신청하는 경우가 많아졌을지도 모른다
+		PRINTFORML 분명 나는 앞으로도 %MASTERNAME:42%와 교제를 계속해 나갈 것이다
+	CASE 8
+		PRINTFORML 첫 입맞춤
+		PRINTFORML 가슴이 종소리처럼 울리고, 머리는 열에 시달린 듯 멍했다
+		PRINTFORML 한순간이었지만, 무한히 느껴지는 시간이었다
+		IF TALENT:MASTER:性別 == 2
+			PRINTFORML 꿈에 그리고 있던 같은 형태는 아닐지도 모르겠지만
+			PRINTFORML 적어도, 나에게는 평생 잊을 수 없는 사건일 것이다
+		ELSE
+			PRINTFORML 오산이었던 점은, 상대가 여성이었다는 것이었다.
+			PRINTFORML 다만... 그녀의 입술이 매우 부드러웠다는 것과, 생각했던 것보다 혐오감을 느끼지 않았다는 것은 기록해 둔다.
+		ENDIF
+	CASE 9
+		PRINTFORML %MASTERNAME:42%에게 고백했다
+		PRINTFORML 좌절
+		PRINTFORML 종이가 젖어 제대로 쓸 수 없다
+		PRINTFORML 
+		PRINTFORML 내일부터 힘낼게
+	CASE 10
+		PRINTFORML %MASTERNAME:42%와 교제하게 되었다.
+		PRINTFORML 그렇지만, 인간과 텐구, \@ TALENT:MASTER:性別 == 2 ?  # 게다가 여성들끼리, \@앞으로 어떤 시련이 기다리고 있을까.
+		PRINTFORML 
+		PRINTFORML 「좋아~! 나도 연인이 생긴 거야~!」
+		PRINTFORML 「아야에게 엄청 자랑해 줄게! 햐호오~~~~~~이!」
+	CASE 11
+		PRINTFORML 마침내 %MASTERNAME:42%에게 순결을 바쳤다
+		PRINTFORML 
+		PRINTFORML 상상했던 것보다 훨씬 아파! 정말 죽는 줄 알았어!
+		PRINTFORML 하지만 눈물을 글썽이는 나를 %MASTERNAME:42%는 부드럽게 안아주었다.
+		PRINTFORML 잊을 수 없는 추억이 또 하나 늘어났다.
+	CASE 12
+		PRINTFORML 아마도 나의 인생에서 가장 행복한 사건임에 틀림없다
+		PRINTFORML %MASTERNAME:42%에게서 반지를 받았다. 결혼해 주었으면 하고
+		PRINTFORML 솔직히 불안한 마음은 있다. 하지만 그 이상으로 %MASTERNAME:42%를 신뢰하고, 사랑한다
+		PRINTFORML 이제부터는 혼자가 아니다. 기쁜 일도, 힘든 일도 둘이서 함께 나누자
+		PRINTFORML 나는 오늘부터, %MASTERNAME:42%의 아내인 것이다
+	CASE 13
+		PRINTFORML %MASTERNAME:42%와 아이를 갖고 싶다
+		PRINTFORML 최근 강하게 그렇게 생각한다
+		IF TALENT:MASTER:性別 == 3
+			PRINTFORML 아무리 %MASTERNAME:42%에게 남성의 기능이 있다고 해도, 정말 아이가 생길 수 있을까?
+			PRINTFORML 하지만 의심만 하고 있으면 끝이 없어. 나는 그 사람을 사랑했어.
+			PRINTFORML 분명 우리 사이에는 아이가 태어날 거야. 그렇게 믿고 있어.
+		ENDIF
+		PRINTFORML 
+		PRINTFORML 
+		PRINTFORML 
+	CASE 14
+		PRINTFORML 임신했다
+		IF CFLAG:1091 == 1
+			PRINTFORML 행복의 절정이라는 것은 이런 것을 말하는 것일까
+			PRINTFORML 나와 %조사처리(CALLNAME:MASTER,"의")% 결실이, 배 속에서 숨 쉬고 있는 것이다
+			PRINTFORML 소중히, 아주 소중하게 키워야만
+			PRINTFORML 나는 오늘부터, 엄마가 되는 것이다
+		ELSEIF CFLAG:1091 == 2
+			PRINTFORML 뭐, 그런 짓을 했으니 이 결과는 당연하다고도 말할 수 있다.
+			PRINTFORML 상대가 %MASTERNAME:42%였던 것은 행운인지 불행인지.
+			PRINTFORML 자각은 없었지만, 그런 것을 바라고 있었는지도 모른다.
+			PRINTFORML %MASTERNAME:42%의 아이를 갖는 것을
+		ELSEIF CFLAG:1091 == 3
+			PRINTFORML 해버렸다……
+			PRINTFORML 전혀 그럴 의도는 없었는데, 자신의 정조 관념이 느슨한 것에 황당함을 느낀다.
+			PRINTFORML 그렇다고 해도, 벌어진 일은 어쩔 수 없다.
+			PRINTFORML 나는 엄마가 되어야만 한다.
+		ELSEIF CFLAG:1091 == 4
+			PRINTFORML 「무서워... 어쩌지」
+			PRINTFORML 「뭘 어떻게 해야 할지도 모르겠어. 누구한테 상담해야 할지도 모르겠어.」
+			IF TALENT:42:恋慕 || TALENT:42:恋人
+				PRINTFORML %MASTERNAME:42%는 나를 어떻게 생각할까. 다리 사이가 느슨한 여자라고 경멸할까
+				PRINTFORML %MASTERNAME:42%에게 미움받는 것만은, 괴로워
+			ELSEIF TALENT:42:思慕
+				PRINTFORML %MASTERNAME:42%라면, 무언가 도움을 받을 수 있을까.
+				PRINTFORML 어찌 되었건 간에, %MASTERNAME:42%에게 의지하고 있는 자신이 있다.
+			ELSE
+				PRINTFORML 비웃음당할 것 같지만, 아야나 모미지에게 상담하는 게 좋을까
+				PRINTFORML 어떻게 하면 좋을까. 누군가 알려줘
+			ENDIF
+		ENDIF
+	CASE 15
+		PRINTFORML 이제 곧 태어나게 된다
+		IF TALENT:42:恋慕 || TALENT:42:恋人
+			PRINTFORML 솔직히 몸은 무겁고 나른해서 별로 좋은 일이 없다.
+			PRINTFORML 그럼에도 불구하고, 나의 마음은 기대와 기쁨으로 부풀어 있다.
+			PRINTFORML 손꼽아 기다려 온 우리의 아이이다.
+			PRINTFORML 건강하게 태어나 주렴.
+		ELSEIF TALENT:愛欲 || TALENT:セフレ
+			PRINTFORML 해버렸다……
+			IF CFLAG:42:生解禁 == 2
+				PRINTFORML 뭐, 위험한 날이든 뭘 하든 질내에 몇 번이고 사정당하면 그렇게 될 것이다.
+				PRINTFORML 뺄 때는 밖에 빼달라고 말해왔었지만, 그런 게 피임이 될 리가 없다.
+				PRINTFORML 안정될 때까지 %MASTERNAME:42%와의 섹스도 자제해야 할 것 같다.
+				PRINTFORML 지금의 내가 그걸 견딜 수 있으면 좋겠는데. 벌써 %MASTERNAME:42% 없이는 살 수 없는 몸이 되어 버렸다.
+			ELSEIF CFLAG:42:生解禁 == 1
+				PRINTFORML 위험일이 아니라면 생(콘돔없이)이라도 괜찮을 거라고 생각했던 나의 생각이 너무 얄팍했나.
+				PRINTFORML 그의 씨가 그만큼 강했다는 건 걸까.
+				PRINTFORML 다음부터는 확실히 피임을 하라고 더 강하게 말해야만 한다.
+				PRINTFORML 하지만, 생의 기분 좋음을 알아버린 나에게 그게 가능할까.
+			ENDIF
+		ELSEIF TALENT:42:思慕
+			PRINTFORML 솔직히 몸은 무겁고 나른해서 별로 좋은 일이 없다.
+			PRINTFORML 임신 같은 건 하는 것이 아닌 것 같다.
+			PRINTFORML 한편으로는 출산을 언제일까 하고 애태우며 기다리는 나도 있다.
+			PRINTFORML 둘 다 꾸미지 않은 나의 진심이다. 건강하게 태어나 줘.
+		ELSE
+			IF CFLAG:42:妊娠自覚状態 == 1
+				PRINTFORML 몇 번이나 끊어버리려 했는지 모른다
+				PRINTFORML 얼마나 많이 울었는지 모른다
+				PRINTFORML 그럼에도, 나는 결심했다
+				PRINTFORML 이 아이는, 반드시 낳아 보이겠다
+			ELSE
+				PRINTFORML 솔직히 몸이 무겁고 나른하여 제대로 된 일은 일어나지 않는다.
+				PRINTFORML 임신 같은 것은 해서는 안 되는 것이다.
+				PRINTFORML 쾌락에 흐르다가는 좋은 일을 겪지 못한다는 것을 몸소 깨달았다.
+				PRINTFORML 솔직히 견딜 수 없는 불안감이다. 무사히 태어나주었으면 좋겠다.
+			ENDIF
+		ENDIF
+	CASE 16
+		PRINTFORML 무사히 태어나 준.
+		PRINTFORML 피를 나누어 가진 내 아이란 것은, 이렇게나 사랑스러운 것인가.
+		PRINTFORML 손은 저렇게 작다고 하는데.
+		PRINTFORML 되쥐어주는 손가락이, 어찌나 힘이 센지.
+		PRINTFORML 태어나 주어서 고맙다.
+	CASE 17
+		PRINTFORMDL 무사히 태어나게 되어 주었다.
+		PRINTFORML 큰 소리로 우는 아이이다. 건강하게 자라줄 것이리라.
+		PRINTFORML %MASTERNAME:42%는 「자신이 아버지라」고 중얼거리고 있었다.
+		PRINTFORML 이 아이가 클 때까지는, 그저 안아주고 지내야겠다.
+		PRINTFORML 태어나게 해줘서, 고맙다.
+	CASE 18
+		PRINTFORML 무사히 태어난 것 같다.
+		PRINTFORML 솔직히 불안함이나 걱정거리가 없진 않았지만, 의외로 어떻게든 되는 것이었다.
+		PRINTFORML 조금 의외였지만, 아야와 모미지가 여러 가지를 준비해 주었다.
+		PRINTFORML 어쨌든 동족 의식은 강한 것 같다 (비아냥이나 쓴소리는 이번엔 못 본 체 하자).
+		PRINTFORML 나에게 엄마가 될 수 있을지는 모르겠지만, 할 수밖에 없다.
+	CASE 19
+		PRINTFORML 무사히 태어날 수 있게 되어.
+		PRINTFORML 그렇다고는 해도, 아버지가 누구인지도 모르는 상황에서의 출산이었기에, 축복해 준 것은 의사뿐이었다.
+		PRINTFORML 누군가를 의지할 수도 없어, 자신의 힘으로 이 아이를 키워나가야만 한다.
+		PRINTFORML 절반은 나의 피를 이어받고 있는 것이다.
+		PRINTFORML 강하게, 살아주기를 바란다.
+	CASE 20
+		PRINTFORML %CHILDNAME:42:(TALENT:42:育児中)%가 젖을 떼었다.
+		PRINTFORML 약간의 아쉬움은 있지만, 밤낮없이 깨는 것이 괴로웠기에 다행이다.
+		PRINTFORML 하지만, 이번에는 이유식에 대해 생각해 봐야만 한다.
+		PRINTFORML 아무래도, 바깥세상에는 가게에서 팔린다고 하더라.
+		PRINTFORML 정말이지 부러워. 환상향에도 스며들어 오지 않을까?
+	CASE 21;おもちゃ
+		PRINTFORML %CHILDNAME:42:(TALENT:42:育児中)%의 손에 들어가면 온갖 것이 장난감이다.
+		PRINTFORML 정신을 차려보니, 내 카메라에 알 수 없는 것들이 잔뜩 찍혀 있는 적이 있었다.
+		PRINTFORML 정말로 방심하거나 빈틈이 있어서는 안 되는 것이다.
+		PRINTFORML 크기에도 신경을 써야 한다.
+		PRINTFORML 부주의하게 입에 넣어버리면 큰일이다.
+	CASE 22;つかまり
+		PRINTFORML %CHILDNAME:42:(TALENT:42:育児中)%가 일어섰다!
+		PRINTFORML 파르르 떨리면서도 열심히 서 있는 모습이 무척이나 사랑스럽다.
+		PRINTFORML 금세 털썩 주저앉았지만, 확실히 성장하고 있다.
+		PRINTFORML 앞으로도, 성장이 기대된다.
+		PRINTFORML 
+	CASE 23;よちよち
+		PRINTFORML %CHILDNAME:42:(TALENT:42:育児中)%가 걷기 시작하게 되었다.
+		PRINTFORML 머리가 무거운 건지, 비틀거리는 모습이 매우 위태로워 보인다.
+		PRINTFORML 걸어 다니는 것은 당연하다고만 생각했었는데,
+		PRINTFORML %CHILDNAME:42:(TALENT:42:育児中)%를 보고는, 얼마나 대단한 일인지 알게 되었다.
+		PRINTFORML 
+	CASE 24;喋る
+		PRINTFORML %CHILDNAME:42:(TALENT:42:育児中)%가 말을 했다!
+		PRINTFORML 아직 고작 몇 단어 정도지만, 제대로 의미를 담아 말을 내뱉고 있다.
+		PRINTFORML 처음에 발한 말은 「만마」였다.
+		PRINTFORML 역시 내 아이구나.
+		PRINTFORML 
+	CASE 25;語彙
+		PRINTFORML %CHILDNAME:42:(TALENT:42:育児中)%의 어휘가 늘어났다.
+		PRINTFORML 「멍멍, 이따」라든가 「꽃, 사라아」라든가, 단어와 단어를 연결해서 말하게 되었다.
+		PRINTFORML 나도 이렇게 조금씩 말을 기억하며 자라왔던 걸까.
+		PRINTFORML 일단, 모미지를 보면서 「멍멍, 이따」라는 말은 그만하자.
+		PRINTFORML 엄마가 나도 모르게 웃음이 터져버릴 거거든.
+	CASE 26;しつけ
+		PRINTFORML %CHILDNAME:42:(TALENT:42:育児中)%도 완전히 자라면서, 할 수 있는 것이 늘어났다.
+		PRINTFORML 그만큼 장난치는 것도 늘었다.
+		PRINTFORML 하찮은 장난이라면 웃으며 용서해주겠지만, 생명에 관련된 것은 확실히 단속해야 한다.
+		PRINTFORML 불이나 칼 같은 날카로운 것, 입에 넣으면 안 되는 것들, 집 바깥의 무서운 것들… 세어보면 끝이 없다.
+		PRINTFORML 이 환상향에서 성인까지 키워낸 부모는 대단하다고 생각한다.
+	CASE 27;就学
+		PRINTFORML %CHILDNAME:42:(TALENT:42:育児中)%가 학교에 다니게 되었다.
+		PRINTFORML 순수한 요괴라면 계속 요괴의 산에서 사는 것도 좋을 테지만, 인간 사회에 대한 지식도 알아야 한다.
+		PRINTFORML %CHILDNAME:42:(TALENT:42:育児中)%가 어느 세계에서 살아갈지는 모르지만, 지식은 많을수록 좋다.
+		PRINTFORML 분명, 마법의 숲 근처에 사는 코우린당의 주인은 %CHILDNAME:42:(TALENT:42:育児中)%와 같았을 터이다.
+		PRINTFORML 그를 만나 여러 가지 물어보는 것도 나쁘지 않을지도 모르겠다.
+	CASE 28;自立前
+		PRINTFORML 곧 %CHILDNAME:42:(TALENT:42:育児中)%가 이곳을 떠난다.
+		PRINTFORML 여러 가지 고생도 했지만, 이렇게까지 무사히 자라준 것이라고 생각한다.
+		PRINTFORML 어떻게 살든 %CHILDNAME:42:(TALENT:42:育児中)%의 자유이지만, 가끔이라도 얼굴을 보여주었으면 한다.
+		PRINTFORML 왜냐하면, 당신은 언제까지나 나의 자식이기 때문이다.
+		PRINTFORML 
+	CASE 29;自立
+		PRINTFORML 자식이 홀로서기를 했다.
+		PRINTFORML 그렇다고는 해도 같은 환상향에서 살 테니, 언젠가 어디선가 문득 마주칠 것이 분명하다.
+		PRINTFORML 나의 아이에게는 어떤 삶이 기다리고 있을까.
+		IF TALENT:42:恋慕 || TALENT:42:恋人 || TALENT:42:思慕
+			PRINTFORML 우리 아이잖아. 분명, 어떻게든 잘 해낼 거야
+		ELSE
+			PRINTFORML 나의 아이이다. 이래저래 끈질기게 살아갈 것이다
+		ENDIF
+		PRINTFORML 다녀와, 사랑스러운 나의 아가야.
+	CASE 30;贈り物
+		PRINTFORML %MASTERNAME:42%에게서 선물을 받았다
+		IF CFLAG:1020 == 1;質に入れる
+			IF TALENT:42:恋慕 || TALENT:42:恋人
+				PRINTFORML 받아왔는데 말이야, %MASTERNAME:42%의 취향은 별로 좋지 않네.
+				PRINTFORML 사귄 지 오래됐으니까, 적어도 내 취향 정도는 알아줬으면 좋겠어.
+				PRINTFORML %MASTERNAME:42%에게 미안하지만, 팔아서 돈으로 만들자.
+				PRINTFORML 판 돈으로 %MASTERNAME:42%에게 뭔가 사줄까 봐.
+			ELSEIF TALENT:42:セフレ == 2
+				PRINTFORML %MASTERNAME:42%에게서 받은 것이긴 하지만, 아무리 그래도 취향이 별로다.
+				PRINTFORML 사귄 지 오래인데, 나의 취향 정도는 알아줬으면 좋겠다는 생각이 든다.
+				PRINTFORML 뭐, 그런 흐트러진 점까지도 좋아해 버렸지만 말이다.
+				PRINTFORML 다음에는 제대로 부탁하는 쪽으로 하자.
+			ELSEIF TALENT:42:セフレ
+				PRINTFORML %MASTERNAME:42%가 나에게 선물을 주었다.
+				PRINTFORML 취향이 너무 별로다.
+				PRINTFORML 게다가 연인도 아닌데, 딱히 이런 건 필요 없다고 생각했는데.
+				PRINTFORML 팔면 조금은 쓸모가 있을까나.
+			ELSEIF TALENT:42:思慕
+				PRINTFORML 솔직히 말해서 %MASTERNAME:42%의 취향은 나쁘다.
+				PRINTFORML 종족이 다르다면 가치관도 어느 정도는 다를 것이라 생각했지만, 이 정도로 차이가 날 줄은 몰랐다.
+				PRINTFORML 인간과 요괴가 서로를 이해하기에는 큰 간극이 있다.
+				PRINTFORML 일단, 이것은 팔자.
+			ELSE
+				IF TALENT:MASTER:性別 == 2
+					PRINTFORML 저 자식은 무슨 생각으로 이런 걸 건넨 거지
+					PRINTFORML 
+					PRINTFORML 판매한다
+					PRINTFORML 
+				ELSE
+					PRINTFORML %MASTERNAME:42%에게는, 받아도 폐가 되는 것이 있다는 것을 가르쳐야겠다.
+					PRINTFORML 그녀에게는 미안하지만 받은 물건들은 팔기로 한다.
+					PRINTFORML 그 돈으로 같이 먹을 과자라도 사자.
+					PRINTFORML
+				ENDIF
+			ENDIF
+		ELSEIF CFLAG:1020 == 2;家で保管する
+			IF TALENT:42:恋慕 || TALENT:42:恋人
+				PRINTFORML %MASTERNAME:42%가 나에게 선물을 주었다.
+				PRINTFORML 나의 취향을 기억해주었던 것 같다.
+				PRINTFORML 소중하게 사용하도록 하자.
+				PRINTFORML %MASTERNAME:42% 너무 좋아%UNICODE(0x2665) *1%
+			ELSEIF TALENT:42:セフレ == 2
+				PRINTFORML %MASTERNAME:42%가 나에게 선물을 주었다.
+				PRINTFORML 내가 무심코 했던 말을 기억하고 있는 걸까.
+				PRINTFORML 그렇다면, 조금, 아니, 정말 기쁘다.
+				PRINTFORML 혹시 나에게 마음이 있는 건 아닐까? 하는 생각은, 나의 착각일까.
+			ELSEIF TALENT:42:セフレ
+				PRINTFORML %MASTERNAME:42%가 나에게 선물을 주었다.
+				PRINTFORML 몸만이 목표라고 생각했었는데, 의외로 이런 세심한 배려를 해준다.
+				PRINTFORML 연애 감정이 없어도 기쁜 것은 기쁘다.
+				PRINTFORML 가끔은 이런 것도 좋을 것 같다.
+			ELSEIF TALENT:42:思慕
+				PRINTFORML %MASTERNAME:42%가 나에게 선물을 주었다.
+				PRINTFORML 내가 무심코 했던 말을 기억하고 있었던 걸까.
+				PRINTFORML 그렇다면, 조금, 아니, 정말 기쁘다.
+				IF TALENT:MASTER:性別 == 2
+					PRINTFORML 혹시 나에게 마음이 있는 걸까? 라는 것은, 나의 착각일까.
+				ELSE
+					PRINTFORML 한편으로는, %MASTERNAME:42%가 자신에게 친구 이상의 감정을 품고 있는 것이 아닐까 생각하고 있다.
+				ENDIF
+			ELSE
+				PRINTFORML %MASTERNAME:42%가 나에게 선물을 주었다
+				PRINTFORML 인간치고는 꽤 좋은 취향을 가지고 있다
+				IF TALENT:MASTER:性別 == 2
+					PRINTFORML 조금만 %MASTERNAME:42%에 대해 다시 살펴보기로 했다
+					PRINTFORML 
+				ELSE
+					PRINTFORML 아무래도 저 아이는 '대박'이었던 것 같다
+					PRINTFORML 중요한 취재원으로서, 앞으로도 친구로 지내기로 하자
+				ENDIF
+			ENDIF
+		ELSEIF CFLAG:1020 == 3;肌身離さず
+			IF TALENT:42:恋慕 || TALENT:42:恋人
+				PRINTFORML %MASTERNAME:42%가 나에게 선물을 주었다.
+				PRINTFORML 솔직히, 조금 울 것 같았다. 오히려 울었다.
+				PRINTFORML 나는, 얼마나 행복한 사람일까.
+				PRINTFORML %MASTERNAME:42%, 엄청 좋아%UNICODE(0x2665) *1% 정말 사랑해%UNICODE(0x2665) *1% 평생 사랑할게%UNICODE(0x2665) *1%
+			ELSEIF TALENT:42:セフレ == 2
+				PRINTFORML %MASTERNAME:42%가 나에게 선물을 주었다.
+				PRINTFORML 대단한 것이 아닌데 과장이라고, 그 사람은 웃고 있었지만.
+				PRINTFORML 그런 것이 아니었다. %MASTERNAME:42%와 눈에 보이는 연결이, 나는 그것을 원했던 것이다.
+				PRINTFORML 그 사람에게 내가 제일이 아닌 때가 올 것이다. 그렇기에, %MASTERNAME:42%가 나를 사랑해주고 있다는 증거를.
+			ELSEIF TALENT:42:セフレ
+				PRINTFORML %MASTERNAME:42%가 나에게 선물을 주었다.
+				PRINTFORML 연인도 아닌데…… 그래도 조금 기뻤다.
+				PRINTFORML 적어도, %MASTERNAME:42%가 좋은 상대를 찾을 때까지 연인인 척이라도 해 주어야겠다.
+				PRINTFORML 아니면, 나는 아직도 %MASTERNAME:42%와 그런 사이가 되고 싶은 걸까?
+			ELSEIF TALENT:42:思慕
+				PRINTFORML %MASTERNAME:42%가 나에게 선물을 주었다
+				PRINTFORML 솔직히 심장이 쿵 내려앉았다
+				PRINTFORML 나는 정말 너무 순진한 건가
+				PRINTFORML 
+			ELSE
+				PRINTFORML %MASTERNAME:42%가 나에게 선물을 주었다.
+				PRINTFORML 깜짝 놀랐다. 솔직히, 간절하게 손에 넣고 싶던 물건이었다.
+				IF TALENT:MASTER:性別 == 2
+					PRINTFORML 수상쩍은 녀석이라고 생각했지만, 의외로 근본은 좋은 사람일지도 모른다.
+					PRINTFORML 내일부터는 조금은 애교 있게 행동해야겠다고 다짐한다.
+				ELSE
+					PRINTFORML 조금 어리숙해 보이는 얼굴이라고 생각했지만, 관찰력은 높은 듯하다.
+					PRINTFORML 좀 더 상냥하게 대해줘도 역효과는 나지 않을지도 모른다.
+				ENDIF
+			ENDIF
+		ENDIF
+	CASE 31;音楽批評①
+		PRINTFORML %MASTERNAME:42%의 연주를 처음 들어보았다.
+		PRINTFORML 웃겨버릴 정도로 서툴렀다.
+		PRINTFORML 하지만, 즐거워 보이게 연주하는 모습이 인상적이었다.
+		PRINTFORML 좋은 표정을 짓지 않았나.
+		PRINTFORML 
+	CASE 32;音楽批評②
+		PRINTFORML 그 후 상당한 연습을 했을 것이다.
+		PRINTFORML %MASTERNAME:42%의 연주 실력은 향상되어 있었다.
+		PRINTFORML 「언젠가 프리즘 리버를 넘을 거야」라며 허풍을 떨었기에, '설마'하고 그때는 무시했지만.
+		PRINTFORML 의외로 정말 해내버릴지도 모른다.
+		PRINTFORML 
+	CASE 33;音楽批評③
+		PRINTFORML 유언실행. 정말 해버렸다.
+		PRINTFORML 이제는 %MASTERNAME:42%의 연주를 모르는 이는 환상향 전체를 찾아봐도 아무도 없을 것이다.
+		PRINTFORML 초심의 때를 알고 있는 나로서는 감회가 깊다.
+		PRINTFORML 그 때문에 내가 다소 우월감을 느끼는 것이라 해도 어쩔 수 없는 일일 것이다.
+		PRINTFORML 누구보다도, %MASTERNAME:42%의 성장을 봐온 것은 나뿐이니까.
+	CASE 34;初めての絶頂
+		IF TALENT:MASTER:性別 == 2
+			PRINTFORML 지금 되돌아봐도 부끄럽다.
+			PRINTFORML 몸이 폭신폭신해지며, 높이 치솟는 듯한 감각.
+			PRINTFORML 그 후에 잔물결처럼 찾아오는 기분 좋음.
+			PRINTFORML 타인의 손으로 절정에 이르는 것이, 이렇게 기분 좋은 일이었다니.
+		ELSE
+			PRINTFORML 부주의했다……
+			PRINTFORML 설마 동성의 손에 절정에 이르게 될 줄이야.
+			PRINTFORML 하지만, 이상하게도 혐오감은 없었다.
+			PRINTFORML 나는 성적 취향은 보통이라고 생각했지만, 아무래도 그쪽도 되는 것 같다.
+		ENDIF
+		PRINTFORML 
+	CASE 35;セフレ取得
+		PRINTFORML %MASTERNAME:42%와 육체적인 관계를 갖게 되었다.
+		PRINTFORML 뭐, 이런 남녀 간의 관계라는 것도 있을지도 모른다.
+		PRINTFORML 서로 합의 하에 이루어졌으니, 후회 같은 건 없을 것이다.
+		PRINTFORML 아무래도 나는 마음보다 몸을 우선하는 쪽이었던 것 같다.
+		PRINTFORML 
+	CASE 36;愛人取得
+		PRINTFORML %MASTERNAME:42%의 애인이 되었다.
+		IF TALENT:MASTER:恋人 && !TALENT:42:恋人
+			PRINTFORML 연인뿐만 아니라 나 자신도 소중히 대해주는 것 같다
+		ELSE
+			PRINTFORML 연인과는 또 다른 관계이지만, 자신을 소중히 여겨주는 사람이다.
+		ENDIF
+		PRINTFORML 원래와는 다른 형태일지도 모르지만, 나는 만족한다
+		PRINTFORML 왜냐하면, 마음도 몸도 저 사람은 채워주어 주는 거니까
+		PRINTFORML 
+	CASE 37;愛欲取得
+		PRINTFORML %MASTERNAME:42%와 몇 번을 해도 질리지 않는다.
+		PRINTFORML 지금 이렇게 일기를 쓰고 있는 중에도, %MASTERNAME:42%와 하는 것만 생각하고 있다.
+		IF TALENT:MASTER:性別 == 2 || TALENT:MASTER:性別 == 3
+			PRINTFORML %MASTERNAME:42%의 것으로 내 몸을 관통해 주었으면 좋겠어. 질 안에 넘칠 만큼 쏟아줬으면 해.
+		ELSE
+			PRINTFORML 서로의 은밀한 곳을 마음껏 탐하고 싶다. 하루 종일 뒤엉켜 있고 싶어.
+		ENDIF
+		PRINTFORML 그런 것을 상상하는 것만으로도 젖어 왔다. %MASTERNAME:42%도 지금 같은 기분일까?
+		PRINTFORML 내일이 기다려진다. 자궁이 아려와 잠들 수 없다.
+	CASE 38;愛欲の果ての叶わぬ恋慕
+		PRINTFORML 이제는 인정할 수밖에 없다
+		PRINTFORML 나는 %MASTERNAME:42%를 사랑하게 되어 버렸다
+		PRINTFORML 처음에는 육체적인 관계일 뿐이었다. 궁합은 나쁘지 않았다고 생각한다
+		PRINTFORML 하지만, 언제부터였을까. 그 사람과의 정사뿐만 아니라, 무심한 몸짓이나 표정, 말까지 신경 쓰이게 된 것은
+		PRINTW 
+		PRINTFORML 용기를 내어 전해버릴까? 아니야, 아니야, 이제 와서 뭘.
+		PRINTFORML 애초에, 육체 이상의 관계를 원한다고 해도, 상대방도 그렇게 생각해주고 있을지는 모르겠다.
+		PRINTFORML 예전 같았으면, 편하게 만날 수 있는 사람이 한 명 사라진 것뿐이라 별로 신경 쓰지 않았을 것이다.
+		PRINTFORML 지금은 달라. 나는, %MASTERNAME:42%를 잃는 것이 두렵다.
+		IF TALENT:MASTER:恋人 && !TALENT:42:恋人 ;custom code, lover check patch
+			PRINTW 
+			PRINTFORML 게다가, %MASTERNAME:42%에게는 제법 제대로 된 연인이 있잖아.
+			PRINTFORML 원래부터 위험한 다리를 건너고 있는데, 더 이상 스스로 골치 아픈 일을 만들어서 어쩌겠다는 걸까.
+			PRINTFORML 이것은, 이전의 나였다면 상상조차 할 수 없는 일이다.
+			PRINTFORML 
+		ENDIF
+		PRINTW 
+		PRINTFORML 이 마음은, 나의 가슴과 이 일기에 담아두겠다.
+		PRINTFORML 소심해져 버린 나는, 지금의 관계가 마땅하다.
+		PRINTFORML %MASTERNAME:42%
+		PRINTFORML ※※. 너에 대해 생각하고 있어……
+		PRINTW 
+		PRINTFORML 
+		PRINTFORML 일부 글자가 번져서 판독 불가능하게 되어 버렸다……
+		PRINTFORML 
+		PRINTW 
+		;これはこれで面白かったので残しておきます
+		;PRINTFORML ================================================================
+		;PRINTFORML 一部の文字がにじんで判読不能となってしまっている…
+		;PRINTFORML ================================================================
+		CFLAG:1412 = 2
+ENDSELECT
+RESETCOLOR
+;=============================
+
+@M_KOJO_MESSAGE_COM_K42_406
+;=============================
+CALL M_KOJO_MESSAGE_COM_K42_406_1
+RETURN RESULT
+;=============================
+
+@M_KOJO_MESSAGE_COM_K42_406_1
+;コマンド口上
+;TFLAG:194（誰の日記を読んでいるか）
+;TFLAG:194が42でない場合は他人の日記なので注意。
+;PAGEは書かれてあるページ数。
+;SHIRAHU(42)はキャラ42の状態が正常かどうか。
+;=============================
+#DIM PAGE
+;以下はサンプル
+PAGE = 0
+FOR LOCAL, 0, MAX_DIARY_PAGE:(TFLAG:194):0
+IF GROUPMATCH(DIARY:(TFLAG:194):LOCAL, 1, 3)
+	PAGE ++
+ENDIF
+NEXT
+IF SHIRAHU([[はたて]]) && TFLAG:194 == [[はたて]]
+	;日記を読み終わった後の反応
+	IF PAGE > 2
+		CALL SPTALK, 42,"通常",0,@"「일기를 보여주는 건…… 왠지 부끄럽네……」//%CALLNAME:42%는 진지하게 이쪽을 응시하고 있다."
+		;画像つきトークは最大６行まで。
+	ELSE
+		PRINTFORML 
+	ENDIF
+ENDIF

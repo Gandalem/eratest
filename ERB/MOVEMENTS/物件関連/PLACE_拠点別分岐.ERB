@@ -1,0 +1,728 @@
+﻿; Modular ERB: 物件関連/PLACE_拠点別分岐.ERB
+;-----------------------------------------------------------
+;拠点マップの存在判定
+;現在は0～10まで全て揃ったのであまり意味はない
+;-----------------------------------------------------------
+
+@GET_EXISTMAP(ARG)
+#FUNCTION
+SELECTCASE SaveIsEZB
+	CASE 0
+		$RegularTWThings
+		;myouren shouldn't exist until 2011
+		SIF GET_YEAR() < 2011 && ARG == 1
+			RETURNF 0
+		;player land
+		SIF ARG == 19 && !PlayerLandBought && !PlayerLandAdGot
+			RETURNF 0
+		SIF GROUPMATCH(ARG, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 19)
+			RETURNF 1
+	CASE 1
+		SELECTCASE ARG
+			CASE 0
+				;Hakurei Shrine: Stage 4
+				SIF LegendModeStage >= 3
+					RETURNF 1
+			CASE 1
+				;Myouren Temple: Stage 3
+				SIF LegendModeStage >= 2
+					RETURNF 1
+			CASE 2
+				;Human Village: Stage 1
+				RETURNF 1
+			CASE 3
+				;Misty Lake: Stage 3
+				SIF LegendModeStage >= 1
+					RETURNF 1
+			CASE 7
+				;Youkai Mountain: Stage 2
+				SIF LegendModeStage >= 1
+					RETURNF 1
+			CASE 8
+				SIF LegendModeStage >= 1
+					RETURNF 1
+			CASE 10
+				;Moon: Stage 5
+				SIF LegendModeStage >= 4
+					RETURNF 1
+			CASE 11
+				;Makai: Extra Stage
+				SIF LegendModeStage >= 6
+					RETURNF 1
+			CASE 19
+				;Player's Land is Stage 1
+				GOTO RegularTWThings
+			CASEELSE
+				;Everything else is Stage 6
+				SIF LegendModeStage >= 5
+					GOTO RegularTWThings
+		ENDSELECT
+ENDSELECT
+;-----------------------------------------------------------
+;対象マップの呼び名文字列を返す
+;ARG     MAPID
+;-----------------------------------------------------------
+
+@GET_MAPNAME(ARG) ;note that some places check it by name, replace to MAIN_MAP = check instead (int)
+#FUNCTIONS
+#DIMS PNAME
+SELECTCASE ARG
+	CASE 0
+		IF GETBIT(nUnfair,3)
+			PNAME = Ohio Statehouse, OH
+		ELSE
+			PNAME = %nameArray:1:na_LastName% Shrine
+		ENDIF
+	CASE 1
+		PNAME = %MyouTempleName()% Temple
+	CASE 2
+		;Industrial: Human City
+		IF GETBIT(nUnfair,3)
+			PNAME = Columbus, OH
+		ELSE
+			PNAME = Human Village
+		ENDIF
+	CASE 3
+		IF GETBIT(nUnfair,3)
+			PNAME = Madison County, OH
+		ELSE
+			IF GET_YEAR() >= 1998
+				PNAME = %nameArray:16:na_LastName% Devil Mansion
+			ELSE
+				PNAME = Misty Lake
+			ENDIF
+		ENDIF
+	CASE 4
+		PNAME = Bamboo Forest of the Lost
+	CASE 5
+		PNAME = Forest of Magic
+	CASE 6
+		PNAME = Sanzu River～Netherworld
+	CASE 7
+		IF GETBIT(nUnfair,3)
+			PNAME = Bellefontaine, OH
+		ELSE
+			PNAME = Youkai Mountain (Foot)
+		ENDIF
+	CASE 8
+		IF GETBIT(nUnfair,3)
+			PNAME = Campbell Hill, OH
+		ELSE
+			PNAME = Youkai Mountain (Summit)
+		ENDIF
+	CASE 9
+		IF GETBIT(nUnfair,3)
+			PNAME = London, OH
+		ELSE
+			PNAME = Underworld
+		ENDIF
+	CASE 10
+		IF GETBIT(nUnfair,3)
+			PNAME = Detorit, MI
+		ELSE
+			PNAME = Dream World～Moon
+		ENDIF
+	CASE 11
+		IF GETBIT(nUnfair,3)
+			PNAME = Miami, FL
+		ELSE
+			PNAME = Makai
+		ENDIF
+	CASE 12
+		PNAME = Tengu Village
+	CASE 18
+		;NAS: Lucid Dream
+		PNAME = Dream World～Lucid Realm
+	CASE 19
+		IF PlayerLandBought
+			IF STRLENS(PlayerLandName)
+				PNAME '= PlayerLandName
+			ELSE
+				PNAME = %CALLNAME:PlayerLandOwner%'s Land
+			ENDIF
+		ELSE
+			PNAME = Lot for Sale
+		ENDIF
+	CASEELSE
+		PNAME = Mystery Area
+ENDSELECT
+RETURNF PNAME
+;-----------------------------------------------------------
+;拠点内の場所ARGへCHARAが移動できるかを返す関数
+;鍵や危険地帯・幻影地帯など
+;ARG    場所ID
+;CHARA  キャラID,省略すると0=MASTER,現状キャラ移動以外では使いません
+;-----------------------------------------------------------
+
+@MAP_CAN_MOVE(ARG, CHARA = -1)
+#FUNCTION
+#DIM CHARA
+#DIM 家主
+#DIM 在宅
+;if we aren't character 0
+SIF CHARA == -1
+	CHARA = MASTER
+;NAS custom: cannot move at all
+SIF !CapacityStats:CHARA:3
+	RETURNF 0
+;bug fix, prevent abnormal values
+IF !INRANGE(8000 + ARG, 0, VARSIZE("STR")-1)
+	TFLAG:移動不能メッセージ = 998
+	RETURNF 0
+ENDIF
+SIF LS_RESTRICTION("Move",ARG,CHARA) ;Custom code, restrict moving during Lunatic Survival.
+	RETURNF 0
+;---------------------------------
+;ワンルーム共通処理
+IF ROOMDATA:(ARG % 100) & 場所_ワンルーム
+	家主 = PRIVATEROOM:(ARG % 100)
+	RETURNF MAP_CAN_MOVE_ONEROOM(ARG, CHARA, 家主)
+ENDIF
+;未登録地点
+;IF STR:(8000 + ARG) == ""
+;NAS: STR_TR
+IF STR_TR(8000 + ARG) == ""
+	TFLAG:移動不能メッセージ = 998
+	RETURNF 0
+ENDIF
+;自室施錠
+IF FLAG:自室施錠 && ARG == CFLAG:MASTER:初期位置 && CHARA != MASTER && ARG != CFLAG:CHARA:初期位置
+	;addition custom code, from KR version
+	IF CFLAG:MASTER:現在位置 == ARG
+		TFLAG:移動不能メッセージ = -1 * CHARA
+		;RETURNF 0
+	ENDIF
+	;------------------------------------------
+ENDIF
+;以降は拠点ごとに設定
+SELECTCASE MAIN_MAP
+	CASE 0
+		RETURNF MAP_CAN_MOVE_0(ARG, CHARA)
+	CASE 1
+		RETURNF MAP_CAN_MOVE_1(ARG, CHARA)
+	CASE 2
+		RETURNF MAP_CAN_MOVE_2(ARG, CHARA)
+	CASE 3
+		RETURNF MAP_CAN_MOVE_3(ARG, CHARA)
+	CASE 4
+		RETURNF MAP_CAN_MOVE_4(ARG, CHARA)
+	CASE 5
+		RETURNF MAP_CAN_MOVE_5(ARG, CHARA)
+	CASE 6
+		RETURNF MAP_CAN_MOVE_6(ARG, CHARA)
+	CASE 7
+		RETURNF MAP_CAN_MOVE_7(ARG, CHARA)
+	CASE 8
+		RETURNF MAP_CAN_MOVE_8(ARG, CHARA)
+	CASE 9
+		RETURNF MAP_CAN_MOVE_9(ARG, CHARA)
+	CASE 10
+		RETURNF MAP_CAN_MOVE_10(ARG, CHARA)
+	CASE 11
+		RETURNF MAP_CAN_MOVE_11(ARG, CHARA)
+	CASE 19
+		RETURNF MAP_CAN_MOVE_19(ARG, CHARA)
+ENDSELECT
+RETURNF 1
+
+@MAP_CAN_MOVE_ONEROOM(ARG, CHARA, 家主)
+#FUNCTION
+#DIM CHARA
+#DIM 家主
+#DIM 在宅
+在宅 = 0
+;character does not exist
+SIF 家主 >= CHARANUM
+	RETURNF 1
+IF IsDead:家主:0
+	;#; PRINTFORML %CALLNAME:家主% is dead, bypassing.
+	RETURNF 1
+ENDIF
+;あなた
+IF CHARA == MASTER
+	;自宅なら可能
+	IF ARG == デフォルト初期位置
+		RETURNF 1
+		;同行か恋慕なら入れる（家主睡眠中も可
+	ELSEIF CFLAG:家主:同行 || TALENT:家主:恋慕
+		在宅 = 1
+		;家主がいて起きてる
+	ELSEIF CFLAG:家主:現在位置 == ARG
+		SIF SHIRAHU(家主)
+			在宅 = 1
+		;家主以外の誰かがいる,この人物は寝てたりしても良い
+	ELSEIF IN_ROOM_NUMBER(ARG)
+		在宅 = 1
+	ENDIF
+	;家主は入れる
+ELSEIF CHARA == 家主
+	在宅 = 1
+	;そうでないキャラは相性が100を超えていないとダメ
+ELSEIF RELATION:家主:CHARA > 100
+	在宅 = 1
+ENDIF
+IF !在宅
+	IF FINDCHARA(CFLAG:初期位置, ARG, 1) != -1 && FINDCHARA(CFLAG:初期位置, ARG, 1) != 家主
+		家主 = FINDCHARA(CFLAG:初期位置, ARG, 1)
+		RESTART
+	ENDIF
+	TFLAG:移動不能メッセージ = 999
+	RETURNF 0
+ENDIF
+RETURNF 1
+;-----------------------------------------------------------
+;地点の接続設定
+;ARG    基準の地点
+;ARG:1  対象の地点
+;RETURNF 0=移動できない,見えない
+;        1=移動できる,見えない
+;        2=移動できない,見える
+;        3=移動できる,見える（直通）
+;-----------------------------------------------------------
+
+@CAN_MOVE(ARG, ARG:1)
+#FUNCTION
+IF MAIN_MAP == GET_MAPID(ARG)
+	SELECTCASE MAIN_MAP
+		CASE 0
+			RETURNF CAN_MOVE_0(ARG, ARG:1)
+		CASE 1
+			RETURNF CAN_MOVE_1(ARG, ARG:1)
+		CASE 2
+			RETURNF CAN_MOVE_2(ARG, ARG:1)
+		CASE 3
+			RETURNF CAN_MOVE_3(ARG, ARG:1)
+		CASE 4
+			RETURNF CAN_MOVE_4(ARG, ARG:1)
+		CASE 5
+			RETURNF CAN_MOVE_5(ARG, ARG:1)
+		CASE 6
+			RETURNF CAN_MOVE_6(ARG, ARG:1)
+		CASE 7
+			RETURNF CAN_MOVE_7(ARG, ARG:1)
+		CASE 8
+			RETURNF CAN_MOVE_8(ARG, ARG:1)
+		CASE 9
+			RETURNF CAN_MOVE_9(ARG, ARG:1)
+		CASE 10
+			RETURNF CAN_MOVE_10(ARG, ARG:1)
+		CASE 11
+			RETURNF CAN_MOVE_11(ARG, ARG:1)
+		CASE 19
+			RETURNF CAN_MOVE_19(ARG, ARG:1)
+	ENDSELECT
+ENDIF
+RETURNF 0
+;-----------------------------------------------------------
+;場所IDの名前文字列を返す関数
+;ARG  場所ID
+;-----------------------------------------------------------
+
+@NAME_FROM_PLACE(ARG, ARG:1) ;custom code, set ARG:1 to return original location name for backward compatibility
+#FUNCTIONS
+#DIM MAPID
+#DIMS PNAME
+PNAME =
+MAPID = GET_MAPID(ARG)
+IF TFLAG:妄想中 == 1
+	PNAME = Fantasy Realm
+ELSEIF ARG == OMANEKIBEYA()
+	;お招き部屋の名前処理
+	RETURNF OMANEKI_PLACE()
+ELSEIF ARG == ROAD_TO(MAPID) && ARG < 2000 ;bugfix custom code, fix check for Remains of Blazing Hell
+	PNAME = On the way to %GET_MAPNAME(MAPID)%
+ELSEIF MAPID == MAIN_MAP || MAPID == 18
+	;物件マップ内の名前処理
+	;custom code, add ARG:1
+	SELECTCASE MAPID
+		CASE 0
+			PNAME = %MAP_PLACENAME_0(ARG, ARG:1)%
+		CASE 1
+			PNAME = %MAP_PLACENAME_1(ARG, ARG:1)%
+		CASE 2
+			PNAME = %MAP_PLACENAME_2(ARG, ARG:1)%
+		CASE 3
+			PNAME = %MAP_PLACENAME_3(ARG, ARG:1)%
+		CASE 4
+			PNAME = %MAP_PLACENAME_4(ARG, ARG:1)%
+		CASE 5
+			PNAME = %MAP_PLACENAME_5(ARG, ARG:1)%
+		CASE 6
+			PNAME = %MAP_PLACENAME_6(ARG, ARG:1)%
+		CASE 7
+			PNAME = %MAP_PLACENAME_7(ARG, ARG:1)%
+		CASE 8
+			PNAME = %MAP_PLACENAME_8(ARG, ARG:1)%
+		CASE 9
+			PNAME = %MAP_PLACENAME_9(ARG, ARG:1)%
+		CASE 10
+			PNAME = %MAP_PLACENAME_10(ARG, ARG:1)%
+		CASE 11
+			PNAME = %MAP_PLACENAME_11(ARG, ARG:1)%
+		CASE 18
+			PNAME = %LUCID_DREAM_LOCATION_NAME(DAILY_LUCID_STATS:3,ARG)%
+		CASE 19
+			PNAME = %MAP_PLACENAME_19(ARG, ARG:1)%
+	ENDSELECT
+ELSEIF ARG < 2000
+	;おでかけマップの方
+	;Custom code
+	PNAME = % ARG:1 == 1 ? STR:(6000 + ARG / 10) # STR_TR(6000 + (ARG / 10))%
+ELSE
+	;道中他、その他範囲
+	;Custom code
+	PNAME = % ARG:1 == 1 ? STR:(ARG) # STR_TR(ARG)%
+ENDIF
+RETURNF PNAME
+;-----------------------------------------------------------
+;拠点の場所IDをお出かけマップ上の場所IDに置換する関数
+;ARG      対象の場所ID（拠点マップ）
+;ARG:1	  Always assume not in main map (NAS Addition)
+;RETURNF  差し替え場所ID（お出かけマップ）
+;-----------------------------------------------------------
+
+@GET_MAP_REPLACEMENT(ARG,ARG:1)
+#FUNCTION
+#DIM 対象マップ
+#DIM OUTID
+OUTID = 0
+対象マップ =  GET_MAPID(ARG)
+; SIF MAIN_MAP == 対象マップ && !ARG:1
+; RETURNF ARG
+SELECTCASE ARG:1
+	CASE 0
+		SIF MAIN_MAP == 対象マップ
+			RETURNF ARG
+	CASE 1
+		SIF MAIN_MAP != 対象マップ
+			RETURNF ARG
+ENDSELECT
+SELECTCASE 対象マップ
+	CASE 0
+		OUTID = MAP_SEARCH_REPLACEMENT_0(ARG)
+	CASE 1
+		OUTID = MAP_SEARCH_REPLACEMENT_1(ARG)
+	CASE 2
+		OUTID = MAP_SEARCH_REPLACEMENT_2(ARG)
+	CASE 3
+		OUTID = MAP_SEARCH_REPLACEMENT_3(ARG)
+	CASE 4
+		OUTID = MAP_SEARCH_REPLACEMENT_4(ARG)
+	CASE 5
+		OUTID = MAP_SEARCH_REPLACEMENT_5(ARG)
+	CASE 6
+		OUTID = MAP_SEARCH_REPLACEMENT_6(ARG)
+	CASE 7
+		OUTID = MAP_SEARCH_REPLACEMENT_7(ARG)
+	CASE 8
+		OUTID = MAP_SEARCH_REPLACEMENT_8(ARG)
+	CASE 9
+		OUTID = MAP_SEARCH_REPLACEMENT_9(ARG)
+	CASE 10
+		OUTID = MAP_SEARCH_REPLACEMENT_10(ARG)
+	CASE 11
+		OUTID = MAP_SEARCH_REPLACEMENT_11(ARG)
+	CASE 19
+		OUTID = MAP_SEARCH_REPLACEMENT_19(ARG)
+	CASEELSE
+		OUTID = ARG
+ENDSELECT
+SIF OUTID > 0
+	RETURNF OUTID
+;-----------------------------------------------------------
+;お出かけ先のマップ設定を返す関数
+;ARG   対象の地点
+;ARGS  判定文字引数
+;-----------------------------------------------------------
+
+@ODEKAKEMAP_SETTING(ARG, ARGS, ARG:1)
+#FUNCTION
+;お招き部屋とスキマはスルー,0もスルー
+SIF GROUPMATCH(ARG, OMANEKIBEYA(), SUKIMA(), 0)
+	RETURNF 0
+;custom code - check for ON THE ROAD TO maps
+SIF ARG == ROAD_TO(GET_MAPID(ARG))
+	RETURNF 0
+;MAIN_MAPを対象にしていた場合はエラーを吐く
+IF GET_MAPID(ARG) == MAIN_MAP
+	PRINTFORML {ARG}의 %NAME_FROM_PLACE(ARG)% (맵 ID {GET_MAPID(ARG)})으로 가려고 시도했으나, {MAIN_MAP}과 같은 맵이다.
+	PRINTFORML 입구로 돌아간다!
+	RETURNF 0
+ENDIF
+;文字引数を省いた場合もエラー
+SIF ARGS == ""
+	THROW
+SELECTCASE GET_MAPID(ARG)
+	CASE 0
+		RETURNF ODEKAKEMAP_SETTING_0(ARG, ARGS)
+	CASE 1
+		RETURNF ODEKAKEMAP_SETTING_1(ARG, ARGS)
+	CASE 2
+		RETURNF ODEKAKEMAP_SETTING_2(ARG, ARGS)
+	CASE 3
+		RETURNF ODEKAKEMAP_SETTING_3(ARG, ARGS)
+	CASE 4
+		RETURNF ODEKAKEMAP_SETTING_4(ARG, ARGS)
+	CASE 5
+		RETURNF ODEKAKEMAP_SETTING_5(ARG, ARGS)
+	CASE 6
+		RETURNF ODEKAKEMAP_SETTING_6(ARG, ARGS)
+	CASE 7
+		RETURNF ODEKAKEMAP_SETTING_7(ARG, ARGS)
+	CASE 8
+		RETURNF ODEKAKEMAP_SETTING_8(ARG, ARGS)
+	CASE 9
+		RETURNF ODEKAKEMAP_SETTING_9(ARG, ARGS)
+	CASE 10
+		RETURNF ODEKAKEMAP_SETTING_10(ARG, ARGS)
+	CASE 11
+		RETURNF ODEKAKEMAP_SETTING_11(ARG, ARGS)
+	CASE 18
+		;NAS: Lucid Dream
+		RETURNF 0
+	CASE 19
+		;NAS: Player Housing
+		RETURNF ODEKAKEMAP_SETTING_19(ARG, ARGS)
+	CASEELSE
+		SETCOLOR C_RED
+		PRINTL
+		PRINTFORML %"-"*89%
+		PRINTFORML ODEKAKEMAP_SETTING에 유효하지 않은 지도가 지정되었습니다.
+		PRINTFORML {ARG}는(은) 유효하지 않습니다.
+		PRINTFORML !이것을 보고하세요!
+		PRINTFORML %"-"*89%
+		RESETCOLOR
+		THROW
+ENDSELECT
+;-----------------------------------------------------------
+;マップのエリア番号を返す関数,エリア番号はTFLAG:マップ切り替えのマップ番号
+;ARG    MAPID
+;ARG:1  判定する場所ID（0ならMASTERの現在位置）
+;-----------------------------------------------------------
+
+@MAP_AREASELECT(ARG, ARG:1)
+#FUNCTION
+SIF !ARG:1
+	ARG:1 = CFLAG:MASTER:現在位置
+SELECTCASE ARG
+	CASE 0
+		RETURNF MAP_AREASELECT_0(ARG:1)
+	CASE 1
+		RETURNF MAP_AREASELECT_1(ARG:1)
+	CASE 2
+		RETURNF MAP_AREASELECT_2(ARG:1)
+	CASE 3
+		RETURNF MAP_AREASELECT_3(ARG:1)
+	CASE 4
+		RETURNF MAP_AREASELECT_4(ARG:1)
+	CASE 5
+		RETURNF MAP_AREASELECT_5(ARG:1)
+	CASE 6
+		RETURNF MAP_AREASELECT_6(ARG:1)
+	CASE 7
+		RETURNF MAP_AREASELECT_7(ARG:1)
+	CASE 8
+		RETURNF MAP_AREASELECT_8(ARG:1)
+	CASE 9
+		RETURNF MAP_AREASELECT_9(ARG:1)
+	CASE 10
+		RETURNF MAP_AREASELECT_10(ARG:1)
+	CASE 11
+		RETURNF MAP_AREASELECT_11(ARG:1)
+	CASE 19
+		RETURNF MAP_AREASELECT_19(ARG:1)
+ENDSELECT
+;-----------------------------------------------------------
+;描画するマップの関数名を返す関数
+;MAP_X.ERB参照
+;ARG    MAPID
+;-----------------------------------------------------------
+
+@MAP_VIEWING_NAME(ARG)
+#FUNCTIONS
+SELECTCASE ARG
+	CASE 0
+		RETURNF MAP_VIEWING_NAME_0()
+	CASE 1
+		RETURNF MAP_VIEWING_NAME_1()
+	CASE 2
+		RETURNF MAP_VIEWING_NAME_2()
+	CASE 3
+		RETURNF MAP_VIEWING_NAME_3()
+	CASE 4
+		RETURNF MAP_VIEWING_NAME_4()
+	CASE 5
+		RETURNF MAP_VIEWING_NAME_5()
+	CASE 6
+		RETURNF MAP_VIEWING_NAME_6()
+	CASE 7
+		RETURNF MAP_VIEWING_NAME_7()
+	CASE 8
+		RETURNF MAP_VIEWING_NAME_8()
+	CASE 9
+		RETURNF MAP_VIEWING_NAME_9()
+	CASE 10
+		RETURNF MAP_VIEWING_NAME_10()
+	CASE 11
+		RETURNF MAP_VIEWING_NAME_11()
+	CASE 19
+		RETURNF MAP_VIEWING_NAME_19()
+ENDSELECT
+;-----------------------------------------------------------
+;内部構造がある場所の内部の判定
+;表示するマップ（TFLAG:マップ切り替え）によって変化するので注意
+;ARG    MAPID
+;ARG:1  表示場所ID
+;ARG:2  内部場所ID
+;-----------------------------------------------------------
+
+@GETMAP_BUILDING(ARG, ARG:1, ARG:2)
+#FUNCTION
+SELECTCASE ARG
+	CASE 0
+		RETURNF GETMAP_BUILDING_0(ARG:1, ARG:2)
+	CASE 1
+		RETURNF GETMAP_BUILDING_1(ARG:1, ARG:2)
+	CASE 2
+		RETURNF GETMAP_BUILDING_2(ARG:1, ARG:2)
+	CASE 3
+		RETURNF GETMAP_BUILDING_3(ARG:1, ARG:2)
+	CASE 4
+		RETURNF GETMAP_BUILDING_4(ARG:1, ARG:2)
+	CASE 5
+		RETURNF GETMAP_BUILDING_5(ARG:1, ARG:2)
+	CASE 6
+		RETURNF GETMAP_BUILDING_6(ARG:1, ARG:2)
+	CASE 7
+		RETURNF GETMAP_BUILDING_7(ARG:1, ARG:2)
+	CASE 8
+		RETURNF GETMAP_BUILDING_8(ARG:1, ARG:2)
+	CASE 9
+		RETURNF GETMAP_BUILDING_9(ARG:1, ARG:2)
+	CASE 10
+		RETURNF GETMAP_BUILDING_10(ARG:1, ARG:2)
+	CASE 11
+		RETURNF GETMAP_BUILDING_11(ARG:1, ARG:2)
+	CASE 19
+		RETURNF GETMAP_BUILDING_19(ARG:1, ARG:2)
+ENDSELECT
+;-----------------------------------------
+;私室に最も近い共用風呂を判定する関数
+;ヒノキ風呂の効果を付与する際の判定に利用
+;ARG =1のときは設置場所を表記する時に利用する
+;基本は=0
+;-----------------------------------------
+
+@NEAR_BATH(ARG = 0)
+#FUNCTION
+;logging custom code - reactivated
+;拠点でなければ判定しない
+SIF !IN_HOME(CFLAG:MASTER:現在位置) && ARG == 0
+	RETURNF 0
+SELECTCASE CFLAG:MASTER:初期位置
+	CASE P15霊夢私室, P16ボロ小屋, P17小さい納戸, P18押入れ, P19大きい納戸, P52離れ, P53納戸, P54小人の虫かご, P55和室, P56あうんの棲家
+		RETURNF P13風呂
+	CASE P32サニー私室, P33ルナ私室, P34スター私室, P35三妖精の家・地下室
+		RETURNF P30三妖精の家・風呂
+	CASE P43夢美私室, P44ちゆり私室, P51夢幻遺跡・倉庫
+		RETURNF P39夢幻遺跡・浴室
+	CASE 1 TO 99
+		RETURNF P13風呂
+	CASE P109女苑私室, 113 TO 120, P136響子私室, P137マミゾウの棲家
+		RETURNF P112風呂
+	CASE P125屠自古私室, P127布都私室, P128神子私室, P134蔵, P139邪仙楼
+		RETURNF P133湯殿
+	CASE 100 TO 199
+		RETURNF P112風呂
+	CASE 208 TO 210, P224慧音宅, P226小鈴私室, P229阿求私室, P230空き部屋, 231 TO 235, P239美宵の部屋
+		RETURNF P228貸切浴場
+	CASE 200 TO 299
+		RETURNF P228貸切浴場
+	CASE P303守衛小屋, P304空き小屋, P311パチュリー私室, P312小悪魔私室, P320咲夜私室, P326レミリア私室, P331地下室
+		RETURNF P333大浴場
+	CASE 340 TO 342, 344 TO 346, P348霧の湖・湖底
+		RETURNF P338廃洋館・風呂
+	CASE 300 TO 399
+		RETURNF P333大浴場
+	CASE 410 TO 414, P428二階空き部屋
+		RETURNF P420風呂
+	CASE P432影狼の家, P437メディスンの家, P439ラルバの家, P440廃屋, P442空き小屋, P443ミスティアの家, P445妹紅の家
+		RETURNF P441温泉
+	CASE P451くるみ私室, P452エリー私室, P457夢月私室, P459幻月私室, P460空き部屋, P463幽香私室
+		RETURNF P454バス
+	CASE 400 TO 499
+		RETURNF P420風呂
+	CASE P512魔理沙宅・寝室, P515魔理沙宅・倉庫, 541 TO 544
+		RETURNF P514魔理沙宅・風呂
+	CASE 521 TO 523, P531人形の館・空き部屋
+		RETURNF P526人形の館・風呂
+	CASE P535エレン宅・寝室, P536エレン宅・倉庫
+		RETURNF P537エレン宅・風呂
+	CASE 500 TO 599
+		RETURNF P514魔理沙宅・風呂
+	CASE P608潤美の家, P609瓔花の家, P615映姫の部屋, P616小町の部屋, P618空き部屋
+		RETURNF P617風呂
+	CASE P623幽々子私室, P624妖夢私室, P625空室
+		RETURNF P627風呂
+	CASE P633紫私室, P634空部屋, P635橙私室, P638藍私室
+		RETURNF P636八雲邸風呂
+	CASE P644袿姫の部屋, P645磨弓の部屋
+		RETURNF P643霊長園の風呂
+	CASE P648八千慧宅の寝室
+		RETURNF P646八千慧宅の風呂
+	CASE P651早鬼宅の寝室
+		RETURNF P652早鬼宅の風呂
+	CASE P654尤魔宅の寝室
+		RETURNF P655尤魔宅の風呂
+	CASE 600 TO 699
+		RETURNF P627風呂
+	CASE P704河童のアジト, P706厄神の家, P709リリーたちの家, P717秋姉妹の家・寝室, P719秋姉妹の家・座敷, P733正邪の隠れ家, P734小屋, P736山姥の家, P737招き猫の家, P740山童のアジト
+		RETURNF P735水浴び場
+	CASE P727仙人の屋敷・華扇私室, P728仙人の屋敷・空き部屋
+		RETURNF P721仙人の屋敷・風呂
+	CASE 700 TO 799
+		RETURNF P735水浴び場
+	CASE 807 TO 810, P817神奈子私室, P818諏訪子私室, P820早苗私室, P823空室, P851久侘歌の小屋, P852駒草の小屋, P853魅須丸の小屋, P854龍宅, P856百々世の住処
+		RETURNF P825風呂
+	CASE 840 TO 842
+		RETURNF P837比那名居邸風呂
+	CASE 800 TO 899
+		RETURNF P825風呂
+	CASE P911お空私室, P912お燐私室, P916物置, P918こいし私室, P919さとり私室
+		RETURNF P921風呂
+	CASE P936勇儀の家, P940パルスィの家, P941ヤマメの家, P942キスメの家, P943あばら屋
+		RETURNF P934温泉
+	CASE 900 TO 999
+		RETURNF P921風呂
+	CASE 1006 TO 1009, P1032レイセン私室, P1033綿月亭・空き部屋, P1041豊姫私室, P1042依姫私室
+		RETURNF P1030綿月亭・風呂
+	CASE P1051ドレミー宅・寝室, P1052ドレミー宅・倉庫
+		RETURNF P1054ドレミー宅・風呂
+	CASE P1063純狐邸・空き部屋, P1064クラウンピース私室, P1071純狐私室, P1072ヘカーティア私室
+		RETURNF P1067純狐邸・風呂
+	CASE 1000 TO 1099
+		RETURNF P1030綿月亭・風呂
+		;NAS: Player housing
+	CASE 1960
+		SELECTCASE PlayerLandProgress
+			CASE 5
+				RETURNF 1960
+		ENDSELECT
+	CASE 1900 TO 1999
+		SELECTCASE PlayerLandProgress
+			CASE 2
+				RETURNF 1908
+			CASE 3
+				RETURNF 1908
+			CASE 4
+				IF !PlayerLandProgressAlt
+					RETURNF 1922
+				ELSE
+					RETURNF 1918
+				ENDIF
+			CASE 5
+				RETURNF 1959
+		ENDSELECT
+	CASEELSE
+		RETURNF 0
+ENDSELECT

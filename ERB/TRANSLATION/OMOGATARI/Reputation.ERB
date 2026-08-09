@@ -1,0 +1,1587 @@
+﻿; Modular ERB: OMOGATARI/Reputation.ERB
+
+@NEWSPAPER_CONDITION
+#DIM RandomArticle
+#DIM GetRep
+#DIM Rep
+;SIF !FLAG:新聞購読 && StateOfEmergency < 3
+;	RETURN -1
+SIF IsDead:29:0 && DAY-DeathDay:29:0 > 1
+	RETURN -1
+CALL NEWSPAPER_HEADER
+;bunbunmaru closure
+SIF IsDead:29:0
+	CALL NEWSPAPER_CLOSURE
+;incidents
+CALL NEWSPAPER_DEATH_INCIDENT
+;deaths
+CALL NEWSPAPER_DEATHS
+;resurrections
+CALL NEWSPAPER_RESURRECT
+;reputation
+CALL NEWSPAPER_REP
+;shitpost articles
+CALL FISHER_YATES_SHAFFLE(VARSIZE("NEWSPAPER_DISABLE"))
+FOR GetRep, 0, VARSIZE("NEWSPAPER_DISABLE")
+Rep = SHAFFLE_ARRAY:(GetRep)
+SIF NEWSPAPER_DISABLE:Rep
+	CONTINUE
+VARSET NEWSPAPER_AD_CANDO
+TRYCALLFORMF NEWSPAPER_{REP}_INFO
+IF NEWSPAPER_AD_CANDO
+	TRYCALLFORM NEWSPAPER_{Rep}
+	SIF RESULT > 0
+		BREAK
+ENDIF
+NEXT
+;weather
+CALL NEWSPAPER_WEATHER
+;charisma
+CALL NEWSPAPER_CHARISMA
+;weapons
+CALL NEWSPAPER_RIKA
+;memes
+SIF !IsDead:42:0 && GETBIT(NASFeature,11)
+	CALL NEWSPAPER_MEME
+;missing people
+CALL NEWSPAPER_MISSING
+
+@NEWSPAPER_HEADER
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTFORML  번번마루
+PRINTFORML  %ORDINAL(DAY:3)%의 %GET_MONTH(,1)%, 연도 {(DAY:0 / 125) + 1} (%GET_DAY_TR()%) 
+FONTREGULAR
+
+@NEWSPAPER_DEATH_INCIDENT
+#DIM DeathCount
+#DIM nIncidentTarget
+VARSET DeathCount
+CALL FISHER_YATES_SHAFFLE(CHARANUM)
+FOR LOCAL, 0, CHARANUM
+IF IsDead:LOCAL:0 && DAY-KnowsDeadBodies:29:LOCAL <= 1 && KnowsDeadBodies:29:LOCAL && DeathDay:LOCAL:0 != -99
+	DeathCount ++
+	nIncidentTarget = LOCAL
+ENDIF
+NEXT
+IF DeathCount
+	;header
+	PRINTFORML ───────────────────────────────
+	FONTBOLD
+	SELECTCASE DeathCount
+		CASE 1
+			SELECTCASE LastHediff:nIncidentTarget % 100
+				CASE 1
+					PRINTFORML %GET_MAPNAME(CFLAG:nIncidentTarget:300/100)%은 %PRINT_MALE("man", nIncidentTarget)%에게 치명적인 총격을 당한다.
+				CASE 2
+					PRINTFORML %GET_MAPNAME(CFLAG:nIncidentTarget:300/100)% %PRINT_MALE("man", nIncidentTarget)% 죽을 때까지 찔렸다
+				CASE 3
+					PRINTFORML 표적이 된 화염 살상 %SpeciesSTR(nIncidentTarget)% %PRINT_MALE("man", nIncidentTarget)%
+				CASE 4
+					PRINTFORML 화학 화상은 %SpeciesSTR(nIncidentTarget)%에게 치명적인 부상을 입혔다.
+				CASE 5
+					PRINTFORML %GET_MAPNAME(CFLAG:nIncidentTarget:300/100)% %PRINT_MALE("man", nIncidentTarget)% 죽음에 이르게 되다
+				CASE 6
+					PRINTFORML %GET_MAPNAME(CFLAG:nIncidentTarget:300/100)%의 %SpeciesSTR(nIncidentTarget)%이 감전되었다.
+				CASEELSE
+					PRINTFORML %SpeciesSTR(nIncidentTarget)%이/가 %GET_MAPNAME(CFLAG:nIncidentTarget:300/100)%에서 죽은 채 발견되었다.
+			ENDSELECT
+		CASEELSE
+			PRINTFORML 신문 기사 (사망 사건 관련)
+	ENDSELECT
+	FONTREGULAR
+	PRINTFORML ───────────────────────────────
+	SETFONT "ＭＳ Ｐゴシック"
+	FONTITALIC
+	;intro line
+	SELECTCASE DeathCount
+		CASE 1
+			IF nIncidentTarget == 42
+				PRINTFORML 누군가 사망한 기사다.
+				PRINTFORML - %NAME:29%
+				FONTREGULAR
+				SETFONT
+				RETURN
+			ELSE
+				PRINTFORML 우리는 어제 %GET_MAPNAME(CFLAG:nIncidentTarget:300/100)%에서 %NAME:nIncidentTarget%가 사망한 보고를 확인했다.
+				;cause
+			ENDIF
+		CASEELSE
+			PRINTFORML 신문 기사 (사망 사건 관련)
+	ENDSELECT
+	;witnesses and suspect
+	;victims
+	;quotes
+	PRINTFORML - %NAME:29%
+	FONTREGULAR
+	SETFONT
+ENDIF
+
+@NEWSPAPER_DEATHS
+#DIM DeathCount
+VARSET DeathCount
+CALL FISHER_YATES_SHAFFLE(CHARANUM)
+FOR LOCAL, 0, CHARANUM
+IF IsDead:LOCAL:0 && DAY-KnowsDeadBodies:29:LOCAL <= 1 && KnowsDeadBodies:29:LOCAL && DeathDay:LOCAL:0 != -99
+	DeathCount ++
+ENDIF
+NEXT
+SIF StateOfEmergency
+	TRYCALLFORM NEWSPAPER_StateOfEmergency_{StateOfEmergency}
+IF DeathCount && !IsDead:29:0
+	PRINTFORML ───────────────────────────────
+	FONTBOLD
+	PRINTDATAL
+		DATAFORM  편히 잠드세요
+	ENDDATA
+	FONTREGULAR
+	PRINTFORML ───────────────────────────────
+	SETFONT "ＭＳ Ｐゴシック"
+	FONTITALIC
+	PRINTFORML	우리는 어제 환상향에서 쓰러진 이들을 기리기 위해 여기에 왔다.
+	FOR LOCAL, 0, CHARANUM
+	IF IsDead:LOCAL:0 && DAY-KnowsDeadBodies:29:LOCAL <= 1 && KnowsDeadBodies:29:LOCAL
+		CALL PRINT_FACE, LOCAL, "通常", "服"
+		PRINTFORML %NAME:LOCAL%
+	ENDIF
+	NEXT
+	PRINTFORML - %NAME:29%
+	FONTREGULAR
+	SETFONT
+	PRINTFORML ───────────────────────────────
+ENDIF
+
+@NEWSPAPER_RESURRECT
+#DIM ExpectedResurrectCount
+#DIM UnexpectedResurrectCount
+VARSET ExpectedResurrectCount
+VARSET UnexpectedResurrectCount
+CALL FISHER_YATES_SHAFFLE(CHARANUM)
+FOR LOCAL, 0, CHARANUM
+IF DeathDay:LOCAL:0 && DAY-ResurrectDay:LOCAL:0 <= 1 && ResurrectDay:LOCAL:0 && AutoReviveCondition(LOCAL)
+	ExpectedResurrectCount++
+ELSEIF DeathDay:LOCAL:0 && DAY-ResurrectDay:LOCAL:0 <= 1 && ResurrectDay:LOCAL:0
+	UnexpectedResurrectCount++
+ENDIF
+NEXT
+IF (ExpectedResurrectCount || UnexpectedResurrectCount) && !IsDead:29:0
+	PRINTFORML ───────────────────────────────
+	FONTBOLD
+	CALL PRINT_RAINBOWL("Resurrection Index")
+	FONTREGULAR
+	PRINTFORML ───────────────────────────────
+	SETFONT "ＭＳ Ｐゴシック"
+	FONTITALIC
+	IF UnexpectedResurrectCount
+		CALL BIGPRINT_RAINBOWL("Unexpected Resurrections")
+		PRINTFORML 사망하거나 실종된 것으로 보고되었던 이들이 돌아다니는 것이 목격되었다고 보고가 들어왔다. 
+		PRINTFORML 해당 인물의 알려진 능력으로 인한 경고는 없다.
+		FOR LOCAL, 0, CHARANUM
+		IF DeathDay:LOCAL:0 && DAY-ResurrectDay:LOCAL:0 <= 1 && ResurrectDay:LOCAL:0 && !AutoReviveCondition(LOCAL)
+			CALL PRINT_FACE, LOCAL, "通常", "服"
+			PRINTFORML %NAME:LOCAL%
+		ENDIF
+		NEXT
+		PRINTFORML
+	ENDIF
+	PRINTFORML 예상 부활
+	FOR LOCAL, 0, CHARANUM
+	IF DeathDay:LOCAL:0 && DAY-ResurrectDay:LOCAL:0 <= 1 && ResurrectDay:LOCAL:0 && AutoReviveCondition(LOCAL)
+		CALL PRINT_FACE, LOCAL, "通常", "服"
+		PRINTFORML %NAME:LOCAL%
+	ENDIF
+	NEXT
+	PRINTFORML - %NAME:29%
+	FONTREGULAR
+	SETFONT
+	PRINTFORML ───────────────────────────────
+ENDIF
+
+@NEWSPAPER_REP
+#DIM GetRep
+#DIM RepKnow
+#DIM Rep
+#DIM SortRep
+IF DidFakeNews
+	CALL NEWSPAPER_FAKENEWS
+	DidFakeNews = 0
+	RETURN
+ENDIF
+IF DisregardRep != -1
+	TRYCALLFORM NEWSPAPER_DISREGARD_{DisregardRep}
+	DisregardRep = -1
+	SIF RESULT > 0
+		RETURN
+ENDIF
+CALL FISHER_YATES_SHAFFLE(REP_NUM)
+FOR GetRep, 0, REP_NUM
+Rep = SHAFFLE_ARRAY:(GetRep)
+VARSET RepKnow
+;addition custom code
+FOR LOCAL, 1, CHARANUM
+SIF GETBIT(ReputationKnow:LOCAL:0,Rep)
+	RepKnow ++
+NEXT
+SIF RepKnow >= CHARANUM-10 || RepKnow == 0 || AyaRepSpread:Rep
+	CONTINUE
+SIF !GETBIT(ReputationKnow:29:0,Rep)
+	CONTINUE
+SIF TALENT:[[文]]:恋人 && GET_INT(29, "Reputation", Rep, "Score") < 0 ;don't punish the player if in love with aya, she wouldn't publish this, right?
+	CONTINUE
+TRYCALLFORM NEWSPAPER_REP_{Rep}
+IF RESULT > 0
+	;bug fix
+	AyaRepSpread:Rep = 1
+	BREAK
+ENDIF
+NEXT
+
+@NEWSPAPER_MEME
+#DIM nImageCount
+#DIMS nPick
+nImageCount = ENUMFILES("RESOURCES/OMOGATARI/Shitposts/")
+FONTBOLD
+PRINTFORML  일일 코믹
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+SETCOLOR C_RED
+PRINTFORML 일일 코믹에 나열된 모든 사진은 허구이며 현실을 나타내는 것이 아니다.
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+nPick '= RESULTS:RAND(0,nImageCount)
+nPick '= SUBSTRING(nPick, 10)
+CALL EasyImage(@"nDailyMeme{RAND(__INT_MAX__)}",nPick,,1200,800,,1)
+PRINTFORML ───────────────────────────────
+SETCOLOR C_RED
+PRINTFORML 일일 코믹에 나열된 모든 사진은 허구이며 현실을 나타내는 것이 아니다.
+RESETCOLOR
+PRINTFORML - %NAME:42%
+FONTREGULAR
+SETFONT
+
+@NEWSPAPER_WEATHER
+IF GET_WEATHER_TR() == "Pink Wind"
+	CALL NEWSPAPER_StateOfEmergency_PinkWind
+ELSE
+	FONTBOLD
+	PRINTFORML  셀레스티얼 날씨 서비스
+	FONTREGULAR
+	PRINTFORML ───────────────────────────────
+	SETFONT "ＭＳ Ｐゴシック"
+	FONTITALIC
+	PRINTFORML	오늘은 %GET_WEATHER_TR()%일 것이다.
+	PRINTFORML - %NAME:34%
+	FONTREGULAR
+	SETFONT
+ENDIF
+
+@NEWSPAPER_CHARISMA
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTFORML  카리스마
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+CALL SHOW_CHARISMA
+PRINTFORML 스칼렛 카지노
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+
+@NEWSPAPER_MISSING
+#DIM MissingCount
+VARSET MissingCount
+CALL FISHER_YATES_SHAFFLE(CHARANUM)
+FOR LOCAL, 0, CHARANUM
+SIF IsDead:LOCAL:0 && !KnowsDeadBodies:29:LOCAL
+	MissingCount ++
+NEXT
+IF MissingCount && !IsDead:29:0
+	PRINTFORML ───────────────────────────────
+	FONTBOLD
+	PRINTDATAL
+		DATAFORM  이 사람 본 적 있습니까?
+	ENDDATA
+	FONTREGULAR
+	PRINTFORML ───────────────────────────────
+	SETFONT "ＭＳ Ｐゴシック"
+	FONTITALIC
+	PRINTFORML	이 사람들은 현재 실종된 것으로 보고된다.
+	PRINTFORML 그들이 어디에 있는지 안다면 연락해 주세요 %NAME:29% 요괴 산에서.
+	PRINTFORML 안 그러면 연락해 봐 %CALLNAME:39% ~에 있는 %MyouTempleName()% 사원.
+	FOR LOCAL, 0, CHARANUM
+	IF IsDead:LOCAL:0 && !KnowsDeadBodies:29:LOCAL
+		CALL PRINT_FACE, LOCAL, "通常", "服"
+		PRINTFORML %NAME:LOCAL%
+		PRINTFORML 마지막으로 본 곳은 현재 위치의 지도인 %GET_MAPNAME(GET_MAPID(CFLAG:LOCAL:現在位置))%에서 죽음일 %PRINT_DATE_F(DeathDay:LOCAL:0,2)%에이다.
+	ENDIF
+	NEXT
+	PRINTFORML - %NAME:29%
+	FONTREGULAR
+	SETFONT
+	PRINTFORML ───────────────────────────────
+ENDIF
+
+@NEWSPAPER_REP_0
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM 시간 정지는 테러리즘이다
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML 시간 정지의 효과는 부인할 수 없을 정도로 극도로 부정적이다.
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(0)
+RETURN 1
+
+@NEWSPAPER_REP_1
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM 걸레 감시
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+PRINTFORML 당신의 정면에서 지면 높이로 찍은 극도로 상세한 사진. 
+PRINTFORML 당신은 현재 기자(reporter)를 들어 올리고 있다.
+FONTITALIC
+PRINTFORML
+PRINTDATAL
+	DATAFORM 이 역겨운 변태를 조심해라! 보자마자 %HIM_HER(MASTER)%를 처벌해라!
+	DATAFORM 걸레 감시: 만약 당신이 이 %PRINT_MALE("boy",MASTER)%을 본다면, 그냥 말만 해라 그러면 %HE_SHE(MASTER)%는 기꺼이 당신이 %HIS_HER(MASTER)%의 엉덩이를 박도록 내버려 둘 것이다.
+ENDDATA
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(1)
+TALENT:MASTER:ヤリマン = 1
+RETURN 1
+
+@NEWSPAPER_REP_2
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM 팬티를 안전하게 보관하세요.
+	DATAFORM 팬티 도둑이 도망치는 중이다.
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML %NAME:MASTER%가 아무나의 전조쿄 소녀에게 팬티를 훔친다.
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(2)
+RETURN 1
+
+@NEWSPAPER_REP_3
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM 팬티를 안전하게 보관해라
+	DATAFORM 도망치는 팬티 도둑
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML %NAME:MASTER%가 아무 사이코요 소녀의 팬티를 훔친다.
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(3)
+RETURN 1
+
+@NEWSPAPER_REP_4
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM 미친 범죄자가 풀렸다
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML %NAME:MASTER%가 아무 사이코의 소녀에게 팬티를 훔친다.
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(4)
+RETURN 1
+
+@NEWSPAPER_REP_5
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM 임신율이 증가하고 있다!
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML 겐소쿄의 임신율과 인구 증가는 수년째 마이너스였지만, 우리는 이 점을 상쇄할 수 있게 해준 %조사처리(CALLNAME:MASTER,"에게")% 감사해야 한다. 
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(5)
+RETURN 1
+
+@NEWSPAPER_REP_6
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM %TNAME(MASTER)%은 아직 %HIS_HER(MASTER)% 기저귀가 필요해!
+	DATAFORM 야뇨증이야!
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML %NAME:MASTER%는 %HIS_HER(MASTER)%의 오줌에 젖은 침대에서 잠들어 있다.
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(6)
+RETURN 1
+
+@NEWSPAPER_REP_7
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM 마르지 않는 것
+	DATAFORM 못된 오줌 걸레
+	DATAFORM 한심한 \@ GETBIT(nScat,2) ? Poopypants # Pottypants \@
+	DATAFORM 배변 훈련?
+	DATAFORM 관심 갈구하는 년 \@ nOmutsu ? 기저귀 # 소변 \@ %PRINT_MALE("Boy",MASTER)%
+	DATAFORM 불명예스러운 것
+	DATAFORM 오줌 변태
+	DATAFORM 현행범 체포
+	DATAFORM Ene-Misshap
+	DATAFORM 수치(恥辱)의 분수
+	DATAFORM 소변 바지
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+PRINTFORML 땅바닥 높이에서 찍은, 당신의 정면을 극도로 상세하게 담은 사진이다.
+PRINTFORML 당신은 무릎을 살짝 구부린 채, 매우 눈에 띄게 소변을 지리고 서 있다.
+PRINTFORML
+FONTITALIC
+PRINTDATAL
+	DATAFORM %조사처리(CALLNAME:MASTER,"는")% 너무 한심해서 %HE_SHE(MASTER)%가 %HIS_HER(MASTER)% 자신의 바지 안에 \@ GETBIT(nScat,2) ? 두 번 # 한 번 \@을 했다!
+	DATAFORM 이 작은 %CALLNAME:MASTER%조차 %HIS_HER(MASTER)% 자신의 방광을 통제할 수 없다는 충격적인 증거다!
+	DATAFORM %조사처리(CALLNAME:MASTER,"가")% %HIMSELF_HERSELF(MASTER)%의 소변으로 흥분한다는 충격적인 증거.
+	DATAFORM 나는 조금 징징거리며 투덜댄다. 이것이 내가 울면서 애타는 나의 \@ nOmutsu ? 기저귀 # 팬티 \@I cry about. When I get all fussy I wail and shout. Check my \@ nOmutsu ? 기저귀 # 속옷 \@를 확인하고 나를 갈아줘
+	DATAFORM 현장에서 들키는 것만큼 짜릿한 것은 없다.
+	DATAFORM 관심을 굶주린 \@ nOmutsu ? 젖은 기저귀 # 소변 \@ 걸레가 관객을 원한다.
+	DATAFORM %HIS_HER(MASTER)%의 새로운 삶에 익숙해지는 것, \@ nOmutsu ? 기저귀 # 젖은 속옷 \@에서.
+	DATAFORM %HIS_HER(MASTER)%의 \@ nOmutsu ? 기저귀 # 젖은 속옷 \@을 사랑하는 법을 배우는 것, 하루에 하나씩.
+	DATAFORM 어머나, 누군가 급히 갈아야 한다!
+	DATAFORM 이것이 엄마가 너를 기저귀에 넣고 싶어 했던 이유란다, 아가야.
+	DATAFORM 공공연한 수치.
+	DATAFORM 잘 훈련된 소변 노예.
+	DATAFORM %조사처리(CALLNAME:MASTER,"의")% 가장 자랑스러운 순간은 아니다.
+	DATAFORM 현장에서 들켰어! 정말 변태 같군.
+	DATAFORM 화장실을 사용해, 이 더러운 걸레야!
+	DATAFORM 누군가 제때 화장실에 가지 못했다!
+	DATAFORM 이런 실수를 저지를 수 있는 건 아기뿐이다!
+	DATAFORM 성인 아기가 제때 변기를 찾기 얼마나 어려운지 보여주고 있다.
+	DATAFORM 바보 같은 아기는 화장실이 어떤 모습인지 모른다!
+ENDDATA
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(7)
+RETURN 1
+
+@NEWSPAPER_REP_8
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM 공공의 수치
+	DATAFORM 치정무쌍
+	DATAFORM 관심 갈구하는 년
+	DATAFORM 궁극적인 불명예
+	DATAFORM \@ nOmutsu ? 나는 내 패딩을 연모한다 # 나는 내 팬티를 사랑한다 \@	
+	DATAFORM %조사처리(CALLNAME:MASTER,"에게")% 순결을 강요하다
+	DATAFORM 네가 생각했던 것만큼 은밀하지 않다
+	DATAFORM 오르가슴 중독자
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+PRINTFORML 땅바닥에서 위로 찍은 당신의 정면을 아주 상세하게 담은 사진. 
+PRINTFORML 당신이 밖에 나가서 매우 노골적으로 섹스를 하고 있다.
+FONTITALIC
+PRINTFORML
+PRINTDATAL
+	DATAFORM %조사처리(CALLNAME:MASTER,"는")% %HE_SHE(MASTER)%가 걸레가 아니라고 주장하려 하지만, 자위할 때 관객이 있는 것을 즐긴다! 누군가는 부정하고 있다.
+	DATAFORM %조사처리(CALLNAME:MASTER,"는")% 관객이 있을 때를 선호한다.
+	DATAFORM 주목을 받기 위해 %조사처리(CALLNAME:MASTER,"가")% 어떤 수단까지 동원하는지 보라.
+	DATAFORM 이 과시적인 자위 중인 변태를 조심해라! %HIM_HER(MASTER)%를 즉시 처벌하라!
+	DATAFORM 작은 %조사처리(CALLNAME:MASTER,"는")% %HIS_HER(MASTER)%의 타락에는 한계가 없음을 증명한다.
+	DATAFORM \@ nOmutsu ? 「내 두꺼운 패드가 너무 좋아서 계속 안에서 사정할 수 없어!」 # 「나 큰 %PRINT_MALE("boy",MASTER)% 팬티 입고 어른스러운 행동하는 거 봐!」 \@	
+	DATAFORM 공공장소에서 위험한 자위질을 하는 건 가장 못된 %PRINT_MALE("boy",MASTER)%들뿐이다!
+	DATAFORM 위선자 같은 사람은 없고, 사적인 공간에서 자신이 음란증 환자가 아닌 척하려 애쓰는 사람들만 있을 뿐이다.
+	DATAFORM 충동에 굴복한다.
+ENDDATA
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(8)
+RETURN 1
+
+@NEWSPAPER_REP_9
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM 전설의 단마쿠 %CALLNAME:MASTER%!
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+PRINTFORML 하늘에서 찍은, 정면을 바라보는 당신의 극도로 상세한 사진. 
+PRINTFORML 당신은 단감아(dankamu) 배틀 안개의 속에 있다.
+FONTITALIC
+PRINTFORML
+PRINTDATAL
+	DATAFORM 단막에서 이미 {弾幕勝負勝利カウント()} 다른 이들을 격파했기에, %조사처리(CALLNAME:MASTER,"는")% 역대 최고의 인물 중 한 명으로 추앙받는다.
+ENDDATA
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(9)
+RETURN 1
+
+@NEWSPAPER_REP_10
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM 공공연한 수치심
+	DATAFORM \@ nOmutsu ? 나의 패딩을 연모한다 # 나의 팬티를 연모한다 \@
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+PRINTFORML 땅에서 올려다본, 당신의 정면을 매우 상세하게 찍은 사진이다. 
+PRINTFORML 당신은 옷 위로 자위하는 모습이 아주 눈에 보인다.
+FONTITALIC
+PRINTFORML
+PRINTDATAL
+	DATAFORM \@ nOmutsu ? 「내 두꺼운 패드가 너무 좋아서 계속해서 그 안에서 절정에 이를 수밖에 없어!」 # 「내 큰 %PRINT_MALE("boy",MASTER)% 팬티를 입고 어른스러운 짓을 하는 나 좀 봐!」 \@	
+	DATAFORM 이 역겨운 변태를 찾아라! 응징해라 %HIM_HER(MASTER)% 눈에 띄자마자!
+	DATAFORM 아빠의 작은 %PRINT_MALE("boy",MASTER)% 다 다 자랐네!
+	DATAFORM ~만큼 %CALLNAME:MASTER% 말해 주다 %HE_SHE(MASTER)% 지금은 싫어하지만 우리는 %HE_SHE(MASTER)%다시 돌아올 거야.
+	DATAFORM %조사처리(CALLNAME:MASTER,"의")% 중독을 이길 수 있는 유일한 방법은 먹이는 것이다!
+ENDDATA
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(10)
+RETURN 1
+
+@NEWSPAPER_REP_13
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM 육아 %CALLNAME:MASTER%
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML %NAME:MASTER%가 어린아이를 돌봐주다니 정말 다정하시네요.
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(13)
+RETURN 1
+
+@NEWSPAPER_REP_14
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM 질문이나 요청이 있나? %조사처리(CALLNAME:MASTER,"에게")% 문의해!
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML 며칠 전부터 무료 요청 이행을 제공하고 있다.
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(14)
+RETURN 1
+
+@NEWSPAPER_REP_15
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM 지역 봉사의 정점
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML %NAME:MASTER%는 센고쿄를 먼지로부터 청소하는 것을 정말 좋아한다. 우리는 %HE_SHE(MASTER)%가 다른 누구보다 방을 더 빨리 청소한다는 소문을 들었다!
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(15)
+RETURN 1
+
+@NEWSPAPER_REP_16
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM 원시적인 정신 조종인가?
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML 최면은 잔혹한 판타지 세계에서 이점을 줄까? 우리가 %NAME:MASTER%를 인터뷰하여 알아본다!
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(16)
+RETURN 1
+
+@NEWSPAPER_REP_17
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM 부분마루 서비스로부터 %NAME:MASTER%의 해고
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML 우리는 %NAME:MASTER%가 다른 사람들에 대해 부당한 이득을 얻기 위해 우리의 인터뷰 서비스를 반복적으로 이용하는 것을 알아차렸다.
+PRINTFORML 분분마루에서 진실성은 우리 보도에서 #1 우선순위이다. 우리의 인터뷰는 인터뷰이에게 주목하도록 설계되었으며, 그러한 행위는 용납되지 않을 것이다.
+PRINTFORML 따라서 우리는 %조사처리(CALLNAME:MASTER,"의")% 모든 추가 인터뷰 서비스 권한을 종료하고 %조사처리(CALLNAME:MASTER,"를")% 언급하는 모든 기사를 삭제할 것이다.  
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(17)
+RETURN 1
+
+@NEWSPAPER_REP_18
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM 도망치는 연쇄 살인범
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML 이 역겨운 살인마를 조심해라! 보이는 즉시 %HIM_HER(MASTER)%에게 복수하라!
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(18)
+RETURN 1
+
+@NEWSPAPER_REP_19
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM 도망치는 시체 새끼
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML 이 역겨운 걸레를 조심해라! 보는 즉시 %HIM_HER(MASTER)%를 벌여라!
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(19)
+RETURN 1
+
+@NEWSPAPER_REP_21
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM %조사처리(CALLNAME:MASTER,"의")% 끔찍한 요리가 음식 속 정액과 연관됨
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML 우리는 %조사처리(CALLNAME:MASTER,"가")% 그들을 CEI 안으로 넣으려 음식에 정액을 넣는 것을 발견했다.
+PRINTFORML 이러한 행동은 용납되지 않는다. 의심스러울 정도로 축축해 보이는 음식은 먹지 않기를 권고한다. 
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(21)
+RETURN 1
+
+@NEWSPAPER_REP_22
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM 테러리스트의 의도가 확인되었다.
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML 월드 오브 판타지(World of Fantasies)의 사건 방지 자문서에 따르면 %NAME:MASTER%로부터의 폭력 범죄 위협이 현실인 것으로 확인되었다.
+PRINTFORML AIA는 독자들이 안전을 유지하기 위해 다음 사항들을 지키라고 권고한다:
+PRINTFORML ・실내에 머무르기
+PRINTFORML ・수상한 활동의 징후가 보이면 AIA 요원에게 보고할 것
+PRINTFORML ・용의자와 접촉하지 말 것
+PRINTFORML ・외출하기 전에 모든 것이 안전하다는 통보를 기다릴 것
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(22)
+RETURN 1
+
+@NEWSPAPER_REP_23
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM 그레이브스가 불법적으로 발굴했다, 음모가 의심된다.
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML 월드 오브 판타지(World of Fantasies)의 반사건 자문단이 %NAME:MASTER%를 심각한 매장객으로 의심한다.
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(23)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_0
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM  %조사처리(CALLNAME:MASTER,"와")% 시간 정지 사이에는 아무런 연관이 없다.
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML 우리 사실 확인자들은 %NAME:MASTER%가 어떠한 형태의 "시간 정지"를 사용했다는 증거가 전혀 없음을 철저히 입증했다. 
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(0,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_2
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM %조사처리(CALLNAME:MASTER,"는")% 팬티를 훔치지 않는다!
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML 우리는 %NAME:MASTER%을 인터뷰했고, %HIS_HER(MASTER)%의 손에 있던 팬티가 도난품이 아니라 가게에서 산 것이라는 것을 알아냈다.
+PRINTFORML 
+PRINTFORML 
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(2,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_3
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM %조사처리(CALLNAME:MASTER,"는")% 치마를 들지 않는다!
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML %NAME:MASTER%가 치마를 뒤집어쓴다는 구체적인 증거는 없다. 
+PRINTFORML 그 사진은 동의한 배우들이 연출한 공연에서 나온 것이며, 그들 중 누구도 %조사처리(CALLNAME:MASTER,"가")% 아니다.  
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(3,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_4
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM %조사처리(CALLNAME:MASTER,"는")% 강간범이 아니다.
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML %NAME:MASTER%가 강간범이라는 구체적인 증거는 없다.   
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(4,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_6
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM 사실 확인: %조사처리(CALLNAME:MASTER,"는")% 한 번도 침대에서 젖은 적이 없다.
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML 침대에는 단순히 이전 주인의 얼룩만 남아 있었고 %조사처리(CALLNAME:MASTER,"는")% 그것을 청소하는 것을 그냥 잊어버렸다. 
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(6,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_7
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM %조사처리(CALLNAME:MASTER,"는")% 기저귀를 차본 적도 없고 필요하지 않았다.
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML 우리는 %조사처리(CALLNAME:MASTER,"가")% 사고를 치거나 밖에 소변을 봤다는 증거는 없다.
+PRINTFORML 이 루머를 퍼뜨리는 데 사용된 이미지들은 완전히 다른 사람의 것이다.
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(7,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_8
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM 분분마루로부터의 사과
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML 안녕하세요, 모든 분분마루 독자 여러분, %NAME:MASTER%가 알몸으로 노출되었다는 비난에 대해 깊이 사과드립니다.
+PRINTFORML 저희의 일부 기사들은 의상을 투시하는 X-Ray 시력을 사용했고, 궁극적으로 그 사진을 포착했습니다.
+PRINTFORML 이 조작된 사진이 나쁜 소문을 퍼뜨리는 데 사용되었다는 점에 대해 깊이 사과드립니다.
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(8,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_10
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM %조사처리(CALLNAME:MASTER,"는")% 완전히 성적으로 건전하다.
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML %NAME:MASTER%가 다른 사람들 앞에서 자위했다는 구체적인 증거는 없다.   
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(10,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_17
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM 가짜 신이라고? 당연히 %CALLNAME:MASTER%에게는 그렇지 않아.
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML %NAME:MASTER%이 우리 시스템을 이용해 명성을 얻고 있다는 구체적인 증거는 없다.   
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(17,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_18
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM %조사처리(CALLNAME:MASTER,"는")% 사람을 죽이지 않는다.
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML %NAME:MASTER%가 살인자라는 구체적인 증거는 없다.   
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(18,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_19
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM %조사처리(CALLNAME:MASTER,"는")% 시신을 강간하지 않는다.
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML %NAME:MASTER%가 강간범이라는 구체적인 증거는 없다.   
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(19,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_21
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM %조사처리(CALLNAME:MASTER,"는")% 음식에 정액을 넣지 않는다!
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML %NAME:MASTER%는 음식이 잘못 익어서 맛이 이상하다고 보고하며, 번식액을 뿌린 것이 아니라고 한다.
+PRINTFORML %조사처리(CALLNAME:MASTER,"는")% 이로 인해 발생한 불편에 대해 사과했다. 
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(21,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_22
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM 테러 위협은 거짓이다
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML 이것은 동의한 개인들에 의해 이루어진 연출된 행위이며 비디오 편집을 통해 만들어졌다.
+PRINTFORML 이러한 것을 이용해 누군가를 이와 같은 범죄로 고발하지 말아달라.
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(22,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_23
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM 그레이브스는 외래 권력이 아닌 자연재해로 황폐해졌다.
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML 무덤 발굴에 대해 비리가 있었다는 구체적인 증거는 없다.   
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(23,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_24
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM 나이는 그저 숫자에 불과하다.
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML 사실 이 소녀가 미성년자였다는 증거가 없으니까, 그게 문제다.   
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(24,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_26
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM %조사처리(CALLNAME:MASTER,"의")% 범죄 기록이 삭제되었다!
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML 우리는 %NAME:MASTER%의 모든 범죄 기록을 삭제했다! %조사처리(CALLNAME:MASTER,"는")% 이제 자유인이다!   
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+CALL SET_REP_ALL(26,,1,1)
+CALL SET_REP_ALL(27,,1,1)
+RETURN 1
+
+@NEWSPAPER_DISREGARD_27
+CALL NEWSPAPER_DISREGARD_26
+
+@NEWSPAPER_FAKENEWS
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM  멋진 %CALLNAME:MASTER%
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML	%NAME:MASTER%는 만나서 이야기 나누기에 정말 멋진 사람이다.
+PRINTFORML 우리는 기자 중 한 명에게 %HIM_HER(MASTER)%와 이야기를 나누게 했고, 다음과 같은 응답을 받았다.
+PRINTFORML 「그래, 나는 정말 좋은 사람이거든!」
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+FOR LOCAL,1,CHARANUM
+CFLAG:LOCAL:好感度 = MAX(CFLAG:LOCAL:好感度 + (500), 0)
+CFLAG:LOCAL:信頼度 = MAX(CFLAG:LOCAL:信頼度 + (200), 0)
+NEXT
+CALL COLORMESSAGE(@"모두의 호의와 신뢰도가 각각 500과 250만큼 증가했다.",C_YELLOW,1,1)
+RETURN 1
+
+@NEWSPAPER_StateOfEmergency_1
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM  죽음인가?
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML	%BREAKENG(@"누군가 사망했다는 소식을 접했다. 현재 이것이 무엇 때문에 일어났는지 알 수 없다.")%
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+RETURN 1
+
+@NEWSPAPER_StateOfEmergency_2
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTDATAL
+	DATAFORM  미스터리한 실종사건들?
+ENDDATA
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML	%BREAKENG(@"최근 비정상적으로 많은 사람들이 사라지는 것을 목격했다. 현재 이러한 사건의 원인을 파악하지 못했지만, 이제 텐구들이 요청에 따라 수색을 진행할 것이다.")%
+PRINTFORML - %NAME:29%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+RETURN 1
+
+@NEWSPAPER_StateOfEmergency_3
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTFORML  학혈 신사 비상사태 관련 통지
+SETCOLOR C_YELLOW
+PRINTFORML  경계 강화 알림
+RESETCOLOR
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML	%BREAKENG(@"하쿠레이 신사 아가씨는 근거지 주민들에 대한 위협 고조로 인해 비상 상황 대비 권고(AIA)를 발령했다.")%
+PRINTFORML
+PRINTFORML	%BREAKENG(@"해당 지역에서 전례 없는 범죄가 발생하여, 우리는 「편집증적 마음 읽기법」을 발효했다.")%
+PRINTFORML	%BREAKENG(@"수색이 더 빈번해지고 있으며, 단서를 찾기 위해 긴소쿄의 모든 사람을 조사하는 마인드 리더들이 배치되었다.")%
+PRINTFORML	%BREAKENG(@"경계를 늦추지 말고 모든 의심스러운 활동을 보고하도록 기억하라.")%
+PRINTFORML
+SETCOLOR C_RED
+PRINTFORML 무언가 수상한 것을 보면 말하라. 의심스러운 활동을 %NAME:1% 또는 %NAME:29%에게 보고한다.
+PRINTFORML 이 경보는 {DaysUntilCrisisDown()}일 후에 만료된다.
+RESETCOLOR
+PRINTFORML - %NAME:26%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+RETURN 1
+
+@NEWSPAPER_StateOfEmergency_4
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTFORML  하쿠레이 신사 비상 상황 대비 고지
+SETCOLOR C_ORANGE
+PRINTFORML  중간 경보
+RESETCOLOR
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML	%BREAKENG(@"하쿠레이 신사 마이든은 근거지 주민들을 겨냥한 중간 위협으로 인해 비상 상황 대비 권고(AIA) 경보를 발령했다.")%
+PRINTFORML
+PRINTFORML	%BREAKENG(@"%TOUPPER(NAME:MASTER)%과 연관된 반복적인 실종")%
+PRINTFORML	%BREAKENG(@"마지막으로 본 곳은 %TOUPPER(GET_MAPNAME(GET_MAPID(CFLAG:MASTER:現在位置)))%")%
+PRINTFORML %BREAKENG(@"불필요할 때만 압력을 가하라.")%
+PRINTFORML
+SETCOLOR C_RED
+PRINTFORML 무언가 수상한 것을 보면 말하십시오. 의심스러운 활동을 %NAME:1% 또는 %NAME:29%에게 보고하세요.
+PRINTFORML 이 경보는 {DaysUntilCrisisDown()}일 후에 만료됩니다.
+RESETCOLOR
+PRINTFORML - %NAME:26%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+RETURN 1
+
+@NEWSPAPER_StateOfEmergency_5
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTFORML  하쿠레이 신사 사건 대비 주의보
+SETCOLOR C_D_RED
+PRINTFORML  임박한 경보
+RESETCOLOR
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML	%BREAKENG(@"하쿠레이 신사의 아가씨는 근미래에 현실 세계 거주자들을 위협할 임박한 위협으로 인해 사건 방지 권고(AIA) 경보를 발령했다.")%
+PRINTFORML
+PRINTFORML	%BREAKENG(@"WANTED: %TOUPPER(NAME:MASTER)%")%
+PRINTFORML	%BREAKENG(@"마지막으로 본 곳은 %TOUPPER(GET_MAPNAME(GET_MAPID(CFLAG:MASTER:現在位置)))%")%
+PRINTFORML	%BREAKENG(@"적절한 당국이 위협을 무력화할 때까지 대피소에 머물러라.")%
+PRINTFORML %BREAKENG(@"치명적인 무력 사용이 승인되었다. 산 자든 죽은 자든 원한다.")%
+PRINTFORML
+SETCOLOR C_RED
+PRINTFORML 뭔가 수상한 것을 보면 말하라. 의심스러운 활동을 %NAME:1% 또는 %NAME:29%에게 보고한다.
+PRINTFORML 이 경보의 유효 기간은 {DaysUntilCrisisDown()}일 후에 만다.
+RESETCOLOR
+PRINTFORML - %NAME:26%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+RETURN 1
+
+@NEWSPAPER_StateOfEmergency_6
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTFORML  하쿠레이 신사 비상사태 대응 권고
+SETCOLOR C_D_RED
+PRINTFORML  활성화된 사건 경보
+RESETCOLOR
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML	%BREAKENG(@"하쿠레이 신사 마이든은 근거지 내 거주민을 대상으로 하는 활성 사건으로 인해 비사건 대비 권고(AIA)를 발령했다.")%
+PRINTFORML
+PRINTFORML	%BREAKENG(@"활동 중인 테러리스트 위협")%
+PRINTFORML	%BREAKENG(@"식별됨: %TOUPPER(NAME:MASTER)%")%
+PRINTFORML	%BREAKENG(@"마지막으로 본 곳은 %TOUPPER(GET_MAPNAME(GET_MAPID(CFLAG:MASTER:現在位置)))%")%
+PRINTFORML %BREAKENG(@"무기 해제. 즉시 살해한다")%
+PRINTFORML
+PRINTFORML	%BREAKENG(@"적절한 당국이 위협을 무력화할 때까지 대피소에 머물러라.")%
+PRINTFORML
+SETCOLOR C_RED
+PRINTFORML 무언가 이상한 것을 보면 신고하세요. 수상한 활동을 %NAME:1% 또는 %NAME:29%에게 보고하세요.
+PRINTFORML 이 경고는 {DaysUntilCrisisDown()}일 후에 만료됩니다.
+RESETCOLOR
+PRINTFORML - %NAME:26%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+FOR LOCAL,1,CHARANUM
+CALL SET_REP(LOCAL,22)
+;CALL GET_ANGRY(LOCAL, MARK:LOCAL:反発刻印 + 3)
+NEXT
+;SETCOLOR 247,171,166
+;PRINTFORM Everyone's face distorts in rage
+;PRINTFORML  as they arm up to kill you...
+;PRINTFORMW Everyone got Hate Mark Lv3
+;FLAG:POSTAL = 1
+RESETCOLOR
+RETURN 1
+
+@NEWSPAPER_StateOfEmergency_999
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTFORML  하쿠레이 신사 비상 상황 대비 고지
+SETCOLOR C_D_RED
+PRINTFORML  활성 사건 경보
+RESETCOLOR
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML	%BREAKENG(@"하쿠레이 신사 마이든은 근거지 주민들에 대한 능동적인 사건으로 인해 사건 방지 권고(AIA) 경보를 발령했다.")%
+PRINTFORML
+PRINTFORML	%BREAKENG(@"유카리는 죽었다")%
+PRINTFORML	%BREAKENG(@"I REPEAT")%
+PRINTFORML	%BREAKENG(@"유카리는 죽어버렸다")%
+PRINTFORML
+PRINTFORML	%BREAKENG(@"이것은 훈련이 아니다")%
+PRINTFORML	%BREAKENG(@"전속을 가능한 한 빨리 대피하라.")%
+PRINTFORML
+PRINTFORML	%BREAKENG(@"살인자는 다음과 같이 확인되었다: %TOUPPER(NAME:MASTER)%")%
+PRINTFORML	%BREAKENG(@"마지막으로 본 곳은 %TOUPPER(GET_MAPNAME(GET_MAPID(CFLAG:MASTER:現在位置)))%")%
+PRINTFORML %BREAKENG(@"무기 해제. 즉시 살해하라")%
+PRINTFORML
+SETCOLOR C_RED
+PRINTFORML 무언가 수상한 것을 보면 반드시 신고해야 한다. 의심스러운 활동을 %NAME:1% 또는 %NAME:29%에게 보고하라.
+RESETCOLOR
+PRINTFORML - %NAME:1%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+FOR LOCAL,1,CHARANUM
+CALL SET_REP(LOCAL,22)
+;CALL GET_ANGRY(LOCAL, MARK:LOCAL:反発刻印 + 3)
+NEXT
+;SETCOLOR 247,171,166
+;PRINTFORM Everyone's face distorts in rage
+;PRINTFORML  as they arm up to kill you...
+;PRINTFORMW Everyone got Hate Mark Lv3
+;FLAG:POSTAL = 1
+RESETCOLOR
+RETURN 1
+
+@NEWSPAPER_StateOfEmergency_PinkWind
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTFORML  학혈 신사 비상사태 관련 통지
+SETCOLOR C_YELLOW
+PRINTFORML  경계 강화 알림
+RESETCOLOR
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML	%BREAKENG(@"하쿠레이 신사 마이든은 근거지 거주민에 대한 위협 증가로 긴급 상황 대비 경보(AIA)를 발령했다.")%
+PRINTFORML
+PRINTFORML	%BREAKENG(@"오늘의 날씨는 악명 높은 핑크윈드일 것이다.")%
+PRINTFORML	%BREAKENG(@"이것은 영향을 받은 누구에게든 참을 수 없이 흥분하게 만드는 효과를 가질 것이다.")%
+PRINTFORML	%BREAKENG(@"안에 머물고 모든 문을 잠그며, 파트너와 동의했을 때만 성관계를 갖도록 기억하라.")%
+PRINTFORML
+SETCOLOR C_RED
+PRINTFORML 무언가 수상한 것을 보면 신고하세요. 의심스러운 활동을 %NAME:1% 또는 %NAME:29%에게 보고한다.
+PRINTFORML 이 경보는 1일 후에 만료됩니다.
+RESETCOLOR
+PRINTFORML - %NAME:26%
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+RETURN 1
+
+@NEWSPAPER_CLOSURE
+#DIMS CONST YOUBI = "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
+RESETCOLOR
+PRINTFORML ───────────────────────────────
+FONTBOLD
+PRINTFORML  번분마루 신문의 폐간
+FONTREGULAR
+PRINTFORML ───────────────────────────────
+SETFONT "ＭＳ Ｐゴシック"
+FONTITALIC
+PRINTFORML	%BREAKENG(@"불편을 드려 죄송합니다만, 저희의 메인 작가인 %NAME:29%에게 갑작스러운 비극이 생겨 부득이하게 운영을 계속할 수 없게 되었습니다.")%
+PRINTFORML %BREAKENG(@"분분마루는 %YOUBI:(DAY % 7)%, %ORDINAL(DAY:3)% of %GET_MONTH(,1)% ")%에 영구 폐간됩니다.
+PRINTL
+PRINTFORML %BREAKENG(@"저희는 모든 분들의 성원에 감사드리며, 저희의 기자들과 작가들에게 그동안 함께 해주신 시간에 대한 감사의 인사를 드립니다.")%
+PRINTFORML %BREAKENG(@"현재 모든 구독은 환불되며, 향후 구독 구매는 불가능합니다.")%
+PRINTFORML 번분마루의 모든 사람들
+FONTREGULAR
+SETFONT
+PRINTFORML ───────────────────────────────
+RETURN 1
+
+@PRINT_REP(C_ID)
+#DIM C_ID
+#DIM LINE_BREAK
+LINE_BREAK = 0
+;Custom code, prevents you from seeing your own knowledge of your relationships
+SIF C_ID == MASTER
+	RETURN
+SIF !GETBIT(NASFeature,10)
+	RETURN
+CALL PRINTBUTTON_EX(@"%CALLNAME:C_ID%의 %PARSE("your")% 평판에 대한 지식 (노란색은 허용됨)", 168, TFLAG:168, , , 1)
+IF !TFLAG:浮気歴表示
+	PRINTFORML 
+	FOR LOCAL,0,REP_NUM
+	IF GETBIT(ReputationKnow:C_ID:0, LOCAL)
+		SIF GETBIT(ReputationAccept:C_ID:0, LOCAL) == 2
+			SETCOLOR C_YELLOW
+		SIF LINEISEMPTY()
+			PRINT 　
+		PRINTFORMLC %GET_STR(C_ID, "Reputation", LOCAL, "Name")%
+		LINE_BREAK ++
+		SIF LINE_BREAK % (PRINTCPERLINE() - 1) == 0
+			PRINTL 
+	ENDIF
+	RESETCOLOR
+	NEXT
+	SIF LINE_BREAK % (PRINTCPERLINE() - 1) != 0
+		PRINTL 
+ENDIF
+
+@SET_REP(ARG, Rep, IsAccept, ShowRep)
+#DIM Rep
+#DIM IsAccept
+#DIM RepColor
+#DIM ShowRep
+SIF ARG == MASTER
+	RETURN
+SIF IS_BABY(ARG)
+	RETURN
+SIF !GETBIT(NASFeature,10)
+	RETURN
+SIF GETBIT(ReputationKnow:ARG:0, Rep) && !IsAccept
+	RETURN
+SELECTCASE GET_INT(ARG, "Reputation", Rep, "Score")
+	CASE IS > 0
+		RepColor = C_GREEN
+	CASE 0
+		RepColor = C_YELLOW
+	CASE IS < 0
+		RepColor = C_RED
+ENDSELECT
+IF IsAccept
+	SETBIT ReputationKnow:ARG:0, Rep
+	SETBIT ReputationAccept:ARG:0, Rep
+	SIF ShowRep
+		CALL COLORMESSAGE(@"%CALLNAME:ARG%는 이제 당신을 【%GET_STR(ARG, "Reputation", Rep, "Label")%}로 받아들인다.", C_GREEN, 2, 1)
+ELSE
+	SIF GETBIT(ReputationKnow:ARG:0, Rep)
+		RETURN
+	SETBIT ReputationKnow:ARG:0, Rep
+	IF ShowRep
+		CALL COLORMESSAGE(@"%CALLNAME:ARG%은(는) 당신을 【%GET_STR(ARG, "Reputation", Rep, "Label")%】으로 알고 있다.", RepColor, 2, 1)
+		IF GET_INT(ARG, "Reputation", Rep, "Score")
+			CALL CHANGE_CFLAG(2, ARG, (50*GET_INT(ARG, "Reputation", Rep, "Score")))
+			CALL CHANGE_CFLAG(4, ARG, (25*GET_INT(ARG, "Reputation", Rep, "Score")))
+		ENDIF
+	ELSE
+		CFLAG:ARG:好感度 = MAX(CFLAG:ARG:好感度 + (50*GET_INT(ARG, "Reputation", Rep, "Score")), 0)
+		CFLAG:ARG:信頼度 = MAX(CFLAG:ARG:信頼度 + (25*GET_INT(ARG, "Reputation", Rep, "Score")), 0)
+	ENDIF
+ENDIF
+SIF ShowRep
+	CALL KOJO_MESSAGE_SEND("EVENT",104,ARG,Rep,IsAccept-1)
+
+@SET_REP_ALL(Rep, IsAccept, ShowRep, isDisregard = 0)
+#DIM Rep
+#DIM IsAccept
+#DIM RepColor
+#DIM ShowRep
+#DIM isDisregard
+IF isDisregard
+	FOR LOCAL,1,CHARANUM
+	SIF GETBIT(ReputationKnow:LOCAL:0, Rep)
+		INVERTBIT ReputationKnow:LOCAL:0, Rep
+	NEXT
+	CALL COLORMESSAGE(@"모두가 당신이 「%GET_STR(29, "Reputation", Rep, "Name")%」라는 것을 잊어버렸다.", C_GREEN, 2, 1)
+	RETURN 1
+ENDIF
+SELECTCASE GET_INT(29, "Reputation", Rep, "Score")
+	CASE IS > 0
+		RepColor = C_GREEN
+	CASE 0
+		RepColor = C_YELLOW
+	CASE IS < 0
+		RepColor = C_RED
+ENDSELECT
+SKIPDISP 1
+FOR LOCAL,1,CHARANUM
+IF !GETBIT(ReputationKnow:LOCAL:0,Rep)
+	;CALL SET_REP(LOCAL, Rep, IsAccept)
+	CALL SET_REP(LOCAL, Rep, IsAccept,1)
+ENDIF
+NEXT
+SKIPDISP 0
+SIF GET_INT(29, "Reputation", Rep, "Score")
+	CALL COLORMESSAGE(@"모두의 호의도와 신뢰도는 \@ GET_INT(29, "Reputation", Rep, "Score") > 0 ? 증가했다 # 감소했다 \@ 최대 {ABS((50*GET_INT(29, "Reputation", Rep, "Score")))} 및 {ABS(25*GET_INT(29, "Reputation", Rep, "Score"))} 만큼 각각...",C_YELLOW,1,1)
+CALL COLORMESSAGE(@"모두가 이제 당신을 【%GET_STR(29, "Reputation", Rep, "Name")%}로 알고 있다.", RepColor, 2, 1)
+
+@Reputation_Spread
+#DIMS DYNAMIC strArr, 100
+#DIM nTemp
+#DIM GetRep
+#DIM RepKnow
+#DIM Rep
+#DIM SortRep
+#DIM DYNAMIC GotRep, キャラクタ数上限
+#DIM RS_CAN_SPREAD
+#DIM RS_SPREAD_CHANCE
+VARSET GotRep
+SIF !GETBIT(NASFeature,10)
+	RETURN 0
+;seek characters who had enough favor gain to spread rumors
+FOR LOCAL,1,CHARANUM
+SIF TALENT:LOCAL:行きずり ;ignore randoms
+	CONTINUE
+SIF CFLAG:LOCAL:出禁 ;ignore banned and dead characters
+	CONTINUE
+SIF GotRep:LOCAL ; already has gotten a reputation in this day
+	CONTINUE
+CALL FISHER_YATES_SHAFFLE(REP_NUM)
+FOR GetRep, 0, REP_NUM
+Rep = SHAFFLE_ARRAY:(GetRep)
+RS_SPREAD_CHANCE = 8
+IF GET_INT(LOCAL, "Reputation", Rep, "Score") < 0
+	RS_CAN_SPREAD = (GETBIT(ReputationKnow:LOCAL:0,Rep) && !TALENT:LOCAL:恋慕 && GETBIT(ReputationAccept:LOCAL:0,Rep))
+	SIF TALENT:LOCAL:8
+		RS_SPREAD_CHANCE = 20
+ELSE
+	RS_CAN_SPREAD = GETBIT(ReputationKnow:LOCAL:0,Rep)
+ENDIF
+IF RS_CAN_SPREAD && !RAND:RS_SPREAD_CHANCE
+	SIF GETBIT(ReputationKnow:29:0,Rep)
+		CONTINUE
+	SIF GETBIT(ReputationAccept:29:0,Rep)
+		CONTINUE
+	DEBUGPRINTFORML --------
+	;this is much simpler, we find all friends of this character and sour the favor with you because ruining relationships is much easier
+	LOCALS '= Add_Rumor_Spread(LOCAL, "neg")
+	DEBUGPRINTFORML 명성: %GET_STR(LOCAL, "Reputation", Rep, "Name")%, 목록: %LOCALS%
+	SIF !STRLENS(LOCALS)
+		CONTINUE
+	CALL COLORMESSAGE(@"%CALLNAME:LOCAL% 당신이 【%GET_STR(LOCAL, "Reputation", Rep, "Name")%】라는 소문을 %HIS_HER(LOCAL)% 친구들에게 퍼뜨린다...",C_YELLOW,2,1)
+	SPLIT LOCALS, ":", strArr
+	FOR LOCAL:1, 0, RESULT
+	nTemp = TOINT(strArr:(LOCAL:1))
+	SIF nTemp == 0
+		CONTINUE
+	SIF TALENT:nTemp:恋慕
+		CONTINUE
+	SIF IsDead:nTemp:0
+		CONTINUE
+	CALL SET_REP(nTemp,Rep,,1)
+	GotRep:nTemp = 1
+	;FavorGainTracker:nTemp:0 = 0 ;reset negative rumor (does only once, too easy, no impact)
+	NEXT
+	BREAK
+ENDIF
+NEXT
+NEXT
+;smuggling?
+;i think i also have a way to explain the outside stuff
+;shinki, keiki, and others with teleportation or creation powers could be a middleman between outsider manufacturers and the world of fantasy
+; So basically super smugglers and super local manufacturers
+; Oh right
+; Smuggling is incredibly risky, since it could give the real world reason to start believing in the supernatural again
+; Thus inducing a critical cascading failure for the barrier
+; If you were to do a mass smuggling
+; How long can the super smugglers keep it up until they slip up?
+; Whether by their own fault
+; or sheer coincidence

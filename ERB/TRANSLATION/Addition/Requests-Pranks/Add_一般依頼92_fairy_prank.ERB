@@ -1,0 +1,901 @@
+﻿; Modular ERB: Addition/Requests-Pranks/Add_一般依頼92_fairy_prank.ERB
+;Basic procedure to add a new scenario:
+;1. Add the target character to the VICTIM_WEIGHTS array in @IRAI_一般92_Select_Target, if it hasn't been added before
+;2. Add the scenario id to @IRAI_一般92_Select_Scenario, with the appropriate conditions
+;3. Add a function with the name @PRANK_SCENARIO_[scenario id](STATE) to Add_一般依頼92_fairy_prank_scenarios.ERB (see @PRANK_SCENARIO_clownpiece_madness for an example)
+;   -The "prank" and "failure" state are mandatory and should be added to every scenario
+;   -"success" and "punishment" are optional. These can be added to add specific dialogue when appropriate
+;   -If the "success" and "punishment" states aren't set, dialogue for that character should be added to @IRAI_一般92_Success_Message and @IRAI_一般92_Punishment_Message, if none are present yet
+;   -These functions allow dialogue to be used for multiple scenarios
+
+@EXIST_一般依頼92
+#LOCALSIZE 1
+#LOCALSSIZE 1
+
+@一般依頼92(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+SELECTCASE O_DATA
+	CASE "依頼名"
+		CALLF MAKE_STR(V_NAME, "Staking your life on a prank")
+	CASE "依頼内容表示"
+		IF CFLAG:ARG:依頼状況 > 1
+			CALLF MAKE_STR(V_NAME, @"%CALLNAME:IRAI_SLOT_TO_PERSON(SEARCH_IRAI_SLOT(CFLAG:ARG:依頼内容))%의 집에 가서 굉장한 장난을 친다")
+		ELSE
+			CALLF MAKE_STR(V_NAME, @"대상의 집에서 멋진 장난을 치다")
+		ENDIF
+	CASE "依頼報酬表示"
+		CALLF MAKE_STR(V_NAME, @"무작위 스킬 경험치")
+	CASE "依頼実行コマンド名"
+		CALLF MAKE_STR(V_NAME, @"Begin Prank On %CALLNAME:IRAI_SLOT_TO_PERSON(SEARCH_IRAI_SLOT(CFLAG:ARG:依頼内容))%")
+	CASE "依頼内容"
+		CALLF MAKE_INT(V_NAME, MAKE_IRAI_DATA(IRAI_一般92_Select_Target(ARG), "prank"))
+	CASE "依頼サブ"
+		CALLF MAKE_INT(V_NAME, 0)
+	CASE "依頼期限"
+		CALLF MAKE_INT(V_NAME, 10)
+	CASE "依頼発生率"
+		CALLF MAKE_INT(V_NAME, 30)
+	CASE "依頼発生条件"
+		IF nRequestDisable:req_Pranks
+		ELSE
+			SIF TALENT:ARG:妖精
+				CALLF MAKE_INT(V_NAME, 1)
+		ENDIF
+	CASE "依頼受託可能条件"
+		CALLF MAKE_INT(V_NAME, 1)
+	CASE "依頼実行可能条件"
+		SIF !FLAG:70
+			CALLF MAKE_INT(V_NAME, 1)
+	CASE "依頼消滅条件"
+		SIF nRequestDisable:req_Pranks || Add_Request_Should_Discard(ARG)
+			CALLF MAKE_INT(V_NAME, 1)
+ENDSELECT
+
+@IRAI_一般92(CHARA, IRAI_ID, SCENE)
+#DIM  CHARA
+#DIM  IRAI_ID
+#DIMS SCENE
+#DIM  CLIENT_ID
+#DIM  TARGET_ID
+#DIM  PRANK_RESULT
+CLIENT_ID = IRAI_ID_TO_CLIENT(IRAI_ID)
+TARGET_ID = IRAI_SLOT_TO_PERSON(SEARCH_IRAI_SLOT(IRAI_ID))
+SELECTCASE SCENE
+	CASE "依頼条件表示"
+	CASE "依頼実行時"
+		IF Add_Fairy_Prank_Evil_Shenanigans == -1
+			CALL PrankTypeToggle
+			PRINTW
+		ENDIF
+		DEBUGPRINTFORML IRAI_ID = {IRAI_ID}|CLIENT_ID = {CLIENT_ID} (%CALLNAME:CLIENT_ID%)| TARGET_ID = {TARGET_ID} (%CALLNAME:TARGET_ID%)
+		Add_CULPRIT = CLIENT_ID
+		Add_VICTIM = TARGET_ID
+		VARSET Add_ACCOMPLICES
+		Add_ACCOMPLICECOUNT = 0
+		IF STRLENS(Add_Fairy_Prank_Debug_Scenario)
+			SIF Add_SCENARIO == "kojo"
+				CALL KOJO_MESSAGE_SEND("EVENT", 0, Add_VICTIM, 0, 0, "FAIRY_PRANK", "scenarios")
+			Add_SCENARIO '= Add_Fairy_Prank_Debug_Scenario
+		ELSE
+			CALL KOJO_MESSAGE_SEND("EVENT", 0, Add_VICTIM, 0, 0, "FAIRY_PRANK", "scenarios")
+			Add_SCENARIO '= IRAI_一般92_Select_Scenario(RESULT)
+		ENDIF
+		CALL IRAI_一般92_Find_Accomplices
+		PRANK_RESULT = IRAI_一般92_Determine_Success()
+		DEBUGPRINTFORML 장난 시나리오: '%Add_SCENARIO%' 결과: {PRANK_RESULT}
+		TIME += 25
+		Add_Temp_Fairy_Prank_Resolution = -1
+		SELECTCASE PRANK_RESULT
+			CASE -1
+				TRYCALLFORM PRANK_SCENARIO_%Add_SCENARIO%("failure")
+				SIF !RESULT
+					PRINTFORMW 에러: %Add_SCENARIO%에 대한 장난 실패 시나리지가 구현되어 있지 않다.
+				Add_Temp_Fairy_Prank_Resolution = 1
+				RETURN IRAI_CONST_RESULT("実行して失敗")
+			CASE 0
+				TRYCALLFORM PRANK_SCENARIO_%Add_SCENARIO%("prank")
+				SIF !RESULT
+					PRINTFORMW 오류: %Add_SCENARIO%에 대한 장난 시나리오가 구현되어 있지 않습니다.
+				PRINTW
+				PRINTFORML 불행하게도, %CALLNAME:TARGET_ID%가 당신이 도망치는 것을 잡았다.
+				IF CLIENT_ID == 6 && !RAND:3 ;Luna is very clumsy
+					PRINTFORML 당신이 도망치려 할 때, %CALLNAME:CLIENT_ID%가 %SPLIT_G(@"a branch:a rock:%HIS_HER(CLIENT_ID)% own feet:nothing")%에 걸려 땅으로 떨어지는 것을 목격한다.
+					PRINTFORML %HIM_HER(CLIENT_ID)%를 부축하러 돌아갈 것인가?
+					CALL ASK_YN
+					SELECTCASE RESULT
+						CASE 0
+							IF RAND:40 < ((ABL:MASTER:戦闘能力+TALENT:MASTER:伐採Lv+TALENT:MASTER:釣りLv+TALENT:MASTER:採集Lv+TALENT:MASTER:調合Lv)/2)
+								PRINTFORML 당신의 놀라운 재능으로, 당신은 %CALLNAME:CLIENT_ID%를 데리고 도망쳐서 %CALLNAME:TARGET_ID%가 따라오기 전에 빠져나왔다.
+								PRINTFORML 그것이 바로 당신이 최고인 이유이다.
+								CALL CHANGE_CFLAG(2, CLIENT_ID, 100)
+								CALL CHANGE_CFLAG(4, CLIENT_ID, 100)
+								Add_Temp_Fairy_Prank_Resolution = 4
+								Add_Fairy_Prank_Success++ ;add an extra point
+								CALL AddFame(MASTER,8,2000)
+								RETURN IRAI_CONST_RESULT("実行して成功")
+							ELSE
+								PRINTFORML %CALLNAME:CLIENT_ID%은(는) 당신의 도움 덕분에 도주하는 데 성공했지만, 불행하게도 당신 자신은 탈출 기회를 잃는다.
+								CALL CHANGE_CFLAG(2, CLIENT_ID, 100)
+								CALL CHANGE_CFLAG(4, CLIENT_ID, 100)
+								Add_Temp_Fairy_Prank_Resolution = 5
+							ENDIF
+						CASE 1
+							PRINTFORML 모든 사람은 (요정이라도) 자기 자신만을 위해 행동하고, 당신은 도망치면서 %CALLNAME:CLIENT_ID%를 %HIS_HER(CLIENT_ID)%의 비극적인 운명에 내버려 둔다.
+							CALL CHANGE_CFLAG(2, CLIENT_ID, -5) ;she's mildly upset over being left behind, but not enough to consider it a betrayal
+							CALL CHANGE_CFLAG(4, CLIENT_ID, -2)
+							Add_Temp_Fairy_Prank_Resolution = 6
+							RETURN IRAI_CONST_RESULT("実行して成功")
+					ENDSELECT
+				ELSEIF ABL:MASTER:戦闘能力 > ABL:CLIENT_ID:戦闘能力
+					PRINTFORML %CALLNAME:CLIENT_ID%를 희생양으로 삼는 건가?
+					CALL ASK_YN
+					SELECTCASE RESULT
+						CASE 0 ;i hope you enjoy your thirty pieces of silver
+							IF RAND:(ABL:MASTER:戦闘能力 - ABL:CLIENT_ID:戦闘能力 + 1)
+								PRINTFORML 당신의 생명이 %HIS_HERS(CLIENT_ID)%보다 더 가치 있다고 판단하고, %CALLNAME:CLIENT_ID%에게 강력하게 밀어 %HIM_HER(CLIENT_ID)%가 땅에 넘어지게 하여 탈출할 수 있는 방법을 마련한다.
+								PRINTFORML %HE_SHE(CLIENT_ID, 1)%는 %HE_SHE(CLIENT_ID)%'가 꽤 화난 것 같지만, 당신은 그것을 더 큰 선을 위한 필요한 희생으로 여긴다.
+								CALL CHANGE_CFLAG(2, CLIENT_ID, -500)
+								CALL CHANGE_CFLAG(4, CLIENT_ID, -200)
+								Add_Temp_Fairy_Prank_Resolution = 7
+							ELSE
+								PRINTFORML %CALLNAME:CLIENT_ID% 당신이 %HIM_HER(CLIENT_ID)%을(를) 늑대들에게 던지려는 시도를 간파하고, 발목을 걸어 %HIM_HER(CLIENT_ID)%이(가) 도망치도록 만든다.
+								PRINTFORML 이제 당신에게는 도망칠 방법이 없다.
+								CALL CHANGE_CFLAG(2, CLIENT_ID, -200)
+								CALL CHANGE_CFLAG(4, CLIENT_ID, -100)
+								Add_Temp_Fairy_Prank_Resolution = 8
+								TRYCALLFORM PRANK_SCENARIO_%Add_SCENARIO%("punishment")
+								SIF !RESULT
+									CALL IRAI_一般92_Punishment_Message
+							ENDIF
+							Add_Fairy_Prank_Betrayal++
+							CALL AddInfamy(MASTER,8,10000)
+							RETURN IRAI_CONST_RESULT("実行して失敗")
+						CASE 1
+							IF RAND:30 < ((ABL:MASTER:戦闘能力+TALENT:MASTER:伐採Lv+TALENT:MASTER:釣りLv+TALENT:MASTER:採集Lv+TALENT:MASTER:調合Lv)/2)
+								PRINTFORML 당신의 많은 기술을 창의적으로 사용해, %CALLNAME:TARGET_ID%가 따라붙기 전에 탈출하는 데 성공한다.
+								PRINTFORML 이것은 완벽하게 수행된 작전이라고 간주해도 좋다.
+								CALL CHANGE_CFLAG(2, TARGET_ID, -20)
+								CALL CHANGE_CFLAG(4, TARGET_ID, -10)
+								CALL AddCombatInfamy(MASTER,TARGET_ID,20)
+								CALL AddCombatInfamy(CLIENT_ID,TARGET_ID,20)
+								Add_Temp_Fairy_Prank_Resolution = 2
+								RETURN IRAI_CONST_RESULT("実行して成功")
+							ENDIF
+					ENDSELECT
+				ENDIF
+				SIF Add_Temp_Fairy_Prank_Resolution == -1 ;only set here if not set during escape
+					Add_Temp_Fairy_Prank_Resolution = 3
+				CALL AddCombatInfamy(MASTER,TARGET_ID,20)
+				CALL AddCombatInfamy(CLIENT_ID,TARGET_ID,20)
+				TRYCALLFORM PRANK_SCENARIO_%Add_SCENARIO%("punishment")
+				SIF !RESULT
+					CALL IRAI_一般92_Punishment_Message
+			CASE 1
+				TRYCALLFORM PRANK_SCENARIO_%Add_SCENARIO%("prank")
+				SIF !RESULT
+					PRINTFORMW 오류: %Add_SCENARIO%에 대한 장난 시나리오가 구현되어 있지 않습니다.
+				PRINTW
+				TRYCALLFORM PRANK_SCENARIO_%Add_SCENARIO%("success")
+				SIF !RESULT
+					CALL IRAI_一般92_Success_Message
+				PRINTW
+				Add_Temp_Fairy_Prank_Resolution = 0
+				TIME += 30
+			CASEELSE
+				PRINTFORMW 장난의 결과가 유효하지 않습니다. 보고해 주세요. ({PRANK_RESULT})
+		ENDSELECT
+		RETURN IRAI_CONST_RESULT("実行して成功")
+	CASE "依頼成功時"
+		SIF !RAND:2
+			EXP:MASTER:会話経験 += 5
+		SIF !RAND:2
+			EXP:MASTER:学習経験 += 5
+		SIF !RAND:2
+			EXP:MASTER:料理経験 += 5
+		SIF !RAND:2
+			EXP:MASTER:調合経験 += 5
+		SOURCE:恭順 = 1500
+		SOURCE:歓楽 = 1000
+		CALL CHANGE_CFLAG(2, CLIENT_ID, 25)
+		CALL CHANGE_CFLAG(4, CLIENT_ID, 20)
+		CALL KIGEN_CHANGE(CLIENT_ID, 100, 2)
+		Add_Fairy_Prank_Success++
+		CALL AddFame(MASTER,8,2000)
+		SELECTCASE Add_Temp_Fairy_Prank_Resolution
+			CASE 0
+				PRINTFORM %CALLNAME:CLIENT_ID% 
+			CASE 2
+				PRINTFORML %CALLNAME:CLIENT_ID%는 두 분 모두 도망치신 것에 기뻐하시는 것 같다.
+				PRINTFORM %HE_SHE(CLIENT_ID, 1)% 
+			CASE 3
+				PRINTFORML %CALLNAME:CLIENT_ID%는 당신이 무사한지 묻는다. 탈출 중에 %HE_SHE(CLIENT_ID)%가 당신을 놓쳤기 때문이다.
+				PRINTFORM %HE_SHE(CLIENT_ID, 1)% 
+			CASE 4
+				PRINTFORML %CALLNAME:CLIENT_ID%는 당신이 %HIM_HER(CLIENT_ID)%를 구한 것에 대해 극도로 감사하는 것 같다.
+				PRINTFORM %HE_SHE(CLIENT_ID, 1)% 
+			CASE 5
+				PRINTFORML %BREAKENG(@"당신은 %CALLNAME:CLIENT_ID%이 당신이 %HIM_HER(CLIENT_ID)%를 구해준 것에 대해 매우 감사해하지만, 동시에 당신을 두고 떠난 것에 대해 매우 죄책감을 느끼는 것 같다.")%
+				PRINTFORM %HE_SHE(CLIENT_ID, 1)% 
+			CASE 6
+				PRINTFORML %CALLNAME:CLIENT_ID%은(는) 뒤에 남겨진 것에 대해 상당히 화가 난 것 같지만, %HE_SHE(CLIENT_ID)%이 당신을 탓하는 것 같지는 않다.
+				PRINTFORM 어쨌든 무슨 일이 일어났건, %HE_SHE(CLIENT_ID)%은(는) 
+		ENDSELECT
+		PRINTFORM 당신과 함께 이 장난을 해서 얼마나 행복했는지 %HE_SHE(CLIENT_ID)%에게 알려준다. 
+		IF (TALENT:CLIENT_ID:恋慕 || TALENT:CLIENT_ID:思慕) && CFLAG:CLIENT_ID:溜まってる度 < 500
+			PRINTFORMW 당신의 뺨에 부드럽게 한 번 입을 맞춘다.
+		ELSEIF (CFLAG:CLIENT_ID:既成事実 & 合意_うふふ) && CFLAG:CLIENT_ID:溜まってる度 >= 500
+			PRINTFORMW 홍조가 비치는 %HIS_HER(CLIENT_ID)%의 얼굴로, 당신이 또 다른 보상을 원하는지 묻는다.
+			BASE:CLIENT_ID:ムード += 600
+			CFLAG:CLIENT_ID:溜まってる度  += 300
+			PALAM:CLIENT_ID:欲情 += 5000
+		ELSE
+			PRINTFORMW %SPLIT_G(@"하이파이브를 해준다:작게 박수를 친다:당신 앞에서 절을 한다")%. 
+		ENDIF
+		;CALL IRAI_一般92_Title_Progress()
+	CASE "依頼失敗時"
+		CALL CHANGE_CFLAG(2, CLIENT_ID, -10)
+		CALL CHANGE_CFLAG(4, CLIENT_ID, -5)
+		CALL KIGEN_CHANGE(CLIENT_ID, 100, -1)
+		SELECTCASE Add_Temp_Fairy_Prank_Resolution
+			CASE 1
+				PRINTFORMW %CALLNAME:CLIENT_ID%는 장난 실패에 실망하며 결국 당신을 탓한다.
+			CASE 7
+				PRINTFORMW %CALLNAME:CLIENT_ID%는 당신이 뒤에서 %HIM_HER(CLIENT_ID)%를 칼로 찌른 것에 대해 극도로 화가 난 것 같다.
+			CASE 8
+				PRINTFORMW %BREAKENG(@"%HE_SHE(CLIENT_ID)%이 당신을 제압했지만, %CALLNAME:CLIENT_ID%는 여전히 당신의 배신 시도에 대해 극도로 분노하는 것 같다.")%
+		ENDSELECT
+		;CALL IRAI_一般92_Title_Progress
+ENDSELECT
+
+@IRAI_一般92_Select_Target(CULPRIT)
+#FUNCTION
+#DIM CULPRIT
+#DIM VICTIM_WEIGHTS, キャラクタ数上限 ;potential targets and their weights
+;set up defaults
+VICTIM_WEIGHTS:1 = 1
+VICTIM_WEIGHTS:15 = 1
+VICTIM_WEIGHTS:17 = 1
+VICTIM_WEIGHTS:26 = 1
+VICTIM_WEIGHTS:30 = 1
+VICTIM_WEIGHTS:60 = 1
+VICTIM_WEIGHTS:64 = 1
+VICTIM_WEIGHTS:68 = 1
+VICTIM_WEIGHTS:71 = 1
+VICTIM_WEIGHTS:72 = 1
+VICTIM_WEIGHTS:80 = 2
+VICTIM_WEIGHTS:99 = 1
+CALLF IRAI_一般92_Adjust_Weights_Per_Culprit(CULPRIT, VICTIM_WEIGHTS)
+;remove inaccessible characters from the list
+FOR LOCAL, 1, CHARANUM - 1
+SIF CFLAG:LOCAL:出禁
+	VICTIM_WEIGHTS:LOCAL = 0
+SIF VICTIM_WEIGHTS:LOCAL < 0 ;should never happen, but would fuck with ARRAY_HIT if it occurs
+	THROW Victim weight for {LOCAL} is a negative value ({VICTIM_WEIGHTS:LOCAL})
+NEXT
+LOCAL = ARRAY_HIT(VICTIM_WEIGHTS, CHARANUM - 1)
+IF LOCAL < 0
+	PRINTFORML 경고: 유효한 대상이 없습니다.
+	PRINTFORML 기본값으로 %CALLNAME:1%를 사용한다.
+	;not ideal, but shouldn't cause issues
+	RETURNF 1
+ENDIF
+RETURNF LOCAL
+
+@IRAI_一般92_Adjust_Weights_Per_Culprit(CULPRIT, VICTIM_WEIGHTS)
+#FUNCTION
+#DIM CULPRIT
+#DIM REF VICTIM_WEIGHTS
+;mostly targets close to their home get higher weights
+SELECTCASE CULPRIT
+	CASE 5
+		VICTIM_WEIGHTS:1 = 3
+		VICTIM_WEIGHTS:17 = 2
+	CASE 6
+		VICTIM_WEIGHTS:1 = 3
+		VICTIM_WEIGHTS:17 = 2
+	CASE 7
+		VICTIM_WEIGHTS:1 = 3
+		VICTIM_WEIGHTS:17 = 2
+	CASE 13 ;no adjustments
+	CASE 14
+		VICTIM_WEIGHTS:15 = 3
+	CASE 18 ;no adjustments
+	CASE 19 ;no adjustments
+	CASE 111
+		VICTIM_WEIGHTS:99 = 5
+	CASE 118
+		VICTIM_WEIGHTS:68 = 0 ;doesn't start shit at home
+ENDSELECT
+
+@IRAI_一般92_Select_Scenario(CUSTOM_COUNT)
+#FUNCTIONS
+#DIM CUSTOM_COUNT
+#DIMS VALID_SCENARIOS, 20 ;increase if needed
+#DIM SCENARIO_INDEX
+SCENARIO_INDEX = 0
+SELECTCASE Add_CULPRIT
+	CASE 5
+		VALID_SCENARIOS:(SCENARIO_INDEX++) = sunny_light_bending
+	CASE 14
+		VALID_SCENARIOS:(SCENARIO_INDEX++) = cirno_freezing
+	CASE 111
+		VALID_SCENARIOS:(SCENARIO_INDEX++) = clownpiece_madness
+ENDSELECT
+SIF OUTROOF(CFLAG:MASTER:現在位置)
+	VALID_SCENARIOS:(SCENARIO_INDEX++) = generic_pitfall
+IF CUSTOM_COUNT
+	FOR LOCAL, 0, RESULT ;allow adding it multiple times to keep the chance correct
+	VALID_SCENARIOS:(SCENARIO_INDEX++) = kojo
+	NEXT
+	GOTO SKIPSCENARIOCHECK
+ENDIF
+SELECTCASE Add_VICTIM
+	CASE 1
+		SIF DAY:2 == 4
+			VALID_SCENARIOS:(SCENARIO_INDEX++) = reimu_snowman
+		VALID_SCENARIOS:(SCENARIO_INDEX++) = reimu_offerings
+	CASE 15
+		VALID_SCENARIOS:(SCENARIO_INDEX++) = sakuya_fairy_rebellion
+		VALID_SCENARIOS:(SCENARIO_INDEX++) = sakuya_wine
+	CASE 17
+		VALID_SCENARIOS:(SCENARIO_INDEX++) = alice_doll_makeover
+		VALID_SCENARIOS:(SCENARIO_INDEX++) = alice_doll_enlargement
+	CASE 26
+		VALID_SCENARIOS:(SCENARIO_INDEX++) = yukari_hag
+		VALID_SCENARIOS:(SCENARIO_INDEX++) = yukari_wine
+	CASE 30
+		SIF Add_Fairy_Prank_Evil_Shenanigans
+			VALID_SCENARIOS:(SCENARIO_INDEX++) = eiki_stamp_swap
+		VALID_SCENARIOS:(SCENARIO_INDEX++) = eiki_trendy_hat
+	CASE 60
+		VALID_SCENARIOS:(SCENARIO_INDEX++) = parsee_bridge_waxing
+	CASE 64
+		VALID_SCENARIOS:(SCENARIO_INDEX++) = yuugi_concoction
+	CASE 68
+		VALID_SCENARIOS:(SCENARIO_INDEX++) = yuuka_scarecrow
+	CASE 71
+		IF Add_Fairy_Prank_Evil_Shenanigans
+			VALID_SCENARIOS:(SCENARIO_INDEX++) = shinmyoumaru_shake
+			VALID_SCENARIOS:(SCENARIO_INDEX++) = shinmyoumaru_spider
+		ENDIF
+		VALID_SCENARIOS:(SCENARIO_INDEX++) = shinmyoumaru_bowl
+	CASE 72
+		VALID_SCENARIOS:(SCENARIO_INDEX++) = eirin_chemicals
+	CASE 80
+		VALID_SCENARIOS:(SCENARIO_INDEX++) = akyuu_ink
+		VALID_SCENARIOS:(SCENARIO_INDEX++) = akyuu_fairyfication
+		VALID_SCENARIOS:(SCENARIO_INDEX++) = akyuu_snack_theft
+		SIF Add_Fairy_Prank_Evil_Shenanigans
+			VALID_SCENARIOS:(SCENARIO_INDEX++) = akyuu_ridicule
+	CASE 99
+		VALID_SCENARIOS:(SCENARIO_INDEX++) = toyohime_astronauts
+ENDSELECT
+$SKIPSCENARIOCHECK
+SIF SCENARIO_INDEX == 0
+	THROW No valid prank scenario for %CALLNAME:Add_VICTIM%
+RETURNF VALID_SCENARIOS:(RAND:SCENARIO_INDEX)
+
+@IRAI_一般92_Find_Accomplices()
+#DIM NUM_TARGET
+NUM_TARGET = GET_TARGETNUM()
+FOR LOCAL, 1, NUM_TARGET + 1
+LOCAL:1 = TARGET:LOCAL
+SIF !SHIRAHU(LOCAL:1)
+	CONTINUE
+SIF Add_VICTIM == LOCAL:1
+	CONTINUE
+SIF Add_CULPRIT == LOCAL:1
+	CONTINUE
+;other fairies, Suwako, Nue, Tewi, Shinmyoumaru, Seija
+IF TALENT:(LOCAL:1):妖精 || GROUPMATCH(LOCAL:1, 33, 41, 53, 71, 97)
+	PRINTFORML %CALLNAME:(LOCAL:1)%은(는) 당신의 계략을 알아채고 가담하기로 결정한다.
+	Add_ACCOMPLICES:(Add_ACCOMPLICECOUNT++) = LOCAL:1
+	SIF Add_ACCOMPLICECOUNT >= 3
+		BREAK
+ENDIF
+NEXT
+
+@IRAI_一般92_Determine_Success()
+#FUNCTION
+#DIM ACCOMPLICESCORE
+#DIM PRANK_RESULT
+#DIM MAX_CHANCE
+MAX_CHANCE = 25 + CFLAG:MASTER:今日の運勢 / 100
+SELECTCASE RAND:MAX_CHANCE
+	CASE 0 TO 1
+		DEBUGPRINTFORML 치명적인 실패
+		RETURNF -1 ;crit fail
+	CASE 2 TO 3
+		DEBUGPRINTFORML 치명적인 부분
+		RETURNF 0 ;partial success
+	CASE 4 TO (4+MAX_CHANCE / 15)
+		DEBUGPRINTFORML 치명적 성공
+		RETURNF 1 ;crit success
+	CASEELSE
+		ACCOMPLICESCORE = 0
+		FOR LOCAL, 0, Add_ACCOMPLICECOUNT
+		SIF Add_ACCOMPLICES:LOCAL > 0
+			ACCOMPLICESCORE++
+		NEXT
+		;check player and fairy knowledge against victim's knowledge + combat, plus accomplices, plus random factor, plus bonus for sleeping victim
+		;possibly adjust difficulty based on prank?
+		LOCAL:1 = ABL:MASTER:教養 + ABL:Add_CULPRIT:教養 + ACCOMPLICESCORE + (SHIRAHU(Add_VICTIM) != 1 ? 2 # 0) + RAND:6
+		LOCAL:2 = (GetCombatAbility(Add_VICTIM) + ABL:Add_VICTIM:教養)
+		DEBUGPRINTFORML 장난 점수: {LOCAL:1}
+		DEBUGPRINTFORML 장난 난이도: {LOCAL:2}
+		PRANK_RESULT = LOCAL:1 - LOCAL:2
+		IF PRANK_RESULT > 0
+			RETURNF 1
+		ELSEIF PRANK_RESULT > -2
+			RETURNF 0
+		ELSE
+			RETURNF -1
+		ENDIF
+ENDSELECT
+
+@IRAI_一般92_Success_Message
+SELECTCASE Add_VICTIM
+	CASE 1
+	CASE 15
+	CASE 17
+	CASE 26
+	CASE 30
+	CASE 60
+	CASE 64
+	CASE 68
+		SELECTCASE RAND:1
+			CASE 0
+				PRINTFORML 탈출을 시도하는 당신은 마치 강력한 원한이 모습을 드러낸 듯, 거의 만질 수 있을 정도의 공포감을 갑자기 느낀다.
+				PRINTFORML 상황이 진정될 때까지는 태양의 정원 근처에 얼쩡거리지 않는 편이 좋을 것이다.
+				CALL KIGEN_CHANGE(Add_VICTIM, 100, -2)
+				CFLAG:Add_VICTIM:ブチギレ = 1
+		ENDSELECT
+		RETURN
+	CASE 71
+	CASE 72
+	CASE 80
+		SELECTCASE RAND:3
+			CASE 0
+				PRINTFORML 당신이 그 장소를 빠져나오자 멀리서 조용한 흐느낌이 들린다.
+				PRINTFORML 당신은 거의 약간의 죄책감을 느낀다.
+			CASE 1
+				PRINTFORML 당신이 그 장소를 탈출하면서, %CALLNAME:Add_VICTIM%는 그렇게 위엄 있는 %PRINT_MALE("boy", Add_VICTIM)%에게 걸 만하지 않은 저주들을 난무한다.
+				PRINTFORML 오늘 밤에는 한쪽 눈을 뜨고 자야 할 것이다.
+			CASE 2
+				PRINTFORML 당신이 그 장소를 탈출할 때, 요정 대량 학살을 시작하자고 %CALLNAME:Add_VICTIM%가 %HIS_HER(Add_VICTIM)% 하인들에게 소리치는 것을 듣는다, 그들은 %HIM_HER(Add_VICTIM)%를 진정시키려고 노력한다.
+				PRINTFORML 하지만 그것은 사실 당신의 문제가 아니다.
+				FOR LOCAL, 1, CHARANUM - 1
+				IF TALENT:LOCAL:妖精
+					CALL AddInfamy(LOCAL,1,10000)
+				ENDIF
+				NEXT
+		ENDSELECT
+		RETURN
+	CASE 99
+ENDSELECT
+;generic
+PRINTFORML 당신은 %CALLNAME:Add_VICTIM%이(가) 당신의 연루를 깨닫기 전에 성공적으로 탈출했다.
+
+@IRAI_一般92_Punishment_Message
+; IF MAXBASE:MASTER:TSP >= 3000 && BASE:MASTER:TSP >= 3000
+; 	PRINTFORML Use TSP to make your getaway?
+; 	CALL ASK_YN
+; 	IF !RESULT
+; 		PRINTFORML Using a considerable amount of your power, you run away as far as you can, escaping your punishment.
+;         PRINTFORML Though something tells you %CALLNAME:Add_VICTIM% won't be too happy about that anyway...
+; 		BASE:MASTER:TSP -= 3000
+;         CFLAG:Add_VICTIM:ブチギレ = 1
+; 		RETURN 1
+; 	ENDIF
+; ENDIF
+CALL IRAI_一般92_Punishment_Save_NAS
+SIF RESULT
+	RETURN 1
+PRINTFORML 당신은 도망치려 하지만, %CALLNAME:Add_VICTIM%이(가) 빠르게 당신을 따라잡는다.
+IF CFLAG:Add_VICTIM:好感度 >= 1500
+	PRINTFORML %CALLNAME:Add_VICTIM%은 너에게 거칠게 꾸짖지만, 이내 한숨을 내쉰다.
+	PRINTFORML 비록 %HE_SHE(Add_VICTIM)%는 화가 난 것처럼 보이지만, %HE_SHE(Add_VICTIM)%는 네가 속죄할 방법이 있다고 제안한다.
+	PRINTFORML 부디 너무 잔인한 것이 아니기를 바라지만... 하지만 놀랍게도 %HE_SHE(Add_VICTIM)%가 원하는 것은 단지 %HIM_HER(Add_VICTIM)%를 위해 작은 심부름을 하는 것이다.
+ELSE
+	PRINTFORML 당신은 용서를 구하지만, %HE_SHE(Add_VICTIM)%는 전혀 받아들일 생각이 없다.
+	CFLAG:Add_VICTIM:ブチギレ = 1
+ENDIF
+IF (CALLNAME:MASTER == "Anon" || CALLNAME:MASTER == "Player") && !RAND:1000 && Add_Fairy_Prank_Evil_Shenanigans ;i am a man of my word, someone, somewhere, will get their ass fingered
+	TCVAR:Add_VICTIM:カウンター行動 = 29
+	CALL CCOMF29(Add_VICTIM)
+	RETURN
+ELSEIF !RAND:4
+	CALL Add_Punishment_Framework(Add_VICTIM, 8)
+	RETURN
+ENDIF
+SELECTCASE Add_VICTIM
+	CASE 1;reimu
+		CALL Add_Punishment_Framework(Add_VICTIM, 10)
+		SIF RESULT
+			RETURN
+		SELECTCASE RAND:1
+			CASE 0
+				CALL Add_Forced_Cleaning(Add_VICTIM, 10)
+		ENDSELECT
+	CASE 15;sakuya
+		IF !Add_Fairy_Prank_Evil_Shenanigans
+			CALL Add_Punishment_Framework(Add_VICTIM, 10)
+			SIF RESULT
+				RETURN
+			CALL Add_Forced_Cleaning(Add_VICTIM, 10)
+			RETURN
+		ENDIF
+		SELECTCASE RAND:3
+			CASE 0 ;wheel of knives
+				PRINTFORML %CALLNAME:Add_VICTIM%은(는) 당신의 팔다리를 커다란 수레에 고정시키고, 양팔과 다리를 벌린다.
+				PRINTFORML %CALLNAME:16%이(가) 지켜보는 동안, 몇몇 호그박스들이 수레를 돌리고 %CALLNAME:Add_VICTIM%은(는) 당신에게 칼을 던지기 시작한다.
+				IF HostileAffinity(MASTER,16) >= 200 && Add_Fairy_Prank_Evil_Shenanigans >= 2
+					PRINTFORML 불행하게도, %HIS_HER(Add_VICTIM)%의 조준은 빗나가서 모든 칼이 당신에게 박히게 만들었고, 당신은 피를 흘리며 쓰러졌다...
+					CALLF BroadDamage(MASTER,"torso",GET_INT(16, "Weapon", Add_VICTIM, "Damage"),1,Add_VICTIM,"2")
+					CALL SET_HISTORY_DEATH(MASTER,16,2)
+				ELSEIF TALENT:Add_VICTIM:機嫌 < 0 || !RAND:10
+					PRINTFORML 불행하게도, %HIS_HER(Add_VICTIM)%의 조준이 조금 벗어나 몇 개의 칼이 당신을 맞췄다.
+					CALLF BroadDamage(MASTER,"torso",GET_INT(16, "Weapon", Add_VICTIM, "Damage")/3,1,Add_VICTIM,"2")
+					;DOWNBASE:MASTER:体力 += 150
+				ELSE
+					PRINTFORML 다행히도, %HE_SHE(Add_VICTIM)%은 조준이 좋아서 모든 칼들이 너를 아슬아슬하게 빗나가게 한다.
+				ENDIF
+				DOWNBASE:MASTER:体力 += 200
+				DOWNBASE:MASTER:気力 += 200
+				CALL KIGEN_CHANGE(16, 75, 1) ;the mistress has a good time, at least
+				TIME += 60
+			CASE 1 ;bloodletting
+				PRINTFORML %CALLNAME:Add_VICTIM%은(는) 당신을 작은 방으로 끌고 가고, 그곳에서 %HE_SHE(Add_VICTIM)%은 우아하고 능숙하게 당신의 피를 상당량 빼낸다.
+				PRINTFORML 아프지는 않았지만 지금 다소 빈혈이 느껴진다.
+				DOWNBASE:MASTER:体力 += 400
+				DOWNBASE:MASTER:気力 += 100
+				DOWNBASE:MASTER:精力 += 500
+				DOWNBASE:MASTER:Blood += 1000
+				TIME += 30
+			CASE 2 ;playmate
+				PRINTFORML %CALLNAME:Add_VICTIM%은(는) 당신을 지하실로 밀어 넣고 안에 가둔다.
+				PRINTFORML %BREAKENG(@"자물쇠를 부수려 애쓰자 갑자기 머리카락이 곤두서는 것을 느끼고 뒤에서 들리는 목소리가 당신에게 새로운 놀이 상대인지 묻는다.")%
+				PRINTFORML 당신은 %CALLNAME:50%과 몇 시간을 "놀며" 보내다가 %HIM_HER(50)%가 자물쇠를 부수도록 속일 기회를 찾고, 그 후 탈출한다.
+				DOWNBASE:MASTER:体力 += 400
+				DOWNBASE:MASTER:気力 += 400
+				CALL KIGEN_CHANGE(16, 100, 1) ;imouto-sama enjoyed it
+				TIME += 120
+		ENDSELECT
+	CASE 17;alice
+		CALL Add_Punishment_Framework(Add_VICTIM, 10)
+		SIF RESULT
+			RETURN
+		SELECTCASE RAND:1
+			CASE 0
+				PRINTFORML %CALLNAME:Add_VICTIM%이 %HIM_HER(Add_VICTIM)%가 일하는 동안 당신에게 천을 들고 주변에 물품을 옮기며 의상을 모델로 서도록 %HE_SHE(Add_VICTIM)%를 도와야 한다.
+				DOWNBASE:MASTER:体力 += 250
+				DOWNBASE:MASTER:気力 += 250
+		ENDSELECT
+	CASE 26;yukari
+		CALL Add_Punishment_Framework(Add_VICTIM, 10)
+		SIF RESULT
+			RETURN
+		SELECTCASE RAND:1
+			CASE 0
+				PRINTFORML %CALLNAME:Add_VICTIM%이(가) 당신 앞에 있는 틈에서 나타나서 정말로 이것으로 빠져나갈 수 있다고 생각했냐고 묻는다.
+				IF TALENT:MASTER:度胸 == 1
+					PRINTFORM 당신은 삶이란 모두 기회를 잡는 것이라고 대담하게 선언한다. 
+				ELSEIF TALENT:MASTER:応答 == 1
+					PRINTFORM 당신은 %HIM_HER(Add_VICTIM)%에게 그때는 정말 좋은 생각인 것 같았다고 말한다, 그 전에 
+				ELSEIF HostileAffinity(MASTER,Add_VICTIM) >= 200
+					PRINTFORM 당신은 정말로 %HIM_HER(Add_VICTIM)%을 죽이고 싶었을 뿐이라고 %HIM_HER(Add_VICTIM)%에게 말한다.
+					CALL KNIFE_FIGHT(MASTER,Add_VICTIM,1,1)
+					RETURN
+				ELSE
+					PRINTFORM 당신은 그 질문에 대한 답이 없으니 응답을 기다리지 않고 
+				ENDIF
+				PRINTFORML %CALLNAME:Add_VICTIM%은(는) 당신 아래에 틈을 연다.
+				PRINTFORML ...당신은 그것 뒤에서 본 것을 말하고 싶지 않다.
+				DOWNBASE:MASTER:体力 += 400
+				DOWNBASE:MASTER:気力 += 600
+		ENDSELECT
+	CASE 30;Eiki
+		CALL Add_Punishment_Framework(Add_VICTIM, 10)
+		SIF RESULT
+			RETURN
+		SELECTCASE RAND:1
+			CASE 0
+				PRINTFORML %CALLNAME:Add_VICTIM%이/가 본인(%HIS_HER(Add_VICTIM)%의) 트레이드마크 강의 중 하나를 시작한다.
+				PRINTFORMW 긴 세션을 위해 스스로 준비하는 게 좋을 거다.
+				CALL ASK_YN("저항하다","항복")
+				IF !RESULT
+					PRINTFORML 당신은 더 이상 참을 수 있다고 판단하고 %CALLNAME:Add_VICTIM%과 싸우기 시작한다.
+					IF nRyona
+						CALL KNIFE_FIGHT(MASTER,Add_VICTIM,1,1)
+					ENDIF
+				ELSE
+					TIME += 30
+					PRINTFORML (30분 후)
+					PRINTFORMW %BREAKENG(@"%CALLNAME:Add_VICTIM% talks about how causing so much trouble for others can only end with you being sent to hell, to suffer until your soul is finally purified.")%
+					TIME += 45
+					PRINTFORML 45분 후
+					PRINTFORMW %BREAKENG(@"%TNAME(Add_VICTIM, 1)% moves on to talking about your various character flaws that %HE_SHE(Add_VICTIM)%'s observed, listing each in explicit detail.")%
+					TIME += 60
+					PRINTFORML 60개의 지루한 시간이 지난 후
+					PRINTFORMW %BREAKENG(@"Showing no signs of stopping, %CALLNAME:Add_VICTIM% starts describing the kinds of punishments that would await you in hell. It's all rather gruesome.")%
+					TIME += 60
+					PRINTFORML (또다시 60분이 지난 후)
+					PRINTFORMW %BREAKENG(@"%TNAME(Add_VICTIM, 1)% now begins talking about the various problems in hell, as well as general complains about %HIS_HER(Add_VICTIM)% work. You feel as if %HE_SHE(Add_VICTIM)%'s gotten a little off-topic...")%
+					TIME += 15
+					PRINTFORML (15분 후)
+					PRINTFORML %CALLNAME:Add_VICTIM%이 휴식 시간이 되었다며 차를 가져다 달라고 요청한다, 왜냐하면 %HE_SHE(Add_VICTIM)%가 그럴 때라고 느끼기 때문이다.
+					PRINTFORMW 당신은 함께 즐거운 순간을 보낸다.
+					TIME += 60
+					PRINTFORML 60분 후
+					PRINTFORMW (60분이라는 긴 시간이 지난 후)
+					TIME += 90
+					PRINTFORML (60분이나 극도로 지친 후에)
+					PRINTFORML (60분이 엄청나게 지친 후에)
+					PRINTFORMW 드디어 끝난 게 다행이다.
+					DOWNBASE:MASTER:気力 += 1000
+				ENDIF
+		ENDSELECT
+	CASE 60;parsee
+		IF TALENT:Add_VICTIM:恋慕 && !MARK:Add_VICTIM:反発刻印 && RAND:3
+			CALL Add_Forced_Date(Add_VICTIM, 10)
+		ELSE
+			SELECTCASE RAND:1
+				CASE 0
+					PRINTFORML 벌로 파씨는 당신에게 다리 전체를 청소하게 했다.
+					PRINTFORML 마침내 끝냈을 때, 다리는 이전에 없던 것처럼 빛났고, 당신은 전과 같이 지쳤음을 느꼈다.
+					DOWNBASE:MASTER:体力 += 500
+					DOWNBASE:MASTER:気力 += 300
+			ENDSELECT
+		ENDIF
+	CASE 64;yuugi
+		IF TALENT:Add_VICTIM:恋慕 && !MARK:Add_VICTIM:反発刻印 && RAND:4
+			CALL Add_Forced_Date(Add_VICTIM, 10)
+		ELSE
+			SELECTCASE RAND:1
+				CASE 0
+					PRINTFORML %BREAKENG(@"%CALLNAME:Add_VICTIM% gives you a hearty pat on the back for your courage to prank an oni like that, and tells you that you can make it up to %HIM_HER(Add_VICTIM)% by buying %HIM_HER(Add_VICTIM)% a drink or twelve, as %HE_SHE(Add_VICTIM)% drags you to the nearest bar.")%
+					PRINTFORML 네 가난한 지갑이 진짜 피해자야.
+					TIME += 180
+					DOWNBASE:MASTER:体力 += 150
+					DOWNBASE:MASTER:気力 += 100
+					BASE:Add_VICTIM:酒気 += 500
+					BASE:MASTER:酒気 += 500
+					CALL PAY_MONEY_YEN(MIN(10000, MONEY:0/2), 2)
+			ENDSELECT
+		ENDIF
+	CASE 68;yuuka
+		CALL Add_Punishment_Framework(Add_VICTIM, 10)
+		SIF RESULT
+			RETURN
+		SELECTCASE RAND:1
+			CASE 0
+				IF TALENT:Add_VICTIM:機嫌 > 0 || TALENT:Add_VICTIM:恋慕
+					PRINTFORML 다행히도, %CALLNAME:Add_VICTIM%은 기분이 좋아서, %HE_SHE(Add_VICTIM)%는 나머지 하루 동안 당신에게 고된 노동을 시킬 뿐이다.
+					DOWNBASE:MASTER:体力 += 400
+					DOWNBASE:MASTER:気力 += 300
+					TIME += 240
+				ELSEIF !Add_Fairy_Prank_Evil_Shenanigans
+					CALL Add_Forced_Cleaning(Add_VICTIM, 20)
+				ELSEIF AutoReviveCondition(MASTER)
+					PRINTFORML 당신의 불멸을 알고 있는 %CALLNAME:Add_VICTIM%는 주저하지 않고, 당신이 길 위의 얼룩일 때까지 구타한다.
+					CALL SET_HISTORY_DEATH(MASTER,68,3)
+					;PRINTFORML You revive shortly afterwards, but the pain won't leave you for a while.
+					;DOWNBASE:MASTER:体力 += 800
+					;DOWNBASE:MASTER:気力 += 500
+					TIME += 60
+				ELSE
+					PRINTFORML %CALLNAME:Add_VICTIM%은 당신이 금방 잊지 못할 폭행을 가한다.
+					CALLF BroadDamage(MASTER,"fullbody",400,6,Add_VICTIM,"fists")
+					DOWNBASE:MASTER:体力 += 400
+					DOWNBASE:MASTER:気力 += 200
+					TIME += 60
+				ENDIF
+		ENDSELECT
+	CASE 71;shinmyoumaru
+		CALL Add_Punishment_Framework(Add_VICTIM, 10)
+		SIF RESULT
+			RETURN
+		SELECTCASE RAND:1
+			CASE 0
+				IF TALENT:MASTER:体型 == -5 ;inchling
+					PRINTFORML %CALLNAME:Add_VICTIM%은 계속 당신을 쫓아다니며 %HE_SHE(Add_VICTIM)%이 지칠 때까지 %HIS_HER(Add_VICTIM)%의 도끼로 머리를 반복해서 때린다.
+					PRINTFORML 두 마리의 작은 생물이 원을 그리며 달리는 모습은 구경하는 이들에게 코믹한 장면이지만, 당신에게는 꽤 고통스럽다.
+					DOWNBASE:MASTER:体力 += 200
+					DOWNBASE:MASTER:気力 += 200
+					TIME += 60
+				ELSE
+					PRINTFORML %CALLNAME:Add_VICTIM%은(는) 기적 망치로 당신을 작게 만든다.
+					PRINTFORML 당신은 남은 하루 동안 근처의 고양이들과 새들로부터 숨어 지낸다.
+					PRINTFORML 마법이 풀리면, 당신은 평소 자신의 체구에 대한 새로운 감사를 얻는다.
+					DOWNBASE:MASTER:体力 += 300
+					DOWNBASE:MASTER:気力 += 300
+					TIME += 240
+				ENDIF
+		ENDSELECT
+	CASE 72;eirin
+		CALL Add_Punishment_Framework(Add_VICTIM, 10)
+		SIF RESULT
+			RETURN
+		IF TALENT:62:恋慕 && !RAND:3
+			PRINTFORML %CALLNAME:Add_VICTIM%이(가) 당신의 처벌을 준비하는 동안, %CALLNAME:62%가 나타나 대신 %CALLNAME:Add_VICTIM%에게 당신을 %HIS_HER(62)%에게 맡겨달라고 요청하고, %CALLNAME:Add_VICTIM%은 약간 망설이며 그것을 받아들인다.
+			PRINTFORML 당신은 하루의 남은 시간을 %CALLNAME:62%의 변덕을 돌보는 데 쓰게 된다. 
+			TIME += 300
+		ELSEIF !Add_Fairy_Prank_Evil_Shenanigans
+			CALL Add_Forced_Cleaning(Add_VICTIM, 20)
+			RETURN
+		ELSEIF Add_Fairy_Prank_Evil_Shenanigans == 2 || AutoReviveCondition(MASTER)
+			PRINTFORML 당신은 수술대 위에 고정되어 있고, %CALLNAME:Add_VICTIM%이 %CALLNAME:52%의 교양을 위해 당신을 세심하게 해부하고 있다.
+			;PRINTFORML You revive soon afterwards, but it was still a rather painful experience.
+			CALL SET_HISTORY_DEATH(MASTER,Add_VICTIM,"Surgery")
+			DOWNBASE:MASTER:体力 += 400
+			DOWNBASE:MASTER:気力 += 400
+		ELSE
+			PRINTFORML 너는 결국 %CALLNAME:Add_VICTIM%의 새로운 약들의 시험 대상이 된다.
+			IF !RAND:2
+				PRINTFORML 다행히 그들은 의도한 대로 작동한다.
+			ELSE
+				IF !RAND:2
+					PRINTFORML 불행하게도 부작용이 좀 있었고, 평소보다 머리가 조금 더 많아졌다.
+					PRINTFORML 그 추가적인 털을 다 밀면서 시간을 좀 잃는다. 
+					TIME += 60
+				ELSE
+					PRINTFORML 불행하게도, %CALLNAME:72%는 수량을 잘못 계산해서 과다 복용했어...
+					CALL SET_HISTORY_DEATH(MASTER,72,"OD")
+				ENDIF
+			ENDIF
+			TIME += 180
+			DOWNBASE:MASTER:体力 += 300
+			DOWNBASE:MASTER:気力 += 300
+		ENDIF
+	CASE 80;akyuu
+		IF !Add_Fairy_Prank_Evil_Shenanigans
+			CALL Add_Punishment_Framework(Add_VICTIM, 10)
+			SIF RESULT
+				RETURN
+			CALL Add_Forced_Cleaning(Add_VICTIM, 10)
+			RETURN
+		ENDIF
+		SELECTCASE RAND:2
+			CASE 0
+				PRINTFORML %BREAKENG(@"You are dragged into the Hieda residence basement by \@ (ABL:Add_VICTIM:Melee >= UniversalRank("S")) ? %CALLNAME:Add_VICTIM%'s servants # %CALLNAME:Add_VICTIM% \@, are tied up and dressed into a fairy costume, complete with a colorful wig, a silly hat, and a lovely %PRINT_MALE("pair of boy shorts_:dress", MASTER)%, to serve as a punching bag for %CALLNAME:Add_VICTIM%.")%
+				IF ABL:Add_VICTIM:Melee < UniversalRank("C")
+					PRINTFORML %HIS_HER(Add_VICTIM, 1)%은 약한 주먹으로는 별로 아프지 않지만, 그래도 꽤 창피하다.
+				ELSEIF Level_To_Rank(ABL:Add_VICTIM:Melee) < (Level_To_Rank(UniversalRank("S")) - TALENT:MASTER:痛覚)
+					PRINTFORML %HE_SHE(Add_VICTIM, 1)%은(는) 그 가느다란 팔로 놀라울 정도로 강한 펀치를 날린다 %HIS_HERS(Add_VICTIM)%.
+				ELSE
+					PRINTFORML %HE_SHE(Add_VICTIM, 1)%은 온사람 같은 폭행을 당신의 몸에 가하며, 당신이 해왔던 모든 것을 후회하게 만든다.
+				ENDIF
+				CALLF BroadDamage(MASTER,"torso",ABL:Add_VICTIM:Melee * 100,6,Add_VICTIM,"fists")
+				DOWNBASE:MASTER:体力 += ABL:Add_VICTIM:Melee * 100
+				TIME += 120
+			CASE 1
+				PRINTFORML 당신은 감옥에서 몇 시간을 보내고 지나가는 사람들이 비웃기 위해 멈춰 선다.
+				IF TALENT:MASTER:プライド
+					PRINTFORML 그 수치심은 누군가가 상상할 수 있는 것보다 더 아프다.
+					DOWNBASE:MASTER:気力 += 200
+				ENDIF
+				CALLF BroadDamage(MASTER,"crotch",200,2,Add_VICTIM,"pillory")
+				DOWNBASE:MASTER:気力 += 200
+				TIME += 180
+		ENDSELECT
+	CASE 99;toyohime
+		CALL Add_Punishment_Framework(Add_VICTIM, 10)
+		SIF RESULT
+			RETURN
+		SELECTCASE RAND:1
+			CASE 0
+				PRINTFORML 공공 광장 한복판에서, %CALLNAME:Add_VICTIM%은(는) 당신의 죄에 대한 속죄로 도게자 자세를 취하도록 강요한다.
+				CALL ASK_YN("저항하다","항복")
+				IF !RESULT
+					PRINTFORML 중무장한 루나리안들에게 완전히 포위된 상황에서, 당신은 이것을 힘의 시험으로 삼고 저항하기 시작한다. 
+					IF nRyona
+						FOR (LOCAL:1), 0, 3
+						CALL SpawnMobEnemy(RANDOM_CHARANUM,17)
+						CALL KNIFE_FIGHT(MASTER,RANDOM_CHARANUM,1,1)
+						NEXT
+					ENDIF
+				ELSE
+					PRINTFORML 중무장한 루나리안들에게 완전히 포위된 상황에서, 당신은 복종하고 %CALLNAME:Add_VICTIM% 앞에 깊이 고개 숙이는 것 외에는 다른 선택지가 없음을 본다.
+					IF TALENT:MASTER:プライド
+						PRINTFORML 당신은 언젠가 반드시 대가를 치르게 될 것이라고 조용히 스스로에게 다짐한다.
+						DOWNBASE:MASTER:気力 += 200
+					ENDIF
+					TIME += 60
+				ENDIF
+				;dignity -100
+		ENDSELECT
+	CASEELSE
+		CALL Add_Punishment_Framework(Add_VICTIM, 10)
+		SIF RESULT
+			RETURN
+		CALL Add_Forced_Cleaning(Add_VICTIM, 10)
+		RETURN
+ENDSELECT
+
+@IRAI_一般92_Fairy_Fucker
+#FUNCTION
+LOCAL:1 = 0
+FOR LOCAL, 1, CHARANUM - 1
+SIF CFLAG:LOCAL:出禁 ;disabled
+	CONTINUE
+IF TALENT:LOCAL:妖精
+	SIF !(TALENT:LOCAL:恋慕 || TALENT:LOCAL:愛欲) || !(CFLAG:LOCAL:既成事実 & 合意_うふふ)
+		RETURNF 0 ;not yet conquered
+	LOCAL:1 = 1 ;at least one fairy exists
+ENDIF
+NEXT
+RETURNF LOCAL:1
+;gives chance to boost foraging/fishing/cleaning/logging/gardening, depending on title rank
+
+@Add_Apply_Fairy_Title_Bonus(TASK)
+#FUNCTION
+#DIMS TASK
+;NAS: now uses faction rep
+SIF AverageRep(MASTER,8) < 1
+	RETURNF 0
+SIF GROUPMATCH((CFLAG:MASTER:現在位置 / 100),10,11) ;insufficient fairy presence on the moon (NAS: and makai)
+	RETURNF 0
+SIF RAND:100000 > AverageRep(MASTER,8)
+	RETURNF 0
+SIF FLAG:70
+	RETURNF 0
+SELECTCASE TASK
+	CASE "foraging"
+		PRINTFORML 당신이 채집하는 동안, 여러 명의 요정들이 합류한다.
+		PRINTFORML 함께 있으면 훨씬 수월하게 일을 처리할 수 있게 된다.
+		RETURNF (AverageRep(MASTER,8)/10000) * 2
+	CASE "fishing"
+		PRINTFORML 당신이 낚시를 하는 동안, 몇몇 요정들이 합류한다.
+		PRINTFORML 그들의 존재가 물을 자극하여, 물고기를 잡기 더 쉽게 만든다.
+		RETURNF (AverageRep(MASTER,8)/10000)
+	CASE "cleaning"
+		PRINTFORML 당신이 청소하는 동안, 한 무리의 요정들이 함께하기로 결정한다.
+		PRINTFORML 그들은 대부분 장난만 치지만, 그들의 도움은 여전히 고맙게 받아들여진다.
+		RETURNF MAX(1, (AverageRep(MASTER,8)/10000) / 2)
+	CASE "logging"
+		PRINTFORML 당신이 일하는 동안, 한 무리의 요정들이 당신을 응원하기 시작한다.
+		PRINTFORML 그들의 환호에 영감을 받아, 당신은 일이 평소보다 더 수월하다는 것을 알게 된다.
+		RETURNF MAX(1, (AverageRep(MASTER,8)/10000) / 3)
+	CASE "gardening"
+		PRINTFORML 정원에서 작업하는 동안, 무리의 요정들이 근처에서 놀기 시작한다.
+		PRINTFORML 그들의 존재가 정원에 활력을 불어넣고, 식물들이 눈에 띄게 더 건강해 보인다.
+		RETURNF 0 ;just a flavor message
+	CASE "farming"
+		PRINTFORML 당신이 들을 일들을 가꾸는 동안, 어떤 요정들이 작물들 사이에서 놀았다.
+		PRINTFORML 자연과의 조화 덕분에, 오늘의 돌봄은 더욱 성공적이었다.
+		RETURNF MAX(1, TALENT:MASTER:FAIRY_FRIEND / 3)
+	CASE "harvesting20"
+		PRINTFORML 요정들의 영향 덕분에 수확량이 증가했다.
+		RETURNF RAND:(2+((AverageRep(MASTER,8)/10000)/2)) + 1
+	CASE "harvesting14"
+		PRINTFORML 요정들의 영향 덕분에 수확량이 증가했다.
+		RETURNF RAND:(1+((AverageRep(MASTER,8)/10000)/3)) + 1
+	CASE "harvesting7"
+		PRINTFORML 요정들의 영향 덕분에 수확량이 증가했다.
+		RETURNF RAND:(1+((AverageRep(MASTER,8)/10000)/4)) + 1
+	CASE "harvesting5"
+		PRINTFORML 요정들의 영향 덕분에 당신의 수확량이 증가했다.
+		RETURNF RAND:(1+((AverageRep(MASTER,8)/10000)/5)) + 1
+ENDSELECT
+RETURNF 0
+;debug functions
+
+@Add_PRANKEM()
+#FUNCTION
+FOR LOCAL, 1, CHARANUM - 1
+IF TALENT:LOCAL:妖精
+	CALLF Add_SPECIAL_REQUEST_CREATION(LOCAL, 92, 100, 1, 1)
+ENDIF
+NEXT
+
+@Create_Prank_Request(PRANK_TARGET, GIVER = -1, SPECIFIC_PRANK = "")
+#FUNCTION
+#DIM PRANK_TARGET
+#DIM GIVER
+#DIMS SPECIFIC_PRANK
+Add_Fairy_Prank_Debug_Scenario '= SPECIFIC_PRANK
+RETURNF Create_Request_With_IRAI_DATA(92, PRANK_TARGET, "prank", GIVER)

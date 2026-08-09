@@ -1,0 +1,198 @@
+﻿; Modular ERB: 物件関連/09地底/MAP_COMM_09.ERB
+;--------------------------------------------------
+;地点名変更関数
+;--------------------------------------------------
+
+@MAP_PLACENAME_9(ARG, ARG:1) ;custom code
+#FUNCTIONS
+IF GET_MAPID(ARG) == MAIN_MAP
+	SELECTCASE ARG
+		CASE P916物置 ;qol custom code
+			IF CFLAG:MASTER:初期位置 == ARG
+				RETURNF CALLNAME:MASTER + "'s Room"
+			ELSE
+				RETURNF "Storage Room"
+			ENDIF
+		CASE SUMIKOMI_ROOM
+			IF FLAG:住み込みキャラ
+				RETURNF CALLNAME:(FLAG:住み込みキャラ) + "'s Hut"
+			ELSE
+				RETURNF "Empty Hut"
+			ENDIF
+		CASE MINROOM() TO (MAXROOM - 1)
+			RETURNF ARG:1 ? STR:(ARG + 8000) # STR_TR(ARG + 8000) ;custom code
+		CASE OMANEKIBEYA()
+			RETURNF OMANEKI_PLACE()
+		CASE SUKIMA()
+			RETURNF "Gap Space"
+		CASE MAXROOM
+			RETURNF "Above the Ground"
+		CASEELSE
+			RETURNF "Unknown"
+	ENDSELECT
+ELSE
+	RETURNF "Beyond the Underground"
+ENDIF
+;--------------------------------------------------
+;場所ARGがどのエリアにあるか
+;表示するマップの番号と連動（TFLAG:マップ切り替え）
+;ARG     場所ID
+;--------------------------------------------------
+
+@MAP_AREASELECT_9(ARG)
+#FUNCTION
+SELECTCASE ARG
+	;旧地獄
+	CASE P928灼熱地獄跡 TO P930旧血の池地獄, P947ちやりの棲み処
+		RETURNF 3
+		;旧都
+	CASE P931大通り TO P948縦穴の底
+		RETURNF 2
+		;custom code, switch to palace
+	CASE P901地霊殿前
+		RETURNF 1
+		;地霊殿
+	CASEELSE
+		RETURNF 1
+ENDSELECT
+;--------------------------------------------------
+;内部構造がある場所の内部の判定
+;TFLAG:マップ切り替え  内部察知が必要なマップ番号
+;                P_ID  表示ボタンの場所ID
+;                Q_ID  判定する内部の場所ID,必ずP_IDと一致した数値も含める
+;--------------------------------------------------
+
+@GETMAP_BUILDING_9(P_ID, Q_ID)
+#FUNCTION
+#DIM P_ID
+#DIM Q_ID
+IF TFLAG:マップ切り替え == 1
+	SELECTCASE P_ID
+		;旧地獄
+		CASE P928灼熱地獄跡
+			SELECTCASE Q_ID
+				CASE P928灼熱地獄跡 TO P930旧血の池地獄, P947ちやりの棲み処
+					RETURNF 1
+			ENDSELECT
+	ENDSELECT
+ELSEIF TFLAG:マップ切り替え == 2
+	SELECTCASE P_ID
+		;地霊殿
+		CASE P905一階廊下
+			SELECTCASE Q_ID
+				CASE P904大広間 TO P930旧血の池地獄, P947ちやりの棲み処
+					RETURNF 1
+			ENDSELECT
+	ENDSELECT
+ENDIF
+RETURNF 0
+;--------------------------------------------------
+;移動制限設定
+;ARG    場所ID
+;CHARA  移動するキャラID
+;RETURNF 1=移動できる,0=移動できない
+;TFLAG:移動不能メッセージ   ↓の@MAP_CANNOT_WORD用の設定
+;--------------------------------------------------
+
+@MAP_CAN_MOVE_9(ARG, CHARA)
+#FUNCTION
+#DIM CHARA
+SELECTCASE ARG
+	CASE P935ラブホ
+		;あなた以外は入らない
+		SIF CHARA != MASTER
+			RETURNF 0
+		;誰かが住んでないと入れない
+	CASE P937空き屋
+		IF !PRIVATEROOM:(ARG % 100) && CFLAG:MASTER:初期位置 != ARG
+			TFLAG:移動不能メッセージ = 999
+			RETURNF 0
+		ENDIF
+ENDSELECT
+RETURNF 1
+;--------------------------------------------------
+;移動不能時に表示されるメッセージ
+;--------------------------------------------------
+
+@MAP_CANNOT_WORD_9(ARG)
+RETURN
+SELECTCASE TFLAG:移動不能メッセージ
+	CASE 1
+		PRINTFORMW ※여기에 메시지를 넣는다. 행수+1의 CLEARLINE을 한다
+		CLEARLINE 2
+ENDSELECT
+REUSELASTLINE
+;-----------------------------------------
+;拠点専用の情景描写
+;WAITはかけないように
+;-----------------------------------------
+
+@MAP_UNIQUEMESSAGE_9
+;addition custom code
+LOCAL:90 = MAIN_MAP != 9 ? 地獄の深道 # P948縦穴の底
+IF WITH_MOB() && MAIN_MAP == 9 ;addition custom code
+	CALL MOB_MESSAGE_9
+	RETURN 1
+ELSE
+	;addition custom code
+	IF MAIN_MAP != 9
+		SELECTCASE CFLAG:MASTER:現在位置
+			CASE 旧地獄街道, ラブホ, 旧地獄温泉
+				GOTO s_1
+		ENDSELECT
+	ELSE
+		SELECTCASE CFLAG:MASTER:現在位置
+			CASE P944通り, P946橋
+				GOTO s_1
+		ENDSELECT
+	ENDIF
+	;--------------------
+	SELECTCASE CFLAG:MASTER:現在位置
+		CASE P944通り, P946橋
+			$s_1 ;addition custom code
+			PRINTFORML 쇼핑 지구의 활기찬 소리가 들린다. 조금 더 멀리 가면 대지 정령 궁전이 보인다.
+		CASE LOCAL:90 ;addition custom code
+			PRINTFORML 길 끝에 작은 지조상이 보였다.
+	ENDSELECT
+ENDIF
+IF ( MAIN_MAP == 9 && INRANGE(CFLAG:MASTER:現在位置, P944通り, P948縦穴の底) && CFLAG:MASTER:現在位置 != 947) || ( MAIN_MAP != 9 && GROUPMATCH(CFLAG:MASTER:現在位置, 幻想風穴, 地獄の深道) ) ;addition custom code
+	SIF CFLAG:[[パルスィ]]:行動 == 5
+		PRINTFORML 다리 위에는 지나가는 사람들을 살피며 %CALLNAME:60%가 서 있다.
+ENDIF
+RETURN 1
+;-----------------------------------------
+;拠点の場所IDをお出かけマップ上の場所IDに置換する関数
+;ARG      対象の場所ID（拠点マップ）
+;RETURNF  差し替え場所ID（お出かけマップ）
+;-----------------------------------------
+
+@MAP_SEARCH_REPLACEMENT_9(ARG)
+#FUNCTION
+SELECTCASE ARG
+	CASE P941ヤマメの家, P942キスメの家, P948縦穴の底, 949 TO 952
+		RETURNF 幻想風穴
+	CASE P934温泉
+		RETURNF 旧地獄温泉
+	CASE P935ラブホ
+		RETURNF ラブホ
+	CASE P931大通り TO P939路地裏
+		RETURNF 旧地獄街道
+	CASE P901地霊殿前 TO P926中庭
+		RETURNF 地霊殿
+	CASE P928灼熱地獄跡 TO P930旧血の池地獄, P947ちやりの棲み処
+		RETURNF 灼熱地獄跡
+	CASEELSE
+		RETURNF 地獄の深道
+ENDSELECT
+RETURNF 0
+;--------------------------------------------------
+;マップの紹介文
+;--------------------------------------------------
+
+@マップ紹介_9
+;とりあえず5行
+PRINTFORML 봉인된 요괴들이 사는 지하 세계의 지도이다.
+PRINTFORML 지하이기 때문에 전체 구역이 실내로 간주되어 햇빛도 비도 없다.
+PRINTFORML %nameArray:49:na_LastName% 가족이 사는 지레덴은 넓으며, 그곳에 사는 모든 동물들로부터 끊임없이 청소가 필요하다.
+PRINTFORML 옛 수도에는 많은 소박한 구조물과 시설들이 있으며, 종종 방문객들과 스침 요괴들로 붐빈다.
+PRINTFORML 밖에 나가지 않고도 불법적인 놀이를 하는 것도 재미있다.

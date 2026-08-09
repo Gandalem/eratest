@@ -1,0 +1,1 @@
+grep -RE "PRINTFORM......|PRINT[LW]*[^F_]......|PRINT_DIALOGUE.*|DATAFORM.*|HPH_PRINT.*|SPTALK.*|CHARA_TEXT.*|PRINT_STR.*|PRINT_GP.*" *.ERB | grep -v \; | wc -l

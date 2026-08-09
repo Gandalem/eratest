@@ -1,0 +1,146 @@
+﻿; Modular ERB: OMOGATARI/COM/ADD_CUSTOM_COM484 Challenge.ERB
+;-------------------------------------------------
+;Challenge
+;Daily Command, Leve 1
+;-------------------------------------------------
+
+@ADD_CUSTOM_COM484
+#DIM OPPONENT_REMAIN
+#DIM FirstWinBonus
+#DIM BattleEXP
+#DIM WON ;rape patch
+#DIM AddRivalList, 10
+WON = 0 ;rape patch
+HANDICAP_FIXED = 0
+HANDICAP_RAND = 0
+TFLAG:GipsLV = 0
+SIF TFLAG:口上によるCOM成否判定 == -1 ;addition custom code
+	RETURN -1
+IF TCVAR:TARGET:弾幕勝負不能
+	PRINTFORML %조사처리(CALLNAME:TARGET,"는")% 너무 지쳤다. 내일 다시 시도해라.
+	RETURN -1
+ENDIF
+CALLF LoG_RIVALDATA(LoG_RivalID(TARGET))
+IF !LoG_BattleCond
+	CALL ChallengeFighterDeny
+	SIF RESULT == -1
+		RETURN
+ENDIF
+$INPUT_LOOP
+;CALL DANMAKU_OPPONENT_STATUS(TARGET)
+CALL EZB_RANKED_BATTLE_CARD(MASTER,TARGET,0)
+PRINTFORML %조사처리(CALLNAME:TARGET,"에게")% 전투에 도전할 것인가?
+; SIF CFLAG:TARGET:弾幕勝負勝利 == 1
+IF LoG_RivalWins(LoG_RivalID(TARGET))
+	SETCOLOR C_YELLOW
+	PRINTFORM 　패배했다
+	RESETCOLOR
+ENDIF
+PRINTL 
+PRINTFORML 　기록: {LoG_RivalWins(LoG_RivalID(TARGET))}-{LoG_RivalLosses(LoG_RivalID(TARGET))} (승-패)
+CALL ASK_M("상관없어", 1, "싸운다", 1)
+SELECTCASE RESULT
+	CASE 0
+		TFLAG:GipsLV = 0
+		RETURN -1
+	CASE 1
+ENDSELECT
+;台詞・選択肢は幽香口上内に記述、口上がない場合は賭けや勝利報酬は無し
+;ここでHANDICAP_FIXED, HANDICAP_RANDに数値を入れると、あなたのダイス判定にマイナス補正がかかるよ
+;判定値 -= (HANDICAP_FIXED + RAND:(HANDICAP_RAND))
+VARSET RESULT
+;CALL KOJO_MESSAGE_SEND("DANMAKU", 0, TARGET, -1, -1, "戦闘前")
+;IF RESULT == -1
+;	RETURN -1
+;ENDIF
+EasyBattleIsRanked = 1
+LOCAL:3 = TARGET
+CALLF LoG_RIVALDATA(LoG_RivalID(TARGET))
+ARRAYCOPY "LoG_TandemPartner", "AddRivalList"
+FOR LOCAL,0,VARSIZE("LoG_TandemPartner")
+SIF LoG_TandemPartner:LOCAL == -1
+	CONTINUE
+CALL LoG_MakeRival(LoG_TandemPartner:LOCAL,-1)
+LOCAL:4 = LoG_CharaID
+CALLF AddCombatant(LOCAL:4,1)
+PRINTFORML %CALLNAME:(LOCAL:4)%이 전투에 합류했다!
+NEXT
+PRINTFORMW 게임 시작!!
+;CALL EZB_RANKED_BATTLE_CARD(MASTER,TARGET)
+CALL KNIFE_FIGHT(MASTER,TARGET)
+PRINTL 
+IF lcWarResult == CurrentBattle:Battle_PlayerSide
+	IF LoG_OthersFromTeamDefeated(LoG_RivalTeam(LoG_GetRivalFromChara(LOCAL:3)))
+		SIF !LoG_RivalWins(LoG_TeamLeader(LoG_RivalTeam(LoG_GetRivalFromChara(LOCAL:3)),1))
+			CALL LoG_ChallengePlayer(,LoG_TeamLeader(LoG_RivalTeam(LoG_GetRivalFromChara(LOCAL:3)),1))
+	ENDIF
+	;minibosses
+	FOR LOCAL, 0, LoG_CharaMax
+	CALLF LoG_RIVALDATA(LOCAL)
+	LOCAL:2 = LoG_AppearCond
+	IF LoG_BossType == "mini" && LoG_AppearCond && !LoG_RivalWins(LOCAL)
+		CALL LoG_ChallengePlayer(,LOCAL)
+		IF lcWarResult != CurrentBattle:Battle_PlayerSide
+			;lose!
+			GOTO WeLose
+		ENDIF
+	ENDIF
+	NEXT
+	;stage bosses
+	SIF LoG_StageBattleCond(LegendModeStage)
+		CALL LoG_StageBattle(LegendModeStage)
+ENDIF
+LoG_InBossBattle = 0
+$WeLose
+;source操作他
+TCVAR:TARGET:弾幕勝負不能 = 1
+; DOWNBASE:気力 += 500
+; DOWNBASE:MASTER:気力 += 500
+; DOWNBASE:体力 += 500
+; DOWNBASE:MASTER:体力 += 500
+SOURCE:歓楽 += (3000 + ABL:親密 * 100) / (OPPONENT_REMAIN + 1)
+; TIME += 30
+SIF AT_HOME(MASTER)
+	YOGORE:(CFLAG:MASTER:現在位置) = LIMIT(YOGORE:(CFLAG:MASTER:現在位置) + 3000, 0, 6000)
+;-----------------------------------------------------------------------------
+RETURN 1
+
+@ChallengeFighterDeny
+PRINTFORML 당신은 %조사처리(CALLNAME:TARGET,"에게")% 도전을 시도하지만, %HE_SHE(TARGET)%는 그것을 거절한다.
+IF nSpoilerMode
+	FONTITALIC
+	PRINTSL LoG_WandererSpoiler
+	FONTREGULAR
+ENDIF
+PRINTW
+RETURN -1
+;-------------------------------------------------
+;実行判定
+;-------------------------------------------------
+
+@ADD_CUSTOM_COM_ABLE484
+;停止中は不可
+SIF FLAG:70 == 1
+	RETURN 0
+;実行判定
+SIF !TFLAG:100
+	RETURN 0
+;一括管理
+SIF GLOBAL_COMABLE(480)
+	RETURN RESULT
+SIF TARGET == MASTER
+	RETURN 0
+SIF !SHIRAHU(TARGET)
+	RETURN 0
+SIF CFLAG:うふふ
+	RETURN 0
+;体力・気力不足
+SIF BASE:MASTER:気力 < 500 || BASE:MASTER:体力 < 500
+	RETURN 0
+;体力・気力不足
+SIF BASE:TARGET:気力 < 500 || BASE:TARGET:体力 < 500
+	RETURN 0
+;EasyBattle
+SIF !SaveIsEZB
+	RETURN 0
+RETURN 1

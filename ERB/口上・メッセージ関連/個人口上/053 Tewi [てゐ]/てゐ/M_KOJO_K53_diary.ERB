@@ -1,0 +1,758 @@
+﻿; Modular ERB: 個人口上/053 Tewi [てゐ]/てゐ/M_KOJO_K53_diary.ERB
+;日記口上
+;使うなら@M_KOJO_K53(ARG)のCALL DIARY_BEFORE_CHECK_K53のコメントアウトを外すこと。
+;例によってK53をKキャラ番号、XXをキャラ番号に置換してね。
+;旧テンプレにはないのでその場合は該当箇所に追記しましょう。
+;一日の終了時の流れ
+;@DIARY_TEXT_K53（日記本文）→@DIARY_AFTER_CHECK_K53（フラグの処理）
+;◆日記の仕様◆
+;※１@DIARY_BEFORE_CHECK_K53で日記のフラグが立つ。
+;→未読フラグ(2)が立っていると一日の終わりにデイリーイベントとして日記が読まれる（既読になる）。
+;→※２未読フラグ(3)が立っていると[日記を読む]で読む事ができる。読むと既読(1)になる。
+;※１各所イベント口上やコマンド口上でフラグを立たせても良いです。
+;※２基本的には未読(2)推奨です。既読(1)、未読(3)はワンステップ必要。
+;[日記を読む]には、持ち主が[恋慕]なら自由に読むことができ、
+;そうでない場合は恋慕でない人物がその場に居ない時、もしくは時間停止することで盗み読みできる。
+;拠点住民でないキャラは恋慕であれば自宅（お招き部屋）で読むことができる。
+;MAX_DIARY_PAGE:XX　キャラ番号XXの日記の最大ページ数　限度は101（1～100）
+;DIARY:XX:YY　　　　キャラ番号XXの日記番号YYの情報
+;　　 3=未読　　　　デイリーイベントで読まれない。[日記を読む]で読むと既読になる。
+;　　 2=未読　　　　デイリーイベントで読まれる。読まれるまでは[日記を読む]では読めない。読まれると既読になる。
+;　　 1=既読　　　　デイリーイベントで読まれない。[日記を読む]で読める。
+;　　 0=読めない　　未解禁。
+;PAGESET:XX:YY　　　キャラ番号XXの実際に書かれたYYページ目の日記番号。
+;=============================
+
+@DIARY_K53_EXIST
+;存在判定
+;0だと日記は書かれません。
+;=============================
+RETURN 1
+;=============================
+
+@DIARY_AFTER_CHECK_K53
+;デイリーイベントで日記が読まれた際の後処理。
+;フラグの管理等自由に扱って良い。
+;条件フラグのリセットや判定追加もここに
+;たとえば：今日構ったフラグ
+;今日構った日記が表示した後、構ったフラグをリセット。
+; CFLAG:XX:今日構ったフラグ = 0
+;あるいは何かの状態が続くことがフラグの場合
+;例：好感度がほぼ変わらない日が続くと
+;「あなた」の態度が冷たいな～みたいな日記を書く
+; SIF CFLAG:XX:好感度 <= LAST_LP+3
+; 	NOTOUCH_DAY ++
+;=============================
+;=============================
+
+@DIARY_BEFORE_CHECK_K53
+;常時チェックされる日記の状態情報。
+;ここでDIARY:XX:YYの更新を行う。
+;※DIARY:XX:0番は使えません。
+;ここで汎用発生条件を記入する
+;コマンド別の発生条件はM_KOJOの各ファイル中で追加してください。
+;基本的に発生条件には"DIARY:XX:YY == 0"を入れること。
+;そうしないと同じ日記が書かれたりしてしまう。
+;DIARY:XX:YY　　　　キャラ番号XXの日記番号YYの情報
+;　　 3=未読　　　　デイリーイベントで読まれない。[日記を読む]で読むと既読になる。
+;　　 2=未読　　　　デイリーイベントで読まれる。読まれるまでは[日記を読む]では読めない。読まれると既読になる。
+;　　 1=既読　　　　デイリーイベントで読まれない。[日記を読む]で読める。
+;　　 0=読めない　　未解禁。
+;○未読(2)にする場合（基本）
+;未読(2)にするとデイリーイベントとして発生し、一日の終わりに１つだけ読まれる。
+;複数のページが未読(2)になっている場合は番号が小さいものが読まれ、それ以外はリセット(0)される。
+;その為、複数同時に発生すると、発生したのに読まれずリセットされる場合もある。
+;未読(2)にするには単純にフラグに2を入れるだけで良い。
+;例１)初対面
+;SIF DIARY:XX:YY == 0 && CFLAG:XX:面識
+;	DIARY:XX:YY = 2
+;○未読(3)にする場合（応用）
+;未読(3)にするとデイリーイベントとして読まれず、書かれた時点で[日記を読む]によって読めるようになる。
+;プレイヤーが自主的に読まない限り読まれず、一日に複数ページ加筆される場合もある。
+;未読(3)にするにはフラグに3を入れた上で、CALL CHARA_DIARY_PAGESETTING(XX, YY)をする必要がある。
+;例２）好感度100以上
+;IF DIARY:XX:YY == 0 && CFLAG:XX:好感度 >= 100
+;	DIARY:XX:YY = 3
+;	CALL CHARA_DIARY_PAGESETTING(XX, YY)
+;ENDIF
+;例３）例２の日記が読まれた上で好感度1000以上
+;これをするとYYを読んだ直後にZZが書き込まれることも起こる。
+;IF DIARY:XX:ZZ == 0 && DIARY:XX:YY == 1 && CFLAG:XX:好感度 >= 1000
+;	DIARY:XX:ZZ = 3
+;	CALL CHARA_DIARY_PAGESETTING(XX, ZZ)
+;ENDIF
+;▽おせっかいな注釈
+;ファーストキスは基本的に全員[キス未経験]を所持しているので、"!TALENT:XX:キス未経験"で判定できます。
+;デート帰りのキスで分岐したいならデート帰りのキス口上でフラグを立てます。
+;その場合、通常のファーストキス喪失と重複しないように気をつけましょう。
+;処女喪失は初期設定で処女喪失している場合もあるので、処女喪失口上の方でフラグを立てた方が良いです。
+;その他告白・陥落等のイベントは各種イベント口上でフラグを立てます。初対面はそっちでも大丈夫です。
+;日付を正確に測るには別途フラグが必要です。例えば初めて会った日とか。
+;=============================
+SIF CHARANUM <= 53 + 1
+	RETURN
+;MAXPAGEはここで記入する
+MAX_DIARY_PAGE:53:0 = 100
+CALL M_KOJO_DIARYSETTING_K53(1)
+CALL M_KOJO_DIARYSETTING_K53(2)
+CALL M_KOJO_DIARYSETTING_K53(3)
+CALL M_KOJO_DIARYSETTING_K53(4)
+CALL M_KOJO_DIARYSETTING_K53(5)
+CALL M_KOJO_DIARYSETTING_K53(6)
+CALL M_KOJO_DIARYSETTING_K53(7)
+IF CFLAG:53:面識
+	IF CFLAG:53:K53C_DAY_FIRST_MET < 1
+		CFLAG:53:K53C_DAY_FIRST_MET = DAY
+	ENDIF
+	SIF !CFLAG:53:K53C_MESUGAKI
+		CALL M_KOJO_DIARYSETTING_K53(8)
+	SIF CFLAG:53:好感度 >= 100 && CFLAG:52:面識 && !TALENT:53:思慕 && !TALENT:53:恋慕 && !TALENT:53:恋人 && !TALENT:52:思慕 && !TALENT:52:恋慕 && !TALENT:52:恋人
+		CALL M_KOJO_DIARYSETTING_K53(9)
+	SIF (DAY-CFLAG:53:K53C_DAY_FIRST_MET) > 1
+		CALL M_KOJO_DIARYSETTING_K53(10)
+	SIF (DAY-CFLAG:53:K53C_DAY_FIRST_MET) > 3
+		CALL M_KOJO_DIARYSETTING_K53(11)
+	SIF (DAY-CFLAG:53:K53C_DAY_FIRST_MET) > 6
+		CALL M_KOJO_DIARYSETTING_K53(12)
+	SIF (DAY-CFLAG:53:K53C_DAY_FIRST_MET) > 7
+		CALL M_KOJO_DIARYSETTING_K53(13)
+	SIF (DAY-CFLAG:53:K53C_DAY_FIRST_MET) > 10
+		CALL M_KOJO_DIARYSETTING_K53(14)
+	SIF (DAY-CFLAG:53:K53C_DAY_FIRST_MET) > 14 && !TALENT:53:妊娠
+		CALL M_KOJO_DIARYSETTING_K53(15)
+	SIF CFLAG:53:好感度 > 999
+		CALL M_KOJO_DIARYSETTING_K53(16)
+	SIF (DAY-CFLAG:53:K53C_DAY_FIRST_MET) > 33
+		CALL M_KOJO_DIARYSETTING_K53(17)
+	SIF (DAY-CFLAG:53:K53C_DAY_FIRST_MET) > 34
+		CALL M_KOJO_DIARYSETTING_K53(18)
+	SIF (DAY-CFLAG:53:K53C_DAY_FIRST_MET) > 19
+		CALL M_KOJO_DIARYSETTING_K53(19)
+	SIF CFLAG:53:好感度 > 2000
+		CALL M_KOJO_DIARYSETTING_K53(20)
+	SIF (DAY-CFLAG:53:K53C_DAY_FIRST_MET) > 26
+		CALL M_KOJO_DIARYSETTING_K53(21)
+	SIF TALENT:53:キス未経験 == 0
+		CALL M_KOJO_DIARYSETTING_K53(24)
+	SIF CFLAG:53:既成事実 > 0 && ABL:53:欲望 > 2
+		CALL M_KOJO_DIARYSETTING_K53(27)
+	SIF CFLAG:53:K53C_INITIAL_VIRGIN && !THINKS_IS_VIRGIN(53)
+		CALL M_KOJO_DIARYSETTING_K53(28)
+	SIF TALENT:53:セフレ
+		CALL M_KOJO_DIARYSETTING_K53(29)
+	SIF TALENT:53:セフレ && ABL:53:欲望 > 5
+		CALL M_KOJO_DIARYSETTING_K53(30)
+	SIF ABL:53:精液中毒 > 3
+		CALL M_KOJO_DIARYSETTING_K53(31)
+	SIF CFLAG:53:K53C_REISEN_GROUP_SEX
+		CALL M_KOJO_DIARYSETTING_K53(32)
+	SIF TALENT:53:愛欲 && ABL:53:欲望 > 11
+		CALL M_KOJO_DIARYSETTING_K53(34)
+	SIF TALENT:53:愛欲 && ABL:53:欲望 > 12 && CFLAG:53:好感度 > 4999
+		CALL M_KOJO_DIARYSETTING_K53(35)
+	SIF HAS_PENIS(53)
+		CALL M_KOJO_DIARYSETTING_K53(52)
+	SIF MARK:53:反発刻印 == 3
+		CALL M_KOJO_DIARYSETTING_K53(55)
+	SIF TALENT:53:ポルチオ性感
+		CALL M_KOJO_DIARYSETTING_K53(59)
+	SIF TALENT:53:器用な指 && HAS_PENIS(MASTER)
+		CALL M_KOJO_DIARYSETTING_K53(60)
+	SIF CFLAG:53:K53C_REISEN_GROUP_SEX > 2
+		CALL M_KOJO_DIARYSETTING_K53(68)
+	SIF CFLAG:53:K53C_REISEN_GROUP_SEX > 5
+		CALL M_KOJO_DIARYSETTING_K53(69)
+	SIF (DAY-CFLAG:53:K53C_DAY_FIRST_MET) > 360
+		CALL M_KOJO_DIARYSETTING_K53(70)
+	SIF !TALENT:53:恋人 && !TALENT:53:恋慕 && TALENT:52:思慕
+		CALL M_KOJO_DIARYSETTING_K53(71)
+	SIF !TALENT:53:恋人 && !TALENT:53:恋慕 && TALENT:52:恋慕
+		CALL M_KOJO_DIARYSETTING_K53(72)
+ENDIF
+;=============================
+
+@DIARY_TEXT_K53, PAGENUM, MODE, PAGECOUNT
+;日記の内容
+;PAGENUM   = 日記番号（日記のパターン）
+;MODE      = "デイリー":一日終了時のデイリーイベントでの読み上げ
+;          = "コマンド":[日記を読む]コマンドでの読み上げ
+;PAGECOUNT = 何ページ目に書かれているか
+;=============================
+#DIM PAGENUM
+#DIMS MODE
+#DIM PAGECOUNT
+;口上色指定あるならコメントアウトを外す
+CALL M_KOJO_COLOR_K53
+;グループマッチに日記のIDを入れて、表示させたい顔絵を表示する
+;表情・服装・特殊画像をオプション指定で表示（省略可）
+;書式は\resources\顔.CSVと下の例を参照
+;以下はサンプル
+IF MODE == "デイリー"
+	;	IF GROUPMATCH(PAGENUM, 1)
+	;		CALL PRINT_FACE, XX, "発情", "裸", "_1"
+	;	ELSEIF GROUPMATCH(PAGENUM, 2)
+	;		CALL PRINT_FACE, XX, "笑顔", "服1"
+	;	ELSEIF GROUPMATCH(PAGENUM, 3)
+	;		CALL PRINT_FACE, XX, "怒り"
+	;	ELSE
+	;		CALL PRINT_FACE, XX
+	;	ENDIF
+ENDIF
+PRINTFORMDL 테위의 행복 안내 페이지 %ORDINAL(PAGECOUNT)% --------------------------------------------------------------------------------------
+PRINTL 
+;※PAGENUM:0は使えません
+SELECTCASE PAGENUM
+	CASE 1
+		PRINTFORML 행복 가이드북을 쓸 거야!
+		PRINTFORML
+		PRINTFORML 인과 인간들은 환히 행복해지는 법을 모른다. 그래서 내가 미소로 그들을 구해주겠다!%UNICODE(0x2764)%
+		PRINTFORML 나의 기교를 따른다면, 모두가 행복해질 수 있다! 너는 평생 행운을 누릴 것이다!
+		PRINTFORML
+		PRINTFORML 우선 기본적인 함정을 가르쳐 보자! 이게 정석이야!%UNICODE(0x2764)%%UNICODE(0x2764)%%UNICODE(0x2764)%
+		PRINTFORML 먼저 표적이 필요해, 안 그러면 무슨 소용이야? 편의상 그녀를 소녀 R이라고 부르자!%UNICODE(0x2764)%
+		PRINTFORML 구멍을 최소 12자 폭과 12자 깊이로 파! 크기에 소홀히 하지 마, 아니면 탈출할 수도 있어!
+		PRINTFORML 그것을 막대 격자로 덮고 나뭇잎 담요로 숨겨! 너무 단단하게 만들지 마! 자세한 건 다음 페이지에서 다 설명할게!
+		PRINTFORML 이제 마스터가 그녀를 불렀다고 말해서 소녀 R을 유인해. 근처 수풀에 숨어서 그녀가 빠졌을 때 나올 준비를 해둬!
+		PRINTFORML 기억해, 좋은 후속 조치는 실제 함정만큼 중요해!%UNICODE(0x2764)%
+		PRINTFORML 만약 그녀를 잠시 안에 가두고 싶다면, 날아 나가는 것을 막기 위해 대나무로 뚜껑을 만들어 볼 수 있어!
+		PRINTFORML
+		PRINTFORML 많은 디테일이 있지만, 모두가 행복할 수 있도록 내가 안내해 줄게! 다음 페이지로 넘겨서 같이 공부해 보자!%UNICODE(0x2764)%
+	CASE 2
+		PRINTFORMDL (이 페이지는 당근을 먹고 있는 귀엽고 복슬복슬한 토끼의 그림으로 가득 차 있다.)
+	CASE 3
+		PRINTFORMDL 이 페이지는 토끼, 당근, 대나무, 약의 낙서로 가득하다. 어떤 종류의 화학 공식도 적혀 있다.
+		PRINTFORML
+	CASE 4
+		PRINTFORMDL 크고 둥근 보름달에 무작위 모양의 분화구와 바다가 그려져 있다. 귀엽고 복슬복슬한 토끼 한 마리가 그 위에 앉아있다.
+	CASE 5
+		PRINTFORMDL (더 많은 낙서들이 이 페이지를 채웠고, 리젠의 큰 캐리커처도 포함되어 있었다. 그녀의 엉덩이는 크게 과장되었다.)
+	CASE 6
+		PRINTFORML 와, 창고에서 이 책을 방금 발견했어! 알고 보니 행복 가이드북을 쓰려고 했나 봐!
+		PRINTFORML 내가 그걸 언제 썼더라? 벌써 서른 년 전인 것 같아!
+		PRINTFORML 바보 같은 어린 테위, 행복은 복잡하지 않아! 아무도 복잡한 지침을 읽고 싶어 하지 않고, 또 아무도 그런 걸 쓰고 싶어 하지 않아!
+		PRINTFORML 행복은 예술이야. 가이드를 따라서는 예술을 만들 수 없어!
+		PRINTFORML
+		PRINTFORML 그렇긴 하지만, 나에게 수첩이 필요해서 나 자신을 위한 몇 가지 팁을 쓸 거야. 내가 노인이라 건망증이 있는 게 아니라고! (아직 애니까!)
+		PRINTFORML 어쩌면 충분히 모으면 결국 가이드가 될지도 모르겠지? 그래, 그럴 리가 없지%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORML 여기 나의 멋진 아이디지가 있다. 마스터에게 리젠의 귀가 어떻게 작동하는지 배우고, 가짜 메시지를 보낼 방법을 만들어라!
+		CALL CHARA_TEXT([[レイセン]], "「달토끼 명령이야, 우리가 에이텐이에 침투했어! 우리의 새로운 기교는 옷을 입은 누구에게도 우리를 숨겨버려! 이걸로 우리는 막을 수 없어!」")
+		PRINTFORML 리젠이 정말로 줄을 그릴까? 아마 아닐 거야!%UNICODE(0x2764)%
+	CASE 7
+		PRINTFORML 마스터를 속여 정보를 얻어냈지만 너무 어려워서 포기했다.
+		PRINTFORML 봐, 내가 말했잖아! 행복은 복잡하지 않아! 더 이상 신경 쓰지 않는다면 그냥 신경 쓰지 않으면 돼!%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL (복슬복슬한 토끼가 평화 기호를 만들며 윙크하고 있다. 주변은 별과 꽃으로 둘러싸여 있다.)
+		PRINTFORML
+		PRINTFORML 오늘 가짜 운세를 만들어서 레이센을 속일 생각이다. 훨씬 쉽겠지! 하지만 그녀를 계속 붙잡아 둘 수 있을지는 모르겠다.
+	CASE 8
+		IF TALENT:MASTER:動物耳 == 2 ;Bunny Ears.
+			PRINTFORML 오늘 새로운 사람을 만났다! %HE_SHE(MASTER,1)%의 \@ TALENT:MASTER:年齢 < 1 ? 한 마리의 # 오래된 \@ 토끼인 %CALLNAME:MASTER%!
+		ELSEIF TALENT:MASTER:年齢 > 0
+			PRINTFORML 오늘 새로운 사람을 만났다! %HE_SHE(MASTER,1)%는 오래된 %PRINT_MALE("man", MASTER)%인 %조사처리(CALLNAME:MASTER,"다")%!
+		ELSE
+			PRINTFORML 오늘 새로운 사람을 만났다! %HE_SHE(MASTER,1)%는 %PRINT_MALE("boy", MASTER)%이라는 %조사처리(CALLNAME:MASTER,"다")%!
+		ENDIF
+		PRINTFORML 나는 %HIM_HER(MASTER)%을 어쩌면 좋지? 모르겠어...
+		PRINTFORML %HE_SHE(MASTER)%가 어떤 사람인지 알아내려고 %HIM_HER(MASTER)%을 시험해 봐야겠어!
+	CASE 9
+		PRINTFORML 나는 리젠이 %조사처리(CALLNAME:MASTER,"를")% 보는 것을 봤어! 그녀는 관심이 있는 걸까?!
+		PRINTFORML 둘은 정말 귀여울 거야! 좋아, 내가 그들을 더 가깝게 해보도록 하지!%UNICODE(0x2764)%
+		PRINTFORML 물론 리젠이 당황하는 모습을 보기 위해서 말이야!
+		PRINTFORML 행복을 위한 팁: 다른 사람들을 행복하게 만드는 속임수를 써라! 가끔은 신의 역할을 해보는 건 어때?%UNICODE(0x2764)%
+	CASE 10
+		PRINTFORML 여자친구가 살이 쪘니? 특정 부위가 충분히 안 붙었니? 그녀에게 말하기 두려워? 문제없다!
+		PRINTFORML 에이엔테이의 은밀한 "피겨 고쳐주는 자" 계획은 그녀가 눈치채지 못하게 당신의 문제를 해결하고 당신이 마땅히 누릴 소녀를 줄 수 있다!!
+		PRINTFORML 그녀의 노력 덕분이라고 말해주고 그녀의 자존감이 올라가는 걸 지켜봐! 지금 첫 달에 한정된 특별 할인, 20\%을 할인받아!!!
+		PRINTFORML
+		PRINTFORML 부작용에는 메스꺼움, 구토, 현기증, 췌장염, 위장 장애 및 피카 증후군이 포함될 수 있다.
+	CASE 11
+		PRINTFORMDL (이 페이지는 귀여운 염소 그림으로 채워져 있다.)
+	CASE 12
+		PRINTFORML 원한을 지울 방법을 생각해 보자! 우리 새 애가 복수하게 둘 수는 없어! 오, 안 돼!💀
+		PRINTFORML 그녀에게 큰 케이크를 먹여라! 사랑에 관한 이야기를 해줘! 연애 물약이 들어간 커다란 케이크를 먹여라! 토끼 소년과의 데이트를 주선해!!%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL 귀여운 칼을 든 토끼가 한 남자를 죽이는 그림이 있다. 텐구들이 근처 산 정상에서 지켜보고 있었다.
+		PRINTFORML
+		PRINTFORML 행복을 위한 조언: 이기적인 행동은 우리 모두에게 나쁜 영향을 미칠 것이다! 다른 토끼들을 생각해라!!!🐰
+	CASE 13
+		PRINTFORMDL (이 페이지에서 칼을 휘두르는 귀여운 토끼가 다른 토끼와 손을 잡고 있다. 두 토끼 사이에는 하트가 그려져 있다.)
+		PRINTFORML
+		PRINTFORMDL 해피 엔딩!!
+	CASE 14
+		PRINTFORMDL (에린이 무서운 얼굴로 이 페이지에 그려져 있다. 그녀에게서 말풍선이 나오고 있다.)
+		CALL CHARA_TEXT([[永琳]], "「벌 시간이야―」")
+	CASE 15
+		PRINTFORML 행복을 위한 팁: 맥주를 마셔라!🍺
+		PRINTFORML
+		PRINTFORMDL 거품이 이는 주전자에서 물을 마시는 토끼들의 낙서가 페이지를 채우고 있다. 선들은 점점 더 불안정해지며 종이에는 맥주 얼룩이 묻어있다.
+	CASE 16
+		PRINTFORMDL 당신의 캐리커처가 이 페이지에 그려져 있다. \@ IS_MALE(MASTER) ? 당신은 잘생겼다. # 당신은 예쁘고 프릴 달린 드레스를 입고 있다. \@
+	CASE 17
+		PRINTFORML 벌 농장을 만들어 보자! %UNICODE(0x2764)%
+		PRINTFORML 돈, 꿀, 그리고 벌들! 벌집으로 위대한 트릭들을 해보자!%UNICODE(0x2764)%%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL (벌 농장 배치가 상세한 다이어그램으로 그려져 있으며, 주석과 물류 메모가 포함되어 있다.)
+		PRINTFORML
+		PRINTFORML 에이테이의 모든 장비를 만들고 → 어디든 내보내기 → ?????????? → 큰 이익%UNICODE(0x2764)%
+	CASE 18
+		PRINTFORML 카구야는 벌을 싫어한다! 더 이상 벌은 없다!
+		PRINTFORML
+		PRINTFORMDL (화가 난 카구야가 횃불로 벌집에 불을 붙이고 있는 모습이 그려진다. 토끼들이 근처에 모여 있는데, 모두 슬픈 표정이다. 어떤 것들은 울고 있다.)
+	CASE 19
+		PRINTFORMD (당근의 단면이 부분별로 라벨링되어 상세하게 그려져 있다. 하지만 중앙의 물관은)
+		PRINTFORM  「Stomach」라고 표시되어 있다.)
+		PRINTFORMDL  instead.)
+		PRINTFORMDL (게다가 당근은 줄기를 따라 날카로운 이빨들이 줄지어 있는 입과 촉수 같은 측면 뿌리들이 돋아있다.)
+		PRINTFORML 주 식단: 인간! 주 포식자: 토끼! 토끼가 없다면 이 생물들은 세상을 황폐하게 만들 것이다!
+		PRINTFORML
+		PRINTFORMDL (다른 필체로 작은 메모가 아래에 있다.)
+		CALL CHARA_TEXT([[永琳]], "이건 과제가 아니야. 0점이다.")
+	CASE 20
+		CALL COLORMESSAGE(@"무한의 티위마 파크 by IOSYS",C_GRAY, 1, 0)
+		PRINTFORML 비 오는 이슬과 바람 부는 이슬 속에서, %UNICODE(0x2764)%
+		PRINTFORML 에이엔티위의 결정되지 않은 계획들, ♪
+		PRINTFORML 모든 이슬들의 위로, %UNICODE(0x2764)%
+		PRINTFORML 나는 집에서 스튜를 할 거야! ♪ ✨
+		PRINTFORML                                 %UNICODE(0x2764)%
+		PRINTFORML 즐겁게, 축하하며, ♪
+		PRINTFORML 내 STewips를 약간 이상하게 노래한다,       🍺
+		PRINTFORML 그 sTewitments들을-, ♪
+		PRINTFORML 나는 그것들을 완전히 부정한다!
+		PRINTFORML                              🐰         %UNICODE(0x2764)%
+		PRINTFORML 그것은 행복이야,
+		PRINTFORML 행복이지, 그렇지? ♪ ✨
+		PRINTFORML                                  %UNICODE(0x2764)%
+		PRINTFORML 내가 저체온이거나 저민감하더라도, ♪
+		PRINTFORML 나는 나의 본성 긍정적으로 산다!
+		PRINTFORML                                                   %UNICODE(0x2764)%
+		PRINTFORML 행복이야, ♪
+		PRINTFORML 행복이지, %UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORML 머리로는 약할지라도, 🥕
+		PRINTFORML 난 언제나 네 곁에 있을 거야! ♪ %UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORML 은빛 테두리를 가진 구름이 밀려온다; 💕
+		PRINTFORML 좋은 기분들만이 나의 Tewike awaewi! ♪
+		PRINTFORML 나는 Tewil로 향한다 exhausTewivelewi Q-R-S-Tewi-anywewi JUMP 하고 JUMP!
+		PRINTFORML
+		PRINTFORML 내 귀를 간지럽히고, 심장이 두근두근거려라, ♪
+		PRINTFORML 나의 행복한 감정들이 터져나가고 있어! 🐰
+		PRINTFORML 행복의 방정식은 ♪
+		PRINTFORML 바로 당신 옆에 있네!
+		PRINTFORML                                                   arcsin(1/🥕)
+		PRINTFORML 굳은 표정은 버리고, 진정해라, ♪
+		PRINTFORML 허황된 저항심을 던져버려라, %UNICODE(0x2764)%
+		PRINTFORML 나를 믿어줘, ♪ %UNICODE(0x2764)%
+		PRINTFORML 그리고 뛰어들고 뛰어들어!
+		PRINTFORML                                                 🥕
+		PRINTFORML 솜털 씨앗처럼 퍼지는 미소, ♪
+		PRINTFORML 내일을 향해, 그들은 TEWIKE　OFF!
+		PRINTFORML 행복의 방정식♪                             e=mc🥕
+		PRINTFORML 바로 당신 옆에 있다! %UNICODE(0x2764)%
+	CASE 21
+		PRINTFORML 행복을 위한 팁: 건강을 잊지 마라! 당신의 건강이 가장 중요한 것이다!
+		PRINTFORML 건강을 위한 최고의 약은 행복한 미소이다! 미소를 지으면 더 건강해진다! 건강해지면 미소를 짓게 된다!
+		PRINTFORML
+		PRINTFORML 맥주도 도움이 된다고!🍺 하지만 너무 많이 마시면 안 돼!! 라이젠처럼 될 거야!!!
+	CASE 22
+		PRINTFORML 행복을 위한 팁: 아침에 팬티를 입는 것을 기억하세요!
+		PRINTFORML 갑자기 아무것도 안 입고 있다는 걸 알아차렸다! 이런! 분명히 입었는데!!
+		PRINTFORML
+		PRINTFORML 하지만 뭔가 올 수는 없어! 커맨도 데이잖아!%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL (치마만 입은 복슬복슬한 토끼가 얼굴을 붉히며 몸을 가리고 있는 모습이 그려진다.)
+	CASE 23
+		PRINTFORML 행복을 위한 팁: 외롭지 마! 혼자라면 같이 놀 재미있는 사람을 찾아봐!
+		PRINTFORML 카구야상은 함께 놀기 즐거워! 레이스도 마찬가지지만, 방식이 좀 달라!
+		PRINTFORML 하지만 가장 재미있는 건 %조사처리(CALLNAME:MASTER,"야")%! 그래서 이제부터 %HIM_HER(MASTER)%랑 많이 같이 놀 거야!!
+		PRINTFORML
+		PRINTFORMDL (페이지의 나머지 부분은 당신이 토끼 무리와 놀고 있는 그림으로 채워져 있다.)
+	CASE 24
+		PRINTFORML 나는 %조사처리(CALLNAME:MASTER,"를")% 키스했다.
+		PRINTFORML
+		PRINTFORML 이 포근한 느낌은 뭘까? 행복일지도?!
+		PRINTFORML 철저히 조사해 보자!%UNICODE(0x2764)%%UNICODE(0x2764)%
+	CASE 25
+		IF CFLAG:53:K53C_INITIAL_VIRGIN
+			PRINTFORML 순수하고 때 묻지 않은 수천 년 된 처녀로서의 나의 날들은 끝났다! %UNICODE(0x2764)% 아직 결혼할 수 있을까?!
+		ELSE
+			PRINTFORML 이런, 우리 섹스했어!
+		ENDIF
+		PRINTFORML 속이 온통 이상하고 포근하고 행복해! 정말정말! 이게 바로 섹스의 힘이야!
+		PRINTFORML 행복 팁: 재미있는 사람과 섹스를 해봐!%UNICODE(0x2764)% 나도 더 하고 싶어질 것 같아!%UNICODE(0x2764)%
+	CASE 26
+		PRINTFORML 나는 당근을 입에 넣었지만, 그것은 음식이 아니었다%UNICODE(0x2764)%
+		PRINTFORML 그래도 나는 그것을 빨았다%UNICODE(0x2764)%%UNICODE(0x2764)%
+		PRINTFORML 언제 %HIS_HER(MASTER)%의 당근 맛을 다시 볼 수 있을까?%UNICODE(0x2764)%%UNICODE(0x2764)%%UNICODE(0x2764)%
+	CASE 27
+		PRINTFORMDL 당신의 나체 모습과 예술적인 포즈가 그려진 스케치가 이 페이지를 장식하고 있다. 그녀는 그것에 많은 디테일을 담았다.
+	CASE 28
+		PRINTFORML 행복은 가끔 아프다!
+		PRINTFORML 있잖아, 순결한 처녀로 수천 년을 지내는 게 그렇게 어렵지 않았어! 어차피 성욕이 필요하긴 없잖아?
+		PRINTFORML 나도 그렇게 생각했는데, 결국 해버렸어! 그리고 아팠어!! 아팠다고!!! 아팠다!!!!!!
+		PRINTFORML 하지만 아팠음에도 불구하고 왠지 정말 행복해! 다시 하고 싶어!!
+		PRINTFORML 행복 팁: 자지를 가져봐!%UNICODE(0x2764)%
+	CASE 29
+		PRINTFORML 행복 팁: 섹스 파트너를 얻어라!%UNICODE(0x2764)%
+		PRINTFORML 내가 저런 글을 썼다니 믿을 수가 없어! 그래도 어쨌든 하나 구했지! 이게 뭔가 새로운 시작일까?!
+		PRINTFORML 무섭지만 흥미롭네! 행복도 가끔은 그런 거 같아!
+	CASE 30
+		PRINTFORMDL (이 페이지는 페니스 낙서로 가득 차 있다.)
+	CASE 31
+		PRINTFORML 행복 팁: 우유를 많이 마시세요!
+		PRINTFORML 어디서 얻을 수 있나요? 바로 dick%UNICODE(0x2764)%에서요.
+		PRINTFORML 처음엔 맛이 별로였는데, 이제 익숙해지네요! 더 많이 마시고 싶어요!!%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL (여기 사정하는 페니스가 그려져 있다.)
+	CASE 32
+		PRINTFORML 행복 팁: 쓰리썸을 해보세요!
+		PRINTFORML 리젠의 나체는 너무 아름다워! 하지만 나는 지지 않을 거야!!
+		PRINTFORML 최선을 다했고 우리 모두 행복함을 느꼈어! 그게 중요한 거지!!!
+		PRINTFORML
+		PRINTFORMD (여기 당신의 페니스 위에 탄 티위의 자화상이 있다.)
+		PRINTFORM  『챔피언!』
+		PRINTFORMDL 위에는 쓰여 있다.)
+		PRINTFORMD (그 사이, 알몸의 라이젠이 경외심을 담아 바라보고 있는데, ~로 표시되어 있다)
+		CALL CHARA_TEXT([[鈴仙]], "『두 번째가 최고야!』", "")
+		PRINTFORMDL )
+	CASE 33
+		PRINTFORML 행복하려면 성관계를 가져라!
+		PRINTFORML 행복하려면 거기를 빨아라!
+		PRINTFORML 행복하려면 네 몸에 사정을 받아라!
+		PRINTFORML 행복하려면 그게 보지에 들어오게 해라!
+		PRINTFORML 행복하려면 세게 받아라!
+		PRINTFORML 행복하려면 더 이상 생각할 수 없을 때까지 받아라!
+		PRINTFORML 행복하려면 살아있는 섹스 토이가 되어라!
+		PRINTFORML 행복하려면 성관계를 가져라!
+	CASE 34
+		PRINTFORMDL 이 페이지는 섹스하는 토끼들의 낙서로 가득하다.
+	CASE 35
+		PRINTFORML 소녀의 행복의 비결은 %조사처리(CALLNAME:MASTER,"와")%의 섹스다!
+		PRINTFORML 달리 뭘 쓸 게 있겠어? 그게 전부지!
+		PRINTFORML 여자들에게 %HIM_HER(MASTER)%를 어떻게 만족시키는지 가르쳐 줄까? %HIM_HER(MASTER)%를 어떻게 유혹하는지? 기분 좋게 느끼는 법을?
+		PRINTFORML 안 돼! 하기 싫어!!!
+		PRINTFORML 어쩌면 여기 다른 것도 쓸지도 몰라! 아닐지도 모르지! 아무도 미래를 모른다!!
+		PRINTFORML 지금으로서는 이것이 섹스 Master Tewi의 마지막 가르침이다!
+		PRINTFORML 아주아주많이 많이 섹스해!!!!%UNICODE(0x2764)%%UNICODE(0x2764)%%UNICODE(0x2764)%
+	CASE 36
+		PRINTFORML 행복 팁: 데이트를 가 봐!
+		PRINTFORML 진지할 필요는 없어! 결혼한다는 의미도 아니야! 그냥 재미로 하는 거지!
+		PRINTFORML 결과가 좋지 않게 끝나더라도, 그건 경험이고, 삶이란 그런 거잖아!
+		PRINTFORML 원한다면 언제든지 %HIM_HER(MASTER)%를 놀릴 수도 있어!
+	CASE 37
+		PRINTFORML 행복 팁: 다른 감정을 사랑으로 착각하지 마라!
+		PRINTFORML 사랑은 그냥 집어 들 수 있는 게 아니잖아, 그렇지? 물론 안 되지! 특히 나 같은 아줌마는 그렇게 쉽게 사랑에 빠질 수 없다고! (비록 내가 아직 애 같긴 하지만!)
+		PRINTFORML 어떤 감정이 진정한 사랑인지 어떻게 알 수 있지?
+		PRINTFORML 그게 우리가 조사해야 할 부분이야! 지금부터 %조사처리(CALLNAME:MASTER,"를")% 주의 깊게 지켜볼 테니까!
+	CASE 38
+		PRINTFORML 연인(들)이 된 후에도 사랑은 피어날 수 있다는 것을 기억해!
+		PRINTFORML %HE_SHE(MASTER)%가 아직 확신하지 못할 때 고백하더라도 망설일 필요 없어. 결국 모든 것이 제자리를 찾게 될 거야!
+		PRINTFORML 포기하지 마, 난 너를 믿어!♪
+	CASE 39
+		PRINTFORML 행복은 이상한 방식으로 당신을 찾아올 수 있어!
+		PRINTFORML 여전히 긴장되지만, 좋은 기분이야! 나는 확실하게, 완전히 %조사처리(CALLNAME:MASTER,"를")% 사랑해!
+		PRINTFORML 부끄럽더라도 소리치고 싶어! 나는 %조사처리(CALLNAME:MASTER,"를")% 사랑하고 %HE_SHE(MASTER)%도 나를 사랑하고 있어!%UNICODE(0x2764)%
+		PRINTFORML 이것은 행복에 관한 안내서였어야 했는데, 나는 이 모든 시간 동안 진정한 행복이 무엇이었는지 몰랐던 것 같아.
+		PRINTFORML 계속 훈련할 거야! 온 마음을 다해 %조사처리(CALLNAME:MASTER,"를")% 사랑하고 행복 구루가 될 거야!!!
+	CASE 40
+		PRINTFORML 나 임신했어.
+		PRINTFORML %조사처리(CALLNAME:MASTER,"가")% 돈을 지불할 거다.
+		PRINTFORML 뱀들을 찾아야 할 시간이다.💀
+	CASE 41
+		PRINTFORML 임신했어!
+		PRINTFORML 무서워! 신나! 끔찍해! 사랑스러워! 소리 지르고 싶어!!!!
+		PRINTFORML 어떻게 느껴야 할까? 기분 좋은 것 같아! 하지만 알기가 너무 힘들어!!
+		PRINTFORML %조사처리(CALLNAME:MASTER,"가")% 나를 지지해 줄 거야! 확신해! 그러니 무슨 일이 일어나든 결국 다 괜찮을 거야!
+		PRINTFORML 좋아! 내가 가진 모든 것으로 이 상황에 맞설 거야! 그리고 이걸 '엄마 되기 가이드'로 만들겠어!
+		PRINTFORML
+		PRINTFORMDL 큰 토끼가 작은 토끼와 껴안고 있는 낙서가 있다. 둘 다 만족스럽게 웃고 있었다.
+	CASE 42
+		PRINTFORML %CHILDNAME:53:1%!
+		PRINTFORML 그게 \@ CHILD_SEX:53:1 == 1 ? 그녀의 # 그의 \@ 이름이야! 우리가 결정했어!
+		PRINTFORML \@ CHILD_SEX:53:1 == 1 ? 그녀는 # 그는 \@'s beautiful! I love \@ CHILD_SEX:53:1 == 1 ? 그녀를 # 그를 \@ 뭐보다 더, 우리가 방금 만났는데도! 이상하지 않아?
+		IF IS_MALE(MASTER) && CHILD_SEX:53:1 == 2
+			PRINTFORML 그가 아빠처럼 자라길 바래! 그는 강하고 건강할 거야, 나는 확신해!
+		ELSEIF CHILD_SEX:53:1 == 2
+			PRINTFORML 그가 자랐을 때 우리가 가까워지기를 바란다! 그의 인생 전체를 공유하고 싶어!
+		ELSE
+			PRINTFORML 그녀가 예쁜 소녀로 자라길 바란다! 나는 그녀와 모든 것을 하고 많은 것을 가르쳐 줄 것이다!
+		ENDIF
+		PRINTFORML \@ CHILD_SEX:53:1 == 1 ? 그녀는 # 그는 \@너무 소중해서 더 원해! 그렇게 빨리 말하는 게 나쁜 걸까? 난 바라 %CALLNAME:MASTER%사랑하다 \@ CHILD_SEX:53:1 == 1 ? 그녀를 # 그를 \@ 똑같이 사랑하길!
+		PRINTFORML
+		PRINTFORMDL (갓 태어난 %CHILDNAME:53:1%의 상세한 스케치가 여기에 그려져 있다. 그녀는 \@ CHILD_SEX:53:1 == 1 ? 그녀의 # 그의 \@ 얼굴의 모든 세부 사항을 포착했다.)
+	CASE 43
+		PRINTFORML 또 임신했어!
+		PRINTFORML 지난번에서 많은 것을 배웠어! 이번에는 정말 최고 엄마가 될 준비가 된 것 같아!
+		PRINTFORML 행복 팁: 아이를 가져봐! 그 후에 모든 것이 완전히 이해될 거야! 나처럼 수천 년을 기다리지 마!
+		PRINTFORML
+		PRINTFORMDL (서로 다른 크기의 두 토끼가 그려져 있다.)
+	CASE 44
+		PRINTFORML %CHILDNAME:53:2%! 나의 연모!
+		PRINTFORML 이제 나에게 두 아이가 생겼어! 이렇게 행복할 수 있을 줄 몰랐어!
+		PRINTFORML %CALLNAME:MASTER%, 진정한 행복을 보여줘서 고마워!%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL 태어난 지 얼마 안 된 %CHILDNAME:53:2%의 상세한 스케치가 여기에 그려져 있다. 그것으로부터 깊은 애정을 느낀다.
+	CASE 45
+		PRINTFORML 모든 소녀는 최소 열 명의 아이를 가져야 해! 내가 그렇게 결정했어!
+		PRINTFORML 더 많은 자녀가 있을수록 더 행복해질 거야! 당신이 더 행복할수록 자녀들과 나눌 수 있는 행복도 더 많아질 거라고!!
+		PRINTFORML 내가 정말로 삶의 의미를 찾은 걸까?!
+		PRINTFORML 아무튼, 세 번째 임신이야! 가자, 테위! %조사처리(CALLNAME:MASTER,"와")% 함께 그 숫자에 도달하도록 최선을 다할게!
+		PRINTFORML
+		PRINTFORMDL (세 마리의 행복한 토끼들이 여기에 그려져 있으며, 서로 꼭 붙어있다.)
+	CASE 46
+		PRINTFORML 새로운 아기 이름은 %CHILDNAME:53:3%이다! \@ CHILD_SEX:53:1 == 1 ? 그녀 # 그 \@ 정말 멋져서 죽을 것 같아!
+		PRINTFORML 하지만 난 죽지 않아! \@ CHILD_SEX:53:3 == 1 ? 그녀 # 그를 \@ 위해, 그리고 %CHILDNAME:53:1%와 %CHILDNAME:53:2%를 위해 세상에서 최고의 엄마가 될 거야!
+		PRINTFORML
+		PRINTFORMDL 태어난 후의 %CHILDNAME:53:3%의 상세한 스케치가 여기에 그려져 있다. 그것은 모성애로 가득 차 있다.
+	CASE 47
+		PRINTFORML 또 임신했어! 더 할 말이 있어?!
+		PRINTFORML 내 작은 토끼들이 너무 좋아!%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL (네 마리의 행복한 토끼들이 여기에 그려져 있으며, 모두 작은 더미 속에 있다.)
+	CASE 48
+		PRINTFORML %CHILDNAME:53:4%! %CHILDNAME:53:4%! %CHILDNAME:53:4%!%UNICODE(0x2764)%
+		PRINTFORML 난 막을 수 없고, 이길 수 없고, 대처할 수 없어! 아이 스무 명도 내게는 아무것도 아니지! 한흔들지만 하자!
+		PRINTFORML 하지만 오해하지 마! 나는 그들 모두를 사랑하고, 그들에 대해 모든 걸 알고 있어, 알겠어?!
+		PRINTFORML 그냥 축복을 세기만 하지 마! 감사해 해! 이게 오늘 행복을 위한 팁이야!%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL (%CHILDNAME:53:4%의 신생아 상세 스케치가 여기에 그려져 있다. 집착적인 손으로 그려졌다.)
+	CASE 49
+		PRINTFORML 이 임신이 끝나면 아기 토끼들이 정말 많을 거야! 상상도 못 했어!
+		PRINTFORML 그런데 예전 페이지를 봤는데 내가 '50마리'라고 적었잖아?!
+		PRINTFORML 시간이 좀 걸릴 수도 있지만, 꾸준함이 결국 이기는 법이지! (토끼가 그런 말을 해도 괜찮을까?)
+		PRINTFORML 앞으로도 최선을 다해줘, 테위!%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL 다섯 마리의 행복한 토끼가 그려진다.
+	CASE 50
+		PRINTFORML %CHILDNAME:53:5%가 드디어 왔다!
+		PRINTFORML 출산 직후에도 너무 바쁘다! 이제부터 그림 그릴 시간이 생길까?!
+		PRINTFORML 안 하더라도 내 미래의 모든 아이들의 얼굴을 내 마음에 새길 거야! 내가 처음 봤던 순간은 아직도 잊지 못해 %CHILDNAME:53:1%!
+		PRINTFORML 하지만 지금은 ~을 위해 시간을 내야지 %CHILDNAME:53:5%! %CHILDNAME:53:5%! \@ CHILD_SEX:53:1 == 1 ? 그녀는 # 그는 \@'s a little weak, but that's okay! I'll love \@ CHILD_SEX:53:5 == 1 ? 그녀를 # 그를 \@ ~until \@ CHILD_SEX:53:5 == 1 ? 그녀 # 그는 \@건강해질 때까지!
+		PRINTFORML 일단 \@ CHILD_SEX:53:5 == 1 ? 그녀 # 그는 \@'s healthy, I'll keep loving \@ CHILD_SEX:53:5 == 1 ? 그녀의 # 그를 \@그게 행복의 궁극적인 비결이야!%UNICODE(0x2764)%%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL 이곳에 태어난 지 얼마 안 된 %CHILDNAME:53:5%의 상세한 스케치가 그려져 있다. 기쁨의 눈물인가? 종이가 얼룩져 있다.
+	CASE 51
+		PRINTFORML 행복 팁: 난장판을 벌여라!
+		PRINTFORML 나 믿을 수가 없어 리젠 %CALLNAME:MASTER% 그리고 카구야사마 모두와 섹스한 게 %CALLNAME:MASTER%공유하는 게 기분 좋아!
+		PRINTFORML 그게 이상하게 들리나? 내가 원하지 않는 건가 %HIM_HER(MASTER)% 나 혼자 갖고 싶지 않아? 물론이지!
+		PRINTFORML 그렇다 해도 우리는 함께 삶을 나누니 그들이 특별한 것이다 게다가 최고 자리를 지키기 위해 싸우는 것은 가치가 있다!
+		PRINTFORML 행복은 그것을 다른 사람들과 나눌 수 있는 거야! 특히 가까운 사람들이 말이야!!!
+	CASE 52
+		PRINTFORML 행복을 위한 팁: 성기를 키운다???
+		PRINTFORML 모르겠지만, 그렇게 됐어! 인생은 가끔 이상하잖아! 난 남자 아니거든!
+		PRINTFORML 만져봤는데 기분이 좋았어! 이걸 재미있게 쓸 방법이 있을 거야!
+		PRINTFORML
+		PRINTFORML 오늘의 진짜 비결은 항상 삶의 밝은 면을 바라보는 것이다!
+	CASE 53
+		PRINTFORML 행복을 위한 팁: 거기를 키워라!!!
+		PRINTFORML %CALLNAME:MASTER%에 넣으니 너무 좋았다!%UNICODE(0x2764)% 이걸 갖게 되어 정말 운이 좋다!
+		PRINTFORML 좋아! 이 거기를 최대한 활용할 거야! 이제부터 정말 재미있을 거야!
+		PRINTFORML
+		PRINTFORMDL 귀여운 홍조를 띠고 거대한 페니스가 있는 토끼의 낙서가 여기에 있다.
+	CASE 54
+		PRINTFORML 나는 거시기를 갖는 것이 좋다! 말하기엔 이상하지만, 사실이다!
+		PRINTFORML 리젠 안에서 사정할 수 있을 줄은 몰랐다! 인생은 계속 나에게 놀라움을 준다! 그녀의 부끄러워하는 얼굴가 너무 귀여웠다!
+		PRINTFORML 만약 그녀가 내 아이를 가지게 된다면 무슨 일이 일어날까?%UNICODE(0x2764)%
+	CASE 55
+		PRINTFORMDL (이 페이지에는 땅에 쓰러져 눈 대신 거대한 X가 그려진 당신의 그림과 그 위에 자랑스럽게 서 있는 토끼가 그려져 있다.)
+	CASE 56
+		PRINTFORML 나 이사 가! 모두 안녕!
+		PRINTFORML 밤늦게까지 깨어 함께 게임했던 날들 절대 잊지 않을 거야! 다들 사랑해!
+		PRINTFORML 행복을 위한 조언: 가족과 헤어지는 것이 힘들더라도, 새로운 사람과 사는 것도 흥미로울 수 있어!
+		PRINTFORML 삶이 이끄는 곳으로 가는 것을 두려워하지 마!
+	CASE 57
+		PRINTFORML %조사처리(CALLNAME:MASTER,"가")% 이사하기로 결정했다! 모두들 반갑게 %HIM_HER(MASTER)%를 맞이했다!
+		PRINTFORML 이제부터 항상 모두와 함께 잠옷 파티를 할 수 있을 거야! 정말 멋질 거야!
+		PRINTFORML 행복을 위한 팁: 특별한 누군가를 당신의 집으로 환영하세요!%UNICODE(0x2764)%
+	CASE 58
+		PRINTFORML %조사처리(CALLNAME:MASTER,"가")% 나의 임신한 배를 만져줄 때, 그것이 나를 완성시켜 준다!%UNICODE(0x2764)%
+		PRINTFORML 아이들을 갖게 되어 정말 기쁘다! 행복해!! 그것은 행복이다!!
+		PRINTFORML 행복해지고 싶다면, 아기를 배에 넣고 그 배를 만져줄 \@ IS_MALE(MASTER) ? 남자 # 여자 \@를 찾아라!%UNICODE(0x2764)%
+	CASE 59
+		PRINTFORML 그것이 내 깊은 곳에 있을 때, 나는 그것을 감당할 수 없어!
+		PRINTFORML 무언가 고백해도 될까? 적어도 괜찮을까? 절대 밖으로 꺼내고 싶지 않아!
+		PRINTFORML 장난감으로는 전혀 안 돼! %조사처리(CALLNAME:MASTER,"의")% 것이어야 해! 가능한 한 깊숙이 밀어 넣어버려!
+		PRINTFORML
+		PRINTFORMDL 행복한 표정의 토끼가 성기로 관통당하는 낙서(내부에서 토끼의 자궁을 애태우는 모습)가 있다.
+	CASE 60
+		PRINTFORML 손을 너무 많이 써서, 나 꼭 거장 조각가인가 봐!
+		PRINTFORML 그래서 그렇게 생각했는데, 점토로는 만들 수가 없었어... 그냥 여기서 그림으로 해야겠어!
+		PRINTFORML 내가 제일 좋아하는 예술 작품이야!%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL 이 페이지에는 당신의 성기임을 틀림없이 보여주는 스케치가 있다. 그녀는 아마 기억을 통해 그것의 모든 세부 사항을 정확하게 그려냈다.
+	CASE 61
+		PRINTFORML 사람들을 알 수 있는 유일한 방법은 그들에게 말을 거는 것이다! 그들의 관심사에 대해 물어봐라! 취미 같은 것들 말이다!
+		PRINTFORML 사람들은 네가 관심을 보일 때 좋아한다! 그들을 이해하려고 노력하면 행복이 너에게 찾아올 것이다!
+		PRINTFORML 오늘 나는 %조사처리(CALLNAME:MASTER,"에게")% %HIS_HER(MASTER)%의 가장 좋아하는 음식이 무엇인지 물어봤다! 하지만 %HE_SHE(MASTER)%가 뭐라고 했는지는 말해주지 않겠다!%UNICODE(0x2764)%
+		PRINTFORML 내 것에 대해서라면, 물론 답은 하나뿐이다!🥕
+	CASE 62
+		PRINTFORML 여자들에게 행복으로 가는 길은 귀여운 것이라고! 당연히 토끼들이 이점을 가지고 있지!
+		PRINTFORML 하지만 어떤 여자들은 섹시하기도 해! 그 점에 있어서도 토끼들이 최고야!
+		PRINTFORML 그런데 귀엽고 섹시한 여자들은 어때? 나는 그들이 질투가 나! 정말로! 내가 운이 좋은 쪽이어야 하는데, 왜 라이젠은 저렇게 섹시한 거야?!
+		PRINTFORML 모든 면에서 압도당하고 있어! 하지만 포기하지 않을 거야! 여자들도 마음이 강해야 해!
+		PRINTFORML 나중에 공공장소에서 그녀의 치마를 뒤집어써서 복수할 거야! 하지만 확실하게, 그녀는 당했을 때 초귀여울 테니까! 불공평해!!!!
+	CASE 63
+		PRINTFORML 물풍선!
+		PRINTFORML 레이센에게 던지고 그녀가 날아가는 걸 봐! 재미는 끝이 없어!
+		PRINTFORML 그러니까, 내가 다 쓸 때까지 말이야! %CALLNAME:MASTER%도 한번 해보고 싶어 할지 볼 거야!
+		PRINTFORML 행복을 위한 팁: 항상 장난칠 기회를 잡아라!
+		PRINTFORML
+		PRINTFORMDL (여기 리젠이 머리부터 발끝까지 흠뻑 젖은 채 그려져 있다. 그녀는 팔을 번쩍 들고 비명을 지르고 있으며, 더 많은 풍선들이 그녀에게 날아오고 있다.)
+	CASE 64
+		PRINTFORML 마스터가 나한테 실험하지 말아 달라는 게 너무 큰 부탁일까? 그녀는 천재라면서, 왜 그렇게 많은 도움이 필요한 거야?!
+		PRINTFORML 그냥 자기 자신이 실험 대상이 되어야지!💀
+		PRINTFORML 내 근육들이 아직 터질 것 같은 기분이야! 나 오늘 하루 종일 침대에 있어야 하는 걸까? 싫어!
+		PRINTFORML 행복을 위한 팁: 마스터가 주는 건 절대 마시지 마!!!!!!!
+	CASE 65
+		PRINTFORML 마스터가 나한테 실험하지 않는 게 너무 큰 부탁일까. 그녀는 천재라면서 왜 그렇게 많은 도움이 필요한 거야?!
+		PRINTFORML 그녀는 그냥 자기 실험을 마셔야 해!💀
+		PRINTFORML 적어도 %CALLNAME:MASTER% 있었다 나를 구해주러! 불쌍한 %PRINT_MALE("guy", MASTER)%, %HE_SHE(MASTER)% 바닥에 녹아내렸어! 네 희생은 잊히지 않을 거야!!!
+		PRINTFORML 행복을 위한 팁: 마스터가 주는 것은 아무것도 마시지 마라!!!!!!
+	CASE 66
+		PRINTFORMDL (여기에 4컷 만화가 그려진다. 첫 번째 칸에서 카툰 티위는 카툰 라이센에게 작은 물건을 건넨다.)
+		PRINTFORML 「행운의 쿠키를 받아!」
+		CALL CHARA_TEXT([[鈴仙]], "「와, 정말 멋지다!」")
+		PRINTFORML
+		PRINTFORMDL (두 번째 패널에서 쿠키가 레이센의 얼굴에 폭발한다. 그녀의 눈알이 폭발을 통해 보인다.)
+		PRINTFORMDL 쾅!
+		PRINTFORML
+		PRINTFORMDL (세 번째 패널에서 담배를 피우는 라이젠이 주먹을 치켜들고 테위에게 위협하고 있다.)
+		CALL CHARA_TEXT([[鈴仙]], "「그 대가 치르게 해줄 테니까!」")
+		PRINTFORML 「하지만 운세를 읽었니?」
+		PRINTFORML
+		PRINTFORMDL (네 번째 패널에서 레이센이 오미쿠지를 들고 있다.)
+		PRINTFORML 폭발적으로 좋은 행운
+		CALL CHARA_TEXT([[鈴仙]], "「와, 역시 운이 좋았어! 테위 고마워!!!」")
+	CASE 67
+		PRINTFORML 다른 사람들과 활동을 공유하는 것도 유대감을 쌓는 좋은 방법이다! 물론 가까운 관계에는 행복이 따르지!
+		PRINTFORML 오늘 %조사처리(CALLNAME:MASTER,"가")% 에이테이를 위해 요리하는 것을 도왔다! 정말 재미있어서 다음에 또 하고 싶다!
+		PRINTFORML 하지만 나는 요리를 하고 싶지 않으니, 음식을 다른 곳에서 구해야 한다! 요리 없는 파티라니! 얼마나 재미있는 거야?!
+		PRINTFORML 사실 전혀 재미없다! 정말 바보 같은 생각이야!
+		PRINTFORML
+		PRINTFORMDL 배불리 먹고 배를 하늘로 하고 잠든 통통한 토끼의 낙서가 있다. 토끼 옆에는 빈 접시가 놓여 있다.
+	CASE 68
+		PRINTFORML 나 지금 라이젠이랑 세 번이나 연모했어!
+		PRINTFORML 있잖아, 가끔 짜증나긴 하지만 놀아주기엔 정말 재밌거든!%UNICODE(0x2764)% %조사처리(CALLNAME:MASTER,"가")% 그녀를 좋아해줘서 정말 기뻐!
+		PRINTFORML 행복을 위한 팁: 귀여운 사람을 찾아서 침대 위에서 괴롭혀 봐!%UNICODE(0x2764)% (농담이야!)
+		PRINTFORML
+		PRINTFORMDL 벌거벗고 당황하는 라이젠의 낙서가 여기에 있으며, 그것을 가리려 한다.
+	CASE 69
+		PRINTFORML 리젠은 %조사처리(CALLNAME:MASTER,"를")% 기쁘게 하는 데 능숙해지고 있어! 정말 자랑스러워!
+		PRINTFORML 우리는 너무 많이 사랑을 나누어서, 마치 발정기인 토끼들 같아! 잠깐, 그게 바로 우리가 그렇다는 거야!
+		PRINTFORML %CALLNAME:MASTER%, 우리도 만족시켜주려고 최선을 다해줘!%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL (여기에는 섹시한 포즈를 취하며 당신을 유혹하는 나체의 라이젠 그림이 그려져 있다.)
+	CASE 70
+		PRINTFORML 내가 처음 %조사처리(CALLNAME:MASTER,"를")% 만난 게 벌써 몇 년이나 지났어! 믿을 수가 없어!
+		PRINTFORML 이렇게 짧은 시간에 내 삶이 얼마나 변했는지 생각하면 가슴이 두근거려!
+		PRINTFORML %CALLNAME:MASTER%, 우리 함께 앞으로도 아주 많은 시간을 보내자!!
+		PRINTFORML
+		PRINTFORMDL (여기 당신과 티위가 서로를 안고 있는 낙서가 있다.)
+	CASE 71
+		PRINTFORML 리젠이 %CALLNAME:MASTER%주변에서 완전히 바뀌었어! 난 그들이 잘 맞을 거라고 알았다고!%UNICODE(0x2764)%
+		PRINTFORML 예상대로, 정말 귀여워! 질투 나네! 분명 그녀를 놀릴 거야!
+		PRINTFORML 사람들이 행복해지는 걸 볼 때 삶이 멋지지 않아?
+	CASE 72
+		PRINTFORML 라이젠은 공식적으로 연모하게 됐다! 내가 어떻게 아는지 묻지 마라, 그녀는 비밀을 전혀 지키지 못한다!
+		PRINTFORML 이제 우리는 어디로 가야 할까? 누가 알겠어! 인생이란 끝까지 탐험하는 것이지!
+		PRINTFORML 행복을 위한 조언: 다른 사람들에게 행복을 가져다주기! 당연히 내가 공을 받아 마땅하다!!
+		PRINTFORML
+		PRINTFORMDL (여기에는 가슴에 손을 모으고 아쉬운 표정을 짓는 리젠의 낙서가 있으며, 그녀의 머리 위에는 큰 하트가 그려져 있다.)
+	CASE 73
+		PRINTFORML %조사처리(CALLNAME:MASTER,"가")% 변태였다니! 정말 큰 충격이다!!
+		PRINTFORML %HE_SHE(MASTER,1)% 내 몸을 원하지만 난 지지 않을 거야! 내가 가르쳐 줄게 %HIM_HER(MASTER)% 가르쳐 주겠어 만약 %HE_SHE(MASTER)% 다시 돌아온다면!
+		PRINTFORML 행복을 위한 팁: 누구에게도 휘둘리지 마라! 어쩔 수 없다면 네 몸으로 맞서 싸워라!
+	CASE 74
+		PRINTFORML 행복 팁: 말썽꾸러기들에게 마음대로 대해라!%UNICODE(0x2764)%
+		PRINTFORML 섹스는 소녀의 가장 강력한 무기다! 적들을 친구로 만들 수도 있다!
+		PRINTFORML 포기하지 마라!%UNICODE(0x2764)%%UNICODE(0x2764)%
+	CASE 75
+		PRINTFORML 나는 잃었다...
+		PRINTFORML 하지만 너무 좋았다!!!!!!
+		PRINTFORML 더 갖고 싶다는 게 나쁜 걸까? 기억하기만 해도 몸이 떨린다%UNICODE(0x2764)%
+		PRINTFORML %CALLNAME:MASTER%, 곧 돌아와줘!%UNICODE(0x2764)%%UNICODE(0x2764)%%UNICODE(0x2764)%
+	CASE 76
+		PRINTFORML 당근🥕라이더! ♪ 힘든 삶에 맞서라! ♪ 당근🥕라이더! ♪ 두려움을 삼켜라! ♪ 뛰어올라, 돌진해! ♪ 계속해서 몰아쳐라! ♪
+		PRINTFORML
+		PRINTFORMDL 이 페이지에는 나체 영웅인 당근라이더의 낙서가 있다.
+	CASE 77
+		PRINTFORML 모찌%UNICODE(0x2764)%Rider! ♪ 산을 오르자! ♪ 모찌%UNICODE(0x2764)%Rider! ♪ 끝까지 해내자! ♪ 점프하고 대시해라! ♪ 계속하지 마라!
+		PRINTFORML
+		PRINTFORMDL 이 페이지에 나체 히어로인 모치%UNICODE(0x2764)%Rider의 낙서가 있다.
+	CASE 78
+		PRINTFORML 정말 많은 걸 겪어야 했어! 출산은 힘들고, 특히 이렇게 연달아 여러 번 하는 건 더 그래!
+		PRINTFORML 하지만! 내 토끼들!!! 너무 아름다워!!!! 모든 작은 얼굴들이 너무 사랑스러워서, 이들을 안고 행복하다는 게 믿기지 않아!!!!!!!
+		PRINTFORML 정말 소중해서 더 원하게 돼! 이렇게 빨리 말하는 게 나쁜 걸까? %CALLNAME:MASTER%도 그들을 나만큼 사랑해 주었으면 좋겠어!
+		PRINTFORML
+		PRINTFORMDL 여기 새로 태어난 아이들의 상세한 스케치가 그려져 있다. 그녀는 그들의 얼굴의 모든 세부 사항을 포착했다.
+	CASE 79
+		PRINTFORML 아기 토끼들! 내 인생의 연모야!
+		PRINTFORML 이제 두 번이나 해봤어! 이렇게 행복할 수 있을 줄은 몰랐어!
+		PRINTFORML %CALLNAME:MASTER%, 진정한 행복을 보여줘서 고마워!%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL 새로 태어난 아이들의 상세한 스케치가 여기에 그려져 있다. 그것으로부터 깊은 애정을 느낀다.
+	CASE 80
+		PRINTFORML 새 아기들이 왔어! 정말 멋져서 죽을 것 같아!
+		PRINTFORML 하지만 난 죽지 않을 거야! 그들과 모든 형제자매들을 위해 세상에서 최고의 엄마가 될 테니까!
+		PRINTFORML
+		PRINTFORMDL 태어난 아이들의 상세한 스케치가 여기에 그려져 있다. 모성애로 가득 차 있다.
+	CASE 81
+		PRINTFORML 토끼들! 토끼들! 토끼들! %UNICODE(0x2764)%
+		PRINTFORML 나는 막을 수 없고, 이길 수 없으며, 대항할 수도 없다! 서른 명의 아이들도 나에게는 아무것도 아닐 것이다! 쉰 명이라도 좋군!
+		PRINTFORML 하지만 오해하지 마라! 나는 그들 각자를 사랑하고 그들에 대해 모든 것을 알고 있단다, 알겠지?!
+		PRINTFORML 그냥 축복을 셀 뿐만 하지 마라! 감사히 여기렴! 그것이 오늘 행복을 위한 조언이다! %UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL (여기에는 새로 태어난 아이들의 상세한 스케치가 그려져 있다. 집착적인 손으로 그려졌다.)
+	CASE 82
+		PRINTFORML 가장 새로운 물결이 드디어 왔다!
+		PRINTFORML 출산 직후에도 너무 바빠! 이제부터 그림 그릴 시간은 생기는 걸까?!
+		PRINTFORML 비록 그렇게 못 하더라도, 내 모든 미래 아이들의 얼굴을 가슴에 새길 것이다! 나는 아직 %CHILDNAME:53:1%를 처음 봤을 때를 잊지 않는다!
+		PRINTFORML 하지만 지금은 모두를 위해 시간을 만들 거야! 그들이 크고 강해질 때까지 사랑할 거야!
+		PRINTFORML 그들이 크고 강해진 후에도 계속 사랑할 것이다! 그것이 행복의 궁극적인 비밀이다!%UNICODE(0x2764)%%UNICODE(0x2764)%
+		PRINTFORML
+		PRINTFORMDL 여기에는 태어난 아이들의 상세한 스케치가 그려져 있다. 눈물(기쁨의?)이 페이지를 적시고 있었다.
+ENDSELECT
+PRINTFORML
+RESETCOLOR
+;=============================
+
+@M_KOJO_MESSAGE_COM_K53_406
+;=============================
+CALL M_KOJO_MESSAGE_COM_K53_406_1
+RETURN RESULT
+;=============================
+
+@M_KOJO_MESSAGE_COM_K53_406_1
+;コマンド口上
+;TFLAG:194（誰の日記を読んでいるか）
+;TFLAG:194がXXでない場合は他人の日記なので注意。
+;PAGEは書かれてあるページ数。
+;SHIRAHU(XX)はキャラXXの状態が正常かどうか。
+;=============================
+CALL M_KOJO_COLOR_K53
+IF SHIRAHU(53) && TFLAG:194 == 53
+	IF FIRSTTIME("TewiDiary")
+		PRINTFORMW 「에엥?! 그걸 정말 읽고 있어?! 그건 여자의 개인 소지품이라고!」
+		PRINTFORMDW 그 책은 스스로를 "행복을 위한 안내서"라고 부른다. 다른 사람들도 읽어주길 바라야 하지 않을까?
+		PRINTL
+		PRINTFORMW 「에헤헤, 뭐, 가이드였는데... 슬슬 스케치북이나 일기처럼 되어버렸어...」
+		PRINTFORMW 「아무튼 부끄럽잖아! 나 자신도 거기에 뭘 썼는지 모르겠다고!」
+		PRINTFORMW 「혹시 사적인 세부 사항들을 적었거나... 아니면 내 비밀 병기에 대한 계획 같은 걸...?」
+		PRINTFORMDW 만약 티위에게 비밀 병기가 있다면, 그걸 보고 싶을 거야.
+		PRINTFORMW 「뭐... 그저, 진지하게 받아들이지는 말해! 그냥 재미로 휘갈겨 쓰는 거니까!」
+	ENDIF
+ENDIF
+;=============================
+
+@M_KOJO_DIARYSETTING_K53(ARG, ARG:1 = 0)
+;日記発生処理の一括管理関数
+;=============================
+SIF DIARY:53:ARG != 0
+	RETURN
+IF ARG:1
+	DIARY:53:ARG = 2
+ELSE
+	DIARY:53:ARG = 3
+ENDIF
+CALL CHARA_DIARY_PAGESETTING(53, ARG)

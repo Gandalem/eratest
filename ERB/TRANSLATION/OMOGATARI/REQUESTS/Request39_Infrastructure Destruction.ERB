@@ -1,0 +1,139 @@
+﻿; Modular ERB: OMOGATARI/REQUESTS/Request39_Infrastructure Destruction.ERB
+;存否関数
+;F関数はTRYCALL系が使えないので通常関数で存否配列を作っちゃう
+
+@EXIST_一般依頼39
+#LOCALSIZE 1
+#LOCALSSIZE 1
+;オブジェクト本体
+;ここでARGで渡されるのはCLIENT_IDです
+
+@一般依頼39(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+SELECTCASE O_DATA
+	CASE "依頼名"
+		CALLF MAKE_STR(V_NAME, @"Infrastructure Destruction")
+	CASE "依頼内容表示"
+		CALLF MAKE_STR(V_NAME, @"적의 인프라를 파괴한다.")
+	CASE "依頼報酬表示"
+		CALLF MAKE_STR(V_NAME, @"15 %FactionAbriv(TALENT:ARG:Recruiter-1)% 진영 경험치 및 ¥50,000")
+	CASE "依頼実行コマンド名"
+		CALLF MAKE_STR(V_NAME, "Attack")
+	CASE "依頼内容"
+		CALLF MAKE_INT(V_NAME, MAKE_IRAI_DATA(RAND_PLACE(ARG, "LOST_ITEM"), "bandit camp"))
+	CASE "依頼サブ"
+		CALLF MAKE_INT(V_NAME, RAND_HUNTING_FACTION(TALENT:ARG:Recruiter-1))
+	CASE "依頼期限"
+		;発生時ではなく受託時に確定します
+		CALLF MAKE_INT(V_NAME, YearLength)
+	CASE "依頼発生率"
+		;これは他の一般依頼との相対確率なんで10％ではありません
+		;percentage change of being shown. (set to 100 to always show)
+		;CALLF MAKE_INT(V_NAME, 100)
+		CALLF MAKE_INT(V_NAME, 100)
+	CASE "依頼発生条件"
+		CALLF MAKE_INT(V_NAME, 1)
+	CASE "依頼受託可能条件"
+		;あなたの戦闘能力が1以上
+		IF TALENT:ARG:Recruiter == 0
+			;not a recruiter
+			CALLF MAKE_INT(V_NAME, 0)
+			RETURNF 0
+		ENDIF
+		SIF FactionRank:MASTER:(TALENT:ARG:Recruiter-1)
+			CALLF MAKE_INT(V_NAME, 1)
+	CASE "依頼実行可能条件"
+		CALLF MAKE_INT(V_NAME, 1)
+		;成功/失敗処理はCARRYOUTで直接書く
+		;SOURCEやITEM入手、消費が煩雑になるので
+	CASE "依頼消滅条件"
+		SIF Add_Request_Should_Discard(ARG)
+			CALLF MAKE_INT(V_NAME, 1)
+	CASE "依頼人連れ出し可能"
+	CASE "Faction Only"
+		CALLF MAKE_INT(V_NAME, 1)
+ENDSELECT
+
+@IRAI_一般39(CHARA, IRAI_ID, SCENE)
+#DIM  CHARA
+#DIM  IRAI_ID
+#DIMS SCENE
+#DIM  CLIENT_ID
+#DIM  CHK_SLOT
+#DIM  OPPONENT_REMAIN
+#DIM  IRAI40_RAIDPOINTS
+#DIM  IRAI40_ALLIES_SPAWN
+#DIM  DYNAMIC 	IRAI_39_TSP_USED
+CLIENT_ID = IRAI_ID_TO_CLIENT(IRAI_ID)
+CHK_SLOT  = SEARCH_IRAI_SLOT(IRAI_ID)
+SELECTCASE SCENE
+	CASE "依頼条件表示"
+		;何か専用の表示情報を設けたい時用
+		;受託済みの依頼表示で使用されます
+		;
+		;PRINT系だけでSOURCEとかは入れちゃダメ、WAITも無しで
+		;ここ以外の表示項目は
+		;PRINTFORML 　　　　　：
+		;となっているのでスペースを揃えたほうが見栄えが良いです
+	CASE "依頼実行時"
+		;このCASEに限り、RESULTが意味を持ちます
+		;依頼実行時のRESULTにはIRAI_CONST_RESULT()を使用してください
+		;可能な引数は"キャンセル", "実行して成功", "実行して失敗", "実行して未解決"です
+		;独自処理を仕込みたい時は"実行して未解決"で先延ばしするなりしてください
+		;
+		;
+		;実行できないパターン
+		;拠点では屋内だとダメ（原作だとめっちゃやってるけど）
+		;ほぼ弾幕勝負のコピペ
+		IF BASE:MASTER:TSP >= 500
+			PRINTFORML 500 TSP 사용한다.
+			CALL ASK_YN()
+			SELECTCASE RESULT
+				CASE 0
+					IRAI_39_TSP_USED = 1
+					PRINTFORML 폭탄을 장전하기 전에 주변 지역에 폭발물을 설치하기 위해 시간을 멈춘다.
+					GOTO Destruction
+				CASEELSE
+			ENDSELECT
+			PRINTFORML 폭탄을 장전하기 전에 주변에 폭발물을 설치한다.
+			IF !RAND:5
+				PRINTFORMW 폭탄을 심는 동안 적 진영의 장교 한 명이 당신을 발견하고 분대에게 당신을 섬멸하라고 명령한다.
+				WHILE IRAI40_RAIDPOINTS > 0 || IRAI40_ALLIES_SPAWN < 5
+				CALL FactionEnemySpawn(TALENT:CLIENT_ID:Recruiter-1,IRAI40_RAIDPOINTS,1,0)
+				IRAI40_ALLIES_SPAWN ++
+				WEND
+				CALL FACTION_ASSAIANS(MASTER, IRAI_SUB:CHK_SLOT, 1500)
+			ELSE
+				GOTO Destruction
+			ENDIF
+		ENDIF
+		IF lcWarResult == 0
+			;you win
+			$Destruction
+			PRINTFORML 기폭제를 사용하여 설치된 폭발물이 연쇄 반응을 일으켜 적의 기반 시설을 완전히 파괴한다.
+			CALL FactionChangeControl(TALENT:CLIENT_ID:Recruiter-1,GET_MAPID(CFLAG:MASTER:300),RAND(150,300))
+			CALL FactionChangeControl(IRAI_SUB:CHK_SLOT,GET_MAPID(CFLAG:MASTER:300),-RAND(150,250))
+			CALL FACTION_LOSE_UNIT(IRAI_SUB:CHK_SLOT,1,RAND(2000,5000))
+			CALL FACTION_LOSE_UNIT(IRAI_SUB:CHK_SLOT,2,RAND(1000,3500))
+			CALL FACTION_LOSE_UNIT(IRAI_SUB:CHK_SLOT,3,RAND(500,1000))
+			CALL FACTION_LOSE_UNIT(IRAI_SUB:CHK_SLOT,4,RAND(0,100))
+			RETURN IRAI_CONST_RESULT("実行して成功")
+		ENDIF
+	CASE "依頼成功時"
+		;成功報告時の報酬など
+		SOURCE:歓楽 = 3000
+		CALL CHANGE_CFLAG(2, CLIENT_ID, 50 + RAND:5)
+		CALL CHANGE_CFLAG(4, CLIENT_ID, 15 + RAND:5)
+		CALL GET_SPELL_CARD_BONUS_YEN(50000, 2)
+		CALL CHANGE_FACTION_EXP(MASTER,TALENT:CLIENT_ID:Recruiter-1,15)
+	CASE "依頼失敗時"
+		;失敗報告時の処理
+		;過酷な依頼なので少しだけ
+		PRINTFORML %CALLNAME:CLIENT_ID%는 당신이 그 일을 하지 않은 것에 대해 화가 난 것 같다.
+		CALL CHANGE_CFLAG(2, CLIENT_ID, -3)
+		CALL CHANGE_CFLAG(4, CLIENT_ID, -2)
+ENDSELECT

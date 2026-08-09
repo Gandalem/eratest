@@ -1,0 +1,252 @@
+﻿; Modular ERB: OMOGATARI/OMO/ChastityFunsies.ERB
+
+@IN_CHASTITY(ARG)
+#FUNCTION
+#DIM CHASTITY_INTS
+VARSET CHASTITY_INTS
+FOR LOCAL,1,29
+SIF LOCAL == 12
+	CONTINUE
+SIF STRLENS(EQUIPNAME:(LOCAL))
+	CHASTITY_INTS |= CHASTITY_ITEM(LOCAL,EQUIP:ARG:LOCAL)
+NEXT
+SIF DiapeMagicAttunement:ARG:0 == "lockDiaper"
+	CHASTITY_INTS |= 39
+SIF ACCESSORY_EQUIPPED(ARG,67)
+	TEQUIP:ARG:ボールギャグ = 1
+RETURNF CHASTITY_INTS
+
+@CHASTITY_ITEM(ARG,ARG:1)
+#FUNCTION
+SIF ARG == 12 || ARG == 0
+	RETURNF 0
+RETURNF GET_INT(, CLOTHES_PARTS_TO_CATEGORY(EQUIPNAME:(ARG:0)), ARG:1, "Chastity")
+
+@ChastityInfo(ARG)
+#DIMS TypeName = "C", "V", "A", "B", "M", "U", "Arns", "Legs"
+#DIM holesBlocked
+holesBlocked = IN_CHASTITY(ARG)
+IF GETBIT(holesBlocked,0) || GETBIT(holesBlocked,1) || GETBIT(holesBlocked,2) || GETBIT(holesBlocked,3) || GETBIT(holesBlocked,4) || GETBIT(holesBlocked,5)
+	VARSET LOCALS
+	FOR LOCAL,0,6
+	SIF GETBIT(holesBlocked,LOCAL)
+		LOCALS += TypeName:LOCAL+"、"
+	NEXT
+	PRINTFORM <In Chastity (%LIST_IN_STRING(LOCALS,"、",",",)%)>
+ENDIF
+IF GETBIT(holesBlocked,6) || GETBIT(holesBlocked,7)
+	VARSET LOCALS
+	FOR LOCAL,6,8
+	SIF GETBIT(holesBlocked,LOCAL)
+		LOCALS += TypeName:LOCAL+"、"
+	NEXT
+	PRINTFORM <Bound (%LIST_IN_STRING(LOCALS,"、",",",)%)>
+ENDIF
+
+@PANTIES_LOCKED(ARG)
+#FUNCTION
+SIF DiapeMagicAttunement:ARG:0 == "lockDiaper"
+	RETURNF 1
+SIF !EQUIP:ARG:5
+	RETURNF 0
+RETURNF GET_INT(ARG, "下半身下着_ずらし不可", EQUIP:ARG:5, "Locked")
+;sets a locking cover
+
+@SET_COVER_LOCK(ARG,ARG:1)
+#FUNCTION
+SIF ARG == ARG:1
+	CFLAG:ARG:LockedPampCover = -1
+CFLAG:ARG:LockedPampCover = ARG:1
+;-------------------------------------------------
+; PANTY_COVER_CHANGE
+; Switches to a new underwear cover
+; ARGS:
+;   CHARA (Target, required)
+;   PANTY (Panty Cover, required)
+;-------------------------------------------------
+
+@PANTY_COVER_CHANGE(CHARA,PANTY,ARG:2=-1)
+#FUNCTION
+#DIM CHARA
+#DIM PANTY
+SIF ARG:2 == -1
+	ARG:2 = CHARA
+CFLAG:CHARA:205 = PANTY
+CFLAG:CHARA:245 = PANTY
+EQUIP:CHARA:5   = PANTY
+CALLF SET_COVER_LOCK(CHARA,ARG:2)
+CALLF ArmorStats(CHARA, PANTY,1,,5)
+DEBUGPRINTFORML %CALLNAME:CHARA%의 팬티 커버가 {PANTY} %CLOTHES_TR(GET_STR(CHARA, "下半身下着_ずらし不可", PANTY, "名前"),1)%로 변경되었다.
+
+@ChastityPunishmentPointTierName(ARG,ARG:1=0)
+#FUNCTIONS
+; SIF !ARG:1
+;     ARG:1 = 1
+SELECTCASE ARG
+	CASE 0
+		;all
+		RETURNF "Unrestricted"
+		; CASE 1
+		;     ;sanitary pads
+		;     RETURNF "Sanitary Pads"
+		; CASE 2
+		;     ;light pads
+		;     RETURNF "Thin Pads"
+		; CASE 3
+	CASE 1
+		;moderate pads
+		RETURNF "Chastity Cage"
+	CASE 2
+		;chastity belt
+		RETURNF "Chastity Belt"
+	CASE 3
+		;diapers
+		SELECTCASE ARG:1
+			CASE 1,2
+				RETURNF "Locking Cover"
+			CASEELSE
+				RETURNF "Diaper"
+		ENDSELECT
+	CASE 4
+		;thick diaper
+		SELECTCASE ARG:1
+			CASE 1,2
+				RETURNF "Thick Liner"
+			CASEELSE
+				RETURNF "Thick Diaper"
+		ENDSELECT
+	CASE 5
+		;bulky diapers
+		SELECTCASE ARG:1
+			CASE 1,2
+				RETURNF "Bulky Liner"
+			CASEELSE
+				RETURNF "Bulky Diaper"
+		ENDSELECT
+	CASEELSE
+		RETURNF "Arm Restraints"
+ENDSELECT
+
+@SHOW_CHASTITY_PRIVILEGE(nChara)
+#DIM nChara
+IF nPantyPunish
+ELSE
+	PRINTL
+	CALL PRINTLINE, "Punishments"
+ENDIF
+CALL PunishmentPointBar(nChara,PunishChastity:nChara:0,PunishChastity:nChara:1,"chastity")
+PRINTL 
+
+@CHASITY_PU_POINT_GAIN(ARG,ARG:1)
+#FUNCTION
+#DIM DYNAMIC PPCHANGE
+#DIM DYNAMIC WITNESSED_COUNT
+#DIM POINTS_TO_ADD
+#DIM POINTS_LEVEL_MIN
+VARSET PPCHANGE
+VARSET WITNESSED_COUNT
+POINTS_LEVEL_MIN = 1
+POINTS_TO_ADD = 3
+;TALENTS
+IF TALENT:(ARG:1):25
+	POINTS_LEVEL_MIN ++
+	POINTS_TO_ADD += 3
+ENDIF
+IF TALENT:(ARG:1):30 == 1
+	POINTS_LEVEL_MIN += 2
+	POINTS_TO_ADD += 7
+ENDIF
+IF ARG == MASTER || CFLAG:(ARG):300 == CFLAG:MASTER:300
+	FOR LOCAL, 1, GET_TARGETNUM() + 1
+	IF (CFLAG:(TARGET:LOCAL):うふふ || CFLAG:(TARGET:LOCAL):イタズラ) && !GETBIT(FLAG:潜伏,0)
+		WITNESSED_COUNT ++
+	ENDIF
+	NEXT
+ENDIF
+IF WITNESSED_COUNT > 0
+	POINTS_LEVEL_MIN ++
+	POINTS_TO_ADD += 1
+ENDIF
+PPCHANGE = PP_SCALE_POINTS(ARG,POINTS_LEVEL_MIN,POINTS_TO_ADD)
+RETURNF PPCHANGE
+
+@CHASTITY_BYPASS_ATTEMPT(ARG)
+#DIM CBA_RESULT
+PRINTFORMW 당신은 여러 방법을 통해 순결 장치를 우회할 수 있습니다.
+CALL ASK_M( "취소",1, "자물쇠 따기", 1, "사격한다", 1, "갈라 opened", 1 )
+SELECTCASE RESULT
+	CASE 0
+	CASE 1
+		EXP:MASTER:手淫経験 ++
+		IF RAND:60 < LEVEL_TO_RANK(ABL:MASTER:指)*10
+			PRINTFORMW 당신은 순식간에 자물쇠를 해제했다!
+			RETURN 1
+		ELSE
+			PRINTFORML 자물쇠를 따는 데 실패했다.
+			IF FLAG:70
+				BASE:ARG:TSP -= 12
+			ELSE
+				TIME += 2
+			ENDIF
+		ENDIF
+ENDSELECT
+SELECTCASE CBA_RESULT
+	CASE IS > 0
+	CASE IS < 0
+		FOR LOCAL, 0, CHARANUM
+		SIF CFLAG:LOCAL:300 != CFLAG:ARG:300
+			CONTINUE
+		SIF !CharaDiaperChecker(LOCAL)
+			CONTINUE
+		IF (SHIRAHU(LOCAL)) && !FLAG:70 && !CFLAG:LOCAL:出禁 && !IsDead:LOCAL:0
+			;PRINT 物音に気づいた
+			PRINTFORML %CALLNAME:LOCAL%은(는) 당신이 순결 장치를 우회하려 하는 것을 알아챈다.
+			CALL CHARA_AWAKE(LOCAL,1)
+			IF !CFLAG:LOCAL:睡眠 && !CFLAG:LOCAL:隠密中
+				PRINTFORMW %CALLNAME:ARG%은(는) 당신을 수상하게 여겨 수색한다.
+				FORCEWAIT
+				RETURN
+			ENDIF
+		ENDIF
+		NEXT
+ENDSELECT
+RETURN CBA_RESULT
+
+@SET_CAGE_MESSAGE_BEFORE(CHANGEE,CHANGER,CAGE_LEVEL)
+#DIM CHANGER
+#DIM CHANGEE
+#DIM CAGE_LEVEL
+SELECTCASE CAGE_LEVEL
+	CASE 1
+		PRINTFORMW %PARSE("You bring",,,CHANGER)%은 %PARSE("you",,,CHANGEE)%에 맞는 케이지와 고리를 꺼낸다.
+		PRINTFORMW ~하면서 %PARSE("you move",5,,CHANGER)% %PARSE("your",5,,CHANGEE)% 공들 안에 %PARSE("you use your",5,,CHANGER)% 손가락으로 링이 공 뒤에 편안하게 제대로 놓였는지 확인한다.
+		PRINTFORMW 케이지 본체는 그 위에 놓인다 %PARSE("your",5,,CHANGEE)% %TINKO_TR(CHANGEE)% 그리고 %PARSE("slide",,,CHANGER)% 링 위의 슬롯 안으로
+		PRINTFORMW 케이지가 적용된 후, %PARSE(@"you place",5,,CHANGER)%은 자물쇠를 구멍에 끼우고 잠긴 위치로 돌린다. 
+	CASE 2
+		PRINTFORMW 당신은 금속 부분 전체에 작은 구멍들이 그려진 가죽과 금속 벨트를 꺼낸다.
+		PRINTFORMW 
+ENDSELECT
+
+@LEGS_BOUND(ARG)
+#FUNCTION
+RETURNF GETBIT(IN_CHASTITY(ARG),7)
+
+@ARMS_BOUND(ARG)
+#FUNCTION
+RETURNF GETBIT(IN_CHASTITY(ARG),6)
+
+@ChangeRestraint(ARG,RestrainType,AccessoryID)
+#FUNCTION
+#DIM DYNAMIC AccessoryID
+#DIMS DYNAMIC RestrainType
+#DIM DYNAMIC AccessorySlot
+#DIM DYNAMIC RepeatInt
+AccessorySlot = FINDELEMENT(EQUIPNAME,RestrainType)
+SIF AccessorySlot == -1
+	RETURNF
+;check accessory slot
+CFLAG:ARG:(200+AccessorySlot) = AccessoryID
+CFLAG:ARG:(240+AccessorySlot) = AccessoryID
+EQUIP:ARG:AccessorySlot = AccessoryID
+DEBUGPRINTFORML %CALLNAME:ARG%의 액세서리가 변경되었습니다: {AccessoryID} %undies_name_with_brand(ARG,AccessoryID,1,AccessorySlot)% (슬롯 {AccessorySlot})
+RETURNF 1

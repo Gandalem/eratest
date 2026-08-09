@@ -1,0 +1,196 @@
+﻿; Modular ERB: 自由行動/FREE_ACT_16_落とし穴.ERB
+
+@EXIST_FreeAct16
+#LOCALSIZE 1
+#LOCALSSIZE 1
+;オブジェクト本体
+
+@FreeAct16(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+#DIM 経過時間
+経過時間 = Activity_Duration:TARGET
+SELECTCASE O_DATA
+	;自由行動に付き合うコマンドの名称
+	CASE "名称"
+		IF GROUPMATCH(ARG, 5, 6, 7, 14, 53, 111) ;qol custom code, qol custom code, added tewi
+			CALLF MAKE_STR(V_NAME, "いたずらに付き合う")
+		ELSE
+			;custom code - change the name because the other action has the same name
+			CALLF MAKE_STR(V_NAME, "様子をうかがう2")
+		ENDIF
+	CASE "CHAIN"
+		;他キャラに連鎖しない場合コメントアウトすること
+		;CALLF MAKE_INT(V_NAME, 1)
+	CASE "経過時間"
+		;自由行動に付き合うコマンドでの経過時間
+		;0だと30分か残り時間すべての小さい方
+		CALLF MAKE_INT(V_NAME, 10)
+ENDSELECT
+
+@自由行動内容_16(CHARA, ARGS, 時間係数, CHAIN)
+#DIM CHARA
+#DIM CHAIN
+#DIM 現在地
+#DIM メッセージ表示
+#DIM 時間係数
+#DIM 経過時間
+#DIM 仕掛人 = 5, 6, 7, 14, 53, 111 ;qol custom code, added tewi
+#DIM 発起者
+#DIM 記録, 2000
+#DIM 落下者
+#DIM ランク
+#DIM リセット
+現在地 = CFLAG:CHARA:現在位置
+メッセージ表示 = 現在地 == CFLAG:MASTER:現在位置 ? 1 # 0
+IF リセット != DAY
+	VARSET 記録
+	発起者 = 0
+	落下者 = 0
+	リセット = DAY
+ENDIF
+SELECTCASE ARGS
+	CASE "発生"
+		;屋外で発生
+		SIF !OUTROOF(現在地)
+			RETURN 0
+		;仕事予定あれば落とし穴を掘らない
+		SIF MATCH(仕掛人, CHARA, 0) && !CHARA_HOLIDAY(CHARA)
+			RETURN 0
+		;三妖精とチルノ・クラウンピースが起点
+		IF MATCH(仕掛人, CHARA, 0) && !(発起者 || FA16_HOLE:0)
+			発起者 = CHARA
+			FA16_HOLE:0 = 現在地
+			GOTO ACT
+		ENDIF
+		;すでに落とし穴があれば一回だけ参加
+		IF MATCH(仕掛人, CHARA, 0)
+			SIF 現在地 != FA16_HOLE:0 || 記録:CHARA
+				RETURN 0
+			GOTO ACT
+		ENDIF
+		;落とし穴に落ちる側判定
+		SIF !発起者 || 落下者
+			RETURN 0
+		SIF 記録:CHARA || FA16_HOLE:0 != 現在地
+			RETURN 0
+		;addition custom code, duplicated characters
+		ランク = CSVABL(NO:CHARA, GETNUM(ABL, "戦闘能力"))
+		;原作の強キャラに回避補正
+		SIF ランク > UniversalRank("A") && !RAND:4
+			RETURN 0
+		SIF メッセージ表示
+			PRINTFORMW %CALLNAME:CHARA%가 %CALLNAME:発起者%'의 함정 속으로 떨어진다!!!
+		記録:CHARA = 1
+		落下者 = CHARA
+		;引っかかった人と参加者の行動時間を1に設定
+		FOR COUNT, 0, 5
+		SIF 記録:(仕掛人:COUNT) != 2 || Activity_Type:(仕掛人:COUNT) != 16 || !Activity_Duration:(仕掛人:COUNT)
+			CONTINUE
+		Activity_Duration:(仕掛人:COUNT) = 1
+		NEXT
+		RETURN 1
+		;落とし穴掘る側処理
+		$ACT
+		記録:CHARA = 2
+		IF メッセージ表示
+			PRINTFORMW %CALLNAME:CHARA% \@ CHARA == 発起者 ? 함정을 파기 시작한다 %SPLIT_G("to do a little bit of mischief:for a prank:for amusement purposes")% # %CALLNAME:発起者%의 함정을 함께 만들기 시작한다 \@...
+			SIF !FA16_HOLE:1
+				FA16_HOLE:1 = 1
+		ENDIF
+		;自由行動にかける時間をRETURNする
+		SIF CHARA == 発起者
+			RETURN 40 + RAND:30
+		SIF !Activity_Duration:発起者
+			RETURN 30 + RAND:20
+		RETURN Activity_Duration:発起者
+	CASE "行動中"
+		;行動中の処理、地の文もここで
+		SIF !メッセージ表示
+			RETURN
+		IF 落下者
+			SELECTCASE ランク
+				CASE IS <= 1
+					PRINTFORMW %CALLNAME:CHARA%는 %TEXTR(@"신나게 깔깔거린다/흥분해서 뛰어다닌다/드라마틱하게 승리의 포즈를 취한다/기쁨으로 빛난다")% 하고 있었다.
+				CASE 2, 3, 4
+					PRINTFORMW %CALLNAME:CHARA%는 %TEXTR(@"웃음을 겨우 참거나/승리의 포즈를 몰래 취하거나/능글맞게 비웃는다")%이다.
+				CASEELSE
+					PRINTFORMW %CALLNAME:CHARA%%TEXTR(@" %HIS_HER(CHARA)%을 탈출시키려는 행동으로 인해 그의 얼굴이 창백해지고 있다.")%...
+			ENDSELECT
+		ELSE
+			PRINTFORMW %CALLNAME:CHARA%은(는) %TEXTR(@"hiding the dirt %HE_SHE(CHARA)% dug up from the pitfall/working on the pitfall, covering it with \@ DAY:2 == 4 ? snow # fallen leaves \@/making more pitfalls")%이다.
+		ENDIF
+	CASE "完了"
+		;行動時間を使い切ったときの処理、地の文もここで
+		IF !MATCH(仕掛人, CHARA, 0)
+			IF メッセージ表示
+				SELECTCASE ランク
+					CASE IS <= 1
+						PRINTFORMW %CALLNAME:CHARA% %TEXTR(@"whirls around in surprise/tumbles down/lies on %HIS_HER(TARGET)% back")% 잠시 동안 그러다가 달려나가기 전에 %HIS_HER(CHARA)% 발로 구르고 웅덩이에서 필사적으로 기어 나오는 것...
+					CASE 2, 3, 4
+						PRINTFORMW %CALLNAME:CHARA%는 구덩이에서 재빨리 뛰쳐나와 %TEXTR(@"범인을 찾기 시작한다/주변을 스캔하기 시작한다")%...
+					CASEELSE
+						PRINTFORML %CALLNAME:CHARA%는 부드러운 '휙' 소리와 함께 구덩이에서 나타났다.
+						PRINTFORMW %TEXTR(@"%HIM_HER(CHARA)% 주변의 기운이 정말 끔찍해 보인다/\@ TALENT:CHARA:機嫌 == 1 ? %HE_SHE(CHARA)%가 아직 %HIS_HER(CHARA)%의 미소를 유지하고 있다는 사실이 그것을 # %HIS_HER(CHARA)% 얼굴의 완전한 감정 부재가 더욱 \@ 더 소름 끼치게 보이게 만든다/")%...
+				ENDSELECT
+			ENDIF
+		ELSEIF 落下者
+			IF メッセージ表示
+				SELECTCASE ランク
+					CASE IS <= 1
+						PRINTFORMW %CALLNAME:CHARA% %TEXTR(@"pulls %CALLNAME:落下者% up/apologizes to %CALLNAME:落下者% with a laugh")%.
+					CASE 2, 3, 4
+						PRINTFORMW %CALLNAME:CHARA%은(%HIS_HER(CHARA)%이) 최선을 다한다 %TEXTR(@"feigning ignorance/playing stupid/not to laugh")%.
+					CASEELSE
+						PRINTFORMW %CALLNAME:CHARA%는 %TEXTR(@"식은땀을 흘리며 탈출한다/몸을 숨긴다/숨어 지낸다/두려움에 몸서리친다")%...
+				ENDSELECT
+			ENDIF
+		ELSEIF メッセージ表示
+			PRINTFORMW [\@ FA16_HOLE:1 == 2 ? 아무도 너 말고 속지 않았다 # 다른 누구도 속지는 않았을 것이다 \@], 그래서 %CALLNAME:CHARA% %SPLIT_G(@"quickly gets bored:decides %HE_SHE(CHARA)% had enough:no longer finds it amusing:seems to have tired of it")%.
+		ENDIF
+		Activity_Type:CHARA = 0
+		SIF !落下者
+			RETURN
+		FOR COUNT, 0, 5
+		SIF Activity_Type:(仕掛人:COUNT) == 16 && FA16_HOLE:0 == CFLAG:(仕掛人:COUNT):現在位置
+			RETURN
+		NEXT
+		落下者 = 0
+		RETURN
+	CASE "中断"
+		;中断メッセージはうふふ突入時等でも表示されてしまうので表示しない
+	CASE "付き合う"
+		;自由行動に付き合ったとき用メッセージ
+		IF 落下者 || !MATCH(仕掛人, TARGET, 0)
+			SIF !MATCH(仕掛人, TARGET, 0)
+				落下者 = TARGET
+			PRINTFORM 너%COND_STR(@" and %CALLNAME:TARGET%", TARGET != 落下者)% 
+			SELECTCASE ランク
+				CASE IS <= 1
+					PRINTFORML %CALLNAME:落下者%이 빠졌던 구덩이를 들여다본다.
+					PRINTFORML %CALLNAME:落下者% 보일 수 있다 %TEXTR(@"slumped on %HIS_HER(落下者)% butt/upside down with %HIS_HER(落下者)% \@ EQUIP:下半身下着２ ? 팬티 # 나체된 사타구니 \@ exposed/passed out")% 구덩이 바닥에
+				CASE 2, 3, 4
+					PRINTFORML \@ TARGET != 落下者 ? 함을 훔쳐본다 # 확인한다 \@ 구덩이를.
+					PRINTFORML \@ TARGET != 落下者 ? 엿본다 # 살펴본다 \@ 함정을.
+				CASEELSE
+					PRINTFORML %CALLNAME:落下者%가 떨어진 함정 근처에 조심스럽게 다가갔다.
+					PRINTFORMW %CALLNAME:落下者%이(가) 떨어진 함정 구덩이로 조심스럽게 접근한다.
+			ENDSELECT
+		ELSE
+			PRINTFORML 당신은 %TEXTR(@"help %CALLNAME:TARGET% dig another pitfall/help %CALLNAME:TARGET% make the pitfall even deeper/work on the pitfall with %CALLNAME:TARGET% together, helping to make it less conspicuous")%.
+			SIF !FA16_HOLE:1
+				FA16_HOLE:1 = 1
+		ENDIF
+	CASE "ソース"
+		;付き合うコマンド選択時の入手ソース、時間係数は付き合った時間の1/10
+		IF CHARA == 落下者
+			SOURCE:鬱屈 += 50 + ランク * 50
+			SOURCE:苦痛 += 350 - ランク * 50
+		ELSE
+			SOURCE:歓楽 = 20 + ((ABL:親密 * 15)) * 時間係数
+			SOURCE:受動 = 10 + ((ABL:従順 * 10)) * 時間係数
+		ENDIF
+ENDSELECT

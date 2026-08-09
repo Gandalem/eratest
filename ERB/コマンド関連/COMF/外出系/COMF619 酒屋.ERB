@@ -1,0 +1,295 @@
+﻿; Modular ERB: COMF/外出系/COMF619 酒屋.ERB
+
+@COM619
+#DIM 店員
+#DIMS 表情
+#DIMS 台詞
+DRAWLINE
+店員 = GET_MAPID(CFLAG:PLAYER:現在位置) == 2 ? 19 # 18
+表情 = 笑顔
+IF FLAG:最後に酒屋に訪れた日 == 0
+	台詞 = 「First time customer? Let me help you.」
+ELSEIF DAY - FLAG:最後に酒屋に訪れた日 > 7
+	台詞 = 「Long time no see, take your time.」
+ELSEIF FLAG:最後に酒屋に訪れた日 == DAY
+	台詞 = 「Welcome... Oh? What's wrong?」
+ELSEIF FLAG:酒屋での累積購入額 > 1000000 && !ADD_BANQUETS_LIQUOR_STOCK_REDUCTION ;addition custom code, new banquets
+	台詞 = 「Welcome, I have stocked lots just for you」
+ELSEIF ADD_BANQUETS_LIQUOR_STOCK_REDUCTION ;addition custom code, new banquets
+	台詞 = 「How embarrassing, just now a customer came by and bought almost everything.」
+	表情 = 通常
+	;ここは甘酒を除く
+ELSEIF ITEMSALES:どぶろく + ITEMSALES:清酒 + ITEMSALES:鬼殺し > 30
+	台詞 = 「Welcome, we've got lots of good sake on hand～」
+ELSE
+	台詞 = 「Welcome!」
+ENDIF
+SIF FLAG:酒屋買取強化
+	台詞 = %台詞%/「There's currently a sale going on, so buy a lot and save a lot!」
+CALL SPTALK, 0, 表情, 店員, 台詞, 1
+$INPUT_LOOP2
+DRAWLINE
+PRINTL [ 1] - 술 구매
+PRINTL [ 2] - 술 판매
+PRINTL [ 0] - 돌아가기
+$INPUT_LOOP
+INPUT
+IF RESULT == 1
+	CALL 酒購入
+	GOTO INPUT_LOOP2
+ELSEIF RESULT == 2
+	CALL 酒卸売
+	GOTO INPUT_LOOP2
+ELSEIF RESULT != 0
+	GOTO INPUT_LOOP
+ENDIF
+FLAG:最後に酒屋に訪れた日 = DAY
+IF FLAG:酒屋の累積転売利益 > 3000000 && FLAG:酒屋の売却率フラグ == 2
+	FLAG:酒屋の売却率フラグ = 3
+	PRINTL 
+	PRINTFORML 상점에서 나가려고 할 때 저지당한다.
+	台詞 = 「You've truly sold us a ton of sake～ We will give you even better deals from now on.」
+ELSEIF FLAG:酒屋の累積転売利益 > 1000000 && FLAG:酒屋の売却率フラグ == 1
+	FLAG:酒屋の売却率フラグ = 2
+	PRINTL 
+	PRINTFORML 상점에서 나가려고 할 때 당신은 저지된다.
+	台詞 = 「You've helped us sell a lot of sakeー You wouldn't mind if we paid you more for it, right?」
+ELSEIF FLAG:酒屋の累積転売利益 > 100000 && FLAG:酒屋の売却率フラグ == 0
+	FLAG:酒屋の売却率フラグ = 1
+	PRINTL 
+	PRINTFORML 가게를 나가려고 할 때 당신은 제지당한다.
+	台詞 = 「Thank you for always selling so much sake, we will give you better deals from now onー」
+ELSE
+	台詞 = 「Come againー」
+ENDIF
+CALL SPTALK, 0, "笑顔", 店員, 台詞, 1
+TIME += 10
+RETURN -1
+
+@酒購入
+#DIM 買うもの
+#DIM 割引
+DRAWLINE
+;通信販売から無くなったので定価になります
+;;割引を20％に設定(定価の80％で販売)
+;割引 = 20
+SIF FLAG:口上色 ;qol custom code, set shopkeeper text color
+	SETCOLOR モブ子店員口上色:(GET_MAPID(CFLAG:PLAYER:現在位置) == 2 ? 19 # 18)
+PRINTL 
+IF FLAG:最後に酒屋に訪れた日 == 0
+	PRINTFORML 「처음이시니 할인해 드릴게요~」
+	;値引率を40％に設定(定価の60％で販売)
+	割引 = 40
+ELSE
+	PRINTFORML 「이건 정말 싸네~」
+	;値引率を20％に設定(定価の80％で販売)
+	割引 = 20
+ENDIF
+RESETCOLOR
+$INPUT_LOOP2
+DRAWLINE
+PRINTFORML 금액: %金額表示(MONEY)%
+DRAWLINE
+CALL ITEM_SHOPPING(GETNUM(ITEM, "どぶろく"), "Slightly sweet cheap sake.", 割引)
+CALL ITEM_SHOPPING(GETNUM(ITEM, "清酒"), "Normal sake.", 割引)
+CALL ITEM_SHOPPING(GETNUM(ITEM, "鬼殺し"), "Expensive and strong sake.", 割引)
+CALL ITEM_SHOPPING(GETNUM(ITEM, "甘酒"), "Easy to drink sake.", 割引)
+DRAWLINE
+PRINTL [999] 반환
+INPUT
+IF RESULT == 999
+	RETURN -1
+ELSE
+	買うもの = RESULT
+	CALL ITEMDATA(買うもの, "SHOP:酒屋")
+	IF RESULT
+		IF ITEMSALES:買うもの <= 0
+			SIF FLAG:口上色 ;qol custom code, set shopkeeper text color
+				SETCOLOR モブ子店員口上色:(GET_MAPID(CFLAG:PLAYER:現在位置) == 2 ? 19 # 18)
+			PRINTFORMW 「죄송합니다, 품절입니다.」
+			RESETCOLOR
+		ELSEIF ITEM:買うもの >= 所持数制限
+			PRINTFORMW 「손님, 이미 충분하지 않으신가요? 오히려 도매를 기다려 보세요~」
+			RESETCOLOR
+		ELSE
+			CALL ITEMDATA(買うもの, "購入", 割引)
+			IF RESULT
+				FLAG:酒屋での累積購入額 += RESULT
+				SIF FLAG:口上色 ;qol custom code, set shopkeeper text color
+					SETCOLOR モブ子店員口上色:(GET_MAPID(CFLAG:PLAYER:現在位置) == 2 ? 19 # 18)
+				IF FLAG:酒屋での累積購入額 > 100000 && !RAND:9
+					PRINTL 
+					PRINTFORML 「계속해서 저희 가게를 찾아주셔서 감사합니다. 여기 이걸 받으세요.」
+					PRINTFORMDW ―무료로 %ITEMNAME_TR(GETNUM(ITEM, "ウコンドリンク"))%―
+					ITEM:ウコンドリンク ++
+				ELSE
+					PRINTL 
+					PRINTFORMW 「또 와라-」
+				ENDIF
+				RESETCOLOR
+			ELSE
+				RESTART
+			ENDIF
+		ENDIF
+	ENDIF
+ENDIF
+
+@酒卸売
+#DIM 売却率
+#DIM 所持数
+#DIM 選択した商品
+#DIM 売却個数
+#DIM 売却額
+SELECTCASE FLAG:酒屋の売却率フラグ
+	CASE 0
+		;値引率を90％に設定(定価の10％で購入してくれる)
+		売却率 = 10
+	CASE 1
+		;値引率を85％に設定(定価の15％で購入してくれる)
+		売却率 = 15
+	CASE 2
+		;値引率を80％に設定(定価の20％で購入してくれる)
+		売却率 = 20
+	CASE 3
+		;値引率を70％に設定(定価の30％で購入してくれる)
+		売却率 = 30
+ENDSELECT
+SIF FLAG:酒屋買取強化
+	売却率 += 20
+$INPUT_LOOP2
+DRAWLINE
+SIF FLAG:口上色 ;qol custom code, set shopkeeper text color
+	SETCOLOR モブ子店員口上色:(GET_MAPID(CFLAG:PLAYER:現在位置) == 2 ? 19 # 18)
+LOCALS:0 = 
+IF FLAG:酒屋買取強化
+	LOCALS:0 = 현재 술 구매에 대한 특별 캠페인이 있으니
+ELSEIF FLAG:酒屋の売却率フラグ
+	LOCALS:0 = 당신이 그렇게 귀한 손님이시니,
+ELSE
+	LOCALS:0 = W
+ENDIF
+PRINTFORML 「%LOCALS:0%은(는) 목록 가격의 {売却率}에 그것을 사겠습니다!」
+RESETCOLOR
+DRAWLINE
+PRINTFORML 무엇을 팔까... 돈: %金額表示(MONEY)%
+CALL 酒一覧表示(0, "売却", 売却率)
+IF RESULT == 0
+	RETURN -1
+ENDIF
+;選んだ番号にしたがって所持数を格納
+所持数 = ITEM:RESULT
+;所持0の場合
+IF 所持数 == 0
+	PRINTL 
+	PRINTW 해당 아이템이 없으므로 판매할 수 없습니다.
+	RETURN -1
+ENDIF
+;所持0で無い場合個数を尋ねる
+;もう一回INPUTを使うため今の値を退避
+選択した商品 = RESULT
+売却個数 = 0
+$SELL_LOOP
+PRINTFORML %ITEMNAME_TR(選択した商品)%을 몇 개 팔까?
+PRINTFORML 현재 선택됨: {売却個数}
+PRINTFORML [-100]　[ -10]　[  -1]　[  +1]　[ +10]　[+100]
+PRINTBUTTON "[모두] ", 999
+PRINTBUTTON " [초기화]", -999
+PRINTL 
+PRINTBUTTON "[판매]", 0
+INPUT
+IF RESULT
+	IF RESULT == 999
+		売却個数 = 所持数
+	ELSEIF RESULT == -999
+		売却個数 = 0
+	ELSE
+		売却個数 = LIMIT(売却個数 + RESULT, 0, 所持数)
+	ENDIF
+	CLEARLINE 6
+	GOTO SELL_LOOP
+ENDIF
+IF 売却個数 <= 0
+	PRINTL 
+	PRINTL 신경 쓰지 마, 아무것도 팔지 말자.
+	GOTO INPUT_LOOP2
+ENDIF
+IF 売却個数 > 所持数
+	PRINTL 
+	PRINTL 팔 만큼 가지고 있지 않다.
+	GOTO INPUT_LOOP2
+ENDIF
+;一つあたりの売却額を算出
+売却額 = ITEMPRICE:選択した商品 * 売却率 / 100
+ITEM:選択した商品 -= 売却個数
+MONEY += 売却額 * 売却個数
+;お店は定価の80％で販売
+FLAG:酒屋の累積転売利益 += ITEMPRICE:選択した商品 * (80 - 売却率) / 100 * 売却個数
+PRINTFORMW {売却個数}개의 %ITEMNAME_TR(選択した商品)%을 %金額表示(売却額*売却個数)%에 판매했다.
+;販売個数を増加させる処理
+ITEMSALES:選択した商品 += 売却個数
+GOTO INPUT_LOOP2
+;-------------------------------------------------
+;在庫の変動
+;SHOP_ITEM.erbにあるEVENTTURNENDから一日一回呼ばれる
+;-------------------------------------------------
+
+@酒屋の在庫
+#DIM 在庫増加数
+;宴会前日は酒が品薄に
+IF ADD_BANQUETS_LIQUOR_STOCK_REDUCTION ;addition custom code, new banquets
+	ITEMSALES:どぶろく += RAND:(2 + FLAG:酒屋の売却率フラグ * 1)
+	ITEMSALES:清酒     += RAND:(2 + FLAG:酒屋の売却率フラグ * 1)
+	ITEMSALES:鬼殺し   += RAND:(1 + FLAG:酒屋の売却率フラグ * 1)
+	ITEMSALES:甘酒     += RAND:(3 + FLAG:酒屋の売却率フラグ * 2)
+ELSE
+	ITEMSALES:どぶろく += RAND:(3 + FLAG:酒屋の売却率フラグ * 3)
+	ITEMSALES:清酒     += RAND:(3 + FLAG:酒屋の売却率フラグ * 2)
+	ITEMSALES:鬼殺し   += RAND:(2 + FLAG:酒屋の売却率フラグ * 1)
+	ITEMSALES:甘酒     += RAND:(4 + FLAG:酒屋の売却率フラグ * 3)
+ENDIF
+;累積購入額に応じても在庫が増加
+IF FLAG:酒屋での累積購入額
+	在庫増加数 = MAX(FLAG:酒屋での累積購入額 / 100000 - 3, 0) + 1
+	ITEMSALES:どぶろく += RAND:在庫増加数
+	ITEMSALES:清酒     += RAND:在庫増加数
+	ITEMSALES:鬼殺し   += RAND:在庫増加数
+	ITEMSALES:甘酒     += RAND:在庫増加数
+ENDIF
+;最大数制限
+ITEMSALES:どぶろく = MIN(ITEMSALES:どぶろく, 32)
+ITEMSALES:清酒     = MIN(ITEMSALES:清酒, 24)
+ITEMSALES:鬼殺し   = MIN(ITEMSALES:鬼殺し, 16)
+ITEMSALES:甘酒     = MIN(ITEMSALES:甘酒, 32)
+;-------------------------------------------------
+;実行可能判定
+;-------------------------------------------------
+;酒屋
+
+@COM_ABLE619
+;一括管理
+SIF GLOBAL_COMABLE(619)
+	RETURN RESULT
+;酒屋ではない場所
+SIF !SAKE_SHOP(CFLAG:MASTER:現在位置)
+	RETURN 0
+;睡眠中
+SIF CFLAG:睡眠
+	RETURN 0
+;時間停止中
+SIF FLAG:70 && !MAXBASE:TARGET:TSP
+	RETURN 0
+RETURN 1
+;酒屋を判定する関数
+
+@SAKE_SHOP(ARG)
+#FUNCTION
+;酒屋
+SIF ARG == GET_MAP_REPLACEMENT(211)
+	RETURNF 1
+SIF ARG == GET_MAP_REPLACEMENT(1012)
+	RETURNF 1
+SIF ARG == GET_MAP_REPLACEMENT(1119)
+	RETURNF 1
+SIF GETBIT(HOME_CUSTOM_ROOM(ARG),1)
+	RETURNF 1
+RETURNF 0

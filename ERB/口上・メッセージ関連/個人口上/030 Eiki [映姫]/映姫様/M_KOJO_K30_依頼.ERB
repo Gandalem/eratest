@@ -1,0 +1,1600 @@
+﻿; Modular ERB: 個人口上/030 Eiki [映姫]/映姫様/M_KOJO_K30_依頼.ERB
+;==================================================
+;依頼口上・各依頼で共通の口上
+;==================================================
+
+@M_KOJO_IRAI_K30(ROLE, SCENE, IRAI_ID)
+#DIMS ROLE     ;キャラの立場、依頼者かそうでないか
+#DIMS SCENE    ;セリフの表示されるタイミング
+#DIM  IRAI_ID  ;依頼自体のID
+#DIM  CLIENT_ID;依頼者IDだけ抜き出したもの
+#DIM  CHK_ID   ;依頼IDだけ抜き出したもの
+#DIMS IRAI_NAME;依頼名
+CHK_ID    = IRAI_ID % 1000
+CLIENT_ID = IRAI_ID_TO_CLIENT(IRAI_ID)
+IRAI_NAME = %STR_DATA_IRAI(IRAI_ID, "依頼名", CLIENT_ID)%
+RESULT = 0
+IF CHK_ID > 100
+	TRYCALLFORM M_KOJO_IRAI_%IRAI_NAME%_K30(ROLE, SCENE, CLIENT_ID)
+ELSE
+	TRYCALLFORM M_KOJO_IRAI_{CHK_ID}_K30(ROLE, SCENE, CLIENT_ID)
+ENDIF
+SIF RESULT
+	RETURN 1
+;--------------------------------------------------
+;ここにあるのは各依頼で共通の口上です
+;依頼ごとの口上を表示した場合は共通の口上は表示されません
+;【】で囲ってあるのは口上前後の地の文や発生する処理です
+;WAITをするか等の目安にしてください（L,WはそれぞれPRINTFORML,PRINTFORMWの略）
+;--------------------------------------------------
+SELECTCASE SCENE
+	CASE "依頼提示時"
+		;●依頼を持ちかけられる時
+		;【W どうやら［彼女］は［あなた］に頼み事があるようだ】
+		;【◆口上】
+		;【依頼データ表示】
+		;【INPUT（受託するかY/N）】
+	CASE "依頼非受託時"
+		;●内容だけ見て受託しなかった時
+		;【L ［あなた］は丁重にお断りした】
+		PRINTFORML 「...그렇단 말인가. 어쩔 수 없겠지.」
+		;【W ［彼女］は残念そうな顔をしている】
+	CASE "依頼受託時"
+		;●依頼を受託した時
+		;【W ［あなた］は［彼女］の依頼を受けた】
+		PRINTFORMW 「대단히 감사합니다. 좋은 결과가 있기를 기대하겠습니다.」
+	CASE "依頼確認時"
+		;●[366]で依頼内容を依頼人に確認した時
+		PRINTFORML 「뭔가 잘못됐나? 집중해라.」
+		;【依頼データ表示】
+		;【INPUT（破棄するかY/N）】
+	CASE "依頼破棄時"
+		;●受託した依頼を破棄する時
+		PRINTFORML 「...알겠다. 그럼 그렇게 하지.」
+		;【W 依頼を破棄しました。】
+	CASE "依頼実行直前"
+		;●[367]で依頼を実行する時、実行処理の前に呼び出される
+		;※依頼によって状況が大きく異なるので共通口上は非推奨
+		;【◆口上】
+		;【実行時の地の文・ソース等】
+		;【▼下の口上に続く】
+		IF ROLE == "CLIENT"
+			;（共通）CLIENT：依頼実行の対象と依頼主（口上主）が同一の場合（主に特訓系ですが一緒に捜索等をした場合も含まれます）
+		ELSEIF ROLE == "TARGET"
+			;（共通）TARGET：口上主が依頼実行の対象である場合（主に配達系ですが捜索等をした際、TARGETにしていた場合も含まれます）
+		ENDIF
+	CASE "依頼実行直後"
+		;●[367]で依頼を実行する時、実行処理の後に呼び出される
+		;※依頼によって状況が大きく異なるので共通口上は非推奨
+		;【▲上の口上から続き】
+		;【◆口上】
+		;【達成時・CLIENT：▼下の口上に続く】
+		;【達成時・TARGET：忘れずに［依頼主］に報告しよう】
+		IF ROLE == "CLIENT"
+			;（共通）CLIENT：依頼実行の対象と依頼主（口上主）が同一の場合（主に特訓系ですが一緒に捜索等をした場合も含まれます）
+			SELECTCASE CFLAG:CLIENT_ID:依頼状況
+				CASE 2
+					;実行後未解決
+				CASE 3
+					;実行後達成
+				CASE 6
+					;実行後失敗（現在「06_誰か教えて！」のみ）
+			ENDSELECT
+		ELSEIF ROLE == "TARGET"
+			;（共通）TARGET：口上主が依頼実行の対象である場合（主に配達系ですが捜索等をした際、TARGETにしていた場合も含まれます）
+			SELECTCASE CFLAG:CLIENT_ID:依頼状況
+				CASE 2
+					;実行後未解決
+				CASE 3
+					;実行後達成
+				CASE 6
+					;実行後失敗（現在「06_誰か教えて！」のみ）
+			ENDSELECT
+		ENDIF
+	CASE "成功報告時"
+		;●報告時（成功）
+		;【依頼実行と報告が同時の時：▲上の口上から続き】
+		IF CFLAG:30:初期位置 == CFLAG:MASTER:初期位置 || TALENT:恋人
+			PRINTFORML 「정말 고마워요.」
+			PRINTFORML 「보답하도록 할게요.」
+		ELSE
+			PRINTFORML 「정말 고맙습니다. 약속했던 보상입니다.」
+		ENDIF
+		;【ソースの入手・アイテム等の報酬獲得】
+	CASE "失敗報告時"
+		;○直接失敗報告は現在「06_誰か教えて！」のみ
+		;●報告忘れ・期限切れになった際、遭遇時の最後に呼び出される
+		;（遭遇時）【挨拶等】→【機嫌の良し悪し】→【劣情察知】→【祭日イベント】→【◆ココ！】（尚、依頼失敗判定があるとデートのお誘いは発生しません）
+		PRINTFORML 「%K30_C_NAME(MASTER)%는, 당신이 야마와 약속을 했다는 점을 감안하면, 그저 "잊었다"고 말하는 것이 조금 믿기 어렵다.」
+		PRINTFORMW 「...과거의 실수를 곱씹어봤자 소용없다. 다음에는 좀 더 조심해 주길 바란다.」
+		TALENT:30:機嫌 = MIN(TALENT:30:機嫌, 0)
+		;○機嫌の変化や追加のペナルティ等は口上側で処理してください
+	CASE "依頼報告不要"
+		;○一般依頼では現在「02_お花に水をあげて」「09_誰かの落とし物」のみ
+		;●起床時、報告不要依頼を達成していた場合に呼ばれる口上
+		;（起床時）【起床メッセージ】→【X時間寝た等】→【◆ココ！】→【おみくじ・補充等】→【一日開始】
+		;○地の文はありません
+		;○口上主がその場にいなくても表示されます（MASTERが寝る時のイベント口上と同じタイプ）
+ENDSELECT
+RETURN 1
+;==================================================
+;依頼口上・一般依頼01：掃除を手伝って
+;==================================================
+
+@M_KOJO_IRAI_1_K30(ROLE, SCENE, CLIENT_ID)
+#DIMS ROLE     ;キャラの立場、依頼者かそうでないか
+#DIMS SCENE    ;セリフの表示されるタイミング
+#DIM  CLIENT_ID;依頼者IDだけ抜き出したもの
+;--------------------------------------------------
+;RETURN 0 の部分は共通の口上が表示されます
+;依頼ごとの口上を表示する部分は RETURN 0 を RETURN 1 にしてください
+;--------------------------------------------------
+SELECTCASE SCENE
+	CASE "依頼提示時"
+		IF CFLAG:30:初期位置 == CFLAG:MASTER:初期位置
+			PRINTFORML 「우리 방 좀 깨끗하게 치우는 게 어떨까?」
+		ELSEIF TALENT:30:恋慕
+			PRINTFORML 「일 때문에 너무 정신이 없어서 요즘 청소할 시간이 없었어...」
+			PRINTFORML 「혹시 도움을 좀 청해도 될까?」
+		ELSE
+			PRINTFORML 「%K30_C_NAME(MASTER)%는 시간이 좀 있군, 그렇지 않아?」
+		ENDIF
+		RETURN 1
+	CASE "依頼非受託時"
+		RETURN 0
+	CASE "依頼受託時"
+		IF CFLAG:30:初期位置 == CFLAG:MASTER:初期位置
+			PRINTFORMW 「이 청소, 빨리 끝내자.」
+		ELSEIF TALENT:30:恋慕
+			PRINTFORMW 「이런 것을 부탁드리게 되어 죄송합니다... 감사합니다.」
+		ELSE
+			PRINTFORMW 「그럼, 당신의 도움에 의지할게요. 정말로 감사해요.」
+		ENDIF
+		RETURN 1
+	CASE "依頼確認時"
+		RETURN 0
+	CASE "依頼破棄時"
+		RETURN 0
+	CASE "依頼実行直前"
+		;○この依頼は依頼主がTARGETです
+		IF YOGORE:(GET_CHARAHOME(TARGET)) < 1000
+			;先に掃除してしまっていた場合
+			PRINTFORML 「에... 벌써 깨끗해졌다고...?」
+			;【W ［彼女］の部屋は十分にきれいだ】
+			;【▼そのまま下の口上へ】
+			RETURN 1
+		ELSE
+			;一緒に掃除する場合
+			PRINTFORML 「우리 둘이면 금방 해결할 수 있을 거야.」
+			;【W ［あなた］は［彼女］と協力して部屋の掃除を行なった】
+			;【▼そのまま下の口上へ】
+			RETURN 1
+		ENDIF
+	CASE "依頼実行直後"
+		;○この依頼は必ず実行後達成します
+		;【▲上の口上から続き】
+		IF CFLAG:30:初期位置 == CFLAG:MASTER:初期位置 || TALENT:恋人
+			PRINTFORML 「결국은 매일 청소를 해주는 게 제일 좋겠지.」
+		ELSE
+			PRINTFORML 「정말 고마워요. 이제 아주 깨끗하네요.」
+		ENDIF
+		;【▼そのまま下の口上へ】
+		RETURN 1
+	CASE "成功報告時"
+		;報酬：低級素材
+		;【▲上の口上から続き】
+		;【報酬獲得】
+		RETURN 0
+	CASE "失敗報告時"
+		RETURN 0
+		;CASE "依頼報告不要"
+		;＜この依頼にはありません＞
+		;	RETURN 0
+ENDSELECT
+;==================================================
+;依頼口上・一般依頼02：お花に水をあげて
+;==================================================
+
+@M_KOJO_IRAI_2_K30(ROLE, SCENE, CLIENT_ID)
+#DIMS ROLE     ;キャラの立場、依頼者かそうでないか
+#DIMS SCENE    ;セリフの表示されるタイミング
+#DIM  CLIENT_ID;依頼者IDだけ抜き出したもの
+;--------------------------------------------------
+;RETURN 0 の部分は共通の口上が表示されます
+;依頼ごとの口上を表示する部分は RETURN 0 を RETURN 1 にしてください
+;--------------------------------------------------
+SELECTCASE SCENE
+	CASE "依頼提示時"
+		IF CFLAG:30:初期位置 == CFLAG:MASTER:初期位置
+			PRINTFORML 「우리 둘 다 오늘 아침에 이걸 잊어버린 것 같아...」
+		ELSEIF TALENT:30:恋慕
+			PRINTFORML 「내가 처리해야 할 다른 일이 좀 있어서 말이야... 이것 좀 도와줄 수 있을까?」
+		ELSE
+			PRINTFORML 「%K30_C_NAME(MASTER)%는 시간이 좀 있군, 그렇지 않아?」
+		ENDIF
+		RETURN 1
+	CASE "依頼非受託時"
+		RETURN 0
+	CASE "依頼受託時"
+		IF CFLAG:30:初期位置 == CFLAG:MASTER:初期位置 || TALENT:恋人
+			PRINTFORMW 「고마워, 너에게 맡길게.」
+		ELSE
+			PRINTFORMW 「정말 감사합니다.」
+		ENDIF
+		RETURN 1
+	CASE "依頼確認時"
+		RETURN 0
+	CASE "依頼破棄時"
+		RETURN 0
+	CASE "依頼実行直前"
+		;【◆口上】
+		;【W ［あなた］は［依頼主］の家の鉢植えや植木に水をあげた】
+		;【▼そのまま下の口上へ】
+		IF ROLE == "CLIENT"
+			;水やりした時、依頼主である口上主がTARGETの場合
+			RETURN 0
+		ELSEIF ROLE == "TARGET"
+			;水やりした時、依頼主ではない口上主がTARGETの場合
+			RETURN 0
+		ENDIF
+	CASE "依頼実行直後"
+		;○この依頼は必ず実行後達成します
+		;【▲上の口上から続き】
+		;【◆口上】
+		IF ROLE == "CLIENT"
+			;水やりした時、依頼主である口上主がTARGETの場合
+			;この場合はそのまま下の口上へ続きます
+			RETURN 0
+		ELSEIF ROLE == "TARGET"
+			;水やりした時、依頼主ではない口上主がTARGETの場合
+			RETURN 0
+		ENDIF
+	CASE "成功報告時"
+		;報酬：\500
+		RETURN 0
+	CASE "失敗報告時"
+		RETURN 0
+	CASE "依頼報告不要"
+		RETURN 0
+ENDSELECT
+;==================================================
+;依頼口上・一般依頼03：いっしょにあそぼ
+;※この依頼は[幼稚]を持っているキャラのみ発生します
+;==================================================
+
+@M_KOJO_IRAI_3_K30(ROLE, SCENE, CLIENT_ID)
+#DIMS ROLE     ;キャラの立場、依頼者かそうでないか
+#DIMS SCENE    ;セリフの表示されるタイミング
+#DIM  CLIENT_ID;依頼者IDだけ抜き出したもの
+;--------------------------------------------------
+;RETURN 0 の部分は共通の口上が表示されます
+;依頼ごとの口上を表示する部分は RETURN 0 を RETURN 1 にしてください
+;--------------------------------------------------
+SELECTCASE SCENE
+	CASE "依頼提示時"
+		RETURN 0
+	CASE "依頼非受託時"
+		RETURN 0
+	CASE "依頼受託時"
+		RETURN 0
+	CASE "依頼確認時"
+		RETURN 0
+	CASE "依頼破棄時"
+		RETURN 0
+	CASE "依頼実行直前"
+		;○この依頼は依頼主がTARGETです
+		;【◆口上】
+		;【W ［あなた］は［彼女］と遊んだ】
+		;【▼そのまま下の口上へ】
+		RETURN 0
+	CASE "依頼実行直後"
+		;○この依頼は必ず実行後達成します
+		;【▲上の口上から続き】
+		;【◆口上】
+		;【▼そのまま下の口上へ】
+		RETURN 0
+	CASE "成功報告時"
+		;報酬：好感度と信頼度のみ（機嫌が良くなる）
+		;【▲上の口上から続き】
+		;【◆口上】
+		RETURN 0
+	CASE "失敗報告時"
+		RETURN 0
+		;CASE "依頼報告不要"
+		;＜この依頼にはありません＞
+		;	RETURN 0
+ENDSELECT
+;==================================================
+;依頼口上・一般依頼04：料理上手になりたい
+;==================================================
+
+@M_KOJO_IRAI_4_K30(ROLE, SCENE, CLIENT_ID)
+#DIMS ROLE     ;キャラの立場、依頼者かそうでないか
+#DIMS SCENE    ;セリフの表示されるタイミング
+#DIM  CLIENT_ID;依頼者IDだけ抜き出したもの
+;--------------------------------------------------
+;RETURN 0 の部分は共通の口上が表示されます
+;依頼ごとの口上を表示する部分は RETURN 0 を RETURN 1 にしてください
+;--------------------------------------------------
+SELECTCASE SCENE
+	CASE "依頼提示時"
+		PRINTFORML 「요리 연습에 도움을 좀 청해도 될까요?」
+		IF TALENT:30:恋慕
+			PRINTFORML 「...내가 요리해 줄 수 있는 사람에게 부탁하는 게 조금 이상하게 느껴지지만...」
+			PRINTFORML 「결국 네가 내가 가장 믿을 수 있는 사람이니까.」
+		ELSE
+			PRINTFORML 「레시피만으로는 도저히 이해할 수 없는 것들이 있다.」
+			PRINTFORML 「누군가 지켜보고 도와주는 게 가장 좋을 것 같다.」
+		ENDIF
+		RETURN 1
+	CASE "依頼非受託時"
+		RETURN 0
+	CASE "依頼受託時"
+		PRINTFORML 「정말 감사합니다. 최선을 다할 테니, 적절한 지도를 부탁드립니다, 알겠죠?」
+		RETURN 1
+	CASE "依頼確認時"
+		RETURN 0
+	CASE "依頼破棄時"
+		RETURN 0
+	CASE "依頼実行直前"
+		;○この依頼は依頼主がTARGETです
+		IF ABL:30:料理技能 < 2
+			PRINTFORML 「음, 뭘 먼저 해야 할까...」
+		ELSEIF ABL:30:料理技能 < 4
+			PRINTFORML 「대충 감은 잡았는데...」
+		ELSE
+			PRINTFORML 「후후후, 솔직히 말하면 당신과 요리하고 싶었을 뿐이야.」
+		ENDIF
+		;【L ［あなた］は［彼女］と一緒に料理をした】
+		;【W ［料理名］を作ります】
+		;【▼そのまま下の口上へ】
+		RETURN 0
+	CASE "依頼実行直後"
+		;○この依頼は必ず実行後達成します
+		;【▲上の口上から続き】
+		IF ABL:30:料理技能 < 2
+			PRINTFORML 「끝났다... 정말 성취감이 느껴지는군.」
+		ELSEIF ABL:30:料理技能 < 4
+			PRINTFORML 「잘 만들어진 것 같네.」
+		ELSE
+			PRINTFORML 「모든 것이 완벽하게 나온 것 같아♪」
+		ENDIF
+		;【▼そのまま下の口上へ】
+		RETURN 1
+	CASE "成功報告時"
+		;報酬：\500
+		;【▲上の口上から続き】
+		IF TALENT:恋慕
+			PRINTFORML 「오늘 도와줘서 고마워.」
+			PRINTFORML 「감사의 작은 기념품이야.」
+		ELSE
+			PRINTFORML 「오늘 가르쳐 주셔서 감사합니다.」
+			PRINTFORML 「우리가 합의한 지불을 여기에 드립니다.」
+		ENDIF
+		PRINTFORML 「완성된 요리를 먹어볼까요?」
+		;【報酬獲得】
+		;【L できた料理は二人でいっしょに頂いた】
+		;【食事効果（料理採点）】
+		RETURN 1
+	CASE "失敗報告時"
+		RETURN 0
+		;CASE "依頼報告不要"
+		;＜この依頼にはありません＞
+		;	RETURN 0
+ENDSELECT
+;==================================================
+;依頼口上・一般依頼05：特訓につきあって
+;==================================================
+
+@M_KOJO_IRAI_5_K30(ROLE, SCENE, CLIENT_ID)
+#DIMS ROLE     ;キャラの立場、依頼者かそうでないか
+#DIMS SCENE    ;セリフの表示されるタイミング
+#DIM  CLIENT_ID;依頼者IDだけ抜き出したもの
+;--------------------------------------------------
+;RETURN 0 の部分は共通の口上が表示されます
+;依頼ごとの口上を表示する部分は RETURN 0 を RETURN 1 にしてください
+;--------------------------------------------------
+SELECTCASE SCENE
+	CASE "依頼提示時"
+		IF K30_CHECK_HEN_T()
+			PRINTFORML 「%K30_C_NAME(MASTER)%, 한 판 하시겠어요?」
+			PRINTFORML 「물론 당신 스스로의 능력에 절대적인 확신이 있겠지만...」
+			PRINTFORML 「저도 스트레스를 좀 풀려고 하거든요...」
+		ELSE
+			PRINTFORML 「단막 대결 어떠세요?」
+			PRINTFORML 「그 정도의 전투능력을 얻기 위해서는 얼마나 많은 훈련이 필요한 건지...」
+			PRINTFORML 「직접 여쭤보는 게 제일 좋을 것 같네요.」
+		ENDIF
+		RETURN 1
+	CASE "依頼非受託時"
+		RETURN 0
+	CASE "依頼受託時"
+		IF K30_CHECK_HEN_T()
+			PRINTFORMW 「...그럼 바로 시작하자.」
+		ELSE
+			PRINTFORMW 「정말 감사합니다. 언제든지 준비되어 있습니다.」
+		ENDIF
+		RETURN 1
+	CASE "依頼確認時"
+		RETURN 0
+	CASE "依頼破棄時"
+		RETURN 0
+	CASE "依頼実行直前"
+		;○この依頼は依頼主がTARGETです
+		IF K30_CHECK_HEN_T()
+			PRINTFORML 「미리 사과해야 할 것 같군... 준비가 되었겠지?」
+		ELSE
+			PRINTFORML 「그럼 시작해 볼까?」
+		ENDIF
+		;【W ［あなた］は［彼女］と弾幕ごっこの特訓をした】
+		;【▼そのまま下の口上へ】
+		RETURN 1
+	CASE "依頼実行直後"
+		;○この依頼は必ず実行後達成します
+		;【▲上の口上から続き】
+		CALL K30_D_LINE
+		PRINTFORML
+		IF K30_CHECK_HEN_T()
+			PRINTDATADL
+				DATAFORM 이키의 불가능할 정도로 잔혹한 단막(彈幕)에 맞서, 당신은 일방적인 패배를 당한다...
+				DATAFORM 이키의 무자비한 공격에 맞서, 당신은 끝없는 포화로 박살 난 채 남는다...
+				DATAFORM 이키 분노의 전면적인 힘에 맞서, 당신은 순식간에 패배한다...
+			ENDDATA
+			PRINTFORML 「…죄송합니다.」
+			PRINTDATAL
+				DATAFORM 「나도... 참을 수가 없었어.」
+				DATAFORM 「오늘은 내가... 좀 과했던 것 같아.」
+				DATAFORM 「야마(山)로서조차 경기 규칙을 지키지 못했군...」
+			ENDDATA
+			PRINTFORMW 에이키는 \@ TALENT:機嫌 == -1 ? 간신히 감춘 짜증 # 공허하고 생기 없는 눈으로 짧게 사과했다 \@.
+			RETURN 1
+		ELSEIF RAND:2 == 1
+			PRINTDATADL
+				DATAFORM 결국 당신은 믿을 수 없는 역전 승리를 거둔다.
+				DATAFORM 결국 당신은 일련의 주고받는 교전 끝에 승리한다.
+				DATAFORM 결국 당신은 에이키를 압도하고 경기를 지배한다.
+			ENDDATA
+			PRINTDATAW
+				DATAFORM 「나 자신을 더 단련해야 할 것 같다.」
+				DATAFORM 「네가 비범하게 실력이 있다는 건 알지만, 나 자신이 조금 아쉽다.」
+				DATAFORM 「너의 강함에는 정말 끝이 없는 것 같다.」
+			ENDDATA
+		ELSE
+			PRINTDATADL
+				DATAFORM 결국 에이키는 믿을 수 없는 역전승을 거둔다.
+				DATAFORM 결국 에이키는 일련의 주고받는 교전을 끝에 승리한다.
+				DATAFORM 결국 에이키는 당신을 압도하며 경기를 지배한다.
+			ENDDATA
+			PRINTDATAW
+				DATAFORM 「나 스스로의 명성에 부응할 수 있었던 것 같다.」
+				DATAFORM 「순수한 전투능력에는 큰 차이가 없지만, 결국 매일의 규율이 결정적인 요인이었던 것 같다.」
+				DATAFORM 「...미래의 대결도 같은 결과를 보장하지는 않는다」\n「나 자신도 계속 훈련해야 한다.」
+			ENDDATA
+		ENDIF
+		PRINTFORML 「자, 그럼 처음부터 우리의 경기에 대해 이야기해 봅시다.」
+		PRINTFORMDW 당신은 트레이닝 세션 후에도 에이키와 함께 철저한 경기 분석을 진행한다...
+		;【▼そのまま下の口上へ】
+		RETURN 1
+	CASE "成功報告時"
+		;報酬：\500
+		;【▲上の口上から続き】
+		PRINTFORML 
+		IF K30_CHECK_HEN_T()
+			PRINTFORML 「오늘 나를 이해해 주셔서 감사합니다.」
+			PRINTFORML 「......」
+			PRINTFORML 「귀찮게 해드린 것에 대한 보상으로 약간의 추가 보상을 준비했습니다.」
+			PRINTFORML 
+			PRINTFORMDL 에이키가 합의된 가격과 함께 초콜릿을 당신에게 건넨다.
+			CALL GET_ITEM("チョコレート", 1, 1)
+		ELSE
+			PRINTFORML 「오늘 저와 스파링해주셔서 감사합니다.」
+			PRINTFORML 「이번 기회가 제 전투 능력을 재평가하기에 좋은 기회였다고 생각합니다.」
+			PRINTFORML 「앞으로도 다시 한번 도움을 주시길 바랍니다.」
+		ENDIF
+		;【報酬獲得】
+		RETURN 1
+	CASE "失敗報告時"
+		RETURN 0
+		;CASE "依頼報告不要"
+		;＜この依頼にはありません＞
+		;	RETURN 0
+ENDSELECT
+;==================================================
+;依頼口上・一般依頼06：誰か教えて！
+;==================================================
+
+@M_KOJO_IRAI_6_K30(ROLE, SCENE, CLIENT_ID)
+#DIMS ROLE     ;キャラの立場、依頼者かそうでないか
+#DIMS SCENE    ;セリフの表示されるタイミング
+#DIM  CLIENT_ID;依頼者IDだけ抜き出したもの
+;--------------------------------------------------
+;RETURN 0 の部分は共通の口上が表示されます
+;依頼ごとの口上を表示する部分は RETURN 0 を RETURN 1 にしてください
+;--------------------------------------------------
+SELECTCASE SCENE
+	CASE "依頼提示時"
+		PRINTFORML 「밖에 대한 무언가를 알아야 할 것 같다...」
+		PRINTFORML 「자네가 가장 적합한 사람이겠지라고 생각한다.」
+		RETURN 1
+	CASE "依頼非受託時"
+		RETURN 0
+	CASE "依頼受託時"
+		RETURN 0
+	CASE "依頼確認時"
+		RETURN 0
+	CASE "依頼破棄時"
+		RETURN 0
+	CASE "依頼実行直前"
+		IF IS_LIBRARY(CFLAG:MASTER:現在位置) && TARGET == CLIENT_ID
+			;［しらべもの］と［教えてあげる］が重なっている場合
+			;【◆口上】
+			;【L ［あなた］は［彼女］の疑問に答えるために［現在地］を訪れた】
+			;【L ここなら役に立つ資料が見つかりそうだ】
+			;【INPUT（しらべもの/教えてあげる）】
+			;【しらべもの＞［あなた］と［彼女］は［現在地］で調べ物をした】
+			;【▼そのまま下の口上へ】
+			;【教えてあげる＞［教えてあげる］へジャンプ】
+			RETURN 0
+		ELSEIF IS_LIBRARY(CFLAG:MASTER:現在位置)
+			;［しらべもの］をした時、依頼主ではない口上主がTARGETの場合
+			;【◆口上】
+			;【［あなた］は［現在地］で調べ物をした】
+			;【▼そのまま下の口上へ】
+			RETURN 0
+		ELSE
+			;［教えてあげる］時（依頼主がTARGET）
+			;【◆口上】
+			;【L ［あなた］は［彼女］の疑問に答えた】
+			;【成功：［彼女］の疑問は氷解した！】
+			;【失敗：［彼女］は納得できなかったようだ……】
+			;【▼そのまま下の口上へ】
+			RETURN 0
+		ENDIF
+	CASE "依頼実行直後"
+		;【▲上の口上から続き】
+		;【◆口上】
+		SELECTCASE CFLAG:CLIENT_ID:依頼状況
+			CASE 2
+				;［しらべもの］をした時
+				IF ROLE == "CLIENT"
+					;一緒に［しらべもの］をした時
+					RETURN 0
+				ELSEIF ROLE == "TARGET"
+					;依頼主ではない口上主の前で［しらべもの］をした時
+					RETURN 0
+				ENDIF
+			CASE 3
+				;成功した時
+				;【▼そのまま下の口上へ】
+				PRINTDATAL
+					DATAFORM 「알겠다... 그것은 나에게 상당한 참고가 될 것이다.」
+					DATAFORM 「...직접 경험을 한 사람에게 묻는 것이 가장 좋겠군, 예상대로 말이야.」
+					DATAFORM 「...그런 거였구나.\n내가 스스로 알기는 불가능했을 거야.」
+				ENDDATA
+				RETURN 1
+			CASE 6
+				;失敗した時
+				;【▼そのまま失敗報告時の口上へ】
+				PRINTDATAL
+					DATAFORM 「음?」\n「그렇게 들리지 않는데...」
+					DATAFORM 「...나를 도와주려 했던 건 고맙게 생각하지만.」\n「하지만 그 설명은 일관성이 없다고 생각해.」
+					DATAFORM 「...어느 정도는 말이 되긴 하지만...」\n「뭔가 뭔가 좀 이상한 것 같아...?」
+				ENDDATA
+				RETURN 1
+		ENDSELECT
+	CASE "成功報告時"
+		;報酬：\500
+		RETURN 0
+	CASE "失敗報告時"
+		PRINTFORML 「시간 내주셔서 감사하지만...」
+		PRINTFORMW 「그 설명은 도저히 받아들일 수가 없네요...」
+		PRINTFORML 「...그래도, 우리가 합의했던 보상입니다.」
+		PRINTFORML 
+		PRINTFORMDL ￥500을 획득했다.
+		MONEY += 500
+		RETURN 1
+		;CASE "依頼報告不要"
+		;＜この依頼にはありません＞
+		;	RETURN 0
+ENDSELECT
+;==================================================
+;依頼口上・一般依頼07：大掃除が終わらない
+;==================================================
+
+@M_KOJO_IRAI_7_K30(ROLE, SCENE, CLIENT_ID)
+#DIMS ROLE     ;キャラの立場、依頼者かそうでないか
+#DIMS SCENE    ;セリフの表示されるタイミング
+#DIM  CLIENT_ID;依頼者IDだけ抜き出したもの
+;--------------------------------------------------
+;RETURN 0 の部分は共通の口上が表示されます
+;依頼ごとの口上を表示する部分は RETURN 0 を RETURN 1 にしてください
+;--------------------------------------------------
+SELECTCASE SCENE
+	CASE "依頼提示時"
+		IF CFLAG:30:初期位置 == CFLAG:MASTER:初期位置
+			PRINTFORML 「우리 방 청소해야 할 것 같은데, 그렇지 않아?」
+		ELSE
+			PRINTFORML 「다른 일들에 너무 정신이 팔려서 계속 미루게 되었어...」
+			PRINTFORML 「나 이거 좀 도와줄 수 있을까?」
+		ENDIF
+		RETURN 1
+	CASE "依頼非受託時"
+		RETURN 0
+	CASE "依頼受託時"
+		IF CFLAG:30:初期位置 == CFLAG:MASTER:初期位置
+			PRINTFORMW 「이 청소, 빨리 끝내자.」
+		ELSEIF TALENT:30:恋慕
+			PRINTFORMW 「이런 것을 부탁드리게 되어 죄송합니다... 감사합니다.」
+		ELSE
+			PRINTFORMW 「그럼, 당신의 도움에 의지할게요. 정말로 감사해요.」
+		ENDIF
+		RETURN 1
+	CASE "依頼確認時"
+		RETURN 0
+	CASE "依頼破棄時"
+		RETURN 0
+	CASE "依頼実行直前"
+		;○この依頼は依頼主がTARGETです
+		IF YOGORE:(GET_CHARAHOME(TARGET)) < 1000
+			;先に掃除してしまっていた場合
+			PRINTFORML 「아... 벌써 청소했어?」
+			;【W ［彼女］の部屋は十分にきれいだ】
+			;【▼そのまま下の口上へ】
+			RETURN 1
+		ELSE
+			;一緒に掃除する場合
+			;【◆口上】
+			PRINTFORML 「우리 둘이면 금방 해결할 수 있을 거야.」
+			;【▼そのまま下の口上へ】
+			RETURN 1
+		ENDIF
+	CASE "依頼実行直後"
+		;○この依頼は必ず実行後達成します
+		;【▲上の口上から続き】
+		;【◆口上】
+		;【▼そのまま下の口上へ】
+		RETURN 0
+	CASE "成功報告時"
+		;報酬：\1500
+		;【▲上の口上から続き】
+		;【◆口上】
+		;【報酬獲得】
+		RETURN 0
+	CASE "失敗報告時"
+		RETURN 0
+		;CASE "依頼報告不要"
+		;＜この依頼にはありません＞
+		;	RETURN 0
+ENDSELECT
+;==================================================
+;依頼口上・一般依頼08：手紙を届けて
+;※この依頼はキャラによっては発生しません
+;==================================================
+
+@M_KOJO_IRAI_8_K30(ROLE, SCENE, CLIENT_ID)
+#DIMS ROLE     ;キャラの立場、依頼者かそうでないか
+#DIMS SCENE    ;セリフの表示されるタイミング
+#DIM  CLIENT_ID;依頼者IDだけ抜き出したもの
+;--------------------------------------------------
+;RETURN 0 の部分は共通の口上が表示されます
+;依頼ごとの口上を表示する部分は RETURN 0 を RETURN 1 にしてください
+;--------------------------------------------------
+SELECTCASE SCENE
+	CASE "依頼提示時"
+		LOCAL = SEARCH_IRAI_EMPTY()
+		PRINTFORML 「%K30_C_NAME(MASTER)%은 지금 시간 좀 있습니까?」
+		PRINTFORML 「이 편지를 대신 전해주시면 감사하겠습니다.」
+		RETURN 1
+	CASE "依頼非受託時"
+		RETURN 0
+	CASE "依頼受託時"
+		PRINTFORML 「정말 감사합니다.」
+		PRINTFORML 「%K30_C_NAME(IRAI_SLOT_TO_PERSON(LOCAL))%에게 전달할 편지입니다.」
+		PRINTFORML 「서두를 필요는 없지만, 꼭 배달해 주시기 바랍니다.」
+		RETURN 1
+	CASE "依頼確認時"
+		RETURN 0
+	CASE "依頼破棄時"
+		PRINTFORML 「알겠다...」
+		PRINTFORML 「좋다. 그럼 편지를 나에게 돌려주게.」
+		RETURN 1
+	CASE "依頼実行直前"
+		;○この依頼では手紙を渡される側の口上です
+		;【◆口上】
+		PRINTFORML 「이것은 \@ CLIENT_ID == 49 ? 보고서 # 편 \@ 이 %K30_C_NAME(CLIENT_ID)%로부터 온 것이네...」
+		;【W ［あなた］は［彼女］に預かっていた手紙を渡した】
+		;【▼そのまま下の口上へ】
+		RETURN 1
+	CASE "依頼実行直後"
+		;○この依頼は必ず実行後達成します
+		;【▲上の口上から続き】
+		;【◆口上】
+		IF CLIENT_ID == 49
+			PRINTFORML 「%K30_C_NAME(MASTER)%는 나를 위해 이 심부름을 해줘서 고마워.」
+			PRINTFORM 「그녀를 다시 보게 되면, 부디」 
+			PRINTDATAL
+				DATAFORM 그녀에게 항상 보고를 제때 해줘서 내 감사를 전해 줘.」
+				DATAFORM 그곳의 모든 행정 처리를 신경 써준 것에 대해 내 감사를 전해 줘.」
+				DATAFORM 내 쪽에는 문제가 없으니 계속 진행해도 된다고 알려 줘.」
+			ENDDATA
+			SIF DIARY:30:17 == 0
+				CALL K30_WRITE_DIARY(17)
+		ELSEIF !STRCOUNT(CSTR:30:0, "変Ｔ")
+			PRINTFORMW 「............Eh...?」
+			PRINTFORML 「...이럴 수가.........」
+			PRINTFORMW 「......이것은...」
+			PRINTFORMW 「.........」
+			PRINTFORMW 「Hecatia님께 제가 지시를 받았다고 보고해 주세요...」
+			CALLF FIRSTTIME("変Ｔ指令")
+		ELSE
+			PRINTFORML 「혹시... 제안된 %\@ K30_CHECK_HEN_T() ? this # that \@% uniform의 제거에 대해...」
+			PRINTFORMW 「............」
+			PRINTFORML 「...소용없어... 결국...」
+			PRINTFORMW 「......」
+			PRINTFORMW 「헤카티아님께 '%TEXTR("지시를 받았습니다/즉시 시작하겠습니다/곧 후속 조치하겠습니다")%'라고 보고해 주세요...」
+		ENDIF
+		SIF CLIENT_ID == 113 && DIARY:30:18 == 0
+			CALL K30_WRITE_DIARY(18)
+		RETURN 1
+	CASE "成功報告時"
+		;報酬：素材4つ
+		RETURN 0
+	CASE "失敗報告時"
+		PRINTFORML 「%K30_C_NAME(MASTER)%, 뭔가 잊고 있는 것 같군요...?」
+		PRINTFORML 「...이것은 다른 사람들에게도 영향을 미치는 문제예요.」
+		PRINTFORML 「앞으로는 좀 더 주의해 주세요.」
+		CALL CHANGE_CFLAG(4, 30, -10)
+		PRINTFORMDL 에이키가 너에게 소름 끼치는 눈빛을 보내고 있다...
+		TALENT:30:機嫌 = MIN(TALENT:30:機嫌, 0)
+		RETURN 1
+		;CASE "依頼報告不要"
+		;＜この依頼にはありません＞
+		;	RETURN 0
+ENDSELECT
+;==================================================
+;依頼口上・一般依頼09：誰かの落とし物
+;==================================================
+
+@M_KOJO_IRAI_9_K30(ROLE, SCENE, CLIENT_ID)
+#DIMS ROLE     ;キャラの立場、依頼者かそうでないか
+#DIMS SCENE    ;セリフの表示されるタイミング
+#DIM  CLIENT_ID;依頼者IDだけ抜き出したもの
+;--------------------------------------------------
+;RETURN 0 の部分は共通の口上が表示されます
+;依頼ごとの口上を表示する部分は RETURN 0 を RETURN 1 にしてください
+;--------------------------------------------------
+SELECTCASE SCENE
+	CASE "依頼提示時"
+		PRINTFORML 「%K30_C_NAME(MASTER)%, 이것은 정조를 쌓기에 아주 좋은 기회이다.」
+		PRINTFORML 「누군가의 잃어버린 물건을 찾았다. 주인을 찾아 돌려주도록 해 달라.」
+		RETURN 1
+	CASE "依頼非受託時"
+		RETURN 0
+	CASE "依頼受託時"
+		RETURN 0
+	CASE "依頼確認時"
+		RETURN 0
+	CASE "依頼破棄時"
+		RETURN 0
+	CASE "依頼実行直前"
+		;○この依頼では落とし物を渡される側の口上です
+		PRINTFORML 「흠...? 이건... 내...?」
+		PRINTFORML 「How did you come into possession of...?」
+		;【W ［あなた］は［彼女］に預かっていた落とし物を返した】
+		;【▼そのまま下の口上へ】
+		RETURN 1
+	CASE "依頼実行直後"
+		;○この依頼は必ず実行後達成します
+		;【▲上の口上から続き】
+		PRINTFORML 「알겠다. %K30_C_NAME(CLIENT_ID)%이 이것을 당신에게 맡겼구나...」
+		PRINTFORML 「%K30_C_NAME(MASTER)%, %K30_C_NAME(CLIENT_ID)%에게 나의 진심 어린 감사를 전해다오.」
+		PRINTFORML 「그리고 나에게 이걸 돌려주는 시간을 내준 당신에게도 고마워.」
+		RETURN 1
+	CASE "成功報告時"
+		;報酬：上級素材
+		RETURN 0
+	CASE "失敗報告時"
+		RETURN 0
+	CASE "依頼報告不要"
+		RETURN 0
+ENDSELECT
+;==================================================
+;依頼口上・一般依頼10：どうしてもみつからない（場所探しパターン）
+;==================================================
+
+@M_KOJO_IRAI_10_K30(ROLE, SCENE, CLIENT_ID)
+#DIMS ROLE     ;キャラの立場、依頼者かそうでないか
+#DIMS SCENE    ;セリフの表示されるタイミング
+#DIM  CLIENT_ID;依頼者IDだけ抜き出したもの
+;--------------------------------------------------
+;RETURN 0 の部分は共通の口上が表示されます
+;依頼ごとの口上を表示する部分は RETURN 0 を RETURN 1 にしてください
+;--------------------------------------------------
+SELECTCASE SCENE
+	CASE "依頼提示時"
+		PRINTFORML 「이 잃어버린 물건을 가져다주시겠어요?」
+		PRINTFORML 「...이것은 우리 둘만의 비밀이지만, 제 부하 중 한 명이 이걸 잃어버린 것 같습니다.」
+		PRINTFORML 「그들이 깨닫고 낙담하기 전에 조용히 돌려주고 싶습니다.」
+		PRINTFORML 「그리고 가능하다면 이 일은 비밀로 해 주셨으면 합니다.」
+		RETURN 1
+	CASE "依頼非受託時"
+		RETURN 0
+	CASE "依頼受託時"
+		RETURN 0
+	CASE "依頼確認時"
+		RETURN 0
+	CASE "依頼破棄時"
+		RETURN 0
+	CASE "依頼実行直前"
+		;【◆口上】
+		;【W あたりを探していた［あなた］はついに探していた落とし物を発見した】
+		;【▼そのまま下の口上へ】
+		IF ROLE == "CLIENT"
+			;依頼主である口上主と一緒に発見した場合
+			RETURN 0
+		ELSEIF ROLE == "TARGET"
+			;発見した時、依頼主ではない口上主がTARGETの場合
+			RETURN 0
+		ENDIF
+	CASE "依頼実行直後"
+		;○この依頼は必ず実行後達成します
+		;【▲上の口上から続き】
+		;【◆口上】
+		IF ROLE == "CLIENT"
+			;依頼主である口上主と一緒に発見した場合
+			RETURN 0
+		ELSEIF ROLE == "TARGET"
+			;発見した時、依頼主ではない口上主がTARGETの場合
+			RETURN 0
+		ENDIF
+	CASE "成功報告時"
+		;報酬：上級素材2つ
+		RETURN 0
+	CASE "失敗報告時"
+		RETURN 0
+		;CASE "依頼報告不要"
+		;＜この依頼にはありません＞
+		;	RETURN 0
+ENDSELECT
+;==================================================
+;依頼口上・一般依頼11：どうしてもみつからない（人物探しパターン）
+;==================================================
+
+@M_KOJO_IRAI_11_K30(ROLE, SCENE, CLIENT_ID)
+#DIMS ROLE     ;キャラの立場、依頼者かそうでないか
+#DIMS SCENE    ;セリフの表示されるタイミング
+#DIM  CLIENT_ID;依頼者IDだけ抜き出したもの
+;--------------------------------------------------
+;RETURN 0 の部分は共通の口上が表示されます
+;依頼ごとの口上を表示する部分は RETURN 0 を RETURN 1 にしてください
+;--------------------------------------------------
+SELECTCASE SCENE
+	CASE "依頼提示時"
+		PRINTFORML 「이 잃어버린 물건을 가져다주시겠어요?」
+		PRINTFORML 「...이것은 우리 둘만의 비밀이지만, 제 부하 중 한 명이 이걸 잃어버린 것 같습니다.」
+		PRINTFORML 「그들이 깨닫고 낙담하기 전에 조용히 돌려주고 싶습니다.」
+		PRINTFORML 「그리고 가능하다면 이 일은 비밀로 해 주셨으면 합니다.」
+		RETURN 1
+	CASE "依頼非受託時"
+		RETURN 0
+	CASE "依頼受託時"
+		RETURN 0
+	CASE "依頼確認時"
+		RETURN 0
+	CASE "依頼破棄時"
+		RETURN 0
+	CASE "依頼実行直前"
+		;○この依頼では失くしもの持っていた側の口上です
+		PRINTFORML 「그렇다면... 내가 가지고 있는 것이 이 아이일까요?」
+		;【W 聞き込みを続けていた［あなた］はついに探していた落とし物を発見した】
+		;【▼そのまま下の口上へ】
+		RETURN 1
+	CASE "依頼実行直後"
+		;○この依頼は必ず実行後達成します
+		;【▲上の口上から続き】
+		PRINTFORML 「주인을 찾아주셔서 다행이네요.」
+		PRINTFORML 「결국 누군가를 고용해 찾을 가치가 있을 만큼 중요한 물건이었으니까요.」
+		PRINTFORML 「%K30_C_NAME(CLIENT_ID)%」에게 서둘러 이걸 돌려주세요.
+		RETURN 1
+	CASE "成功報告時"
+		;報酬：\3200
+		RETURN 0
+	CASE "失敗報告時"
+		RETURN 0
+		;CASE "依頼報告不要"
+		;＜この依頼にはありません＞
+		;	RETURN 0
+ENDSELECT
+;==================================================
+;依頼口上・一般依頼12：懲らしめて！
+;==================================================
+
+@M_KOJO_IRAI_12_K30(ROLE, SCENE, CLIENT_ID)
+#DIMS ROLE     ;キャラの立場、依頼者かそうでないか
+#DIMS SCENE    ;セリフの表示されるタイミング
+#DIM  CLIENT_ID;依頼者IDだけ抜き出したもの
+;--------------------------------------------------
+;RETURN 0 の部分は共通の口上が表示されます
+;依頼ごとの口上を表示する部分は RETURN 0 を RETURN 1 にしてください
+;--------------------------------------------------
+SELECTCASE SCENE
+	CASE "依頼提示時"
+		LOCAL = SEARCH_IRAI_EMPTY()
+		PRINTFORML 「잠깐 시간 좀 있나요?」
+		PRINTFORML 「저를 대리해서 단마쿠 배틀에서 누군가를 물리쳐 주셨으면 합니다.」
+		PRINTFORML 「제가 직접 가거나 부하 중 한 명이 가면 난장판이 될 것 같아서...」
+		PRINTFORML 「하지만 당신이 대신 가준다면 큰 문제는 피할 수 있을 겁니다.」
+		PRINTFORML 「이것을 당신에게 맡길 수 있다고 생각하시나요?」
+		RETURN 1
+	CASE "依頼非受託時"
+		RETURN 0
+	CASE "依頼受託時"
+		PRINTFORML 「정말 고마워요.」
+		PRINTFORML 「그럼 이 단막 배틀을 %K30_C_NAME(IRAI_SLOT_TO_PERSON(LOCAL))%에게 맡기겠어요.」
+		PRINTFORML 「그리고 주의할 점이 하나 있는데요...」
+		SELECTCASE ABL:MASTER:戦闘能力
+			CASE 1, 2
+				PRINTFORML 「너무 무리하지 마세요. 심각한 부상을 피하는 데 집중해 주세요.」
+			CASE 3, 4
+				PRINTFORML 「두 분의 능력을 모두 고려하면 주변 지역에 피해가 발생할 가능성이 있습니다.」
+				PRINTFORML 「제멋대로 행동하거나 불필요하게 강력한 능력을 사용하는 것은 자제해 주십시오.」
+			CASE IS > 4
+				PRINTFORML 「두 분이 전 능력을 발휘한다면, 주변 지역 전체를 폐허로 만들 수도 있을 겁니다...」
+				PRINTFORML 「우리는 볼만한 광경을 피하려고 노력 중이라는 것을 기억해 주십시오.」
+		ENDSELECT
+		RETURN 1
+	CASE "依頼確認時"
+		RETURN 0
+	CASE "依頼破棄時"
+		RETURN 0
+	CASE "依頼実行直前"
+		;○この依頼では討伐される側の口上です
+		IF CANNOT_DANMAKU() == 1
+			;屋内のとき（勝負できない）
+			;【◆口上】
+			;【W 屋外で挑もう…】
+			RETURN 0
+		ELSEIF CANNOT_DANMAKU() == 2
+			;仕事中（勝負できない）
+			;【◆口上】
+			;【W お取り込み中だ…】
+			RETURN 0
+		ELSEIF CANNOT_DANMAKU() == 3
+			;あなたが疲労中（勝負できない）
+			;【◆口上】
+			;【W 今は疲れている…】
+			RETURN 0
+		ELSEIF CANNOT_DANMAKU() == 4
+			;口上主が疲労竜（勝負できない）
+			;【◆口上】
+			;【W 今挑むのはフェアじゃない…】
+			RETURN 0
+		ELSEIF CANNOT_DANMAKU() == 5
+			;既に今日一度弾幕勝負をしている（勝負できない）
+			;【◆口上】
+			;【W 今日はもう挑めない…】
+			RETURN 0
+		ELSE
+			;【◆口上】
+			;【W 勝負開始！！】
+			;【以降はそのまま弾幕口上が呼ばれます】
+			RETURN 0
+		ENDIF
+		;【▼そのまま下の口上へ】
+	CASE "依頼実行直後"
+		;○この依頼では討伐される側の口上です
+		IF CFLAG:CLIENT_ID:依頼状況 == 2
+			IF CANNOT_DANMAKU() == 0
+				;負け犬
+				;【▲上の口上から続き】
+				;【L ［彼女］の討伐に失敗した……】
+				;【W ……こうなったら後日出直すしかない】
+				;【◆口上】
+				RETURN 0
+			ELSE
+				;挑めなかった場合
+				;【▲上の口上から続き】
+				;【◆口上】
+				RETURN 0
+			ENDIF
+		ELSEIF CFLAG:CLIENT_ID:依頼状況 == 3
+			;勝利
+			;【▲上の口上から続き】
+			;【W ［彼女］を懲らしめた！】
+			;【◆口上】
+			RETURN 0
+		ENDIF
+	CASE "成功報告時"
+		;報酬：賞金（時価）
+		RETURN 0
+	CASE "失敗報告時"
+		RETURN 0
+		;CASE "依頼報告不要"
+		;＜この依頼にはありません＞
+		;	RETURN 0
+ENDSELECT
+;==================================================
+;依頼口上・一般依頼13：うまい魚が食べたいなぁ
+;==================================================
+
+@M_KOJO_IRAI_13_K30(ROLE, SCENE, CLIENT_ID)
+#DIMS ROLE     ;キャラの立場、依頼者かそうでないか
+#DIMS SCENE    ;セリフの表示されるタイミング
+#DIM  CLIENT_ID;依頼者IDだけ抜き出したもの
+;--------------------------------------------------
+;RETURN 0 の部分は共通の口上が表示されます
+;依頼ごとの口上を表示する部分は RETURN 0 を RETURN 1 にしてください
+;--------------------------------------------------
+SELECTCASE SCENE
+	CASE "依頼提示時"
+		PRINTFORML 「열심히 일하는 부하들에게 좋은 식사를 대접하고 싶소.」
+		PRINTFORML 「유감스럽게도 다른 어부들과 특별한 관계가 없어서, 대신 당신에게 부탁을 하고 싶소.」
+		RETURN 1
+	CASE "依頼非受託時"
+		RETURN 0
+	CASE "依頼受託時"
+		RETURN 0
+	CASE "依頼確認時"
+		RETURN 0
+	CASE "依頼破棄時"
+		RETURN 0
+	CASE "依頼実行直前"
+		;○この依頼は依頼主がTARGETです
+		;【◆口上】
+		;【L ［あなた］は［彼女］にうまい魚を渡した】
+		;【L 何だか生きる希望がわいてきたよ。】
+		;【▼そのまま下の口上へ】
+		RETURN 0
+	CASE "依頼実行直後"
+		;○この依頼は必ず実行後達成します
+		;【▲上の口上から続き】
+		;【◆口上】
+		;【▼そのまま下の口上へ】
+		RETURN 0
+	CASE "成功報告時"
+		;報酬：白米３個
+		RETURN 0
+	CASE "失敗報告時"
+		RETURN 0
+		;CASE "依頼報告不要"
+		;＜この依頼にはありません＞
+		;	RETURN 0
+ENDSELECT
+;==================================================
+;依頼口上・一般依頼16：お悩み相談
+;==================================================
+
+@M_KOJO_IRAI_16_K30(ROLE, SCENE, CLIENT_ID)
+#DIMS ROLE     ;キャラの立場、依頼者かそうでないか
+#DIMS SCENE    ;セリフの表示されるタイミング
+#DIM  CLIENT_ID;依頼者IDだけ抜き出したもの
+;--------------------------------------------------
+;RETURN 0 の部分は共通の口上が表示されます
+;依頼ごとの口上を表示する部分は RETURN 0 を RETURN 1 にしてください
+;--------------------------------------------------
+SELECTCASE SCENE
+	CASE "依頼提示時"
+		IF TALENT:30:思慕
+			PRINTFORML 「%K30_C_NAME(MASTER)%님, 이것이 당신에게는 귀찮은 일이 될지도 모르지만...」
+			PRINTFORML 「당신께 무언가 여쭤보고 싶은 것이 있습니다...」
+		ELSE
+			PRINTFORML 「지금 시간 좀 있으신가요?」
+			PRINTFORML 「There's something I would like to confirm with you.」
+		ENDIF
+		RETURN 1
+	CASE "依頼非受託時"
+		IF TALENT:30:思慕
+			PRINTFORML 「알겠다...」
+			PRINTFORML 「아무것도 아니니까 걱정하지 마세요.」
+		ELSE
+			PRINTFORML 「알겠다.」
+			PRINTFORML 「그럼 다른 용무를 먼저 처리하고 가라.」
+		ENDIF
+		RETURN 1
+	CASE "依頼受託時"
+		IF TALENT:30:思慕
+			PRINTFORML 「음...」
+			PRINTFORML 「자, 그럼 시작해 볼게.」
+		ELSE
+			PRINTFORML 「내 질문은 이래.」
+		ENDIF
+		RETURN 0
+	CASE "依頼確認時"
+		PRINTFORML 「특별히 자세한 사항은 없습니다.」
+		PRINTFORML 「그냥 당신에게 물어보고 싶은 것이 있습니다.」
+		RETURN 1
+	CASE "依頼破棄時"
+		PRINTFORML 「...」
+		PRINTFORML 「정말 내 질문을 들으려 저항하는 거야?」
+		RETURN 1
+	CASE "依頼実行直前"
+		RETURN 0
+	CASE "依頼実行直後"
+		IF TALENT:30:思慕
+			;正解の選択肢
+			IF TFLAG:193 == 1
+				IF TFLAG:194 == 2
+					PRINTFORML 「결국 그런 거구나...」
+					PRINTFORML 「정말 고마워요, 덕분에 많이 알게 됐어요...」
+				ELSE
+					PRINTFORML 「알겠다, 그런 거였구나...」
+					PRINTFORML 「고마워, 정말 유익했어.」
+				ENDIF
+				;ハズレの選択肢だったが逆に正解
+			ELSEIF TFLAG:193 == 2
+				PRINTFORML 「!!!」
+				PRINTFORML 「저... 정말 그런 거야...?」
+				PRINTFORML 「고마워, 덕분에 많은 걸 알게 됐어.」
+				;ハズレの選択肢
+			ELSEIF TFLAG:193 == -1
+				PRINTFORML 「...」
+				PRINTFORML 「...%TEXTR("You're not just saying something at random, are you/Do you... really believe that/")%?」
+				;正解の選択肢だったが逆にハズレ
+			ELSEIF TFLAG:193 == -2
+				PRINTFORML 「...」
+				PRINTFORML 「...기분 좀 못 읽어?」
+			ENDIF
+			SIF DIARY:30:27 == 0
+				CALL K30_WRITE_DIARY(27)
+		ELSE
+			PRINTDATAL
+				DATAFORM 「네, 말씀하신 대로예요.」\n「걱정할 필요가 없었던 것 같네요.」
+				DATAFORM 「이해해 주셔서 기뻐요.」
+				DATAFORM 「네, 말씀하신 대로예요.」\n「물어볼 필요는 없다고 생각했지만, 확인하고 싶었어요.」
+			ENDDATA
+		ENDIF
+		RETURN 1
+	CASE "成功報告時"
+		;報酬：野菜か果物
+		PRINTFORML 
+		IF TALENT:30:思慕
+			PRINTFORML 「이것은 그저 저의 감사의 작은 표시일 뿐이에요...」
+			PRINTFORML 「부디 받아주세요.」
+		ELSE
+			PRINTFORML 「앞으로는 더욱 부지런해 주길 바란다.」
+		ENDIF
+		RETURN 1
+	CASE "失敗報告時"
+		PRINTFORML 「음, 어쨌든...」
+		PRINTFORML 「Thank you for listening, at least...」
+		RETURN 1
+		;CASE "依頼報告不要"
+		;＜この依頼にはありません＞
+		;	RETURN 0
+	CASE "口上委託率"
+		;＜この依頼特有の分岐です。(RESULT:100の値)％の確率で"口上専用"が発生します＞
+		RESULT:100 = 100
+		;＜RESULT:YYに0以外の数値を入れると、該当のお悩みを発生させなくできます（詳しくは一般依頼16_お悩み相談参照）＞
+		;1,2:弾幕ごっこの悩み 3,4:晩酌の悩み 5,6:本の悩み 7,8:香料の悩み
+		;9,10:音楽の悩み 11,12:服の悩み 13:髪型の悩み 14:参拝の悩み 15:ダイエットの悩み
+		;16,17:菜園の悩み 18:休日の悩み 19:人気の悩み 20:集中力の悩み 21:御三家の悩み 22:進化の悩み
+		VARSET RESULT, 1, 1, 23
+		RETURN 1
+	CASE "口上専用"
+		;＜この依頼特有の分岐です。(口上委託率)％の確率で発生します＞
+		;16,お悩み相談 の場合
+		;RESULT        発生判定,0だと発生しません
+		;RESULT:1      正解の選択肢（ただしRESULT:2が0だと、一定確率で逆にハズレる）
+		;RESULT:2      逆張り正解／ハズレ判定の消去,1だと逆張りが無くなります
+		;RESULTS:0     お悩み文章（自動で『』で囲まれます）
+		;RESULTS:1～3  選択肢１～３
+		;何も発生しない状態になると無限ループになるので注意してください
+		;●追記メモ
+		;RESULT:1を4～6にするとそれぞれ1～3がハズレ（残り2つが正解）になります
+		;RESULT:1を7にするとどれも正解になります
+		;RESULT:1を8にするとどれもハズレになります
+		;1～3以外の場合は逆張り判定が自動で無くなります
+		IF TALENT:30:思慕
+			SELECTCASE RAND:4
+				CASE 0
+					RESULTS:0 = When inviting someone you're interested in on a date...』\n　　　『How should you present yourself?
+					RESULTS:1 = Reveal your honest feelings
+					RESULTS:2 = Act casual and nonchalant
+					RESULTS:3 = Be forceful even if it exposes your ulterior motives
+					RESULT:1 = 6
+					RESULT:2 = 1
+				CASE 1
+					RESULTS:0 = Just as an example... If you were asking someone you like on a date...』\n　　　『Where would be the best place to go?
+					RESULTS:1 = The lively Human Village
+					RESULTS:2 = Somewhere the two of you can be alone
+					RESULTS:3 = A local love hotel
+					RESULT:1 = 6
+					RESULT:2 = 1
+				CASE 2
+					RESULTS:0 = This is just a very general question, with no one specific in mind, but...』\n　　　『What kind of god would be popular with other people...?
+					RESULTS:1 = A stubborn, uncompromising god
+					RESULTS:2 = A cheerful, amiable god
+					RESULTS:3 = A kind, gentle god that is friendly to everyone
+					RESULT:1 = 4
+					RESULT:2 = 0
+					TFLAG:194 = 2
+				CASE 3
+					RESULTS:0 = Umm... This is just a silly question, but...』\n　　　『Do others care about breast size, and things like that...?
+					RESULTS:1 = Moderately sized ones are also fine
+					RESULTS:2 = Bigger is better, I suppose
+					RESULTS:3 = Cow tits are justice
+					RESULT:1 = 4
+					RESULT:2 = 0
+					TFLAG:194 = 2
+			ENDSELECT
+		ELSE
+			SELECTCASE RAND:4
+				CASE 0
+					RESULTS:0 = If I were to give you a prize...』\n　　　『What do you think it would be for?
+					RESULTS:1 = Most Sinful
+					RESULTS:2 = Most Sinful
+					RESULTS:3 = Most Sinful
+					RESULT:1 = 7
+					RESULT:2 = 1
+				CASE 1
+					RESULTS:0 = If you were to come listen to my teachings...』\n　　　『How often do you think it should be?
+					RESULTS:1 = Every day
+					RESULTS:2 = 7 times a week
+					RESULTS:3 = Once every 24 hours
+					RESULT:1 = 7
+					RESULT:2 = 1
+				CASE 2
+					RESULTS:0 = What do you believe will happen if you don't follow my teachings?
+					RESULTS:1 = Going to Hell
+					RESULTS:2 = Going to Hell
+					RESULTS:3 = Going to Hell
+					RESULT:1 = 7
+					RESULT:2 = 1
+				CASE 3
+					RESULTS:0 = What do you think is the most appropriate thing for you to do right now?
+					RESULTS:1 = Build a life of virtue
+					RESULTS:2 = Pursue a life of virtue
+					RESULTS:3 = Live a life of virtue
+					RESULT:1 = 7
+					RESULT:2 = 1
+			ENDSELECT
+		ENDIF
+ENDSELECT
+;==================================================
+;依頼口上・一般依頼18：おなかすいた
+;==================================================
+
+@M_KOJO_IRAI_18_K30(ROLE, SCENE, CLIENT_ID)
+#DIMS ROLE     ;キャラの立場、依頼者かそうでないか
+#DIMS SCENE    ;セリフの表示されるタイミング
+#DIM  CLIENT_ID;依頼者IDだけ抜き出したもの
+#DIMS TEMPS
+;--------------------------------------------------
+;RETURN 0 の部分は共通の口上が表示されます
+;依頼ごとの口上を表示する部分は RETURN 0 を RETURN 1 にしてください
+;--------------------------------------------------
+SELECTCASE SCENE
+	CASE "依頼提示時"
+		IF TALENT:30:恋慕
+			PRINTFORML 「갑작스러운 부탁이라 죄송하지만...」
+			PRINTFORML 「당신의 요리에 대한 강렬한 갈망에 사로잡혔어요...」
+			PRINTFORML 「실례가 안 된다면...?」
+		ELSE
+			PRINTFORML 「%K30_C_NAME(MASTER)%, 시간 좀 있으세요?」
+			PRINTFORML 「다른 사람들과 나누고 싶었던 요리가 있었는데, 일정을 비울 수가 없었어요.」
+			PRINTFORML 「대신 그것을 준비해 주실 수 있나요?」
+		ENDIF
+		RETURN 1
+	CASE "依頼非受託時"
+		RETURN 0
+	CASE "依頼受託時"
+		LOCAL = 0
+		TEMPS =
+		VARSET LOCALS
+		IF TALENT:30:恋慕
+			PRINTFORML 「감사합니다, %K30_C_NAME(MASTER)%씨.」
+			PRINTFORML 「해볼 생각에 설레네요.」
+			RETURN 1
+		ENDIF
+		RETURN 1
+	CASE "依頼確認時"
+		IF !LOCAL
+			IF TALENT:30:恋慕
+				PRINTFORML 「네, 제가 찾고 있는 것의 상세 내용입니다.」
+				PRINTFORML 「당신에게 기대하고 있어요.」
+			ELSE
+				PRINTFORML 「당신이 준비해주었으면 하는 요리는 다음과 같다.」
+			ENDIF
+			LOCAL ++
+			RETURN 1
+		ENDIF
+		RETURN 0
+	CASE "依頼破棄時"
+		RETURN 0
+	CASE "依頼実行直前"
+		;依頼確認しないとリクエストは決まらない仕様
+		;シュレディンガーの料理
+		IF REQUEST_DISHNAME:30:0 != ""
+			TEMPS '= REQUEST_DISHNAME:30:0
+			SPLIT TEMPS, "／", LOCALS
+		ELSE
+			LOCALS:0 = "無"
+		ENDIF
+		LOCALS:1 '= DISH_NAME
+		RETURN 0
+	CASE "依頼実行直後"
+		SELECTCASE SOURCE:30:歓楽
+			;大成功
+			CASE 1000
+				IF LOCALS:0 == "無"
+					PRINTFORML 「Eh...?!」
+					PRINTFORML 「이게 내가 생각했던 바로 그거라는 걸 어떻게 알았지...?」
+					PRINTFORML 「...Eh??」
+				ELSEIF TALENT:30:恋慕
+					IF LOCALS:0 == LOCALS:1
+						PRINTFORML 「완벽해. 나는 당신에게 그 이하의 것을 기대하지 않아, %K30_C_NAME(MASTER)%에게.」
+						PRINTFORML 「후후...」
+						PRINTFORML 「네가 나를 위해 준비한 이 %LOCALS:1%를, 마음껏 즐길게...♥」
+					ELSE
+						PRINTFORML 「네 행동으로 항상 내 기대에 배신감을 주지만...」
+						PRINTFORML 「이런 흥미진진한 순간들까지도 마찬가지야.」
+						PRINTFORML 「%LOCALS:1%에게 고마워.」
+					ENDIF
+				ELSE
+					PRINTFORML 「이것은 정말 멋지게 준비된 %LOCALS:1%로군.」
+					IF LOCALS:0 == LOCALS:1
+						PRINTFORML 「이건 내 기대를 뛰어넘네요.」
+					ELSE
+						PRINTFORML 「%LOCALS:0%가 아니더라도, 모두 즐겨줄 거라고 확신해.」
+					ENDIF
+					PRINTFORML 「%K30_C_NAME(MASTER)%님, 감사합니다.」
+				ENDIF
+				;成功
+			CASE 300
+				IF LOCALS:0 == "無"
+					PRINTFORML 「이 %LOCALS:1%는 먹음직해 보이는데, 하지만...」
+					PRINTFORML 「무엇 때문에 이걸 준비했다고 생각했지?」
+					PRINTFORML 「아, 물론 내 기대에 부응해서 기쁘지만, 도저히 이해할 수가 없네...」
+				ELSEIF TALENT:30:恋慕
+					IF LOCALS:0 == LOCALS:1
+						PRINTFORML 「당신에게 기댈 수 있다는 걸 알고 있었어요, %K30_C_NAME(MASTER)%.」
+						PRINTFORML 「정말 고마워요.」
+					ELSE
+						PRINTFORML 「...%LOCALS:1%?」
+						PRINTFORML 「비록 그렇지만... 이것도 만족스러운 결과이기도 하다.」
+						PRINTFORML 「%K30_C_NAME(MASTER)%님, 정말 감사합니다.」
+					ENDIF
+				ELSE
+					IF LOCALS:0 == LOCALS:1
+						PRINTFORML 「이것은 나에게 큰 도움이 되었다.」
+					ELSE
+						PRINTFORML 「%LOCALS:0%가 너무 큰 골칫거리였나?」
+						PRINTFORML 「비록 이 %LOCALS:1%는 받아들일 만한 대체품이지만.」
+					ENDIF
+					PRINTFORML 「%K30_C_NAME(MASTER)%님, 감사합니다.」
+				ENDIF
+				;失敗
+			CASEELSE
+				IF LOCALS:0 == "無"
+					PRINTFORML 「...%K30_C_NAME(MASTER)%, 나를 위해 요리해 주러 수고해줘서 기쁘다.」
+					PRINTFORML 「하지만 내가 부탁한 말은 단 하나도 듣지 않은 거지??」
+				ELSEIF TALENT:30:恋慕
+					PRINTFORML 「이게... 음... 이게 뭐지...?」
+					IF LOCALS:0 == LOCALS:1
+						PRINTFORML 「음, 보아하니 %LOCALS:0%는... 조금... 오른쪽 각도에서...」
+						PRINTFORML 「솔직히 모르겠어... 어떻게 이렇게 만든 건지...」
+					ELSE
+						PRINTFORML 「내가 요청한 건 %LOCALS:0%였을 뿐인데... 이게... %LOCALS:1%라고?」
+						PRINTFORML 「아마 내 지시가 명확하지 않았던 것 같군...」
+					ENDIF
+				ELSE
+					PRINTFORML 「...요청자로서 나도 어느 정도 책임은 받아야 한다. 하지만...」
+					IF LOCALS:0 == LOCALS:1
+						PRINTFORML 「이게 처음 준비하는 %LOCALS:1%인가?」
+						PRINTFORML 「요리 경험이 없다면 미리 나에게 알려주길 바란다.」
+					ELSE
+						PRINTFORML 「나는 %LOCALS:0%에 대한 내 요청이 명확했다고 생각하는데.」
+						PRINTFORML 「하지만 내가 받은 것은 %LOCALS:1%였어...」
+						PRINTFORML 「막 어렴풋이 비슷한 걸 대충 만들어낸다고 해서 칭찬받을 일은 없을 거야, 알잖아.」
+					ENDIF
+				ENDIF
+		ENDSELECT
+		CALL K30_D_LINE
+		PRINTFORML
+		RETURN 1
+	CASE "成功報告時"
+		PRINTFORML 「여기에 당신의 보상이 있습니다.」
+		SIF SOURCE:30:歓楽 == 1000
+			PRINTFORML 「작은 보너스를 추가했다.」
+		;報酬：
+		RETURN 1
+	CASE "失敗報告時"
+		IF TALENT:30:恋慕
+			PRINTFORML 「...오늘은 그렇게 잘 풀리지 않았지만, 당신에게는 큰 기대를 걸고 있어.」
+			PRINTFORML 「다음엔 더 나아지기를 기대할게.」
+		ELSE
+			PRINTFORML 「...어쨌든, 나를 위해 이것을 준비하는 수고를 했군요.」
+			PRINTFORML 「이것을 헛되이 할 수는 없지.」
+			PRINTFORML 「당신에게 적절한 보상입니다.」
+			CALL GET_MONEY_YEN(500, 2)
+		ENDIF
+		RETURN 1
+		;CASE "依頼報告不要"
+		;＜この依頼にはありません＞
+		;	RETURN 0
+ENDSELECT
+;==================================================
+;依頼口上・固有依頼101：
+;固有依頼の仕様はキャラによって異なりますが依頼番号は101～で共通です
+;"依頼名"部分に依頼名を入れて下さい
+;==================================================
+
+@M_KOJO_IRAI_お説教たいむ_K30(ROLE, SCENE, CLIENT_ID)
+#DIMS ROLE     ;キャラの立場、依頼者かそうでないか
+#DIMS SCENE    ;セリフの表示されるタイミング
+#DIM  CLIENT_ID;依頼者IDだけ抜き出したもの
+;--------------------------------------------------
+;RETURN 0 の部分は共通の口上が表示されます
+;依頼ごとの口上を表示する部分は RETURN 0 を RETURN 1 にしてください
+;--------------------------------------------------
+;サボりが一瞬でバレるくらいだし、場所だって丸わかりでいいんじゃないかと
+SELECTCASE GET_MAPID(CFLAG:[[小町]]:現在位置)
+	CASE 0
+		LOCALS = the Hakurei Shrine region
+	CASE 1
+		LOCALS = the Myouren Temple region
+	CASE 2
+		LOCALS = the Human Village region
+	CASE 3
+		LOCALS = the Scarlet Devil Mansion region
+	CASE 4
+		LOCALS = the Eientei region
+	CASE 5
+		LOCALS = Kourindou
+	CASE 6
+		IF GET_MAPID(CFLAG:MASTER:現在位置) == 6
+			LOCALS = here
+		ELSE
+			LOCALS = here in a remote location
+		ENDIF
+	CASE 7
+		LOCALS = the Ibara Kasen residence
+	CASE 8
+		LOCALS = the Moriya Shrine region
+	CASE 9
+		LOCALS = the Old Capital region
+	CASE 10
+		LOCALS = the Moon
+	CASE 10
+		LOCALS = the Demon World
+	CASEELSE
+		LOCALS = somewhere random
+ENDSELECT
+SIF CFLAG:[[小町]]:現在位置 % 100 == 99 && MAIN_MAP != 6
+	LOCALS = her own room
+SIF CFLAG:30:現在位置 == CFLAG:[[小町]]:現在位置
+	LOCALS = here
+SELECTCASE SCENE
+	CASE "依頼提示時"
+		PRINTFORML 「%K30_C_NAME(MASTER)%, 이 편지를 코마치에게 전해주시겠어요?」
+		PRINTFORML 「...내용은 충분히 짐작하실 수 있을 거예요.」
+		RETURN 1
+	CASE "依頼非受託時"
+		RETURN 0
+	CASE "依頼受託時"
+		PRINTFORML 「정말 고마워. 이제 문제는 코마치가 어디에 있을지라는 거지...」
+		IF LOCALS == "here"
+			PRINTFORML 「그리고 정말로, 그녀가 우리 눈앞에 있다. 내 코앞에서 빈둥거리고 있군.」
+			PRINTFORML 「하지만 아무리 터무니없게 보일지라도, 이것들은 절차상 글로 남겨야 한다.」
+			PRINTFORML 「그러니 번거롭게 느껴질 수도 있겠지만... 이 문제에 대한 당신의 이해와 협조를 부탁드립니다.」
+			RETURN 1
+		ELSE
+			PRINTFORM 「%TEXTR("I'm sure it's/It's most likely/")%은 %LOCALS% 주변에 있어... 그녀는 아마 그냥 
+			IF LOCALS == "her own room"
+				PRINTDATAL
+					DATAFORM 빈둥거리며 지내다.
+					DATAFORM 게으름 피우다.
+				ENDDATA
+			ELSE
+				PRINTDATAL
+					DATAFORM 빈둥거리고 있다.」
+					DATAFORM 게으름을 피하고 있다.」
+					DATAFORM 돌아다니고 있다.」
+					DATAFORM 낮잠을 자고 있다.」
+				ENDDATA
+			ENDIF
+			PRINTDATAL
+				DATAFORM 「몇 번이나 말해줘야 하는 걸까...」
+				DATAFORM 「이번엔 무슨 변명을 지어낼지 궁금하네...」
+				DATAFORM 「만약 그녀가 정신 차리지 않는다면, 고통받을 건 자기 자신이야...」
+				DATAFORM 「언제쯤 어른스러워질까...」
+			ENDDATA
+		ENDIF
+		RETURN 1
+	CASE "依頼確認時"
+		IF LOCALS == "here"
+			PRINTFORML 「...정말로 확인할 필요가 있는 게 있나?」
+			PRINTFORML 「코마치처럼 빈둥거리지 말고 이 일을 어서 해결해라.」
+			PRINTFORML 「너는 타인에게 도움이 되도록 노력해야 한다.」
+		ELSE
+			PRINTFORML 「음? 그녀가 %LOCALS%에 있을 거라 확신했는데...」
+			PRINTFORML 「하지만 코마치라면 여기저기 돌아다닐 만하겠지.」
+			PRINTFORML 「미안하지만 주변 지역을 한 번 더 수색해 줄 수 있겠어?」
+		ENDIF
+		RETURN 1
+	CASE "依頼破棄時"
+		RETURN 0
+	CASE "依頼実行直前"
+		;These are lines from Komachi, so if she ever gets translated, make sure the style is consistent
+		;書いたはいいけどここには飛ばない
+		CALL SET_KOJO_COLOR([[小町]])
+		IF TALENT:[[小町]]:恋人
+			PRINTFORML 「...%CALLNAME:MASTER%, 당신은 귀엽고 아름다운 여자친구를 도와주고 싶을 거라고 확신해요.」
+		ELSEIF TALENT:[[小町]]:恋慕
+			PRINTFORML 「...우리는 아름답고 친밀한 우정이지, 그렇지 않아?」
+		ELSE
+			PRINTFORML 「...%CALLNAME:MASTER%, %TEXTR("there's something I'd like to ask of you/I have a very serious request for you/")%.」
+		ENDIF
+		PRINTDATAL
+			DATAFORM 「이 편지가 존재하지 않았던 것처럼 그냥 모르는 척할 수 있을까...」
+			DATAFORM 「내 대신 혼나러 가줄래...」
+		ENDDATA
+		RESETCOLOR
+		RETURN 1
+	CASE "依頼実行直後"
+		;ここにも飛ばない
+		CALL SET_KOJO_COLOR([[小町]])
+		PRINTDATAL
+			DATAFORM 「시키님을 두려워하는 건가? 알겠다, 예상했던 바야...」
+			DATAFORM 「그럴 수 없다는 거야? 처음부터 당연했겠지...」
+			DATAFORM 「가끔은 스스로를 되돌아봐야 하는 걸까? 이봐, 그렇게 차갑게 굴지 말아줘...」
+			DATALIST
+				DATAFORM 「하아... 시키님의 또 다른 설교라니...」
+				DATAFORM 「...어쩌면 내 게으름 전부 당신에게 돌릴 수도 있을 텐데...」
+				DATAFORM 「...안 되는 건가?」
+			ENDLIST
+		ENDDATA
+		RESETCOLOR
+		RETURN 1
+	CASE "成功報告時"
+		SIF DIARY:30:8 == 0
+			CALL K30_WRITE_DIARY(8)
+		PRINTFORML 「수고했습니다.」
+		PRINTFORML 「이것을 당신에게 부탁하는 마지막일 거라고 말하고 싶지만...」
+		PRINTFORML 「제가 바라는 만큼 자신 있게 말할 수는 없습니다.」
+		RETURN 1
+	CASE "失敗報告時"
+		PRINTFORML 「...혹시 코마치를 위해 거짓말하는 건 아닌 거지?」
+		PRINTFORML 「자비로운 마음을 갖는 것은 중요하지만, 이건 전부 그 아이를 위한 것이야.」
+		RETURN 1
+	CASE "依頼報告不要"
+		RETURN 0
+ENDSELECT
+;＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
+;依頼口上テンプレのテンプレ
+;==================================================
+;依頼口上・一般依頼Y：
+;==================================================
+
+@M_KOJO_IRAI_Y_KX(ROLE, SCENE, CLIENT_ID)
+#DIMS ROLE     ;キャラの立場、依頼者かそうでないか
+#DIMS SCENE    ;セリフの表示されるタイミング
+#DIM  CLIENT_ID;依頼者IDだけ抜き出したもの
+;--------------------------------------------------
+;RETURN 0 の部分は共通の口上が表示されます
+;依頼ごとの口上を表示する部分は RETURN 0 を RETURN 1 にしてください
+;--------------------------------------------------
+SELECTCASE SCENE
+	CASE "依頼提示時"
+		RETURN 0
+	CASE "依頼非受託時"
+		RETURN 0
+	CASE "依頼受託時"
+		RETURN 0
+	CASE "依頼確認時"
+		RETURN 0
+	CASE "依頼破棄時"
+		RETURN 0
+	CASE "依頼実行直前"
+		RETURN 0
+	CASE "依頼実行直後"
+		RETURN 0
+	CASE "成功報告時"
+		;報酬：
+		RETURN 0
+	CASE "失敗報告時"
+		RETURN 0
+		;CASE "依頼報告不要"
+		;＜この依頼にはありません＞
+		;	RETURN 0
+ENDSELECT

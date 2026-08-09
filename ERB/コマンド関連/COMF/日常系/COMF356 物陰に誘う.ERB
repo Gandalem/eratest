@@ -1,0 +1,91 @@
+﻿; Modular ERB: COMF/日常系/COMF356 物陰に誘う.ERB
+;-------------------------------------------------
+;物陰に誘う
+;日常系コマンド、レベル1
+;-------------------------------------------------
+
+@COM356
+;物陰に誘う
+;LOCAL:1 潜伏場所
+;口上処理による強制成功
+SIF TFLAG:192 == 1
+	GOTO SENPUKU
+;口上処理による強制失敗
+SIF TFLAG:192 == -1
+	RETURN -1
+;無知でない場合、露出癖3以上(羞恥心で増減)必須
+IF (TALENT:SexKnow > -1 && ABL:露出癖 - TALENT:羞恥心 < 3) && !TCVAR:Exhibitionist_Nudist_Sense && TCVAR:Common_Sense_Alteration_Status < 75  && FLAG:催眠強度 < 75 && !LS_LUNATIC_TIME() ;custom code
+	DRAWLINE
+	PRINTFORMW %조사처리(CALLNAME:TARGET,"는")%(는) 그것을 밖에서 하는 생각에 여전히 불편해한다.
+	TFLAG:193 = -1
+	TFLAG:102 = 0
+	TIME += 5
+	RETURN 0
+ENDIF
+$SENPUKU
+CALL 潜伏場所決定処理
+IF TALENT:SexKnow == -1
+	DRAWLINE
+	PRINTFORMW 당신은 능숙한 말로 방심하고 있는 %조사처리(CALLNAME:TARGET,"를")% %NAME_HIDING_PLACE(1)%로 유인한다...
+ELSE
+	DRAWLINE
+	PRINTFORMW 너는 홍당무 같은 %조사처리(CALLNAME:TARGET,"를")%/를 %NAME_HIDING_PLACE(1)%에 유인한다...
+ENDIF
+CFLAG:MASTER:うふふ = 1
+CFLAG:TARGET:うふふ = 1
+CFLAG:TARGET:LAST_SEX_DAY = DAY ;qol custom code
+SETBIT CFLAG:TARGET:潜伏状態,0
+SETBIT FLAG:潜伏,0
+;開始時に潜伏率を100%に
+BASE:MASTER:潜伏率 = 100
+SIF !FLAG:70 ;bug fix, to trigger (possible) action description + slight time passage
+	TIME += 5
+;経過時間表示用に開始時間を取っておく
+IF !UFUFU_START_TIME
+	UFUFU_START_TIME = TIME
+	UFUFU_START_DAY = DAY
+ENDIF
+;-------------------------------------------------
+;実行判定
+;-------------------------------------------------
+
+@COM_ABLE356
+SIF !TFLAG:100
+	RETURN 0
+;時間停止中は不可
+SIF FLAG:時間停止
+	RETURN 0
+;一括管理
+SIF GLOBAL_COMABLE(356)
+	RETURN RESULT
+;自室不可
+;21/06/25,注記どおり動作するよう変更しました
+;SIF CFLAG:MASTER:現在位置 == (CFLAG:MASTER:初期位置 || CFLAG:TARGET:初期位置)
+SIF GROUPMATCH(CFLAG:MASTER:現在位置, CFLAG:MASTER:初期位置, CFLAG:TARGET:初期位置)
+	RETURN 0
+SIF CFLAG:MASTER:現在位置 == OMANEKIBEYA()
+	RETURN 0
+SIF CFLAG:うふふ
+	RETURN 0
+SIF !(CFLAG:既成事実 & 合意_うふふ)
+	RETURN 0
+;睡眠中
+SIF CFLAG:睡眠 && !CFLAG:添い寝中
+	RETURN 0
+;潜伏モード中は不可
+SIF GETBIT(FLAG:潜伏,0)
+	RETURN 0
+;気力0
+SIF BASE:MASTER:気力 <= 0
+	RETURN 0
+;甲斐性無しにそんな度胸はない
+;Lust mode custom code
+SIF FLAG:甲斐性無 && !FLAG:LUSTMODE
+	RETURN 0
+SIF TARGET == MASTER
+	RETURN 0
+SIF CFLAG:添い寝中 ;bug fix, don't allow when sleeping together, causes problems
+	RETURN 0
+SIF CFLAG:行動 == 5 && CFLAG:職種 != JOB_宴会参加 ;qol custom code, not during work, since it's immediately canceled
+	RETURN 0
+RETURN 1

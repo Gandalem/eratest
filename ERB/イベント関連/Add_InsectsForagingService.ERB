@@ -1,0 +1,206 @@
+﻿; Modular ERB: Add_InsectsForagingService.ERB
+
+@UNIQUE_COM_蟲の採集サービス
+#DIM PRICE
+CALL SET_KOJO_COLOR(27)
+IF FLAG:蟲の採集サービス
+	PRINTFORMW 「채집 장소를 바꾸고 싶으신가요?」
+	CALL ASK_M("응",1,"아아",1)
+	SIF RESULT
+		RETURN 1
+	CALL IFS_SELECT_REGION(0)
+ELSE
+	IF FIRSTTIME("ForagingService", 0, [[リグル]])
+		PRINTFORMW 「자, 작동 방식은 이렇습니다. 저에게 소정의 비용을 지불하시면...」
+		PRINTFORMW 「그리고 그 대가로 한 달 동안 매일 제 벌레 친구들이 당신이 선택한 지역을 수색하고 발견하는 모든 것을 가져다줄 겁니다.」
+		PRINTFORMW 「그것들은 아침 일찍 당신을 기다리고 있을 거예요.」
+		PRINTFORMW 「하지만 가끔 아무것도 찾지 못할 수도 있습니다. 그런 경우에는 그날의 비용을 환불해 드립니다.」
+		IF TALENT:[[リグル]]:恋人
+			PRINTFORMW 「하지만 당신은 얻는다 %PRINT_MALE("boy", MASTER)%친구 할인 중... 100\% 에서 할인받는다.」
+			PRINTFORMW 「물론, 다른 방식으로 고마움을 표현하는 걸 막을 순 없지...」
+			PRINTFORMDW %CALLNAME:[[リグル]]%은 %HIS_HER(TARGET)%의 입술을 오므리고 윙크한다.
+		ENDIF
+	ENDIF
+	IF TALENT:[[リグル]]:恋人
+		PRINTFORMW 「그럼 가입할래요?」
+		PRICE = 0
+	ELSE
+		PRICE = IFS_CALCULATE_PRICE()
+		PRINTFORMW 「그럼 가입할래? 비용은 %金額表示(PRICE)%야.」
+	ENDIF
+	CALL ASK_M("네, 부탁드립니다",MONEY >= PRICE,"하지 마라",1)
+	SELECTCASE RESULT
+		CASE 0
+			CALL IFS_SELECT_REGION(PRICE)
+		CASE 1
+			PRINTFORMW 「아, 정말이지...」
+			PRINTFORMW 「마음이 바뀌면 다시 돌아와라.」
+			RETURN 1
+	ENDSELECT
+ENDIF
+RETURN 1
+
+@IFS_SELECT_REGION(PRICE)
+#DIM PRICE
+#DIM REGION
+PRINTFORMW 「좋아, 그럼 내 친구들이 어디를 봐야 할까?」
+$REGION_LIST
+FOR LOCAL, 0, 12
+;Skip the Human Village because there aren't any gathering points in it
+SIF LOCAL == 2
+	CONTINUE
+PRINTFORMDL [{LOCAL,2}] - %GET_MAPNAME(LOCAL)%
+NEXT
+PRINTFORMDL [100] - 반환
+DO
+INPUT
+SELECTCASE RESULT
+	CASE 0 TO 11
+		REGION = RESULT
+		PRINTFORMW 「%GET_MAPNAME(REGION)%, 응?」
+		PRINTFORMW 「알았어. 이제 그들이 일할 때까지 가만히 있어.」
+		PRINTFORMDL %CALLNAME:[[リグル]]%가 박수를 치자, 벌레 우는 소리가 공기를 채웠다.
+		IF FIRSTTIME("InsectGatheringScene", 0, [[リグル]])
+			PRINTFORMDW 거대한 무리가 모이고 있다. 소음 때문에 자기 생각조차 들리지 않는다.
+			PRINTFORMDW 날아다니는 곤충들, 기어 다니는 곤충들, 벌레들... 마치 곤충 토네이도의 중심에 있는 것 같다.
+			PRINTFORMDW 적어도 당신에게 거리를 두려는 예의는 지키고 있다.
+			PRINTFORMDW %CALLNAME:[[リグル]]%가 점수를 얻었고, 곤충들이 날아간다.
+		ELSE
+			PRINTFORMDW 무리는 예전처럼 모여 날아간다.
+		ENDIF
+		PRINTFORMW 「헤헤, 저거 봐... 귀엽지 않아?」
+		PRINTFORMDW 당신은 %HIM_HER([[リグル]])%에게 대답하지 않기로 결정한다.
+		IF !TALENT:[[リグル]]:恋人 && PRICE > 0
+			PRINTFORMW 「좋아, 돈 내놔.」
+			PRINTFORMDL 당신이 현금을 건네면 %CALLNAME:[[リグル]]%가 그것을 센다.
+			PRINTFORMDW %HE_SHE([[リグル]])%'가 전부 있다고 확신하면, %HE_SHE([[リグル]])%는 당신에게 미소 짓는다.
+			PRINTFORMW 「거래하게 되어 기쁘군.」
+			CALL PAY_MONEY_YEN(PRICE, 2)
+		ENDIF
+		FLAG:蟲の採集サービス = REGION + 1
+		RETURN 1
+	CASE 100
+		RETURN 1
+	CASEELSE
+		PRINTFORMW 「음... 거기가 어디인지 모르겠어.」
+		CONTINUE
+ENDSELECT
+LOOP 1
+;Modified from ShowGatheringSpots
+
+@IFS_GATHER()
+#DIM cStart
+#DIM cEnd
+#DIM SpotID
+#DIM pCount
+#DIM SelectedSubmap
+#DIM GatheringSpots, 30
+#DIM ItemFound
+#DIM QuantityFound
+#DIM SpotArray
+PRINTFORMDL
+PRINTFORMDW 당신의 현관 밖에 Insect Foraging Service에서 온 소포가 있다.
+PRINTFORMDW 그것을 열어본다...
+cStart = 1 + (FLAG:蟲の採集サービス - 1) * 100
+cEnd = 99 + (FLAG:蟲の採集サービス - 1) * 100
+SpotArray = 0
+FOR LOCAL, cStart, cEND
+SpotID = GATHERING_SPOT(LOCAL, 1)
+SIF SpotID
+	GatheringSpots:(SpotArray++) = SpotID
+NEXT
+DO
+SelectedSubmap = GatheringSpots:(RAND:10)
+SIF SelectedSubmap
+	BREAK
+LOOP 1
+FOR LOCAL,0,15
+CALL Gathering_Drawing(SelectedSubmap, (10 + TALENT:[[リグル]]:採集Lv * 10 + ABL:[[リグル]]:教養 * 5 + TFLAG:幸運補正 * 10))
+ItemFound = RESULT:0
+QuantityFound = RESULT:1
+SIF QuantityFound
+	BREAK
+NEXT
+IF !QuantityFound
+	PRINTFORMDW %金額表示(1000)% 지폐와 쪽이 안에 있었다.
+	IF ABL:[[リグル]]:教養 >= 3
+		PRINTFORMDL 그것은 읽는다:
+		CALL SET_KOJO_COLOR(27)
+		PRINTFORML 죄송합니다. 아무것도 찾지 못했습니다.
+		PRINTFORML 여기 돈입니다.
+		PRINTFORMW -Wriggle
+		RESETCOLOR
+	ELSE
+		IF ABL:MASTER:教養 >= 2
+			PRINTFORMDL 그것은 다음과 같이 읽는다:
+			CALL SET_KOJO_COLOR(27)
+			PRINTFORML 미안하다. 아무것도 찾지 못했다.
+			PRINTFORML 여기 돈 좀 있다.
+			PRINTFORMW -리글
+			RESETCOLOR
+		ELSE
+			PRINTFORMDL 당신은 쪽지를 읽으려고 노력했지만 필체가 너무 지저분했다.
+			PRINTFORMDW 아마 그들은 아무것도 찾지 못했고 보상을 제공하고 있다는 내용일 것이다.
+		ENDIF
+	ENDIF
+	PRINTFORMDL
+	CALL GET_MONEY_YEN(1000, 2)
+ELSE
+	PRINTFORMDW 안에 몇 가지 재료가 있었다!
+	PRINTFORMDL
+	SELECTCASE ItemFound
+		CASE 3000 TO 3999
+			CALL GET_WEAPON(ItemFound-3000, TFLAG:194 , 2)
+		CASEELSE
+			LOCALS = %ITEMNAME:(ItemFound)%
+			CALL GET_ITEM(LOCALS, QuantityFound, 2)
+	ENDSELECT
+ENDIF
+PRINTFORMDL
+
+@IFS_CALCULATE_PRICE
+#FUNCTION
+IF TALENT:[[リグル]]:恋人
+	RETURNF 0
+ELSEIF MARK:[[リグル]]:反発刻印 > 0
+	RETURNF 15000 * MARK:[[リグル]]:反発刻印 + 1
+ELSEIF IS_FALLEN([[リグル]])
+	RETURNF 7500
+ELSE
+	RETURNF 15000
+ENDIF
+
+@IFS_SUBSCRIBE
+#DIM IFS_COST
+IF FLAG:蟲の採集サービス
+	PRINTFORMDL
+	PRINTFORMW 벌레 채집 서비스와의 계약이 종료되었습니다.
+	PRINTFORMW 갱신 요청을 보낼까요?
+	PRINTFORML 금액:%金額表示(MONEY)%
+	IFS_COST = IFS_CALCULATE_PRICE()
+	CALL ASK_M("취소",1,@"갱신 (￥{IFS_COST})",MONEY >= IFS_COST)
+	IF RESULT > 0
+		SELECTCASE RESULT
+			CASE 1
+				MONEY -= IFS_COST
+		ENDSELECT
+		PRINTFORMW 계약이 갱신되었다.
+		PRINTFORMDL
+		PRINTFORML 현재 당신은 %GET_MAPNAME(FLAG:蟲の採集サービス - 1)%로부터 재료를 받고 있다.
+		PRINTFORMW 이것을 바꾸고 싶다면 %CALLNAME:[[リグル]]%에게 말한다.
+	ELSE
+		FLAG:蟲の採集サービス = 0
+	ENDIF
+	PRINTFORMDL
+ENDIF
+;------------------------------------------------------
+;process the extra flags
+;when starting the day
+
+@EVENTTRAIN
+SIF FLAG:蟲の採集サービス && !inTrain
+	CALL IFS_GATHER
+;ng reset
+
+@NG_CUSTOM_RESET_VAR_2
+FLAG:蟲の採集サービス = 0 ;reset Insect's Foraging Service contract, pr 106

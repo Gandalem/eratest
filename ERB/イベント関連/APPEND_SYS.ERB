@@ -1,0 +1,150 @@
+﻿; Modular ERB: APPEND_SYS.ERB
+;FileName_APPEND_SYS.ERB --------------------------- Rev1.00
+;era命蓮寺_システム変更系イベント統括
+;CALL		USER
+;ARG		VOID
+;RETURN		VOID
+;COMMENT
+;-----------------------------------------------------------
+;EVENT_NO_LIST ============================== FLAG:1
+;FLAG:1=1 霊廟メンバー出現イベント
+;FLAG:1=2 マミゾウ来訪イベント
+;FLAG:1=3 命蓮寺メンバー追加イベント
+;FLAG:1=4
+;FLAG:1=5
+
+@SYS_EVENT
+;--- イベント自己定義ブロック ---
+;--- イベント実行ブロック ---
+;	;自宅にSUMIKOMI_ROOMが設定されている
+IF FLAG:住み込みキャラ== 0 && !FLAG:住み込みイベント && SUMIKOMI_ROOM && CFLAG:MASTER:現在位置 != OMANEKIBEYA()
+	CALL NEWMEMBER_ADD
+ENDIF
+;ENDIF
+;以下、各イベント関数 ===============================
+;住み込みEXキャラ決定イベント
+
+@NEWMEMBER_ADD
+#DIM 人数
+#DIM ROOM_N
+#DIM C_ID
+#DIM VISITOR ;custom code
+SIF LS_RESTRICTION("Move in") ;Custom code, restrict moving in during Lunatic Survival.
+	RETURN
+VARSET LOCAL
+人数 = 0
+FOR LOCAL,1,CHARANUM
+;既に住んでいるメンバーは除く
+SIF CFLAG:LOCAL:神社在住 > 0
+	CONTINUE
+SIF TALENT:LOCAL:行きずり
+	CONTINUE
+IF TALENT:LOCAL:恋慕 && EXP:LOCAL:愛情経験 >= 200
+	人数 ++
+	LOCAL:LOCAL = 1
+	LOCALS = %CALLNAME:LOCAL%
+	VISITOR = LOCAL ;custom code
+ENDIF
+NEXT
+SIF !人数 || (DAY:3 != 1)
+	RETURN
+PRINTL
+DRAWLINE
+PRINTFORML 아침에 누군가 방문한다.
+PRINTFORML %LOCALS% \@ 人数 > 1 ? 그리고 다른 이들이 함께 살고 싶다고 말한다 # %HE_SHE(VISITOR)%이 당신과 %GET_MAPNAME(MAIN_MAP)% 같이 살고 싶다고 말한다 \@.
+PRINTL
+IF MAIN_MAP == 2
+	PRINTFORML 판에 빈 방이 있어서 이사하기 쉬울 것이다.
+	IF TALENT:VISITOR:人間
+		PRINTFORMW %CALLNAME:拠点_大家%은 특별히 거절할 이유가 없다.
+	ELSE
+		PRINTFORMW %LOCALS%은 %HE_SHE(VISITOR)%가 %HIS_HER(VISITOR)%의 진짜 정체를 %CALLNAME:拠点_大家%에게 숨기는 한 괜찮을 거라고 말한다.
+	ENDIF
+ELSE
+	;custom code
+	PRINTFORML 만약 %NAME_FROM_PLACE_THE(SUMIKOMI_ROOM)%를 개조한다면, 다른 사람들도 그곳에 살 수 있다.
+	PRINTFORMW %CALLNAME:拠点_大家%는 적절한 설명을 한다면 아마 괜찮다고 할 것이다.
+ENDIF
+PRINTFORML 당신은 ...하기로 결정한다
+C_ID = 1
+;qol custom code, skip to replacement function (moved $INPUT_LOOP here too)
+$INPUT_LOOP
+GOTO QOL
+FOR LOCAL,1,CHARANUM
+;既に住んでいるメンバーは除く
+SIF CFLAG:LOCAL:神社在住 > 0
+	CONTINUE
+IF TALENT:LOCAL:恋慕 && EXP:LOCAL:愛情経験 >= 200
+	C_ID = LOCAL
+	PRINTFORML [{LOCAL}] - %CALLNAME:LOCAL%이(가) 이동하도록 허용한다.
+ENDIF
+NEXT
+PRINTFORML [999] 지원자를 받지 않는다
+INPUT
+;qol custom code
+$QOL
+CALL NEWMEMBER_PAGING
+SIF RESULT:1 > 0
+	C_ID = RESULT:1
+;---------------
+IF RESULT == 999
+	PRINTFORMW 당신이 %PLURALIZER("request", 人数)%을 거절하면, %LOCALS%은(는) \@ 人数 > 1 ? 그리고 다른 이들이 실망한 표정을 짓고 # 짓고 \@ 방을 떠나게 되며%COND_STR(@"s", 人数 == 1)% 당신의 방을 나간다.
+	;このやり方だと一人しか口上を呼べないんだが良い方法はないものか
+	;とりあえず多数の場合にそれぞれのキャラの口上を呼び出せるようにしてみる、ただし実際に出来るかどうかはテスト出来てないので自信は無い
+	IF 人数 > 1
+		FOR LOCAL,1,CHARANUM
+		;既に住んでいるメンバーは除く
+		SIF CFLAG:LOCAL:神社在住 > 0
+			CONTINUE
+		IF TALENT:LOCAL:恋慕 && EXP:LOCAL:愛情経験 >= 200
+			LOCAL:1 = LINECOUNT
+			CALL KOJO_MESSAGE_SEND("EVENT",19,LOCAL,2,0)
+			;qol custom code to discern the speaker (LINECOUNT is also custom)
+			IF LINECOUNT != LOCAL:1
+				PRINTFORMW %CALLNAME:LOCAL%은(는) 작별을 고하기 전에 말한다...
+				PRINTL 
+			ENDIF
+		ENDIF
+		NEXT
+	ELSE
+		CALL KOJO_MESSAGE_SEND("EVENT",19,C_ID,2,0)
+	ENDIF
+	RETURN 0
+ELSEIF RESULT >= CHARANUM
+	CLEARLINE 1
+	GOTO INPUT_LOOP
+ELSEIF !LOCAL:RESULT
+	CLEARLINE 1
+	GOTO INPUT_LOOP
+ENDIF
+PRINTFORML %CALLNAME:RESULT% 따뜻하게 미소 짓는다 당신이 잡는 %HIS_HER(RESULT)% 손을 잡고 대화해 보겠다고 말한다 %CALLNAME:拠点_大家%.
+PRINTFORMW %CALLNAME:拠点_大家%은 간청 끝에 동의한다.
+PRINTL
+PRINTFORMW %CALLNAME:RESULT%은 이제 %GET_MAPNAME(MAIN_MAP)%에 살게 된다.
+PRINTL
+FLAG:住み込みキャラ= RESULT
+CFLAG:(FLAG:住み込みキャラ):311 = SUMIKOMI_ROOM
+CFLAG:(FLAG:住み込みキャラ):神社在住 = SUMIKOMI_ROOM
+CFLAG:(FLAG:住み込みキャラ):自宅位置 = SUMIKOMI_ROOM ;qol custom code
+CFLAG:(FLAG:住み込みキャラ):現在位置 = SUMIKOMI_ROOM ;qol custom code
+LOCAL:2 = RESULT ;addition custom code
+CALL KOJO_MESSAGE_SEND("EVENT",19,RESULT,1,0)
+;addition custom code
+IF 人数 > 1
+	PRINTFORML 하지만 나머지는 낙담하여 돌아선다...
+	FOR LOCAL,1,CHARANUM
+	;既に住んでいるメンバーは除く
+	SIF CFLAG:LOCAL:神社在住 > 0
+		CONTINUE
+	IF TALENT:LOCAL:恋慕 && EXP:LOCAL:愛情経験 >= 200
+		LOCAL:1 = LINECOUNT
+		CALL KOJO_MESSAGE_SEND("EVENT",19,LOCAL,2,0)
+		;qol custom code to discern the speaker (LINECOUNT is also custom)
+		IF LINECOUNT != LOCAL:1
+			PRINTFORMW %CALLNAME:LOCAL%은(는) 작별 인사를 하기 전에 말한다...
+			PRINTL 
+		ENDIF
+	ENDIF
+	NEXT
+ENDIF
+CALL ROOMSETTING

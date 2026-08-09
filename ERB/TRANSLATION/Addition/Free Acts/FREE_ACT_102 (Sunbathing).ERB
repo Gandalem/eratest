@@ -1,0 +1,250 @@
+﻿; Modular ERB: Addition/Free Acts/FREE_ACT_102 (Sunbathing).ERB
+
+@EXIST_FreeAct102
+#LOCALSIZE 1
+#LOCALSSIZE 1
+;オブジェクト本体
+
+@FreeAct102(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+#DIM 経過時間
+SELECTCASE O_DATA
+	CASE "名称"
+		CALLF MAKE_STR(V_NAME, "SUNBATHING")
+	CASE "CHAIN"
+		;他キャラに連鎖する場合コメントアウト外すこと
+		CALLF MAKE_INT(V_NAME, 1)
+	CASE "経過時間"
+		;自由行動に付き合うコマンドでの経過時間
+		;未入力だと最大30分
+		IF TALENT:MASTER:氷精 || GET_TRIBENAME(MASTER, GETNUM(TALENT, "妖怪")) == "吸血鬼" || TALENT:MASTER:吸血鬼 ;bad idea
+			TFLAG:193 = -1
+			CALLF MAKE_INT(V_NAME, 10)
+		ELSE
+			SELECTCASE RAND:10
+				CASE 0
+					;10%で大成功
+					TFLAG:193 = 1
+					CALLF MAKE_INT(V_NAME, 30)
+				CASE 1 + (TIME:5 == 1) ? 1 # 0 ;strong sunlight increases risk
+					;10%で失敗
+					TFLAG:193 = -1
+					CALLF MAKE_INT(V_NAME, 30)
+				CASEELSE
+					TFLAG:193 = 0
+					CALLF MAKE_INT(V_NAME, 10)
+			ENDSELECT
+		ENDIF
+ENDSELECT
+
+@自由行動内容_102(CHARA, ARGS, 時間係数, CHAIN)
+#DIM CHARA
+#DIM CHAIN
+#DIM 現在地
+#DIM メッセージ表示
+#DIM 時間係数
+#DIM 経過時間
+#DIM CLOTHING_TYPE
+現在地 = CFLAG:CHARA:現在位置
+メッセージ表示 = 現在地 == CFLAG:MASTER:現在位置 ? 1 # 0
+SELECTCASE ARGS
+	CASE "発生"
+		IF GET_TRIBENAME(CHARA, GETNUM(TALENT, "妖怪")) == "吸血鬼" || TALENT:CHARA:吸血鬼 ;no vampires
+			RETURN 0
+		ELSEIF CHARA == [[ルーミア]] ;no rumia
+			RETURN 0
+		ELSEIF CHARA == [[チルノ]] && CFLAG:[[チルノ]]:差し替え適用 == 1 ;cirno only if using tanned portrait
+		ELSEIF TALENT:CHARA:氷精 ;not for ice-related characters
+			RETURN 0
+		ENDIF
+		SIF 自由行動内容_102_HAS_SUNLIGHT(現在地) < 0 ;no sun
+			RETURN 0
+		LOCALS = %CALLNAME:CHARA%
+		LOCAL = 0
+		IF !ADD_IN_SWIMWEAR(CHARA)
+			SELECTCASE 自由行動内容_102_OUTFIT(CHARA)
+				CASE 1
+					LOCALS += @" 으로 변한다"
+					IF IS_MALE(CHARA)
+						LOCALS += @" 수영복 한 벌과"
+						LOCAL = OBJNAME_TO_ID(CHARA, "GET", "衣装セット", "スイミングトランクスセット")
+					ELSE
+						LOCALS += @" 비키니와"
+						LOCAL = OBJNAME_TO_ID(CHARA, "GET", "衣装セット", "ビキニセット")
+					ENDIF
+				CASE 2
+					LOCALS += @" ~로 변한다"
+					IF IS_MALE(CHARA)
+						LOCALS += @" 수영복 한 벌과"
+						LOCAL = OBJNAME_TO_ID(CHARA, "GET", "衣装セット", "スイミングトランクスセット")
+					ELSE
+						LOCALS += @" 마이크로 비키니를 입고"
+						LOCAL = OBJNAME_TO_ID(CHARA, "GET", "衣装セット", "マイクロビキニセット")
+					ENDIF
+				CASE 3
+					LOCALS += @" %HIS_HER(CHARA)%의 상의를 벗고"
+					LOCAL = OBJNAME_TO_ID(CHARA, "GET", "衣装セット", "上半身裸セット")
+				CASE 4
+					LOCALS += @" 모든 %HIS_HER(CHARA)%의 옷을 벗고"
+					LOCAL = OBJNAME_TO_ID(CHARA, "GET", "衣装セット", "全裸セット")
+			ENDSELECT
+			SIF LOCAL
+				CALL SET_EVENT_CLOTHES(CHARA, LOCAL)
+		ENDIF
+		SIF メッセージ表示
+			PRINTFORMDW %LOCALS%은(는) \@ CHAIN ? %CALLNAME:CHAIN%와 함께 일광욕을 시작한다 # 일광욕을 시작한다 \@.
+		RETURN 60 + (RAND:6 * 10)
+	CASE "行動中"
+		LOCAL = 自由行動内容_102_HAS_SUNLIGHT(現在地)
+		IF LOCAL < 0
+			IF メッセージ表示
+				SELECTCASE LOCAL
+					CASE -1
+						PRINTFORMDW %CALLNAME:CHARA%은 햇볕을 쬐는 것을 멈춘다 왜냐하면 %HE_SHE(CHARA)%가 더 이상 해를 볼 수 없기 때문이다.
+					CASE -2
+						PRINTFORMDW %CALLNAME:CHARA%는 구름 뒤로 해가 사라지자 일광욕을 멈춘다.
+					CASE -3
+						PRINTFORMDW %CALLNAME:CHARA%는 너무 늦어서 일광욕을 그쳤다.
+					CASE -4
+						PRINTFORMDW %CALLNAME:CHARA%는 너무 추워져서 햇볕 쬐기를 멈춘다.
+				ENDSELECT
+			ENDIF
+			CALL 自由行動内容_102_END(CHARA)
+			CALL FA15_RESET(CHARA)
+			RETURN
+		ELSEIF メッセージ表示
+			PRINTFORMW %CALLNAME:CHARA%는 햇볕을 쬐고 있다.
+		ENDIF
+		LOCAL = TIME_PROGRESS(TIME:1)
+		DEBUGPRINTFORML %CALLNAME:CHARA% 회복 계수: {LOCAL}이다.
+		CALL RECOVER_PERMIL(CHARA, 10 * LOCAL, "体力", 1, "Sunbathing")
+		CALL RECOVER_PERMIL(CHARA, 10 * LOCAL, "気力", 1, "Sunbathing")
+	CASE "完了"
+		SIF メッセージ表示
+			PRINTFORMW %CALLNAME:CHARA%은(는) 일광욕을 멈춘다.
+		CALL 自由行動内容_102_END(CHARA)
+	CASE "中断"
+		CALL 自由行動内容_102_END(CHARA)
+	CASE "付き合う"
+		PRINTFORMDL 당신은 %CALLNAME:CHARA%와 함께 햇볕을 쬐며 시간을 보낸다.
+		SELECTCASE TFLAG:193
+			CASE 1
+				PRINTFORMDL 잠시 졸았다. 깨어나면 극도로 상쾌함을 느낀다.
+			CASE -1
+				PRINTFORMDL 잠시 졸았다. 깨어보니 심하게 햇볕에 그을려 있었다.
+			CASEELSE
+				PRINTFORMDL 따뜻하고 기분 좋다.
+		ENDSELECT
+	CASE "ソース"
+		SELECTCASE TFLAG:193
+			CASE 1
+				CALL RECOVER_PERMIL(MASTER, 10 * 時間係数, "体力", 1, "Sunbathing")
+				CALL RECOVER_PERMIL(MASTER, 10 * 時間係数, "気力", 1, "Sunbathing")
+			CASE -1
+				CALL RECOVER_PERMIL(MASTER, -7 * 時間係数, "体力", 1, "Sunburn")
+				CALL RECOVER_PERMIL(MASTER, -7 * 時間係数, "気力", 1, "Sunburn")
+			CASEELSE
+				CALL RECOVER_PERMIL(MASTER, 7 * 時間係数, "体力", 1, "Sunbathing")
+				CALL RECOVER_PERMIL(MASTER, 7 * 時間係数, "気力", 1, "Sunbathing")
+		ENDSELECT
+		SOURCE:CHARA:歓楽 = (100 + ((ABL:CHARA:親密 + 好感度係数(CHARA)) * 10)) * 時間係数
+		SOURCE:CHARA:受動 = (50 + ((ABL:CHARA:従順 + 好感度係数(CHARA)) * 5)) * 時間係数
+ENDSELECT
+
+@自由行動内容_102_HAS_SUNLIGHT(LOCATION)
+#FUNCTION
+#DIM LOCATION
+SIF LOCATION == P929地獄の人工太陽 ;Old Hell's Artificial Sun is always valid
+	RETURNF 1
+SIF !OUTROOF(LOCATION) ;must be outdoors with sun access
+	RETURNF -1
+SIF !INRANGE(TIME:5, 0, 2) ;must be sunny or mild clouds at worst
+	RETURNF -2
+SIF !INRANGE(TIME:2, 2, 4) ;must be daytime
+	RETURNF -3
+SIF GET_現在気温(LOCATION) < 180 ;too cold
+	RETURNF -4
+RETURNF 1
+
+@自由行動内容_102_OUTFIT(CHARA)
+#FUNCTION
+#DIM CHARA
+#DIM DYNAMIC OPTION_WEIGHTS, 5
+#DIM DYNAMIC LEWDNESS
+#DIM DYNAMIC LEWDNESS_FACTOR = 100
+LEWDNESS_FACTOR += TALENT:CHARA:性的興味 * 30
+LEWDNESS_FACTOR += TALENT:CHARA:目立ちたがり * 45
+LEWDNESS_FACTOR += TALENT:CHARA:貞操 * 90
+LEWDNESS_FACTOR += TALENT:CHARA:羞恥心 * 60
+LEWDNESS_FACTOR += TALENT:CHARA:小悪魔 * 60
+LEWDNESS_FACTOR += TALENT:CHARA:自己愛 * 90
+LEWDNESS_FACTOR += TALENT:CHARA:淫乱 * 150
+LEWDNESS_FACTOR += TALENT:CHARA:ヤリマン * 120
+LEWDNESS += MULTIPLY(ABL:CHARA:露出癖 * 2, LEWDNESS_FACTOR)
+LEWDNESS += TALENT:CHARA:性的興味 * 4
+LEWDNESS += TALENT:CHARA:目立ちたがり * 10
+LEWDNESS += TALENT:CHARA:貞操 * 7
+LEWDNESS += TALENT:CHARA:羞恥心 * 10
+LEWDNESS += TALENT:CHARA:小悪魔 * 10
+LEWDNESS += TALENT:CHARA:自己愛 * 10
+LEWDNESS += TALENT:CHARA:淫乱 * 30
+LEWDNESS += TALENT:CHARA:ヤリマン * 20
+;DEBUGPRINTFORML %CALLNAME:CHARA% lewdness: {LEWDNESS} Factor: {LEWDNESS_FACTOR}.
+IF LEWDNESS >= 50
+	OPTION_WEIGHTS:0 = 20 ;normal
+ELSE
+	OPTION_WEIGHTS:0 = 50 ;normal
+ENDIF
+IF LEWDNESS >= 120
+	OPTION_WEIGHTS:1 = MAX(LEWDNESS / 4, 0) ;bikini
+ELSEIF LEWDNESS >= 80
+	OPTION_WEIGHTS:1 = MAX(LEWDNESS / 2, 0) ;bikini
+ELSEIF LEWDNESS >= 60
+	OPTION_WEIGHTS:1 = MAX(LEWDNESS * 8 / 10, 0) ;bikini
+ELSEIF LEWDNESS >= 30
+	OPTION_WEIGHTS:1 = MAX(LEWDNESS * 15 / 10, 0) ;bikini
+ELSE
+	OPTION_WEIGHTS:1 = MAX(LEWDNESS, 0) ;bikini
+ENDIF
+IF LEWDNESS >= 150
+	OPTION_WEIGHTS:2 = MAX(LEWDNESS / 4, 0) ;micro bikini
+ELSEIF LEWDNESS >= 100
+	OPTION_WEIGHTS:2 = MAX(LEWDNESS / 2, 0) ;micro bikini
+ELSEIF LEWDNESS >= 60
+	OPTION_WEIGHTS:2 = MAX(LEWDNESS * 15 / 10, 0) ;micro bikini
+ELSEIF LEWDNESS >= 30
+	OPTION_WEIGHTS:2 = MAX(LEWDNESS / 2, 0) ;micro bikini
+ENDIF
+IF LEWDNESS >= 150
+	OPTION_WEIGHTS:3 = MAX(LEWDNESS / 2, 0) ;topless
+ELSEIF LEWDNESS >= 100
+	OPTION_WEIGHTS:3 = MAX(LEWDNESS * 2, 0) ;topless
+ELSEIF LEWDNESS >= 80
+	OPTION_WEIGHTS:3 = MAX(LEWDNESS, 0) ;topless
+ELSEIF LEWDNESS >= 40
+	OPTION_WEIGHTS:3 = MAX(LEWDNESS / 2, 0) ;topless
+ENDIF
+IF LEWDNESS >= 150
+	OPTION_WEIGHTS:4 = MAX(LEWDNESS * 2, 0) ;nude
+ELSEIF LEWDNESS >= 120
+	OPTION_WEIGHTS:4 = MAX(LEWDNESS * 15 / 10, 0) ;nude
+ELSEIF LEWDNESS >= 80
+	OPTION_WEIGHTS:4 = MAX(LEWDNESS / 2, 0) ;nude
+ENDIF
+IF !EQUIP:CHARA:下半身下着２ ;topless effectively becomes fully nude if nopan
+	OPTION_WEIGHTS:4 += OPTION_WEIGHTS:3
+	OPTION_WEIGHTS:3 = 0
+ENDIF
+RETURNF ARRAY_HIT(OPTION_WEIGHTS, 5)
+
+@自由行動内容_102_END(CHARA)
+#DIM CHARA
+IF TCVAR:CHARA:EVENT_CLOTHING_SET
+	SIF CFLAG:CHARA:現在位置 == CFLAG:MASTER:現在位置
+		PRINTFORML %CALLNAME:CHARA%는 다시 %HIS_HER(CHARA)%의 평상복으로 돌아간다.
+	CALL RESET_EVENT_CLOTHES(CHARA)
+ENDIF

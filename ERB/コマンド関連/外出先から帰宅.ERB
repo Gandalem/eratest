@@ -1,0 +1,243 @@
+﻿; Modular ERB: 外出先から帰宅.ERB
+
+@外出先から帰宅
+#DIM DIST_TO_HOME
+#DIM ReqTSP
+#DIM ReqMP
+#DIM CanTP
+#DIM CanTSP
+#DIM 道迷い時間
+#DIMS 低気圧位置
+低気圧位置 = %GET_LOCATION_LOW()%
+ReqTSP = QOL_RETURN_HOME_TIME_REQUIRED() * 3 ;qol custom code
+CALL YoujutsuMagicCanDo(MASTER,6,1) ; NAS TP Youjutsu
+ReqMP = QOL_RETURN_HOME_TIME_REQUIRED() * 6
+CanTP = RESULT
+CanTSP = MAXBASE:MASTER:TSP
+;=================
+IF FLAG:デート相手 != MASTER || FLAG:70 || (GETBIT(FLAG:瞬間移動, AT_HOME(MASTER)) && BASE:MASTER:TSP >= ReqTSP) ;qol custom code
+	CALL QoL_DateEndConfirm
+	SIF RESULT == -1
+		RETURN -1
+ENDIF
+IF SaveIsEZB
+	CALL 帰宅の時間経過
+	GOTO WARP
+ENDIF
+IF FLAG:デート相手 == MASTER && GETBIT(FLAG:瞬間移動, AT_HOME(MASTER)) && BASE:MASTER:TSP >= ReqTSP
+	BASE:MASTER:TSP -= ReqTSP
+	SIF !FLAG:70 && nAllowGoOutEventsInInstantMovement ;qol custom code
+		CALL お出かけイベント
+	GOTO WARP
+ENDIF
+IF FLAG:デート相手 == MASTER && !FLAG:70 && !(UsingFarskip(MASTER)) && (CanTP || CanTSP) ;qol custom code
+	PRINTFORML 만약 %PeeAndPoo(CanTSP,CanTP,"TSP","Farskip", " or")%가 사용되면 시간을 보내지 않고 귀가할 수 있다.
+	PRINTFORML %PeeAndPoo(CanTSP,CanTP,"TSP","Farskip", " or")%를 사용할까?
+	CALL ASK_M("No", 1, @"TSP를 사용한다 (TSP {ReqTSP}/{BASE:MASTER:TSP})", BASE:MASTER:TSP >= ReqTSP, @"\@ CanTP ? 원거리 스킵을 시전한다 (MP {ReqMP}/{BASE:MASTER:7}) # 원거리 스킵을 배우지 않았다 \@", BASE:MASTER:7 >= ReqMP && CanTP, "취소", 1) ;qol custom code
+	IF RESULT == 1
+		BASE:MASTER:TSP -= ReqTSP
+		GOTO WARP
+	ELSEIF RESULT == 2
+		BASE:MASTER:7 -= ReqMP
+		GOTO WARP
+	ENDIF
+	SIF RESULT == 3
+		RETURN -1
+ENDIF
+IF UsingFarskip(MASTER)
+	BASE:MASTER:7 -= ReqMP
+	GOTO WARP
+ELSEIF !FLAG:70
+	;FUCK DISASTERS
+	GOTO EndEvent
+	;- This message has been brought to you by NAS gang
+	;========
+	;(天候パッチ)連続降水カウンター20以上で土砂崩れに巻き込まれる可能性
+	IF CONTINUOUS_RAINFALL >= 20 && RAND:(MAX(2, (40 - CONTINUOUS_RAINFALL) / 2)) == 0
+		PRINTFORML 당신이 가는 길에 산비탈 위에서 이상한 소리가 들린다.
+		CALL COLORMESSAGE("!!! IT'S A LANDSLIDE !!!",C_RED,2,1)
+		PRINTFORML 
+		PRINTFORML 당신은 침전물에 걸리지만 빠져나오는 데 성공한다...
+		PRINTL 
+		CALL ASK_DIARY("Encountered a landslide!")
+		CALL RECOVER(MASTER,-(MAXBASE:MASTER:体力 * 3),"体力", "Landslide") ;qol custom code
+		GOTO WARP2
+	ENDIF
+	;(天候パッチ)雪崩発生フラグが立っているとき雪崩に巻き込まれる可能性
+	IF POSSIBLITY_AVALANCHE == 1 && POWER_COLD_AIR >= 3 && RAND:((6 - POWER_COLD_AIR) * 10) == 0
+		PRINTFORML 오는 길에 산비탈에서부터 정면으로 다가오는 무언가를 발견한다.
+		CALL COLORMESSAGE("눈사태다!!!",C_RED,2,1)
+		PRINTFORML 
+		PRINTFORML 눈사태에 휘말리지만 간신히 빠져나오다...
+		PRINTL 
+		POSSIBLITY_AVALANCHE = 0
+		CONTINUOUS_SNOWFALL = 0
+		CALL ASK_DIARY("Encountered an avalanche!")
+		CALL RECOVER(MASTER,-(MAXBASE:MASTER:体力 * 3),"体力", "Avalanche") ;qol custom code
+		GOTO WARP4
+	ELSEIF POSSIBLITY_AVALANCHE == 2 && POWER_WARM_AIR >= 2 && RAND:((6 - POWER_WARM_AIR) * 10) == 0
+		PRINTFORML 당신이 길을 가는 도중, 산비탈 위에서 정면으로 다가오는 무언가를 발견한다.
+		CALL COLORMESSAGE("눈사태다!!!",C_RED,2,1)
+		PRINTFORML 
+		PRINTFORML 눈사태에 휘말리지만 간신히 빠져나오는 데 성공한다...
+		PRINTL 
+		POSSIBLITY_AVALANCHE = 0
+		CONTINUOUS_SNOWFALL = 0
+		SNOW_COVERAGE = 0
+		CALL ASK_DIARY("Encountered an avalanche!")
+		CALL RECOVER(MASTER,-(MAXBASE:MASTER:体力 * 3),"体力", "Avalanche") ;qol custom code
+		GOTO WARP5
+	ENDIF
+	;(天候パッチ)暴風雪発生時にホワイトアウト発生の可能性 颶風時には確率上昇
+	IF TIME:5 == 9 && ((WIND_VELOCITY == 2 && RAND:3 == 0) || WIND_VELOCITY >= 3)
+		道迷い時間 = 60 + RAND:120
+		PRINTFORMW 사나운 바람에 날려, 무거운 눈이 당신의 눈앞을 온통 하얗게 만든다!
+		PRINTFORML 
+		PRINTFORML 길을 잃어서 제대로 돌아오기 위해 추가적인 %PRINT_PLUR("minute", 道迷い時間)%을 써야 했다.
+		TIME:0 += 道迷い時間
+		CALL RECOVER(MASTER,-(20 * 道迷い時間),"体力", "Wind") ;qol custom code
+		GOTO WARP6
+	ELSEIF TIME:5 == 8 && ((WIND_VELOCITY == 2 && RAND:10 == 0) || WIND_VELOCITY >= 3)
+		道迷い時間 = 30 + RAND:60
+		PRINTFORMW 사나운 바람에 날리며, 무거운 눈이 당신의 눈앞의 모든 것을 하얗게 만든다!
+		PRINTFORML 
+		PRINTFORML 길을 잃어서 제자리를 찾기 위해 추가적인 %PRINT_PLUR("minute", 道迷い時間)%를 써야 했다.
+		TIME:0 += 道迷い時間
+		CALL RECOVER(MASTER,-(15 * 道迷い時間),"体力", "Wind") ;qol custom code
+		GOTO WARP7
+	ENDIF
+	$EndEvent
+	CALL お出かけイベント
+	$WARP2
+	$WARP4
+	$WARP5
+	$WARP6
+	$WARP7
+	CALL 帰宅の時間経過
+ELSEIF BASE:MASTER:TSP < ReqTSP
+	PRINTW 집으로 돌아갈 TSP가 부족합니다.
+	RETURN -1
+ELSE
+	BASE:MASTER:TSP -= ReqTSP
+ENDIF
+$WARP
+IF CFLAG:負け犬 && TALENT:行きずり == 1
+	PRINTFORML 당신은 %조사처리(CALLNAME:TARGET,"를")% 집으로 데려온다.
+ELSEIF BASE:MASTER:体力 <= 0
+	PRINTFORML 너는 마지막 남은 힘을 써서 %GET_MAPNAME(MAIN_MAP)%로 돌아간다.
+	;custom code
+	PRINTFORML 하지만 %NAME_FROM_PLACE_THE(ENTRANCE)%에 돌아왔을 때, 당신은 쓰러지고 의식을 잃는다...
+	PRINTFORMW 
+ELSE
+	PRINTFORMW 당신은(은) %COND_STR(@" from the date", !(CFLAG:MASTER:デート中 != CFLAG:TARGET:デート中 || TARGET == MASTER))% 집으로 돌아왔다.
+ENDIF
+CALL 守矢くじデート相手のリセット()
+CALL HYPNO_DATE_RESET() ;hypnosis custom code
+FOR LOCAL,0,CHARANUM
+SIF LOCAL == MASTER
+	CONTINUE
+IF CHK_DATENOW(CFLAG:LOCAL:デート中)
+	DEBUGPRINTFORML {LOCAL}에게 데이트 이벤트를 적용한다.
+	CALL DATE_EVENT(LOCAL)
+	CALL SET_DATE(99,LOCAL)
+ENDIF
+NEXT
+SIF CHK_DATENOW(CFLAG:MASTER:デート中)
+	CALL SET_DATE(99,MASTER)
+CFLAG:MASTER:現在位置 = GET_ENTRANCE(MAIN_MAP)
+
+@帰宅の時間経過
+;残り時間算出
+;qol custom code, replaced calculation method
+TIME = TIME + QOL_RETURN_HOME_TIME_REQUIRED()
+; IF TFLAG:デート道中
+; 	;道中の場合
+; 	TIME = TIME + TIME_REQUIRED(MAIN_MAP, CFLAG:MASTER:デート中) - TFLAG:デート道中
+; ELSE
+; 	;デート先到着済みの場合
+; 	TIME = TIME + TIME_REQUIRED(MAIN_MAP, CFLAG:MASTER:デート中)
+; ENDIF
+CALL 守矢くじデート相手のリセット()
+CALL HYPNO_DATE_RESET() ;hypnosis custom code
+
+@外出先から誘えるか(ARG)
+LOCAL = FLAG:デート相手
+IF CFLAG:ARG:行動 == 5
+	PRINTFORMW %CALLNAME:ARG%은 지금 일하고 있다.
+	RETURN 0
+ENDIF
+IF !MOREDATE ;maybe still reject if they're jealous?
+	IF LOCAL != ARG && LOCAL != MASTER
+		PRINTFORM %CALLNAME:LOCAL% 
+		;気弱系
+		IF CFLAG:LOCAL:性格傾向 == 1
+			PRINTFORML 당신의 셔츠 자락을 붙잡고 %HIS_HER(LOCAL)%이 고개를 흔든다.
+			;強気系
+		ELSEIF CFLAG:LOCAL:性格傾向 == 2
+			PRINTFORML 너를 응시한다.
+			;素直系
+		ELSEIF CFLAG:LOCAL:性格傾向 == 3
+			PRINTFORML 당신을 바라보며 %HE_SHE(LOCAL)%은 단지 당신이 %HIM_HER(LOCAL)%을 보길 원한다고 말한다.
+			;真面目系
+		ELSEIF CFLAG:LOCAL:性格傾向 == 4
+			PRINTFORML 단순하게 거절하며 당신을 말을 끊는다.
+			;その他
+		ELSEIF CFLAG:LOCAL:性格傾向 == 5
+			PRINTFORML 한숨을 쉬며 %HIS_HER(LOCAL)%의 고개를 젓는다.
+		ENDIF
+		PRINTFORMW 당신은 %CALLNAME:ARG%에게 데이트 신청하는 것을 포기한다.
+		CALL KOJO_MESSAGE_SEND("EVENT",27,LOCAL,90,0) ;addition custom code, the jealous date
+		CALL KOJO_MESSAGE_SEND("EVENT",27,ARG,91,0) ;addition custom code, the rival's response
+		RETURN 0
+	ENDIF
+ENDIF
+IF !VISIT(ARG)
+	;qol custom code
+	PRINTFORML %PARSE("You are")%은(는) 지금은 좋은 때가 아니라고 말했다.
+	PRINTFORM 시간: %時刻表示(TIME)%, 활동 시간: 
+	CALL 滞在時間表示(ARG)
+	WAIT
+	;---------------------------------------------------------
+	RETURN 0
+ENDIF
+IF ARG == 93 && !ITEM:簡易プール
+	PRINTFORMW 당신은 %CALLNAME:ARG%을(를) 데리고 갈 수 없다...
+	RETURN 0
+ELSEIF BASE:ARG:気力 < 500
+	PRINTFORMW %CALLNAME:ARG%은(는) 외출하기에는 너무 지쳤다...
+	RETURN 0
+ELSEIF !CHARA_HOLIDAY(ARG) && BASE:ARG:仕事量 && TCVAR:ARG:仕事開始 < TIME + 180
+	PRINTFORMW %CALLNAME:ARG%은(는) 할 일이 있다.
+	RETURN 0
+ELSE
+	CFLAG:ARG:拠点来訪 = 1
+	RETURN 1
+ENDIF
+;FileName_DATE_CMN.ERB ------------------------------- Rev1.00
+;デートに誘えるか
+;-----------------------------------------------------------
+
+@CAN_DATE(ARG)
+#FUNCTION
+SIF !CHK_DATENOW(CFLAG:MASTER:デート中)
+	RETURNF 0
+SIF !SHIRAHU(ARG)
+	RETURNF 0
+SIF CFLAG:MASTER:現在位置 == OMANEKIBEYA()
+	RETURNF 0
+IF !CFLAG:ARG:負け犬
+	;custom code bugfix
+	SIF !CFLAG:ARG:態度 && ARG != RANDOM_CHARANUM
+		RETURNF 0
+	SIF CFLAG:ARG:ブチギレ
+		RETURNF 0
+ENDIF
+;潜伏モード中は不可
+SIF GETBIT(FLAG:潜伏,0)
+	RETURNF 0
+SIF CHK_DATENOW(CFLAG:ARG:デート中)
+	RETURNF 0
+;custom code bugfix
+SIF (!TALENT:ARG:思慕 && !TALENT:ARG:恋慕 && !TALENT:ARG:愛欲 && ARG != RANDOM_CHARANUM)
+	RETURNF 0
+RETURNF 1

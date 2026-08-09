@@ -1,0 +1,79 @@
+﻿; Modular ERB: 泥酔処理.ERB
+;泥酔になる処理と泥酔から復活する処理
+
+@CHARA_ACTION_DRUNK(ARG)
+IF !TCVAR:ARG:泥酔 && BASE:ARG:酒気 > (MAXBASE:ARG:酒気 / 10) * 8
+	TCVAR:ARG:泥酔 = 1
+	;仕事内容が宴会参加の場合
+	IF CFLAG:ARG:職種 == 49
+		;仕事内容を酔いつぶれるに変更
+		CFLAG:ARG:職種 = 51
+		CFLAG:ARG:職場 = TFLAG:宴会場
+		CFLAG:ARG:行動 = 5
+	ELSE
+		IF TALENT:ARG:酒耐性 == -2
+			CFLAG:ARG:下戸飲み -= 3
+		ENDIF
+	ENDIF
+	IF CFLAG:MASTER:現在位置 == CFLAG:ARG:現在位置
+		IF CFLAG:ARG:職種 == 51
+			PRINT 　
+		ENDIF
+		PRINTFORML %CALLNAME:ARG%는 만취해 있다.
+	ENDIF
+ENDIF
+;泥酔姦中は別の復帰処理を使用
+IF TCVAR:ARG:泥酔 && BASE:ARG:酒気 < (MAXBASE:ARG:酒気 / 10) * 4 && !CFLAG:ARG:うふふ && ARG == TARGET
+	IF CFLAG:MASTER:現在位置 == CFLAG:ARG:現在位置
+		IF CFLAG:ARG:職種 == 51 && CFLAG:ARG:現在位置 == TFLAG:宴会場
+			PRINT 　
+		ENDIF
+		PRINTFORML 만취했던 %CALLNAME:ARG%가 정신을 차린다.
+	ENDIF
+	CALL 泥酔復活共通(ARG)
+ENDIF
+;睡姦中に泥酔から復活するときの前処理 主にソースの追加
+
+@DRUNK_RECOVER_BEFORE(ARG)
+IF TCVAR:ARG:泥酔 && BASE:ARG:酒気 < (MAXBASE:ARG:酒気 / 10) * 4 && CFLAG:ARG:うふふ && ARG == TARGET && !FLAG:70
+	IF TALENT:ARG:恋慕
+		SOURCE:ARG:反感 += 3000
+	ELSE
+		SOURCE:ARG:反感 += 20000
+	ENDIF
+	TFLAG:好感度管理 -= MIN(30 - ABL:ARG:親密, 0) * 3
+	TFLAG:信頼度管理 -= MIN(30 - ABL:ARG:親密, 0) * 3
+	TCVAR:ARG:泥酔姦バレ = 1
+ENDIF
+;睡姦中に泥酔から復活する処理
+
+@DRUNK_RECOVER(ARG)
+SIF !TCVAR:ARG:泥酔姦バレ
+	RETURN
+PRINTL 
+PRINTFORMW 만취했던 %CALLNAME:ARG%가 깨어난다!
+CALL 泥酔復活共通(ARG)
+CFLAG:ARG:泥酔姦 = 2
+CALL ENDUFUFU(ARG)
+CALL SET_PRANK(0,ARG,1)
+IF TALENT:ARG:恋慕 || TCVAR:Common_Sense_Alteration_Status > 50 ;hypnosis patch
+	;MARK:ARG:反発刻印 = 1
+	;TFLAG:反発刻印取得 = 1
+	PRINTFORML %CALLNAME:ARG%은/는 %HE_SHE(TARGET)%이(가) %HIS_HER(TARGET)%의 옷 상태를 알아차리자 %PARSE("you")%에게 노려본다.
+	PRINTFORMW %HIS_HER(TARGET)%의 옷을 정리하고, %HE_SHE(TARGET)%은/는 차가운 시선으로 당신을 응시한다...
+ELSE
+	;MARK:ARG:反発刻印 = 3
+	;TFLAG:反発刻印取得 = 3
+	PRINTFORML %CALLNAME:ARG%은(는) 당신이 믿을 수 없다는 듯 바라보는 동안 %HE_SHE(TARGET)%이(가) %HIS_HER(TARGET)%의 옷 상태를 알아차린다.
+	PRINTFORMW %CALLNAME:ARG%은(는) 분노로 이성이 끊어질 지경이다...
+ENDIF
+
+@泥酔復活共通(ARG)
+;宴会で酔いつぶれていた場合
+IF CFLAG:ARG:職種 == 51
+	CFLAG:ARG:職種 = JOB_宴会参加 ;bugfix custom code
+	TALENT:ARG:機嫌 = 0
+	CFLAG:ARG:宴会参加 = 3
+ENDIF
+TCVAR:ARG:泥酔 = 0
+CFLAG:ARG:行動 = 0

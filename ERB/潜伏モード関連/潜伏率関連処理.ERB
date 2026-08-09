@@ -1,0 +1,244 @@
+﻿; Modular ERB: 潜伏率関連処理.ERB
+;----------------------------------------------------------------------------------------------------
+;潜伏率の増減処理
+;----------------------------------------------------------------------------------------------------
+
+@潜伏率増減処理
+CALL Add_SeedOfUnknownForm("init") ;addition custom code
+IF GETBIT(FLAG:潜伏,2)
+	;会話モードはこれで判定
+	SELECTCASE SELECTCOM
+		CASE 300
+			BASE:MASTER:潜伏率 += 10
+		CASE 19,20,21
+			BASE:MASTER:潜伏率 += 0
+		CASEELSE
+			IF NOWEX:Ｃ絶頂 || NOWEX:Ｖ絶頂 || NOWEX:Ａ絶頂 || NOWEX:Ｂ絶頂 || NOWEX:Ｍ絶頂
+				BASE:MASTER:潜伏率 -= 18
+			ELSE
+				BASE:MASTER:潜伏率 -= 6
+			ENDIF
+	ENDSELECT
+	CALL 会話モード継続判定
+ELSEIF GETBIT(FLAG:潜伏,1)
+	;探索モードはこれで判定
+	SELECTCASE SELECTCOM
+		CASE 19,20,21
+			BASE:MASTER:潜伏率 += 3
+		CASEELSE
+			IF NOWEX:Ｃ絶頂 || NOWEX:Ｖ絶頂 || NOWEX:Ａ絶頂 || NOWEX:Ｂ絶頂 || NOWEX:Ｍ絶頂
+				BASE:MASTER:潜伏率 -= 12
+			ELSE
+				BASE:MASTER:潜伏率 -= 4
+			ENDIF
+	ENDSELECT
+	CALL 探索判定
+ELSE
+	;潜伏モードはこれで判定
+	IF GET_TARGETNUM() > 1
+		SELECTCASE SELECTCOM
+			CASE 19,20,21
+				BASE:MASTER:潜伏率 += 5
+			CASEELSE
+				IF NOWEX:Ｃ絶頂 || NOWEX:Ｖ絶頂 || NOWEX:Ａ絶頂 || NOWEX:Ｂ絶頂 || NOWEX:Ｍ絶頂
+					BASE:MASTER:潜伏率 -= 6
+				ELSE
+					BASE:MASTER:潜伏率 -= 2
+				ENDIF
+		ENDSELECT
+		SIF BASE:MASTER:潜伏率 < 40
+			CALL 探索者決定処理
+	ELSE
+		;周囲に誰もいなければ常に100％
+		BASE:MASTER:潜伏率 = 100
+	ENDIF
+ENDIF
+;会話モード以外で継続キス中は＋7
+SIF TEQUIP:継続キス && !GETBIT(FLAG:潜伏,2)
+	BASE:MASTER:潜伏率 += 7
+CALL Add_SeedOfUnknownForm("proc") ;addition custom code
+;潜伏率100以上なら100に
+BASE:MASTER:潜伏率 = MIN(BASE:MASTER:潜伏率, 100)
+;潜伏率0%で潜伏モード終了、ウフフバレへ
+IF BASE:MASTER:潜伏率 <=0
+	;bug fix (snooper is always chosen randomly now, perhaps set it at the start and go from there next time?)
+	;note that TARGET is assumed to be the one you're fucking, but what if you switch targets? should be caught by getbit I guess
+	LOCAL = GET_SNOOPER()
+	;if no suitable actors are detected (everyone moved away etc)
+	IF LOCAL <= 0
+		SETCOLOR COLOR("緑")
+		PRINTFORML 위협은 사라진 것 같다...
+		RESETCOLOR
+		;reset stealth at 100
+		BASE:MASTER:潜伏率 = 100
+	ELSE
+		;all flags are cleared before characters in a current spot are kicked out
+		CALL 潜伏モード終了処理
+		;hacky temp flag set
+		RESULT:10 = 99
+		CALL AFFAIR_DISCLOSURE(LOCAL, 0) ;TARGET:LOCAL is used in the original fix, but we choose random instead of someone with highest favor
+		RESULT:10 = 0
+		;forcibly end ufufu anyway
+		IF CFLAG:MASTER:うふふ
+			PRINTFORML 목격된 후, 세션은 종료되어야 했다...
+			FOR LOCAL,0,CHARANUM
+			CALL ENDUFUFU(LOCAL)
+			;SIF CFLAG:LOCAL:現在位置 != CFLAG:MASTER:現在位置
+			;	CONTINUE
+			;CALL GETOUT(LOCAL)
+			NEXT
+			TFLAG:106 = 0
+		ENDIF
+	ENDIF
+	;-------
+ENDIF
+;----------------------------------------------------------------------------------------------------
+;潜伏モードの終了処理
+;----------------------------------------------------------------------------------------------------
+
+@潜伏モード終了処理
+;CFLAG:潜伏状態が1以上のキャラを全て0に
+FOR LOCAL, 1, GET_TARGETNUM() + 1
+;全CFLAG:探索状態をオフに
+SIF GETBIT(CFLAG:(TARGET:LOCAL):潜伏状態,0)
+	CLEARBIT CFLAG:(TARGET:LOCAL):潜伏状態,0
+SIF GETBIT(CFLAG:(TARGET:LOCAL):潜伏状態,1)
+	CLEARBIT CFLAG:(TARGET:LOCAL):潜伏状態,1
+SIF GETBIT(CFLAG:(TARGET:LOCAL):潜伏状態,2)
+	CLEARBIT CFLAG:(TARGET:LOCAL):潜伏状態,2
+NEXT
+;潜伏フラグをオールクリア
+CLEARBIT FLAG:潜伏,0
+CLEARBIT FLAG:潜伏,1
+CLEARBIT FLAG:潜伏,2
+TFLAG:探索試行回数 = 0
+TFLAG:会話回数 = 0
+;----------------------------------------------------------------------------------------------------
+;探索者の決定処理
+;----------------------------------------------------------------------------------------------------
+
+@探索者決定処理
+;(LOCAL:1)＝探索者
+;bug fix------------- (as the previous method will point at TARGET you're fucking currently with high favor, now it chooses someone random in the room)
+LOCAL:1 = GET_SNOOPER()
+SIF LOCAL:1 <= 0
+	RETURN
+;--------------------
+SIF CFLAG:(LOCAL:1):好感度 < 1500
+	RETURN
+SIF GETBIT(CFLAG:(LOCAL:1):潜伏状態,0)
+	RETURN
+SETBIT CFLAG:(LOCAL:1):潜伏状態,1
+;探索モード(1)をオンに
+SETBIT FLAG:潜伏,1
+SETCOLOR COLOR("黄")
+PRINTFORML 당신의 존재를 알아채고, %CALLNAME:(LOCAL:1)%은 주변을 찾기 시작하는 듯하다...
+RESETCOLOR
+;----------------------------------------------------------------------------------------------------
+;探索モードの探索判定関連
+;----------------------------------------------------------------------------------------------------
+
+@探索判定
+;(LOCAL:1)＝探索者
+;bug fix-------------
+LOCAL:1 = GET_SNOOPER()
+SIF LOCAL:1 <= 0
+	RETURN
+;--------------------
+IF !IS_HERE(LOCAL:1) ;qol custom code, snooper left
+	;探索キャラが移動した等でいない場合は探索モード(1)をオフ
+	CLEARBIT FLAG:潜伏,1
+	TFLAG:探索試行回数 = 0
+	SETCOLOR COLOR("緑")
+	PRINTFORML 여기를 서성이고 있던 사람은 어딘가로 갔을 것이다.
+	RESETCOLOR
+ENDIF
+IF TFLAG:探索試行回数 < 6
+	IF RAND:10 < 1
+		;探索された場合会話モード(2)をオンに、探索モード(1)はオフに
+		SETBIT CFLAG:(LOCAL:1):潜伏状態,2
+		CLEARBIT CFLAG:(LOCAL:1):潜伏状態,1
+		SETBIT FLAG:潜伏,2
+		CLEARBIT FLAG:潜伏,1
+		TFLAG:探索試行回数 = 0
+		SETCOLOR COLOR("赤")
+		PRINTFORML %CALLNAME:(LOCAL:1)%이(가) 당신을 발견하고 거리를 두고 말을 걸어온다!
+		RESETCOLOR
+	ELSE
+		TFLAG:探索試行回数 ++
+		SETCOLOR COLOR("黄")
+		PRINTFORML %CALLNAME:(LOCAL:1)%이 당신을 찾고 있다...
+		RESETCOLOR
+	ENDIF
+ELSE
+	;探索試行回数が6回以上なら探索終了
+	CLEARBIT CFLAG:(LOCAL:1):潜伏状態,1
+	CLEARBIT FLAG:潜伏,1
+	TFLAG:探索試行回数 = 0
+	SETCOLOR COLOR("緑")
+	PRINTFORML %CALLNAME:(LOCAL:1)%은 당신을 찾는 것을 포기한 것 같다...
+	RESETCOLOR
+ENDIF
+;----------------------------------------------------------------------------------------------------
+;会話モードの継続判定
+;----------------------------------------------------------------------------------------------------
+
+@会話モード継続判定
+;(LOCAL:1)＝会話者
+;bug fix-------------
+LOCAL:1 = GET_SNOOPER()
+SIF LOCAL:1 <= 0
+	RETURN
+;--------------------
+IF !IS_HERE(LOCAL:1) ;qol custom code, snooper left
+	;会話キャラが移動した等でいない場合は会話モード(2)をオフ
+	CLEARBIT FLAG:潜伏,2
+	TFLAG:会話回数 = 0
+	SETCOLOR COLOR("緑")
+	PRINTFORML 얼마 지나지 않아 당신과 대화하던 사람은 사라졌다.
+	RESETCOLOR
+ENDIF
+;会話回数以下のRANDを出せば会話終了。それ以外ならモード続行
+IF RAND:20 < TFLAG:会話回数
+	CLEARBIT CFLAG:(LOCAL:1):潜伏状態,2
+	CLEARBIT FLAG:潜伏,2
+	TFLAG:会話回数 = 0
+	SETCOLOR COLOR("緑")
+	PRINTFORML %CALLNAME:(LOCAL:1)%은 당신과 대화한 후 만족하는 듯하다.
+	RESETCOLOR
+ELSE
+	TFLAG:会話回数 ++
+	SETCOLOR COLOR("赤")
+	PRINTFORML %CALLNAME:(LOCAL:1)%은(는) 여전히 당신과 이야기하고 싶어한다.
+	RESETCOLOR
+ENDIF
+;custom code, added
+
+@GET_SNOOPER()
+#FUNCTION
+LOCAL = -1
+IF GET_TARGETNUM() > 1
+	;qol custom code, once a snooper has been selected, keep them until they stop
+	FOR LOCAL:2, 1, CHARANUM
+	;involved in sex, skip
+	SIF GETBIT(CFLAG:(TARGET:(LOCAL:2)):潜伏状態,0)
+		CONTINUE
+	;active snooper
+	SIF GETBIT(CFLAG:(TARGET:(LOCAL:2)):潜伏状態,1) || GETBIT(CFLAG:(TARGET:(LOCAL:2)):潜伏状態,2)
+		RETURNF TARGET:(LOCAL:2)
+	NEXT
+	LOCAL:1 = 0
+	DO
+	LOCAL = IN_ROOM_MEMBER(, CFLAG:MASTER:現在位置, "RAND")
+	IF LOCAL:1++ >= 10
+		DEBUGPRINTFORML ---------------------
+		DEBUGPRINTFORML 스누퍼 루프 오버플로우 발생, 종료한다.
+		DEBUGPRINTFORML ---------------------
+		BREAK
+	ENDIF
+	;DEBUGPRINTFORML LOCAL:1 - {LOCAL:1}
+	LOOP LOCAL == MASTER || LOCAL == TARGET || GETBIT(CFLAG:LOCAL:潜伏状態,0) ;qol custom code, not those involved
+	SIF LOCAL:1 >= 10
+		LOCAL = -1
+ENDIF
+RETURNF LOCAL

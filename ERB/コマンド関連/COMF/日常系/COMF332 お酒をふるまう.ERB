@@ -1,0 +1,246 @@
+﻿; Modular ERB: COMF/日常系/COMF332 お酒をふるまう.ERB
+;-------------------------------------------------
+;お酒をふるまう
+;日常系コマンド、レベル1
+;-------------------------------------------------
+
+@COM332
+#DIM 酒ID
+VARSET LOCALS
+;com custom code, rejected through KOJO
+IF TFLAG:192 < 0
+	TFLAG:102 = 0 ;remove favor processing
+	RETURN 0
+ENDIF
+PRINTL 제공할 무언가를 선택한다.
+CALL 酒一覧表示(1)
+IF RESULT
+	;飲む酒の種類
+	TFLAG:194 = RESULT
+	ITEM:RESULT --
+ELSE
+	RETURN -1
+ENDIF
+;keep the untranslated name for COM_STR as it's checked in the kojo later
+COM_STR = %ITEMNAME:(TFLAG:194)%
+酒ID = ALC_ID(COM_STR)
+PRINTFORML 당신은 %ITEMNAME_TR(TFLAG:194)%을 조금 부어 %조사처리(CALLNAME:TARGET,"에게")% 준다...
+;暫定的に成功フラグを立てる
+TFLAG:193 = 0
+IF !TALENT:TARGET:恋慕 && CFLAG:TARGET:泥酔姦 == 2
+	PRINTFORML %조사처리(CALLNAME:TARGET,"는")% 당신과 술을 마시고 싶지 않은 것 같다...
+	SOURCE:反感 += 3000
+	BASE:ムード = 0
+	BASE:怒り = 1500
+	;	TFLAG:193 = -2
+	RETURN -1
+ENDIF
+IF BASE:酒気 > MAXBASE:酒気 * 2 / 3
+	PRINTFORML %조사처리(CALLNAME:TARGET,"는")%(는) 더 이상 술을 마시고 싶어하지 않는다...
+	;	TFLAG:193 = -1
+	RETURN -1
+ELSEIF (AlcoholAddict:TARGET:0 <= -5 && CFLAG:TARGET:下戸飲み < 5) || TFLAG:192 == -1
+	SELECTCASE CFLAG:TARGET:下戸飲み
+		CASE IS < -10
+			LOCALS = %조사처리(CALLNAME:TARGET,"는")%(는) 술에 대해 불편함을 느낀다...
+		CASE IS <= -3
+			LOCALS = %조사처리(CALLNAME:TARGET,"는")% 술과 좋지 않은 경험을 했고, 정말로 마시고 싶어 하지 않는다.
+		CASEELSE
+			IF GET_INT(TARGET, "Religion", TALENT:TARGET:Religion, "Alcohol") == -1 || TFLAG:192 == -1
+				LOCALS = %조사처리(CALLNAME:TARGET,"는")%(는) 술을 마시는 것이 허용되지 않는다며 거부한다.
+			ELSEIF CharaAge:TARGET:0 < 18
+				LOCALS = %조사처리(CALLNAME:TARGET,"는")%(는) 술 마시기에 너무 어리다고 말하며 거절한다.
+			ELSE
+				LOCALS = %조사처리(CALLNAME:TARGET,"는")% 술을 못 마시는 것 같고 관심이 없는 모양이다...
+			ENDIF
+	ENDSELECT
+	PRINTFORML %LOCALS%
+	PRINTFORML [0] 포기한다
+	PRINTFORML [1] 설득하려고 노력한다
+	$LOOP
+	INPUT
+	;IF RESULT == 0 || TARGET == 55 || TFLAG:192 == -1 || CharaAge:TARGET:0 < 18
+	IF RESULT == 0
+		;ひじりんは宗教的信条なので絶対飲まない。口上側で制御した場合もここ
+		PRINTFORML 당신은 %조사처리(CALLNAME:TARGET,"와")% 함께 마시는 것을 포기한다...
+		ITEM:(TFLAG:194)++
+		TFLAG:193 = -5
+		RETURN 0
+	ELSEIF RESULT == 1
+		LOCAL = (ABL:親密 * 200 + ABL:MASTER:話術技能 * 100 + MIN(3,CFLAG:下戸飲み) * 300) * BASE:ムード / MAXBASE:ムード
+		CALL SHOW_LOVEPOWER(LOCAL)
+		CALL SHOW_REASONWALL(1500)
+		IF LOCAL >= 1500
+			PRINTFORML 당신이 %조사처리(CALLNAME:TARGET,"를")% 성공적으로 설득한 후, %HE_SHE(TARGET)%는 조심스럽게 그것을 시도한다...
+			CFLAG:下戸飲み += 1
+			TFLAG:193 = 1
+			;SIF GET_INT(TARGET, "Religion", TALENT:TARGET:Religion, "Alcohol") == -1
+			;sinned
+		ELSEIF CFLAG:下戸飲み < -10
+			PRINTFORML %조사처리(CALLNAME:TARGET,"는")% 격분한다...
+			SOURCE:反感 += 3000
+			BASE:ムード = 0
+			BASE:怒り = 1500
+			TFLAG:好感度マイナス = 5
+			TFLAG:193 = -2
+			RETURN 1
+		ELSE
+			PRINTFORML 당신이 뭐라고 말하든, %조사처리(CALLNAME:TARGET,"는")% 술을 시도하지 않을 것이다...
+			SOURCE:反感 += 500
+			BASE:ムード /= 2
+			TFLAG:好感度マイナス = 1
+			TFLAG:193 = -1
+			RETURN 1
+		ENDIF
+	ELSE
+		GOTO LOOP
+	ENDIF
+ENDIF
+TRYCALLFORM EFFECT_酒データ{酒ID}(TARGET)
+DOWNBASE:MASTER:気力 += 50
+DOWNBASE:MASTER:体力 += 10
+CALL DRUNKEN(MASTER,TFLAG:194)
+CALL QOL_BREWING_GUIDE_CONSUME(COM_STR) ;qol custom code
+CALL COM332_1
+TIME += !FLAG:TIME_COMPRESSION ? 30 # 15
+RETURN 1
+
+@COM332_1
+#DIM 酒気増加量
+#DIM 味補正
+DOWNBASE:気力 += 10
+;固定で獲得するソース
+SOURCE:歓楽 = 500
+CALL DRUNKEN(TARGET,TFLAG:194)
+;連続実行時は反感が発生
+SIF PREVCOM == SELECTCOM
+	SOURCE:反感 = 100
+;ABL:従順をみる
+IF ABL:従順 <= 1
+	SOURCE:歓楽 += (ABL:従順 * 30)
+ELSEIF ABL:従順 <= 3
+	SOURCE:歓楽 += 400 + (ABL:従順 * 30)
+ELSEIF ABL:従順 <= 5
+	SOURCE:歓楽 += 600 + (ABL:従順 * 30)
+ELSEIF ABL:従順 <= 8
+	SOURCE:歓楽 += 800 + (ABL:従順 * 50)
+ELSEIF ABL:従順 <= 11
+	SOURCE:歓楽 += 1000 + (ABL:従順 * 70)
+ELSE
+	SOURCE:歓楽 += 1500 + (ABL:従順 * 40)
+ENDIF
+;好感度をみる
+IF CFLAG:2 <= 500
+	SOURCE:歓楽 += CFLAG:2
+ELSEIF CFLAG:2 <= 5000
+	SOURCE:歓楽 += 700 + (CFLAG:2 - 500) / 3
+ELSE
+	SOURCE:歓楽 += 2500 + (CFLAG:2 - 5000) / 5
+ENDIF
+SIF SOURCE:歓楽 < 0
+	SOURCE:歓楽 = 0
+SOURCE:受動 = 200 + 100 * ABL:従順
+SOURCE:征服 = 200 + 100 * ABL:サドっ気
+IF TFLAG:193 == -1
+	TIMES SOURCE:歓楽 , 0.10
+	TIMES SOURCE:征服 , 0.50
+	TIMES SOURCE:受動 , 0.50
+ELSEIF TFLAG:193 == 0
+	TIMES SOURCE:歓楽 , 1.00
+	TIMES SOURCE:征服 , 1.00
+	TIMES SOURCE:受動 , 1.00
+ELSE
+	TIMES SOURCE:歓楽 , 2.00
+	TIMES SOURCE:征服 , 2.00
+	TIMES SOURCE:受動 , 2.00
+ENDIF
+;Custom code, C Pleasure for drinking Rotor-based drinks
+SIF TFLAG:194 == 987
+	SOURCE:快Ｃ += 300
+;味による補正
+味補正 = ALCOHOL_TASTE(TFLAG:194)
+IF AlcoholAddict:TARGET:0 <= -5 && ALCOHOL_TASTE(TFLAG:194) < 15
+	IF CFLAG:TARGET:下戸飲み < 3
+		味補正 /= 2
+		PRINTFORML %조사처리(CALLNAME:TARGET,"는")%(는) 한 모금만 마시고 멈춘다.
+	ELSEIF CFLAG:TARGET:下戸飲み < 5
+		味補正 = 味補正 / 3 * 2
+		PRINTFORML %조사처리(CALLNAME:TARGET,"는")% 주저하는 것 같다. %HE_SHE(TARGET)%이 마시기 전에 망설이고 있어서...
+	ELSE
+		PRINTFORML %조사처리(CALLNAME:TARGET,"가")%/가 잔을 비운다...
+	ENDIF
+ENDIF
+SOURCE:歓楽 = SOURCE:歓楽 * 味補正 / 10
+SOURCE:征服 = SOURCE:征服 * 味補正 / 10
+SOURCE:受動 = SOURCE:受動 * 味補正 / 10
+;信頼
+TFLAG:98 = ALCOHOL_TASTE(TFLAG:194) / 10
+IF ALCOHOL_TASTE(TFLAG:194) < 10
+	PRINTFORMW %조사처리(CALLNAME:TARGET,"의")% 입맛에는 맞지 않는 것 같군...
+	IF AlcoholAddict:TARGET:0 <= -5
+		CFLAG:TARGET:下戸飲み --
+		TFLAG:好感度マイナス = 1
+		TFLAG:98 = -1
+	ENDIF
+ELSEIF ALCOHOL_TASTE(TFLAG:194) >= 15
+	SELECTCASE TFLAG:194
+		CASE 513	;一夜のクシナダの特殊テキスト
+			SIF INRANGE(TALENT:TARGET:酒耐性, 1, 3) ;custom code
+				PRINTFORM %조사처리(CALLNAME:TARGET,"는")%(는) %ITEMNAME_TR(TFLAG:194)%를 마시기 쉽다고 생각한다. 
+			SELECTCASE TALENT:TARGET:酒耐性
+				CASE 3
+					PRINTFORMW 그리고 취객처럼 전부 들이켠다...
+				CASE 2
+					PRINTFORMW 전부 단숨에 들이켰다...
+				CASE 1
+					PRINTFORMW 그것이 부드럽게 목을 넘어갈 때...
+				CASEELSE
+					PRINTFORMW 보아하니 %ITEMNAME_TR(TFLAG:194)%가 %조사처리(CALLNAME:TARGET,"의")% 입맛에 맞나 보네...
+			ENDSELECT
+		CASEELSE
+			PRINTFORMW 보기에는 %ITEMNAME_TR(TFLAG:194)%가 %조사처리(CALLNAME:TARGET,"의")% 입맛에 맞는 것 같다...
+	ENDSELECT
+	SIF CFLAG:TARGET:下戸飲み < 5
+		CFLAG:TARGET:下戸飲み ++
+	CALL KIGEN_CHANGE(TARGET,40,1)
+ENDIF
+;-------------------------------------------------
+;実行判定
+;-------------------------------------------------
+
+@COM_ABLE332
+SIF !TFLAG:100
+	RETURN 0
+;一括管理
+SIF GLOBAL_COMABLE(332)
+	RETURN RESULT
+;睡眠中
+SIF CFLAG:睡眠
+	RETURN 0
+;添い寝中
+SIF CFLAG:添い寝中
+	RETURN 0
+;妊娠自覚状態は不可
+SIF CFLAG:妊娠自覚状態 == 1
+	RETURN 0
+;浴場
+SIF BATHCHECK(CFLAG:MASTER:現在位置)
+	RETURN 0
+;デート中 ;com custom code, allow drinking during dates
+;SIF CHK_DATENOW(CFLAG:デート中) && CFLAG:現在位置 != OMANEKIBEYA()
+;	RETURN 0
+;外出先で実行時は親密3を要求
+SIF !AT_HOME(MASTER) && ABL:親密 < 3
+	RETURN 0
+;気力0
+SIF BASE:MASTER:気力 <= 0
+	RETURN 0
+;停止中は不可
+SIF FLAG:70 && !MAXBASE:TARGET:TSP
+	RETURN 0
+SIF TARGET == MASTER
+	RETURN 0
+;NAS: babies cannot drink alcohol
+SIF IS_BABY(TARGET)
+	RETURN 0
+RETURN 1

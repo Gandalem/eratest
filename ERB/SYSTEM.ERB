@@ -1,0 +1,84 @@
+﻿; Modular ERB: SYSTEM.ERB
+;FileName_SYSTM.ERB -------------------------------- Rev1.00
+;ニューゲーム処理
+;CALL		SYSTEM
+;ARG		VOID
+;RETURN		VOID
+;COMMENT
+;-----------------------------------------------------------
+
+@EVENTFIRST
+IF benchMarkStart
+	CALL BENCHMARK_START_STAGE
+ENDIF
+;クラス変数初期化
+CALL MAKE_ALL_CLASS_LIST
+;複雑化のため専用関数へ移動
+CALL NEWGAME
+SIF RESULT == -8888
+	RETURN -8888
+;溜まってる度の初期設定
+FOR LOCAL,1,CHARANUM
+CFLAG:LOCAL:溜まってる度 = RAND:500
+NEXT
+;ロード時と共通の初期化
+;依頼：手紙の宛先処理
+CALL SETUP_ALL_LETTERS
+FOR LOCAL,1,CHARANUM
+IF TALENT:LOCAL:行きずり
+	RANDOM_CHARANUM = LOCAL
+	BREAK
+ENDIF
+NEXT
+;Custom code, updates character dialog status
+CALL CHARACTER_DIALOG_STATUS
+;木材データ
+CALL WoodData
+;アップデート処理
+SIF !DevTest && !benchMarkStart && !NAS_NoobGuide
+	CALL NEWGAME_VERUP
+;NAS custom code: custom characters
+CALL SETUP_SPECIAL_CHARACTERS()
+;NAS: clean up mobs
+CALLF CLEAN_MOBS
+;NAS: log cutscene
+SIF SaveIsEZB
+	CALL LoG_StartCutScene(1000)
+;SYSTEMCALL to SHOW_SHOP
+BEGIN SHOP
+
+@EVENTLOAD
+GETTIME
+DEBUGPRINTFORML 연도: {RESULT / 10000000000000} 월: {(RESULT / 100000000000) % 100} Day: {(RESULT / 1000000000) % 100} 시각: {(RESULT / 10000000) % 100}
+CALL ROOMSETTING
+CALL VERSION_UP
+SIF CFLAG:MASTER:312
+	TIME:3 = CFLAG:MASTER:312
+CFLAG:MASTER:312 = 0
+CALL MAKE_ALL_CLASS_LIST
+;achievement rework custom code
+CALL MakeAchievementListTemp
+;依頼：手紙の宛先処理
+CALL SETUP_ALL_LETTERS
+;Custom code, updates character dialog status
+CALL CHARACTER_DIALOG_STATUS
+;NAS: clean up mobs
+CALLF CLEAN_MOBS
+LOCAL:1 = 0
+FOR LOCAL,1,CHARANUM
+;CALL ANIMATION_LOAD_NAS(LOCAL, 1, CHARANUM, @"Resetting flags and bladders for %NAME:LOCAL% {LOCAL,3}/{CHARANUM,3}" ) ;nas loading
+;口上の基本フラグ設定
+CALL KOJO_MESSAGE_SEND("FLAGSETTING", 0, LOCAL)
+;NAS reset bladders and set multiple mobs
+CALLF ResetBladders(LOCAL)
+IF TALENT:LOCAL:行きずり && !TALENT:LOCAL:CustomChara
+	RANDOM_CHARANUM:(LOCAL:1) = LOCAL
+	LOCAL:1 ++
+ENDIF
+NEXT
+;木材データ
+CALL WoodData
+;NAS Onboarding
+LOADGLOBAL
+SIF !nOnboardingProgress:0
+	CALL NAS_NewGame_FetishSettings

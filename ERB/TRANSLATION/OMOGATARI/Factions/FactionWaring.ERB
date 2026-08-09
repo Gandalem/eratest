@@ -1,0 +1,607 @@
+﻿; Modular ERB: OMOGATARI/Factions/FactionWaring.ERB
+
+@FACTION_ASSAIAN_CHECK(ARG, nFaction)
+#DIM DYNAMIC nFaction
+#DIM RNGSuccess
+#DIM DYNAMIC RNGRoll
+RNGSuccess = 1000 ;1.0%, max is 10000
+RNGSuccess = RNGSuccess*nRaidChanceMultiplier/100
+RNGRoll = RAND(100000)
+;Divide non patrolling chance by 4
+IF PatrolingFaction != nFaction
+	RNGSuccess /= 4
+ENDIF
+IF RNGRoll > RNGSuccess
+	RETURN
+ENDIF
+SIF FactionDateTruce:ARG:0
+	RETURN
+SIF IsDead:ARG:0
+	RETURN
+SIF CFLAG:ARG:313
+	RETURN
+SIF TFLAG:妄想中 == 1
+	RETURN
+SIF FLAG:70
+	RETURN
+SIF FactionRelationCompElse(ARG,nFaction) > -70000 && FLAG:POSTAL < 4
+	RETURN
+SIF !Omogatari_Raids()
+	RETURN
+SIF !RaidGraceElapsed()
+	RETURN
+CALL FACTION_ASSAIANS(ARG,nFaction)
+RETURN 1
+
+@RaidGraceElapsed()
+#FUNCTION
+SELECTCASE FLAG:POSTAL
+	CASE 1, 2
+		;SIF (DaysSinceLastRaid < 1)
+		;	RETURN
+		SIF (DaysSinceLastRaid < nRaids)
+			RETURNF 0
+	CASE 0
+		SIF DAY <= 31
+			RETURNF 0
+		SIF (DaysSinceLastRaid < nRaids)
+			RETURNF 0
+	CASE -1
+		RETURNF 0
+ENDSELECT
+RETURNF 1
+
+@FACTION_ASSAIANS(ARG, nFaction, forcePoints=0)
+#DIM nFaction
+#DIM raidPoints
+#DIM TempAdd
+#DIM PeopleSpawned
+#DIM nEnemy
+#DIM AblUsed
+#DIM nLoop
+#DIM nChara
+#DIM reinforceRaidPoints
+#DIM forcePoints
+VARSET PeopleSpawned
+VARSET raidPoints,forcePoints
+VARSET DaysSinceLastRaid
+HANDICAP_FIXED = 0
+HANDICAP_RAND = 0
+TFLAG:GipsLV = 0
+PRINTFORM %TOLOWER(Pluralizer(FactionUnit(nFaction)))%의 한 무리가 
+CALLF FactionColor(MASTER,nFaction)
+PRINTFORM %FactionName(nFaction)% 
+RESETCOLOR
+PRINTFORML 도착했다.
+PRINTFORML 그들은 즉시 %CALLNAME:ARG%를 공격한다.
+PRINTL
+CALLF AddCombatant(ARG,0)
+FOR LOCAL, 0, CHARANUM
+SIF !SHIRAHU(LOCAL) || CFLAG:LOCAL:現在位置 == SUKIMA() || CFLAG:LOCAL:現在位置/100 != CFLAG:ARG:現在位置/100
+	CONTINUE
+IF LOCAL == MASTER
+	CONTINUE
+ELSEIF FactionDateTruce:LOCAL:0
+	CONTINUE
+ENDIF
+IF FriendlyAffinity(ARG,LOCAL)
+	CALL AddCombatantWithMessage(LOCAL,0)
+ELSE
+	;noncombatnats
+	SIF GetCombatAbility(LOCAL) < UniversalRank("D")
+		CONTINUE
+	;must be hostile
+	SIF MARK:LOCAL:3 < 5 && HostileAffinity(ARG,LOCAL) < 200
+		CONTINUE
+	;no dupes
+	SIF GETCOMBATANT(LOCAL)
+		CONTINUE
+	;rng
+	SIF !RAND:3
+		CALL AddCombatantWithMessage(LOCAL,1)
+ENDIF
+NEXT
+SIF nSpoilerMode
+	PRINTFORML === 레이드 포인트 분석 ===
+IF forcePoints
+	GOTO bypassRaidPoints
+ENDIF
+; IF ARG == MASTER
+; TempAdd = MONEY/10000
+; PRINTFORML Player wealth for storyteller: %金額表示(MONEY)%
+; PRINTFORML Points from wealth: {TempAdd}
+; PRINTFORML
+; raidPoints += TempAdd
+; ENDIF
+SIF nSpoilerMode
+	PRINTFORML %CALLNAME:ARG%의 전투력: {IntimidationFactor_Step1(ARG)}pt (무기 기술 * 100 + 에스퍼 포인트)
+raidPoints += IntimidationFactor_Step1(ARG)
+SIF nSpoilerMode
+	PRINTFORML %CALLNAME:ARG%의 무기 계수: {IntimidationFactor_Step2(ARG)}pt
+raidPoints += IntimidationFactor_Step2(ARG)
+IF DT_SELECT("lcCombatants", @"side = 0") > 1
+	PRINTFORML 증원 계수: {RaidFactorReinforcements(ARG,0)}pt
+	raidPoints += RaidFactorReinforcements(ARG,0)
+ENDIF
+IF DT_SELECT("lcCombatants", @"side = 1") > 1
+	PRINTFORML 적 보너스 계수: {RaidFactorReinforcements(ARG,1)}pt
+	raidPoints += RaidFactorReinforcements(ARG,1)
+ENDIF
+SIF nSpoilerMode
+	PRINTFORML 원 포인트: {raidPoints}pt
+IF nRaidPointMultiplier != 100
+	SIF nSpoilerMode
+		PRINTFORML 포인트는 {nRaidPointMultiplier}\%로 곱해졌다.
+	raidPoints = raidPoints*nRaidPointMultiplier/100
+ENDIF
+IF nSpoilerMode
+	IF raidPoints > nRaidPointMax
+		PRINTFORML 최대 포인트 {nRaidPointMax}를 강제로 설정한다.
+	ELSEIF raidPoints < 35
+		PRINTFORML 최소 포인트 35 이상 강제
+	ENDIF
+ENDIF
+raidPoints = LIMIT(raidPoints,35,nRaidPointMax)
+$bypassRaidPoints
+SIF forcePoints && nSpoilerMode
+	PRINTFORML 포인트 {forcePoints}를 강제한다.
+reinforceRaidPoints = raidPoints
+PRINTFORML 사용된 레이드 포인트: {raidPoints}점
+FORCEWAIT
+VARSET FactionRaidRankSpawn
+LOCAL:55 = raidPoints
+CALL NAS_START_LOADING()
+WHILE raidPoints > 0 && PeopleSpawned < MAX_MOBS
+CALL ANIMATION_LOAD_NAS(LOCAL:55-raidPoints, 0, LOCAL:55, @"약탈자들을 소환한다 %FactionNames:nFaction%를 위한" ) ;nas loading
+CALL FactionEnemySpawn(nFaction,raidPoints,1)
+SIF RESULT > -1
+	PeopleSpawned ++
+WEND
+CALL NAS_LOAD_END()
+; ;fairy friend
+; FOR LOCAL, 0, 10
+; 	IF ABS(AverageRep(ARG,8))/10000 >= LOCAL
+; 		CALL SpawnMobEnemy(FREE_MOB_SLOT(),9)
+; 		CALL AddCombatantWithMessage(FREE_MOB_SLOT(1), AverageRep(ARG,8) > 0 ? 0 # 1)
+; 	ENDIF
+; NEXT
+SIF !GETCOMBATANT(ARG)
+	CALLF AddCombatant(ARG,0)
+CALL ASK_PLAYER_FOR_COMBAT
+CALL KNIFE_FIGHT(FREE_MOB_SLOT(1),ARG,1,1)
+RETURN 1
+
+@ASK_PLAYER_FOR_COMBAT(AlwaysAsk = 0)
+#DIM DYNAMIC AlwaysAsk
+IF !GETCOMBATANT(MASTER) && SHIRAHU(MASTER) && BASE:MASTER:0 > 500
+	CALL INIT_BATTLE_NAME()
+	IF !nRaiderPick || (AlwaysAsk && nRaiderPick != 3)
+		PRINTFORML 싸움에 참여하고 싶으신가요?
+		CALL ASK_M(@"%LCSideNames:0%의 진영", 1, @"%LCSideNames:1%의 진영", 1, "No", 1)
+	ELSE
+		RESULT = nRaiderPick-1
+	ENDIF
+	SELECTCASE RESULT
+		CASE 0
+			CALL AddCombatantWithMessage(MASTER,0)
+		CASE 1
+			CALL AddCombatantWithMessage(MASTER,1)
+		CASE 2
+	ENDSELECT
+ENDIF
+
+@CompileCharactersToCombatant(ARG,nSide,nIntimidatePt,ARGS = "%name% joins %chara%'s side of the fight", CCTC_OPTIONS = "")
+#DIM nSide
+#DIM nIntimidatePt
+#DIM nSameSpace
+#DIM CCTC_CHARA
+#DIMS DYNAMIC CCTC_OPTIONS
+FOR CCTC_CHARA, 0, CHARANUM
+;invalid characters
+SIF !INRANGE(ARG,0,CHARANUM) || !INRANGE(CCTC_CHARA,0,CHARANUM)
+	RETURN
+;not awake
+SIF !SHIRAHU(CCTC_CHARA)
+	CONTINUE
+;bad location
+SIF CFLAG:CCTC_CHARA:現在位置 == SUKIMA() || GET_MAPID(CFLAG:CCTC_CHARA:現在位置) != GET_MAPID(CFLAG:ARG:現在位置)
+	CONTINUE
+;player or targeted character
+SIF CCTC_CHARA == MASTER || CCTC_CHARA == ARG
+	CONTINUE
+SIF !CAN_SEE_NPC(ARG,CCTC_CHARA) && STRFIND(CCTC_OPTIONS, "「Same Location」") > -1
+	CONTINUE
+;noncombatnats
+SIF GetCombatAbility(CCTC_CHARA) < UniversalRank("D") || FactionDateTruce:CCTC_CHARA:0
+	CONTINUE
+;no dupes
+SIF GETCOMBATANT(CCTC_CHARA)
+	CONTINUE
+;knocked out
+SIF TCVAR:(CCTC_CHARA):Grievous_Harm
+	CONTINUE
+;if part of initial fight
+SIF TCVAR:(CCTC_CHARA):Just_Attacked
+	CONTINUE
+IF FriendlyAffinity(ARG,CCTC_CHARA)
+	IF STRFIND(CCTC_OPTIONS, "「Self Defense」") > -1
+		CALL AddCombatantWithMessage(CCTC_CHARA,nSide,"%name% witnesses %chara% being attacked and joins in self defense...")
+	ELSE
+		CALL AddCombatantWithMessage(CCTC_CHARA,nSide,ARGS)
+	ENDIF
+ELSE
+	;must be hostile
+	SIF (MARK:CCTC_CHARA:3 < 5 || ARG != MASTER) && HostileAffinity(ARG,CCTC_CHARA) < 200 && STRFIND(CCTC_OPTIONS, "「No Enemy Affinity Check」") == -1
+		CONTINUE
+	;intimidated
+	; IF nIntimidatePt >= (IntimidationFactor(CCTC_CHARA)+1000)
+	; 	;#; PRINTFORML %CALLNAME:CCTC_CHARA%'s pts ({IntimidationFactor(CCTC_CHARA)+1000}) vs {nIntimidatePt}
+	; 	PRINTFORMW %CALLNAME:CCTC_CHARA% is intimidated by %PARSE("your",,,ARG)% presence and begins to run away.
+	; 	SIF STRFIND(CCTC_OPTIONS, "「Same Location」") > -1
+	; 	CFLAG:CCTC_CHARA:300 = KICKOUT(CFLAG:CCTC_CHARA:300)
+	; 	CONTINUE
+	; ENDIF
+	;rng
+	SIF !RAND:3 || STRFIND(CCTC_OPTIONS, "「No Enemy Join RNG」") > -1
+		CALL AddCombatantWithMessage(CCTC_CHARA,!nSide,ARGS)
+ENDIF
+NEXT
+
+@FactionStartWar(nFactionDeclare,nFactionRecieve,nArea)
+#DIM nFactionDeclare
+#DIM nFactionRecieve
+#DIM nArea
+CALL FactionColorName(MASTER,nFactionDeclare)
+PRINTFORM  전쟁을 선포했다 
+CALL FactionColorName(MASTER,nFactionRecieve)
+PRINTL
+PRINTFORML 그들은 %GET_MAPNAME(nArea)%를 차지하려고 한다!
+FORCEWAIT
+FactionWarring:nFactionDeclare:nFactionRecieve = 1
+FactionWarring:nFactionRecieve:nFactionDeclare = 1
+SETBIT FactionWarringAreas:nFactionDeclare:nFactionRecieve, nArea
+SETBIT FactionWarringAreas:nFactionRecieve:nFactionDeclare, nArea
+CLEARBIT FactionPatrolArea:nFactionDeclare, nArea
+;checks for starting war
+
+@FACTION_WAR_CHECK(nFactionDeclare, nFactionRecieve, nArea, OP)
+#DIM nFactionDeclare
+#DIM nFactionRecieve
+#DIM nArea
+#DIM DYNAMIC FWC_PROBABLE
+#DIMS OP
+;toggle
+SIF !nFactionWar
+	RETURN
+FWC_PROBABLE = STRCOUNT(OP,"「Always Pass」")
+IF RAND(1000) < 998 && !STRCOUNT(OP,"「Bypass RNG」")
+	RETURN
+ENDIF
+;can't declare war on yourself
+SIF nFactionDeclare == nFactionRecieve
+	RETURN
+;postal mode
+SIF FLAG:POSTAL >= 4
+	FWC_PROBABLE = 1
+;check if the area they want has significant control
+IF !FWC_PROBABLE
+	SELECTCASE FactionAreaControl:nFactionRecieve:nArea
+		; CASE IS >= 1000
+		; 	SIF FactionTeamFame:nFactionDeclare:nFactionRecieve - FactionTeamInfamy:nFactionDeclare:nFactionRecieve < -30000
+		; 		FWC_PROBABLE = 1
+		CASE IS > 800
+			SIF FactionTeamFame:nFactionDeclare:nFactionRecieve - FactionTeamInfamy:nFactionDeclare:nFactionRecieve < 30000
+				FWC_PROBABLE = 1
+		CASE IS > 350
+			;openly hostile
+			SIF FactionTeamFame:nFactionDeclare:nFactionRecieve - FactionTeamInfamy:nFactionDeclare:nFactionRecieve <= -70000
+				FWC_PROBABLE = 1
+	ENDSELECT
+ENDIF
+;TSP
+SIF FLAG:70
+	RETURN
+;no cause
+SIF !FWC_PROBABLE
+	RETURN
+;raid toggle
+SIF !Omogatari_Raids()
+	RETURN
+CALL FactionStartWar(nFactionDeclare,nFactionRecieve,nArea)
+RETURN 1
+
+@FACTION_WAR_FIGHT(nFactionDeclare,nFactionRecieve,nArea)
+#DIM nFactionDeclare
+#DIM nFactionRecieve
+#DIM nArea
+#DIM raidPoints
+#DIM FWF_UNIT
+#DIM PeopleSpawned
+PeopleSpawned = 0
+PRINTFORM %TOLOWER(Pluralizer(FactionUnit(nFactionDeclare)))%의 무리가 
+CALLF FactionColor(MASTER,nFactionDeclare)
+PRINTFORM %FactionName(nFactionDeclare)% 
+RESETCOLOR
+PRINTFORM 그리고 %TOLOWER(Pluralizer(FactionUnit(nFactionRecieve)))%는(은) ~로부터 
+CALLF FactionColor(MASTER,nFactionRecieve)
+PRINTFORM %FactionName(nFactionRecieve)% 
+RESETCOLOR
+PRINTFORML 도착했다.
+PRINTFORML 그들은 %GET_MAPNAME(nArea)%를 차지하려 즉시 서로 공격한다.
+FORCEWAIT
+CALL NAS_START_LOADING()
+VARSET raidPoints, nFactionWarPoint
+LOCAL:55 = raidPoints
+WHILE raidPoints > 0 && PeopleSpawned < MAX_MOBS
+CALL ANIMATION_LOAD_NAS(LOCAL:55-raidPoints, 0, LOCAL:55, @"병사들을 소환한다 %FactionNames:nFactionDeclare%를 위한" ) ;nas loading
+CALL FactionEnemySpawn(nFactionDeclare,raidPoints,1,0)
+SIF RESULT > -1
+	PeopleSpawned ++
+WEND
+FWF_UNIT = FREE_MOB_SLOT(1)
+VARSET raidPoints, nFactionWarPoint
+WHILE raidPoints > 0 && PeopleSpawned < MAX_MOBS
+CALL ANIMATION_LOAD_NAS(LOCAL:55-raidPoints, 0, LOCAL:55, @"%FactionNames:nFactionRecieve%를 위해 병사를 소환한다" ) ;nas loading
+CALL FactionEnemySpawn(nFactionRecieve,raidPoints,1,1)
+SIF RESULT > -1
+	PeopleSpawned ++
+WEND
+CALL NAS_LOAD_END()
+;;#; PRINTFORML DT COMBATANTS: {DT_SELECT("lcCombatants")} ({DT_SELECT("lcCombatants", "side = 0")} vs {DT_SELECT("lcCombatants", "side = 1")})
+CALL ASK_PLAYER_FOR_COMBAT
+CALL KNIFE_FIGHT(FWF_UNIT,FREE_MOB_SLOT(1),1,1)
+SELECTCASE lcWarResult
+	CASE 0
+		CALL FactionColorName(MASTER,nFactionDeclare)
+		PRINTFORM  방어하는 자를 쓰러뜨렸다. 
+		CALL FactionColorName(MASTER,nFactionRecieve)
+		PRINTFORML !
+		CALL FactionChangeControl(nFactionDeclare,nArea,RAND(100,300))
+		CALL FactionChangeControl(nFactionRecieve,nArea,-RAND(100,300))
+	CASE 1
+		CALL FactionColorName(MASTER,nFactionRecieve)
+		PRINTFORM  성공적으로 방어했다 
+		CALL FactionColorName(MASTER,nFactionDeclare)
+		PRINTFORML !
+		CALL FactionChangeControl(nFactionRecieve,nArea,RAND(100,300))
+		CALL FactionChangeControl(nFactionDeclare,nArea,-RAND(100,300))
+	CASE -2
+		RESETCOLOR
+		RETURN
+ENDSELECT
+RESETCOLOR
+FORCEWAIT
+
+@FactionChangeControl(nFaction,nArea,FCC_CHANGE)
+#DIM nFaction
+#DIM nArea
+#DIM FCC_LAST
+#DIM FCC_CHANGE
+FCC_LAST = FactionAreaControl:nFaction:nArea
+FactionAreaControl:nFaction:nArea = LIMIT(FactionAreaControl:nFaction:nArea+FCC_CHANGE,0,1000)
+IF FCC_LAST != FactionAreaControl:nFaction:nArea
+	CALL FactionColorName(MASTER,nFaction)
+	SETCOLOR C_ORANGE
+	PRINTFORML 의 통제는 %GET_MAPNAME(nArea)% 가지다 \@ FCC_CHANGE > 0 ? 증가했다. # 감소했다. \@ ~to %DecimalPlace(FactionAreaControl:nFaction:nArea)%\% (\@ FCC_CHANGE > 0 ? + #  \@{FCC_CHANGE})
+ENDIF
+RESETCOLOR
+SELECTCASE FactionAreaControl:nFaction:nArea
+	CASE IS >= 1000
+		IF GROUPMATCH(FactionMainArea:nArea,-1)
+			CALL FactionTakeOverArea(nFaction,-1,nArea)
+		ELSE
+			;declare war
+			CALL FACTION_WAR_CHECK(nFaction, FactionMainArea:nArea, nArea, "「Bypass RNG」")
+		ENDIF
+	CASE IS >= 300
+		SIF !GETBIT(FactionPatrolArea:nFaction, nArea)
+			CALL FactionStartPatrolArea(nFaction,nArea)
+	CASE IS <= 0
+		SIF GETBIT(FactionPatrolArea:nFaction, nArea) || FactionMainArea:nArea == nFaction
+			CALL FactionLoseArea(nFaction,nArea)
+ENDSELECT
+
+@FactionLoseArea(nFaction,nArea)
+#DIM nFaction
+#DIM nArea
+CALL FactionColorName(MASTER,nFaction)
+SETCOLOR C_ORANGE
+PRINTFORML 그들은 %GET_MAPNAME(nArea)%에 대한 모든 통제권을 상실했다.
+PRINTFORML 그들은 더 이상 해당 지역을 순찰하지 않는다.
+CLEARBIT FactionPatrolArea:nFaction, nArea
+SIF FactionMainArea:nArea == nFaction
+	FactionMainArea:nArea = -1
+
+@FactionStartPatrolArea(nFaction,nArea)
+#DIM nFaction
+#DIM nArea
+SIF GETBIT(FactionPatrolArea:nFaction, nArea)
+	RETURN
+CALL FactionColorName(MASTER,nFaction)
+SETCOLOR C_ORANGE
+PRINTFORML %GET_MAPNAME(nArea)%에 충분한 통제권을 확보하여 순찰을 시작했다.
+SETBIT FactionPatrolArea:nFaction, nArea
+
+@FactionColorName(ARG,nFaction)
+#DIM nFaction
+CALLF FactionColor(ARG,nFaction)
+PRINTFORM %FactionName(nFaction)%
+RESETCOLOR
+
+@FactionTakeOverArea(nFactionDeclare,nFactionRecieve = -1,nArea)
+#DIM nFactionDeclare
+#DIM nFactionRecieve
+#DIM nArea
+;WIP
+CALL FactionColorName(MASTER,nFactionDeclare)
+IF nFactionRecieve != -1
+	PRINTFORM  %GET_MAPNAME(nArea)%을 점령했다.
+	PRINTFORM  ~로부터 
+	CALL FactionColorName(MASTER,nFactionRecieve)
+ELSE
+	PRINTFORM  %GET_MAPNAME(nArea)%를 자신들의 영토로 점령했다.
+ENDIF
+PRINTFORM !
+PRINTL
+FORCEWAIT
+FactionMainArea:nArea = nFactionDeclare
+;WIP
+
+@FactionTreatyRecieve(nFactionDeclare,nFactionRecieve,nArea)
+#DIM nFactionDeclare
+#DIM nFactionRecieve
+#DIM nArea
+CALL FactionColorName(MASTER,nFactionDeclare)
+PRINTFORM  휴전을 하기로 결정했다. 
+CALL FactionColorName(MASTER,nFactionRecieve)
+PRINTL .
+PRINTFORML 두 세력과 관련된 모든 전쟁과 분쟁이 멈췄다. 
+WAIT
+CLEARBIT FactionWarring:nFactionDeclare:nFactionRecieve, 0
+CLEARBIT FactionWarring:nFactionRecieve:nFactionDeclare, 0
+FactionWarringAreas:nFactionDeclare:nFactionRecieve = 0
+FactionWarringAreas:nFactionRecieve:nFactionDeclare = 0
+SETBIT FactionWarring:nFactionDeclare:nFactionRecieve, 1
+SETBIT FactionWarring:nFactionRecieve:nFactionDeclare, 1
+;WIP
+
+@FactionAllyRecieve(nFactionDeclare,nFactionRecieve,nArea)
+#DIM nFactionDeclare
+#DIM nFactionRecieve
+#DIM nArea
+CALL FactionColorName(MASTER,nFactionDeclare)
+PRINTFORM  동맹을 맺기로 결정했다. 
+CALL FactionColorName(MASTER,nFactionRecieve)
+PRINTL .
+PRINTFORML 두 세력 주변을 둘러싼 모든 전쟁과 갈등이 멈췄다. 
+PRINTFORML 필요하다면 이제 서로 도울 것이다.
+WAIT
+FactionWarring:nFactionDeclare:nFactionRecieve = 0
+FactionWarring:nFactionRecieve:nFactionDeclare = 0
+FactionWarringAreas:nFactionDeclare:nFactionRecieve = 0
+FactionWarringAreas:nFactionRecieve:nFactionDeclare = 0
+SETBIT FactionWarring:nFactionDeclare:nFactionRecieve, 2
+SETBIT FactionWarring:nFactionRecieve:nFactionDeclare, 2
+
+@FactionAllyLose(nFactionDeclare,nFactionRecieve,nArea)
+#DIM nFactionDeclare
+#DIM nFactionRecieve
+#DIM nArea
+CALL FactionColorName(MASTER,nFactionDeclare)
+PRINTFORM  그들의 동맹을 포기하기로 결정했다.  
+CALL FactionColorName(MASTER,nFactionRecieve)
+PRINTL .
+PRINTFORML 그들은 이제 더 이상 서로 동맹이 아니다.
+WAIT
+CLEARBIT FactionWarring:nFactionDeclare:nFactionRecieve, 2
+CLEARBIT FactionWarring:nFactionRecieve:nFactionDeclare, 2
+;checks for forming truces
+
+@FactionTruceCheck(nFactionDeclare, nFactionRecieve, OP)
+#DIM nFactionDeclare
+#DIM nFactionRecieve
+#DIM nArea
+#DIM DYNAMIC FWC_PROBABLE
+#DIMS OP
+SIF !nFactionWar
+	RETURN
+FWC_PROBABLE = STRCOUNT(OP,"「Always Pass」")
+IF RAND(1000) < 998 && !STRCOUNT(OP,"「Bypass RNG」")
+	RETURN
+ENDIF
+;already have a truce or alliance
+SIF GETBIT(FactionWarring:nFactionDeclare:nFactionRecieve,1) || GETBIT(FactionWarring:nFactionDeclare:nFactionRecieve,2)
+	RETURN 0
+SIF !FactionTruceAble(nFactionDeclare, nFactionRecieve)
+	RETURN 0
+FWC_PROBABLE = 1
+;no cause
+SIF !FWC_PROBABLE
+	RETURN
+CALL FactionTreatyRecieve(nFactionDeclare,nFactionRecieve)
+RETURN 1
+
+@FactionTruceAble(nFactionDeclare, nFactionRecieve)
+#FUNCTION
+#DIM nFactionDeclare
+#DIM nFactionRecieve
+;war toggle
+SIF !nFactionWar
+	RETURNF
+;already have a truce or alliance
+SIF GETBIT(FactionWarring:nFactionDeclare:nFactionRecieve,1) || GETBIT(FactionWarring:nFactionDeclare:nFactionRecieve,2)
+	RETURNF 0
+;can't truce yourself
+SIF nFactionDeclare == nFactionRecieve
+	RETURNF 0
+;postal mode
+SIF FLAG:POSTAL >= 4
+	RETURNF 0
+;TSP
+SIF FLAG:70
+	RETURNF 0
+RETURNF 1
+
+@FactionAllianceAble(nFactionDeclare, nFactionRecieve)
+#FUNCTION
+#DIM nFactionDeclare
+#DIM nFactionRecieve
+;war toggle
+SIF !nFactionWar
+	RETURNF
+;already have a truce or alliance
+SIF GETBIT(FactionWarring:nFactionDeclare:nFactionRecieve,2)
+	RETURNF 0
+;warring
+SIF GETBIT(FactionWarring:nFactionDeclare:nFactionRecieve,0)
+	RETURNF 0
+;can't truce yourself
+SIF nFactionDeclare == nFactionRecieve
+	RETURNF 0
+;postal mode
+SIF FLAG:POSTAL >= 4
+	RETURNF 0
+;TSP
+SIF FLAG:70
+	RETURNF 0
+RETURNF 1
+;checks for forming truces
+
+@FactionAllianceCheck(nFactionDeclare, nFactionRecieve, OP)
+#DIM nFactionDeclare
+#DIM nFactionRecieve
+#DIM nArea
+#DIM DYNAMIC FWC_PROBABLE
+#DIMS OP
+SIF !nFactionWar
+	RETURN
+FWC_PROBABLE = STRCOUNT(OP,"「Always Pass」")
+IF RAND(1000) < 998 && !STRCOUNT(OP,"「Bypass RNG」")
+	RETURN
+ENDIF
+SIF !FactionAllianceAble(nFactionDeclare, nFactionRecieve)
+	RETURN 0
+;aliance chance is determined between team relationships
+SIF (FactionTeamFame:nFactionRecieve:nFactionDeclare - FactionTeamInfamy:nFactionRecieve:nFactionDeclare) >= RAND(-30000,20000)
+	FWC_PROBABLE = 1
+;no cause
+SIF !FWC_PROBABLE
+	RETURN
+CALL FactionAllyRecieve(nFactionDeclare,nFactionRecieve)
+RETURN 1
+
+@RaidFactorReinforcements(ARG,nSide=0)
+#FUNCTION
+#DIM nSide0Count
+#DIM nSide0List, 200
+#DIM nlcChara
+#DIM nSide
+#DIM DYNAMIC addedPoints
+nSide0Count = DT_SELECT("lcCombatants", @"side = {nSide}", "", nSide0List)
+FOR LOCAL,0,nSide0Count
+nlcChara = DT_CELL_GET("lcCombatants", nSide0List:LOCAL, "chara", 1)
+SIF nlcChara == ARG
+	CONTINUE
+addedPoints += 400 + (IntimidationFactor_Step1(nlcChara)/3) + (IntimidationFactor_Step2(nlcChara)/4)
+NEXT
+RETURNF addedPoints

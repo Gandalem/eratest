@@ -1,0 +1,107 @@
+﻿; Modular ERB: OMOGATARI/REQUESTS/Request42_POW Interrogation.ERB
+;存否関数
+;F関数はTRYCALL系が使えないので通常関数で存否配列を作っちゃう
+
+@EXIST_一般依頼42
+#LOCALSIZE 1
+#LOCALSSIZE 1
+;オブジェクト本体
+;ここでARGで渡されるのはCLIENT_IDです
+
+@一般依頼42(ARG, O_DATA, V_NAME)
+#FUNCTION
+#LOCALSIZE 1
+#LOCALSSIZE 1
+#DIMS O_DATA
+#DIMS V_NAME
+;WIP
+RETURNF 0
+SELECTCASE O_DATA
+	CASE "依頼名"
+		CALLF MAKE_STR(V_NAME, @"POW Interrogation")
+	CASE "依頼内容表示"
+		CALLF MAKE_STR(V_NAME, @"다른 진영의 포로를 조사하여 정보를 캐낸다.")
+	CASE "依頼報酬表示"
+		CALLF MAKE_STR(V_NAME, @"20 %FactionAbriv(TALENT:ARG:Recruiter-1)% 파벌 경험치와 ¥50,000")
+	CASE "依頼実行コマンド名"
+		CALLF MAKE_STR(V_NAME, "Interrogate")
+	CASE "依頼内容"
+		CALLF MAKE_INT(V_NAME, MAKE_IRAI_DATA(FREE_MOB_SLOT(), "investigate"))
+	CASE "依頼期限"
+		;発生時ではなく受託時に確定します
+		CALLF MAKE_INT(V_NAME, 15)
+	CASE "依頼発生率"
+		;これは他の一般依頼との相対確率なんで10％ではありません
+		;percentage change of being shown. (set to 100 to always show)
+		;CALLF MAKE_INT(V_NAME, 100)
+		CALLF MAKE_INT(V_NAME, 100)
+	CASE "依頼発生条件"
+		CALLF MAKE_INT(V_NAME, 1)
+	CASE "依頼受託可能条件"
+		;あなたの戦闘能力が1以上
+		IF TALENT:ARG:Recruiter == 0
+			;not a recruiter
+			CALLF MAKE_INT(V_NAME, 0)
+			RETURNF 0
+		ENDIF
+		SIF FactionRank:MASTER:(TALENT:ARG:Recruiter-1)
+			CALLF MAKE_INT(V_NAME, 1)
+	CASE "依頼実行可能条件"
+		CALLF MAKE_INT(V_NAME, 1)
+		;成功/失敗処理はCARRYOUTで直接書く
+		;SOURCEやITEM入手、消費が煩雑になるので
+	CASE "依頼消滅条件"
+		SIF Add_Request_Should_Discard(ARG)
+			CALLF MAKE_INT(V_NAME, 1)
+	CASE "依頼人連れ出し可能"
+	CASE "Faction Only"
+		CALLF MAKE_INT(V_NAME, 1)
+ENDSELECT
+
+@IRAI_一般42(CHARA, IRAI_ID, SCENE)
+#DIM  CHARA
+#DIM  IRAI_ID
+#DIMS SCENE
+#DIM  CLIENT_ID
+#DIM  CHK_SLOT
+#DIM  OPPONENT_REMAIN
+CLIENT_ID = IRAI_ID_TO_CLIENT(IRAI_ID)
+CHK_SLOT  = SEARCH_IRAI_SLOT(IRAI_ID)
+SELECTCASE SCENE
+	CASE "依頼条件表示"
+		;何か専用の表示情報を設けたい時用
+		;受託済みの依頼表示で使用されます
+		;
+		;PRINT系だけでSOURCEとかは入れちゃダメ、WAITも無しで
+		;ここ以外の表示項目は
+		;PRINTFORML 　　　　　：
+		;となっているのでスペースを揃えたほうが見栄えが良いです
+	CASE "依頼実行時"
+		;このCASEに限り、RESULTが意味を持ちます
+		;依頼実行時のRESULTにはIRAI_CONST_RESULT()を使用してください
+		;可能な引数は"キャンセル", "実行して成功", "実行して失敗", "実行して未解決"です
+		;独自処理を仕込みたい時は"実行して未解決"で先延ばしするなりしてください
+		;
+		;
+		;実行できないパターン
+		;拠点では屋内だとダメ（原作だとめっちゃやってるけど）
+		;ほぼ弾幕勝負のコピペ
+		PRINTFORML 대상을 제지한다.
+		TEQUIP:IRAI_SLOT_TO_PERSON(IRAI_ID):拘束 = 1
+		CFLAG:IRAI_SLOT_TO_PERSON(IRAI_ID):うふふ = 1
+		;CALLF HESOYAM(TARGET)
+		;RETURN IRAI_CONST_RESULT("実行して成功")
+	CASE "依頼成功時"
+		;成功報告時の報酬など
+		SOURCE:歓楽 = 3000
+		CALL CHANGE_CFLAG(2, CLIENT_ID, 50 + RAND:5)
+		CALL CHANGE_CFLAG(4, CLIENT_ID, 15 + RAND:5)
+		CALL GET_SPELL_CARD_BONUS_YEN(150000, 2)
+		CALL CHANGE_FACTION_EXP(MASTER,TALENT:CLIENT_ID:Recruiter-1,20)
+	CASE "依頼失敗時"
+		;失敗報告時の処理
+		;過酷な依頼なので少しだけ
+		PRINTFORML %CALLNAME:CLIENT_ID%는 네가 적을 돌아다니게 내버려 둔 것에 대해 화난 것 같다.
+		CALL CHANGE_CFLAG(2, CLIENT_ID, -3)
+		CALL CHANGE_CFLAG(4, CLIENT_ID, -2)
+ENDSELECT
