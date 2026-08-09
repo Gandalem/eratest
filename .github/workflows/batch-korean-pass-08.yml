@@ -1,0 +1,134 @@
+name: Batch Korean pass 08
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/batch-korean-pass-08.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 1
+          lfs: false
+
+      - name: Translate common system UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          total = 0
+
+          # 1) Calendar / season / moon / weekday / weather translation helpers.
+          p = Path('ERB/TRANSLATION/_TR Lib.ERB')
+          raw = p.read_bytes(); bom = raw.startswith(b'\xef\xbb\xbf'); text = raw.decode('utf-8-sig')
+          reps = [
+            ('RETURNF "January"','RETURNF "1월"'),('RETURNF "February"','RETURNF "2월"'),('RETURNF "March"','RETURNF "3월"'),('RETURNF "April"','RETURNF "4월"'),
+            ('RETURNF "May"','RETURNF "5월"'),('RETURNF "June"','RETURNF "6월"'),('RETURNF "July"','RETURNF "7월"'),('RETURNF "August"','RETURNF "8월"'),
+            ('RETURNF "September"','RETURNF "9월"'),('RETURNF "October"','RETURNF "10월"'),('RETURNF "November"','RETURNF "11월"'),('RETURNF "December"','RETURNF "12월"'),
+            ('RETURNF "wrong month..."','RETURNF "잘못된 월..."'),
+            ('#DIMS strSeason = "", "Spring", "Summer", "Fall", "Winter"','#DIMS strSeason = "", "봄", "여름", "가을", "겨울"'),
+            ('#DIMS CONST NAME_MOON = "", "New", "First", "Waxing Crescent", "First Quarter", "Waxing Gibbous", "Waxing Gibbous", "13th Night", "14th Night", "Full Moon", "16th Night", "Waning Gibbous", "Waning Gibbous", "Third Quarter", "Waning crescent", "30th Night"',
+             '#DIMS CONST NAME_MOON = "", "삭", "초승", "차오르는 초승달", "상현", "차오르는 반달", "차오르는 반달", "열사흗날 밤", "열나흗날 밤", "보름달", "열엿샛날 밤", "기우는 반달", "기우는 반달", "하현", "그믐달", "그믐밤"'),
+            ('RETURNF "Full Moon -Harvest Moon- "','RETURNF "보름달 -수확의 달- "'),
+            ('#DIMS CONST YOUBI = "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"','#DIMS CONST YOUBI = "일", "월", "화", "수", "목", "금", "토"'),
+            ('SPLIT " /CSense/VSense/ASense/BSense/MSense/Skirts/Panties/Pink Wind/Typhoon/Blizzard", "/", 表示_異常気象',
+             'SPLIT " /C감각/V감각/A감각/B감각/M감각/치마/팬티/분홍 바람/태풍/눈보라", "/", 表示_異常気象'),
+            ('SPLIT "Sunny/Fair/Overcast/Cloudy/Rain/Downpour/Drizzle/Foggy/Snowy/Snowstorm/Light Snowfall/Snow Grains/Sleet/Hail/Rainstorm/Hailstorm", "/", LOCALS',
+             'SPLIT "맑음/쾌청/흐림/구름 많음/비/폭우/이슬비/안개/눈/폭설/약한 눈/싸락눈/진눈깨비/우박/호우/우박 폭풍", "/", LOCALS'),
+          ]
+          for old,new in reps:
+              c=text.count(old)
+              if c:
+                  text=text.replace(old,new); total+=c; print('TR_LIB',c,old[:70])
+          out=text.encode('utf-8'); p.write_bytes((b'\xef\xbb\xbf'+out) if bom else out)
+
+          # 2) Scouter output labels only. No variables/functions touched.
+          p = Path('ERB/TRANSLATION/OMOGATARI/COM/COMF481 Scouter.ERB')
+          raw = p.read_bytes(); bom = raw.startswith(b'\xef\xbb\xbf'); text = raw.decode('utf-8-sig')
+          reps = [
+            ('Checking %CALLNAME:ARG%\'s %PRINT_MALE("boy",ARG)% power level.', '%CALLNAME:ARG%의 전투력을 측정 중.'),
+            ('"Scan Results"','"스캔 결과"'),('"Maximum Strength"','"최대 체력"'),('"Maximum Energy"','"최대 기력"'),
+            ('"Youjutsu Knowledge"','"요술 지식"'),('"Time Stopping Knowledge"','"시간 정지 지식"'),
+            ('"C Sensitivity"','"C 감도"'),('"V Sensitivity"','"V 감도"'),('"A Sensitivity"','"A 감도"'),('"B Sensitivity"','"B 감도"'),('"M Sensitivity"','"M 감도"'),('"U Sensitivity"','"U 감도"'),
+            ('"Obedience"','"복종"'),('"Lust"','"욕망"'),('"Technique"','"기술"'),('"Servitude"','"봉사"'),('"Exposure"','"노출"'),
+            ('"Knowledge"','"교양"'),('"Speech"','"화술"'),('"Danmaku"','"탄막"'),('"Shooting"','"사격"'),('"Melee"','"근접전"'),('"Cleaning"','"청소"'),
+          ]
+          for old,new in reps:
+              c=text.count(old)
+              if c:
+                  text=text.replace(old,new); total+=c; print('SCOUTER',c,old)
+          out=text.encode('utf-8'); p.write_bytes((b'\xef\xbb\xbf'+out) if bom else out)
+
+          # 3) Hediff: translate ONLY display fields FullName / Destroyed String.
+          #    The internal "名前" field is intentionally preserved because Hediff_ID uses it for lookups.
+          p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Omogatari_Hediffs.ERB')
+          raw = p.read_bytes(); bom = raw.startswith(b'\xef\xbb\xbf'); lines = raw.decode('utf-8-sig').splitlines(True)
+          full = {
+            'Gunshot wound':'총상','Cut':'절상','Burn':'화상','Caustic Burn':'부식 화상','Tearing':'찢김','Crush':'압궤상','Electric Burn':'감전 화상',
+            'Decay':'부패','Radiation':'방사선 손상','Gone':'결손','Carcinoma':'암종','Chemical damage':'화학 손상','Influenza':'독감','Malaria':'말라리아',
+            'Plague':'페스트',"Alzheimer's":'알츠하이머병','Asthma':'천식','Bad back':'허리 질환','Cataract':'백내장','Dementia':'치매',
+            'Artery blockage':'동맥 폐색','Hearing loss':'청력 상실','Heatstroke':'열사병','Hypothermia':'저체온증','Cloaca':'총배설강','Cirrhosis':'간경변',
+            'Toxic buildup':'독성 축적','Heart attack':'심장마비','Leukemia':'백혈병','Overactive bladder':'과민성 방광','Irritable bowel syndrome':'과민성 대장 증후군'
+          }
+          destroyed = {
+            'Shot off':'총격으로 소실됨','Cut off':'절단됨','Burned off':'불타 소실됨','Dissolved':'용해됨','Torn off':'찢겨 떨어짐','Crushed':'으스러짐',
+            'Electrocuted':'감전으로 파괴됨','Decayed':'부패로 소실됨','Irradiated':'방사선으로 파괴됨','Gone':'소실됨','Lost to cancer':'암으로 소실됨',
+            'Lost to the flu':'독감으로 소실됨','Lost to frostbite':'동상으로 소실됨','Contaminated':'오염됨'
+          }
+          mode = None
+          rx = re.compile(r'(\s*CALLF MAKE_STR\(V_NAME, ")([^"]*)("\)\s*)')
+          for i,line in enumerate(lines):
+              stripped=line.strip()
+              if stripped == 'CASE "FullName"': mode='full'; continue
+              if stripped == 'CASE "Destroyed String"': mode='destroyed'; continue
+              if stripped.startswith('CASE '): mode=None; continue
+              if mode in ('full','destroyed'):
+                  m=rx.fullmatch(line.rstrip('\r\n'))
+                  if m:
+                      val=m.group(2); mapping=full if mode=='full' else destroyed
+                      if val in mapping:
+                          nl='\r\n' if line.endswith('\r\n') else ('\n' if line.endswith('\n') else '')
+                          lines[i]=m.group(1)+mapping[val]+m.group(3)+nl
+                          total+=1; print('HEDIFF',mode,val,'->',mapping[val])
+          out=''.join(lines).encode('utf-8'); p.write_bytes((b'\xef\xbb\xbf'+out) if bom else out)
+
+          print('TOTAL_REPLACEMENTS', total)
+          if total < 45:
+              raise SystemExit(f'Too few replacements: {total}')
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          # Internal hediff lookup names must not change.
+          if git diff -U0 -- 'ERB/TRANSLATION/OMOGATARI/ITEM/Omogatari_Hediffs.ERB' | grep -E '^[+-].*CASE "名前"|^[+-].*Hediff_ID'; then
+            echo 'Internal Hediff identifier logic changed'; exit 1
+          fi
+          # No function declarations should change.
+          ! git diff -U0 | grep -E '^[-+].*@(MONTH_NAME|SEASON_NAME|NAME_MOON_TR|GET_DAY_TR|GET_WEATHER_TR|EVALUATE_GIRLPOWER_NAS|Hediff[0-9])' || { echo 'Function declaration changed'; exit 1; }
+          git diff --stat
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Gandalem'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'ERB/TRANSLATION/_TR Lib.ERB' 'ERB/TRANSLATION/OMOGATARI/COM/COMF481 Scouter.ERB' 'ERB/TRANSLATION/OMOGATARI/ITEM/Omogatari_Hediffs.ERB'
+          git commit -m '공통 시스템 UI 한글화 8차'
+          git push origin HEAD:korean
