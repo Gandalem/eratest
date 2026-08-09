@@ -1,0 +1,84 @@
+name: Auto scan visible English
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/auto-scan-visible-english.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 1
+          lfs: false
+      - name: Scan likely user-visible English
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          roots = [Path('ERB/TRANSLATION'), Path('ERB/NEWGAME'), Path('ERB/MOVEMENTS')]
+          exts = {'.ERB', '.ERH'}
+          visible_tokens = (
+              'PRINT', 'RETURNF', 'LOCALS', 'RESULTS', 'MAKE_STR', 'ASK_',
+              'HTML', 'BUTTON', 'CHOICES', 'TITLE', 'DESC', 'MESSAGE', 'NAME'
+          )
+          skip_prefix = (';', '#')
+          # Focus on remaining untranslated prose/labels rather than identifiers.
+          english = re.compile(r'[A-Za-z]{3,}')
+          korean = re.compile(r'[가-힣]')
+          quoted = re.compile(r'"([^"\\]*(?:\\.[^"\\]*)*)"')
+
+          candidates = []
+          for root in roots:
+              if not root.exists():
+                  continue
+              for p in root.rglob('*'):
+                  if p.suffix.upper() not in exts:
+                      continue
+                  try:
+                      lines = p.read_text(encoding='utf-8-sig', errors='ignore').splitlines()
+                  except Exception:
+                      continue
+                  for ln, line in enumerate(lines, 1):
+                      s = line.strip()
+                      if not s or s.startswith(skip_prefix):
+                          continue
+                      if not any(tok in line.upper() for tok in visible_tokens):
+                          continue
+                      parts = quoted.findall(line)
+                      if not parts:
+                          continue
+                      for text in parts:
+                          if not english.search(text):
+                              continue
+                          # Prefer pure/mostly-English visible text; mixed Korean often means already localized.
+                          if korean.search(text):
+                              continue
+                          # Skip obvious internal keys and format-only fragments.
+                          if re.fullmatch(r'[A-Za-z0-9_./:+()\- ]{1,32}', text) and ('_' in text or text.isupper()):
+                              continue
+                          if text.startswith(('%', '@', '#')):
+                              continue
+                          score = len(text)
+                          if ' ' in text: score += 25
+                          if any(ch in text for ch in '.!?,:'): score += 10
+                          candidates.append((score, str(p), ln, text))
+
+          candidates.sort(reverse=True)
+          print('=== TOP VISIBLE ENGLISH CANDIDATES ===')
+          for score, path, ln, text in candidates[:500]:
+              print(f'{path}:{ln}\t{text}')
+          print(f'=== TOTAL CANDIDATES: {len(candidates)} ===')
+          PY
