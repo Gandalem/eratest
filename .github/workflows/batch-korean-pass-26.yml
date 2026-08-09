@@ -1,0 +1,108 @@
+name: Batch Korean pass 26
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/batch-korean-pass-26.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 1
+          lfs: false
+
+      - name: Translate final spell card names and descriptions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Omogatari_SpellCards.ERB')
+          raw = p.read_bytes()
+          bom = raw.startswith(b'\xef\xbb\xbf')
+          text = raw.decode('utf-8-sig')
+
+          anchor = '\tCASE "Earth & Metal Sign 「Emerald Megalith」"\n\t\tRETURNF "토금부 「에메랄드 메갈리스」"\nENDSELECT\nRETURNF RawName'
+          if anchor not in text:
+              raise SystemExit('SpellCardDisplayName pass25 anchor not found')
+
+          extra = [
+              ('「Innate Dream」', '「몽상천생」'),
+              ('Earth Sign 「Trilithon Shake」', '토부 「트릴리톤 셰이크」'),
+              ('End of Imperishable Night 「Half Past Midnight」', '영야종 「0시 반」'),
+              ('Metal Sign 「Silver Dragon」', '금부 「실버 드래곤」'),
+              ('End of Imperishable Night 「Half Past 2」', '영야종 「2시 반」'),
+          ]
+          cases = []
+          for old, new in extra:
+              cases += [f'\tCASE "{old}"', f'\t\tRETURNF "{new}"']
+          insert = '\n'.join(cases)
+          text = text.replace(anchor, anchor.replace('\nENDSELECT\nRETURNF RawName', '\n' + insert + '\nENDSELECT\nRETURNF RawName'), 1)
+
+          descs = [
+              (r'Very similar to \"Lazy Trilithon\", but the bullets are much faster',
+               '「Lazy Trilithon」과 거의 같지만 탄환의 속도가 훨씬 빠르다.'),
+              (r'Behaves very similarly to \"Agni Shine High Level\", with the addition of Patchouli shooting large red bullets from herself in random directions.',
+               '「Agni Shine High Level」과 매우 비슷하지만 Patchouli가 자신의 위치에서 큰 붉은 탄환을 무작위 방향으로 추가 발사한다.'),
+              (r'Behaves similarly to \"Silphy Horn\", but the bullets Patchouli spawns are replaced by fireballs, which have bigger hitboxes than the shards.',
+               '「Sylphy Horn」과 비슷하게 움직이지만 Patchouli가 생성하는 탄환이 파편보다 판정이 큰 화염탄으로 바뀐다.'),
+              ("A secret technique which is extreme in many ways. With Reimu's ability to float, she floats away from all sorts of things and cannot to be attacked. If it wasn't just for play (with time limit), no one could beat her using any method.",
+               '여러 의미에서 극단적인 비술이다. Reimu의 떠오르는 능력으로 모든 것에서 벗어나기 때문에 공격 자체를 받지 않는다. 제한 시간이 있는 놀이가 아니었다면 어떤 방법으로도 그녀를 이길 수 없었을 것이다.'),
+              (r"Very similar to \"Lazy Trilithon High Level\", with the bullets being slower, and the addition of fast, large, yellow bullets aimed at the player's position.",
+               '「Lazy Trilithon High Level」과 매우 비슷하지만 기존 탄환은 더 느리고, 플레이어의 위치를 노리는 빠르고 큰 노란 탄환이 추가된다.'),
+              ('The difficulty differs greatly with a difference of 30 minutes. In fact it skips a whole 2 hours in a matter of 20 seconds. What a waste.',
+               '30분 차이만으로 난이도가 크게 달라진다. 실제로는 불과 20초 만에 무려 2시간을 건너뛴다. 아까운 시간이다.'),
+              ('Patchouli makes three-layered circles of medium sized silver bullets. The circle as a whole is aimed at the player, and the bullets pile up as they spawn quickly.',
+               'Patchouli가 중간 크기의 은색 탄환으로 세 겹의 원을 만든다. 원 전체가 플레이어를 향하며 탄환이 빠르게 생성되어 겹겹이 쌓인다.'),
+              ('The time right after when the gate to the Netherworld has opened. So, what did %CALLNAME:81% and %CALLNAME:82% see, at all?',
+               '명계로 통하는 문이 열린 직후의 시간이다. 그렇다면 %CALLNAME:81%와 %CALLNAME:82%는 대체 무엇을 보았던 걸까?'),
+          ]
+
+          count = 0
+          for old, new in descs:
+              c = text.count(old)
+              if c:
+                  text = text.replace(old, new)
+                  count += c
+                  print('DESC', c, old[:100])
+          if count != len(descs):
+              raise SystemExit(f'Unexpected description replacements: {count}/{len(descs)}')
+
+          out = text.encode('utf-8')
+          if bom:
+              out = b'\xef\xbb\xbf' + out
+          p.write_bytes(out)
+          print('DISPLAY_NAMES_ADDED', len(extra))
+          print('DESCRIPTION_REPLACEMENTS', count)
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          if git diff -U0 -- 'ERB/TRANSLATION/OMOGATARI/ITEM/Omogatari_SpellCards.ERB' | grep -E '^[+-][[:space:]]*CASE "名前"|^[+-].*@SpellCard[0-9]+\('; then
+            echo 'Internal spell-card identifier structure changed'; exit 1
+          fi
+          git diff --stat
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Gandalem'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'ERB/TRANSLATION/OMOGATARI/ITEM/Omogatari_SpellCards.ERB'
+          git commit -m '스펠카드 최후반부 한글화 26차'
+          git push origin HEAD:korean
