@@ -1,0 +1,152 @@
+name: Batch Korean pass 12
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/batch-korean-pass-12.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 1
+          lfs: false
+
+      - name: Translate rifle display names and descriptions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Armory/300 Firearms/400 Rifles.ERB')
+          raw = p.read_bytes()
+          bom = raw.startswith(b'\xef\xbb\xbf')
+          text = raw.decode('utf-8-sig')
+
+          def case_payloads(src, case_name):
+              lines = src.splitlines()
+              out = []
+              active = False
+              for line in lines:
+                  s = line.strip()
+                  if s == f'CASE "{case_name}"':
+                      active = True
+                      continue
+                  if active and s.startswith('CASE '):
+                      active = False
+                  if active:
+                      out.append(line)
+              return out
+
+          protected = ['名前', 'Type', 'Class', 'Platform', 'Tags', 'Ammo', 'Research Required']
+          before_protected = {k: case_payloads(text, k) for k in protected}
+
+          full_names = {
+              'bolt-action railgun': '볼트액션 레일건',
+              'Gryzov Group Repeating Railgun「VR-ICKX BIS」': 'Gryzov Group 연발 레일건「VR-ICKX BIS」',
+              'handmade rifle': '수제 소총',
+              'Makeshift Automatic Rifle「Bastard」': '급조 자동소총「Bastard」',
+              'outsider battle rifle': '외부 세계 전투소총',
+              'Gabe Hubert Battle Rifle「GH31」': 'Gabe Hubert 전투소총「GH31」',
+              'medium machine gun': '중형 기관총',
+              'Gabe Hubert Medium Machine Gun「GH21」': 'Gabe Hubert 중형 기관총「GH21」',
+              'assault rifle': '돌격소총',
+              'YMKA Assault Rifle「Vandal」': 'YMKA 돌격소총「Vandal」',
+              'Recharger rifle': '충전식 소총',
+              'Keiga Youjutsu Series Rifle「Youjyuu-R」': 'Keiga 요술 시리즈 소총「Youjyuu-R」',
+              'submachine gun': '기관단총',
+              'YMKA Sub-Caliber Machine Gun「Stinger」': 'YMKA 소구경 기관총「Stinger」',
+              'smart submachine gun': '스마트 기관단총',
+              'AImthropic Smart Submachine Gun「Shaman」': 'AImthropic 스마트 기관단총「Shaman」',
+              'smart rifle': '스마트 소총',
+              'AImthropic Smart Automatic Rifle「Xavier」': 'AImthropic 스마트 자동소총「Xavier」',
+              'energy rifle': '에너지 소총',
+              'Cactus Company Energy Rifle「LILAC」': 'Cactus Company 에너지 소총「LILAC」',
+              'ultratech assault rifle': '울트라테크 돌격소총',
+              'Gensou-chan Light Assault Rifle「MARLin」': 'Gensou-chan 경량 돌격소총「MARLin」',
+              'rifle': '소총',
+              'LUNINCO Breech-Loading Rifle「LAC13」': 'LUNINCO 후장식 소총「LAC13」',
+              'bolt-action rifle': '볼트액션 소총',
+              'LUNINCO Bolt-Action Rifle「LAC17」': 'LUNINCO 볼트액션 소총「LAC17」',
+          }
+
+          descs = {
+              'The GH31 used the newly made CETME platform to make a full power version using 7.62x51 NATO. Coniqually it goes by the unfortunate name of the GH FAG (translated into Fully Automatic Rifle), but the Bundeswehr gave it the name \\"G3\\". Such articles are rare in the World of Fantasy, but some are starting to pop up due to the Bundeswehr\'s adaptation of the GH233 and GH333 as their main rifles. This version is equipped with wooden furniture.':
+              'GH31은 새로 개발된 CETME 플랫폼을 바탕으로 7.62x51 NATO 탄을 사용하는 고위력형으로 제작되었다. 정식 명칭은 GH FAG(Fully Automatic Rifle)이지만, 독일 연방군에서는 \\"G3\\"라는 이름을 붙였다. 환상향에서는 드문 물건이지만 독일 연방군이 GH233과 GH333을 주력 소총으로 채택하면서 조금씩 유입되기 시작했다. 이 형식은 목재 가구 부품을 장착한 버전이다.',
+              'The LILAC, an abbreviation of \\"Light Infantry Loaded Accelerator Carbine\\", is the standard assault rifle by Cactus Company security forces, including being used as the base for VIVIT android LILAC-ARM arm cannons, and other advanced militaries in the Seihou World. Shots are automatically charged by a battery in the magazine and use cactus energy powder and primers that are punctured to release and propel the projectile faster than regular gunpowder. It is capable of piercing even advanced armor systems such as their own Scout power armor.':
+              'LILAC은 \\"Light Infantry Loaded Accelerator Carbine\\"의 약자로, Cactus Company 보안 병력의 표준 돌격소총이다. VIVIT 안드로이드의 LILAC-ARM 팔 대포를 비롯해 세이호 세계의 여러 첨단 군대에서도 기반 무장으로 사용된다. 탄환은 탄창 내부 배터리로 자동 충전되며, 카투스 에너지 분말과 점화용 프라이머를 사용해 일반 화약보다 빠르게 탄체를 가속한다. 자사의 Scout 파워 아머 같은 첨단 방어구도 관통할 수 있다.',
+          }
+
+          lines = text.splitlines(True)
+          mode = None
+          total = 0
+          rx = re.compile(r'^(\s*CALLF MAKE_STR\(V_NAME,\s*)"((?:\\.|[^"\\])*)"(\)\s*)$')
+          for i, line in enumerate(lines):
+              nl = '\r\n' if line.endswith('\r\n') else ('\n' if line.endswith('\n') else '')
+              core = line[:-len(nl)] if nl else line
+              s = core.strip()
+              if s == 'CASE "FullName"':
+                  mode = 'FullName'
+                  continue
+              if s == 'CASE "描写"':
+                  mode = '描写'
+                  continue
+              if s.startswith('CASE '):
+                  mode = None
+                  continue
+              if mode not in ('FullName', '描写'):
+                  continue
+              m = rx.match(core)
+              if not m:
+                  continue
+              val = m.group(2)
+              mapping = full_names if mode == 'FullName' else descs
+              if val in mapping:
+                  lines[i] = m.group(1) + '"' + mapping[val] + '"' + m.group(3) + nl
+                  total += 1
+                  print(mode, val[:100], '->', mapping[val][:100])
+
+          text2 = ''.join(lines)
+          after_protected = {k: case_payloads(text2, k) for k in protected}
+          if before_protected != after_protected:
+              raise SystemExit('Protected internal fields changed')
+          if total < 20:
+              raise SystemExit(f'Too few replacements: {total}')
+
+          out = text2.encode('utf-8')
+          if bom:
+              out = b'\xef\xbb\xbf' + out
+          p.write_bytes(out)
+          print('TOTAL_REPLACEMENTS', total)
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          if git diff -U0 -- 'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/300 Firearms/400 Rifles.ERB' | grep -E '^[+-][[:space:]]*CASE "(名前|Type|Class|Platform|Tags|Ammo|Research Required)"'; then
+            echo 'Protected case structure changed'; exit 1
+          fi
+          git diff --stat
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Gandalem'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/300 Firearms/400 Rifles.ERB'
+          git commit -m '소총 표시명 및 설명 한글화 12차'
+          git push origin HEAD:korean
