@@ -1,0 +1,202 @@
+name: Batch Korean pass 32
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/batch-korean-pass-32.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 1
+          lfs: false
+
+      - name: Refine BetterUI remaining UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          TOKEN_RE = re.compile(r'%[^%\n]+%|\{[^{}\n]+\}|\\%')
+
+          def read_text(path):
+              raw = path.read_bytes()
+              return raw.startswith(b'\xef\xbb\xbf'), raw.decode('utf-8-sig')
+
+          def write_text(path, bom, text):
+              data = text.encode('utf-8')
+              if bom:
+                  data = b'\xef\xbb\xbf' + data
+              path.write_bytes(data)
+
+          def tokens(s):
+              if s.startswith('%COND_STR(') and s.endswith(')%'):
+                  s = s[len('%COND_STR('):-2]
+              return sorted(TOKEN_RE.findall(s))
+
+          def apply_exact(text, rules, label):
+              total = 0
+              for old, new, expected in rules:
+                  count = text.count(old)
+                  if count != expected:
+                      raise SystemExit(
+                          f'{label}: unexpected match count: expected={expected}, actual={count}\n{old}'
+                      )
+                  if tokens(old) != tokens(new):
+                      raise SystemExit(
+                          f'{label}: protected token mismatch\nOLD {tokens(old)}\nNEW {tokens(new)}\n{old}'
+                      )
+                  text = text.replace(old, new)
+                  total += count
+                  print(label, count, old)
+              return text, total
+
+          ui = Path('ERB/TRANSLATION/OMOGATARI/BetterUI.ERB')
+          bom, text = read_text(ui)
+
+          rules = [
+              ("SFSR_TYPE '= \"Skill Acquisition\"", "SFSR_TYPE '= \"스킬 습득\"", 8),
+              ("SFSR_NAME '= \"Lewd Urethra\"", "SFSR_NAME '= \"음란 요도\"", 1),
+              ("SFSR_NAME '= \"Infant Regression\"", "SFSR_NAME '= \"유아 퇴행\"", 1),
+              ("SFSR_NAME '= \"Dirge of Decay\"", "SFSR_NAME '= \"부패의 장송가\"", 1),
+              ("SFSR_NAME '= \"Divine Mortality\"", "SFSR_NAME '= \"신성의 필멸성\"", 1),
+              ("SFSR_NAME '= \"Leaky Legend\"", "SFSR_NAME '= \"실금의 전설\"", 1),
+              ("SFSR_NAME '= \"Messy Legend\"", "SFSR_NAME '= \"배변 실수의 전설\"", 1),
+              ("SFSR_NAME '= \"Padded Legend\"", "SFSR_NAME '= \"기저귀의 전설\"", 1),
+              ("SFSR_NAME '= \"Loves Urine\"", "SFSR_NAME '= \"소변 애호가\"", 1),
+              ("SFSR_NAME '= \"Scat Addict\"", "SFSR_NAME '= \"배설물 중독자\"", 1),
+
+              ('CALL COND_COLORMESSAGE(ABL:ARG:42 >= 5 || ABL:ARG:66 >= 5 || ABL:ARG:67 >= 5,@"난사(탄막), 사격, 또는 근접 S (현재:{ABL:ARG:42}/{ABL:ARG:66}/{ABL:ARG:67})")',
+               'CALL COND_COLORMESSAGE(ABL:ARG:42 >= 5 || ABL:ARG:66 >= 5 || ABL:ARG:67 >= 5,@"탄막, 사격 또는 근접 S (현재:{ABL:ARG:42}/{ABL:ARG:66}/{ABL:ARG:67})")', 1),
+              ('CALL COND_COLORMESSAGE(LOCAL:3 >= 5,@"당신은 요괴를 죽인다 (현재:{LOCAL:3})")',
+               'CALL COND_COLORMESSAGE(LOCAL:3 >= 5,@"요괴 5명 처치 (현재:{LOCAL:3})")', 1),
+              ('CALL COND_COLORMESSAGE(ABL:ARG:42 >= 5 || ABL:ARG:66 >= 5 || ABL:ARG:67 >= 5,@"난마쿠, 슈팅, 또는 근접 S (현재:{ABL:ARG:42}/{ABL:ARG:66}/{ABL:ARG:67})")',
+               'CALL COND_COLORMESSAGE(ABL:ARG:42 >= 5 || ABL:ARG:66 >= 5 || ABL:ARG:67 >= 5,@"탄막, 사격 또는 근접 S (현재:{ABL:ARG:42}/{ABL:ARG:66}/{ABL:ARG:67})")', 1),
+              ('CALL COND_COLORMESSAGE(LOCAL:1 >= 20,@"킬 20명 (현재:{LOCAL:1})")',
+               'CALL COND_COLORMESSAGE(LOCAL:1 >= 20,@"20명 처치 (현재:{LOCAL:1})")', 1),
+              ('CALL COND_COLORMESSAGE(LOCAL:2 >= 1,@"신령은(는) 총 3마리여야 한다 (현재:{LOCAL:2})")',
+               'CALL COND_COLORMESSAGE(LOCAL:2 >= 1,@"신령 1명 처치 (현재:{LOCAL:2})")', 1),
+              ('CALL COND_COLORMESSAGE(ABL:ARG:PeeAddict >= 10,@"습한 중독자 10명 (현재:{ABL:ARG:PeeAddict})")',
+               'CALL COND_COLORMESSAGE(ABL:ARG:PeeAddict >= 10,@"소변 실수 중독 10 (현재:{ABL:ARG:PeeAddict})")', 1),
+              ('CALL COND_COLORMESSAGE(ABL:ARG:PooAddict >= 10,@"중독성 추가 10 (현재:{ABL:ARG:PooAddict})")',
+               'CALL COND_COLORMESSAGE(ABL:ARG:PooAddict >= 10,@"배변 실수 중독 10 (현재:{ABL:ARG:PooAddict})")', 1),
+              ('CALL COND_COLORMESSAGE(ABL:ARG:PeeDrinkAddict >= 10,@"소변 중독자 10 (현재 상태:{ABL:ARG:PeeDrinkAddict})")',
+               'CALL COND_COLORMESSAGE(ABL:ARG:PeeDrinkAddict >= 10,@"소변 중독 10 (현재:{ABL:ARG:PeeDrinkAddict})")', 1),
+              ('CALL COND_COLORMESSAGE(ABL:ARG:PooEatAddict >= 10,@"스캣 애딕트 10 (현재 상태:{ABL:ARG:PooEatAddict})")',
+               'CALL COND_COLORMESSAGE(ABL:ARG:PooEatAddict >= 10,@"배설물 중독 10 (현재:{ABL:ARG:PooEatAddict})")', 1),
+
+              (r'''HTML_COLOR = TOINT("0x"+GET_STR(ARG, "Hediff", T_DEF, @"색깔")) ? TOINT("0x"+GET_STR(ARG, "Hediff", T_DEF, @"색깔")) # GETCOLOR()''',
+               r'''HTML_COLOR = TOINT("0x"+GET_STR(ARG, "Hediff", T_DEF, @"Color")) ? TOINT("0x"+GET_STR(ARG, "Hediff", T_DEF, @"Color")) # GETCOLOR()''', 1),
+              (r'''T_SCALE = GET_INT(ARG, "Hediff", T_DEF, @"규모") ? GET_INT(ARG, "Hediff", T_DEF, @"규모") # 100''',
+               r'''T_SCALE = GET_INT(ARG, "Hediff", T_DEF, @"Scale") ? GET_INT(ARG, "Hediff", T_DEF, @"Scale") # 100''', 1),
+              (r'''HTML '= @"\@ STRLENS(GET_STR(ARG, "Hediff", T_DEF, @"ShortName")) ? %GET_STR(ARG, "Hediff", T_DEF, @"ShortName")% # %GET_STR(ARG, "Hediff", T_DEF, @"名前")%일 때 \@ {DT_CELL_GET(@"Hediff", T_HEDIFF, "severity", 1)}m"''',
+               r'''HTML '= @"\@ STRLENS(GET_STR(ARG, "Hediff", T_DEF, @"ShortName")) ? %GET_STR(ARG, "Hediff", T_DEF, @"ShortName")% # %GET_STR(ARG, "Hediff", T_DEF, @"名前")%\@ {DT_CELL_GET(@"Hediff", T_HEDIFF, "severity", 1)}분"''', 1),
+
+              ('PRINTFORM  <HEAT: ', 'PRINTFORM  <경계도: ', 1),
+              ('LOCALS = Conspicious', 'LOCALS = 눈에 띔', 1),
+              ('LOCALS = Suspicious', 'LOCALS = 의심스러움', 1),
+              ('LOCALS = Paranoid', 'LOCALS = 편집증', 1),
+              ('LOCALS = Hated', 'LOCALS = 미움받음', 1),
+              ('LOCALS = Hunted', 'LOCALS = 추적당함', 1),
+              ('LOCALS = Vilified', 'LOCALS = 악명 높음', 1),
+              ('CALL PRINT_RAINBOW(@"<Cheats: %LIST_IN_STRING(LOCALS,"/","/")%>")',
+               'CALL PRINT_RAINBOW(@"<치트: %LIST_IN_STRING(LOCALS,"/","/")%>")', 1),
+              ('CLIP_HEART("Unbearable")', 'CLIP_HEART("참을 수 없음")', 1),
+              ('CLIP_HEART("Leaking")', 'CLIP_HEART("새어 나옴")', 1),
+
+              ('LOCALS:0 = slot to load', 'LOCALS:0 = 불러올 슬롯', 1),
+              ('LOCALS:0 = slot to save', 'LOCALS:0 = 저장할 슬롯', 1),
+              ('LOCALS:0 = save to delete', 'LOCALS:0 = 삭제할 슬롯', 1),
+              ('PRINTBUTTON @"[End] %RESULTS:0%", 300', 'PRINTBUTTON @"[종료] %RESULTS:0%", 300', 1),
+              ('Previous page', '이전 페이지', 1),
+              ('PRINTFORM %@"[999] Return",28,LEFT%', 'PRINTFORM %@"[999] 돌아가기",28,LEFT%', 1),
+              ('"loaded"', '"불러오기"', 1),
+              ('"saved"', '"저장"', 1),
+              ('"deleted"', '"삭제"', 1),
+              ('PRINTFORMW 성공적으로 ', 'PRINTFORMW ', 1),
+              ('")%.', '")% 완료.', 1),
+          ]
+
+          text, count = apply_exact(text, rules, 'BETTER_UI_32')
+          write_text(ui, bom, text)
+          print('BETTER_UI_32_REPLACEMENTS', count)
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          UI='ERB/TRANSLATION/OMOGATARI/BetterUI.ERB'
+
+          git diff --check
+
+          grep -Fq '@SHOW_FALL_STATE_REV_INFO_80(ARG)' "$UI"
+          grep -Fq '@SHOW_EQUIP_HEALTH(ARG)' "$UI"
+          grep -Fq '@INFO_SITUATION_NAS_PREPREND' "$UI"
+          grep -Fq '@LOAD_SAVE_NAS(ARG,ARG:1 = 0)' "$UI"
+
+          # Internal data/schema keys must remain in their original form.
+          grep -Fq 'GET_STR(ARG, "Hediff", T_DEF, @"Hediff Type")' "$UI"
+          grep -Fq 'CASE "Disease"' "$UI"
+          grep -Fq 'CASE "Drug"' "$UI"
+          grep -Fq '@"Color"' "$UI"
+          grep -Fq '@"Scale"' "$UI"
+          grep -Fq 'IF PantiesType:MASTER:0 != "Naked"' "$UI"
+          grep -Fq 'CASE "combat"' "$UI"
+          grep -Fq 'CASE "neg"' "$UI"
+
+          # Active visible leftovers targeted by pass 32 must be gone.
+          ! grep -Fq 'SFSR_TYPE '\''= "Skill Acquisition"' "$UI"
+          ! grep -Fq 'SFSR_NAME '\''= "Lewd Urethra"' "$UI"
+          ! grep -Fq 'SFSR_NAME '\''= "Infant Regression"' "$UI"
+          ! grep -Fq 'SFSR_NAME '\''= "Dirge of Decay"' "$UI"
+          ! grep -Fq 'SFSR_NAME '\''= "Divine Mortality"' "$UI"
+          ! grep -Fq 'SFSR_NAME '\''= "Leaky Legend"' "$UI"
+          ! grep -Fq 'SFSR_NAME '\''= "Messy Legend"' "$UI"
+          ! grep -Fq 'SFSR_NAME '\''= "Padded Legend"' "$UI"
+          ! grep -Fq 'SFSR_NAME '\''= "Loves Urine"' "$UI"
+          ! grep -Fq 'SFSR_NAME '\''= "Scat Addict"' "$UI"
+          ! grep -Fq '습한 중독자 10명' "$UI"
+          ! grep -Fq '중독성 추가 10' "$UI"
+          ! grep -Fq '신령은(는) 총 3마리여야 한다' "$UI"
+          ! grep -Fq 'slot to load' "$UI"
+          ! grep -Fq 'slot to save' "$UI"
+          ! grep -Fq 'save to delete' "$UI"
+          ! grep -Fq '[End]' "$UI"
+          ! grep -Fq 'Previous page' "$UI"
+          ! grep -Fq '[999] Return' "$UI"
+          ! grep -Fq '<Cheats:' "$UI"
+          ! grep -Fq 'CLIP_HEART("Unbearable")' "$UI"
+          ! grep -Fq 'CLIP_HEART("Leaking")' "$UI"
+
+          expected='ERB/TRANSLATION/OMOGATARI/BetterUI.ERB'
+          actual=$(git diff --name-only)
+          [ "$actual" = "$expected" ] || {
+            echo 'Unexpected changed files:'
+            printf '%s\n' "$actual"
+            exit 1
+          }
+
+          git diff --stat
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Gandalem'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'ERB/TRANSLATION/OMOGATARI/BetterUI.ERB'
+          git commit -m 'BetterUI 잔여 UI 및 내부 키 정리 32차'
+          git push origin HEAD:korean
