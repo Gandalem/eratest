@@ -1,0 +1,207 @@
+name: Batch Korean pass 41
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/batch-korean-pass-41.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 1
+          lfs: false
+
+      - name: Translate safe remaining HTML mouseover strings
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          TARGET = Path('ERB/TRANSLATION/HTML_TALENTS/HTML_MOUSEOVER.ERB')
+          TOKEN_RE = re.compile(r'%[^%\n]+%|\{[^{}\n]+\}|\\%')
+          WORD_RE = re.compile(r'[A-Za-z]{3,}')
+          ALLOW = {'RETURNF', 'LOCALS', 'STA', 'ENE', 'VIG', 'EXP', 'ARG'}
+
+          def read_lines(path):
+              raw = path.read_bytes()
+              bom = raw.startswith(b'\xef\xbb\xbf')
+              return bom, raw.decode('utf-8-sig').splitlines(keepends=True)
+
+          def write_lines(path, bom, lines):
+              data = ''.join(lines).encode('utf-8')
+              if bom:
+                  data = b'\xef\xbb\xbf' + data
+              path.write_bytes(data)
+
+          def tokens(s):
+              return sorted(TOKEN_RE.findall(s))
+
+          def meaningful_words(s):
+              return [w for w in WORD_RE.findall(s) if w.upper() not in ALLOW]
+
+          def block_end(lines, start):
+              end = len(lines)
+              for j in range(start + 1, len(lines)):
+                  raw = lines[j].rstrip('\r\n')
+                  if raw == 'ENDSELECT' or raw.startswith('\tCASE '):
+                      end = j
+                      break
+              return end
+
+          def replace_case_return(lines, case_header, return_index, new_stmt, label):
+              hits = [i for i, line in enumerate(lines) if line.rstrip('\r\n') == case_header]
+              if len(hits) != 1:
+                  raise SystemExit(f'{label}: case anchor count={len(hits)}: {case_header}')
+              start = hits[0]
+              end = block_end(lines, start)
+              returns = [j for j in range(start + 1, end) if lines[j].lstrip().startswith('RETURNF ')]
+              if return_index >= len(returns):
+                  raise SystemExit(f'{label}: return index {return_index} out of range for {case_header}; found {len(returns)}')
+              idx = returns[return_index]
+              old = lines[idx]
+              if not meaningful_words(old):
+                  raise SystemExit(f'{label}: selected line no longer has meaningful English: {case_header} #{return_index}')
+              indent = old[:len(old) - len(old.lstrip())]
+              newline = '\r\n' if old.endswith('\r\n') else '\n' if old.endswith('\n') else ''
+              new_line = indent + new_stmt + newline
+              if tokens(old) != tokens(new_line):
+                  raise SystemExit(f'{label}: protected token mismatch: {case_header} #{return_index}\nOLD={tokens(old)}\nNEW={tokens(new_line)}')
+              leftover = meaningful_words(new_line)
+              if leftover:
+                  raise SystemExit(f'{label}: unexpected English left in replacement {case_header} #{return_index}: {leftover}')
+              lines[idx] = new_line
+              print(f'{label}: {case_header} return#{return_index + 1}')
+              return 1
+
+          def replace_case_locals(lines, case_header, new_stmt, label):
+              hits = [i for i, line in enumerate(lines) if line.rstrip('\r\n') == case_header]
+              if len(hits) != 1:
+                  raise SystemExit(f'{label}: case anchor count={len(hits)}: {case_header}')
+              start = hits[0]
+              end = block_end(lines, start)
+              candidates = [j for j in range(start + 1, end) if lines[j].lstrip().startswith("LOCALS '=")]
+              if len(candidates) != 1:
+                  raise SystemExit(f'{label}: LOCALS count={len(candidates)} for {case_header}')
+              idx = candidates[0]
+              old = lines[idx]
+              if not meaningful_words(old):
+                  raise SystemExit(f'{label}: selected LOCALS no longer has meaningful English: {case_header}')
+              indent = old[:len(old) - len(old.lstrip())]
+              newline = '\r\n' if old.endswith('\r\n') else '\n' if old.endswith('\n') else ''
+              new_line = indent + new_stmt + newline
+              if tokens(old) != tokens(new_line):
+                  raise SystemExit(f'{label}: protected token mismatch: {case_header}\nOLD={tokens(old)}\nNEW={tokens(new_line)}')
+              leftover = meaningful_words(new_line)
+              if leftover:
+                  raise SystemExit(f'{label}: unexpected English left in replacement {case_header}: {leftover}')
+              lines[idx] = new_line
+              print(f'{label}: {case_header} LOCALS')
+              return 1
+
+          bom, lines = read_lines(TARGET)
+
+          talent_rules = [
+              ('\tCASE 0', 0, r'''RETURNF "이 캐릭터는 처녀성을 잃었지만 본인은 아직 그 사실을 모릅니다. 나중에 알게 되면 꽤 충격을 받을 수도 있습니다."'''),
+              ('\tCASE 0', 1, r'''RETURNF "아직 V계열 삽입을 경험한 적이 없는 상태입니다. 처음 경험할 때 통증이 매우 클 수 있으므로 관계가 충분히 형성된 뒤 진행하는 편이 좋습니다."'''),
+              ('\tCASE 0', 2, r'''RETURNF "처녀막이 다시 생긴 상태로, 외형상 다시 처녀처럼 보입니다. 이를 이용하면 자신이 첫 상대였던 것처럼 연출할 수 있습니다."'''),
+              ('\tCASE 1', 0, r'''RETURNF "이 캐릭터는 아직 음경을 삽입 행위에 사용한 적이 없습니다."'''),
+              ('\tCASE 2', 0, r'''RETURNF "생물학적 성별과 관계없이 음경 또는 질을 사용하는 훈련 행동을 실행할 수 있습니다."'''),
+              ('\tCASE 122', 0, r'''RETURNF "펠라치오와 핸드잡 행동의 효과가 증가하며 딥스로트의 효과는 특히 큽니다. 입 안에 정액이 있으면 M계열 쾌감이 매우 빠르게 상승합니다."'''),
+              ('\tCASE 152 ;addition custom code', 0, r'''RETURNF "사정까지 걸리는 시간이 절반으로 줄어듭니다.\n사정량은 2배가 되며 사정 시 STA와 ENE를 소모하지 않습니다.\n발기가 더 오래 유지되고 음경 관련 효과가 강화됩니다.\nVIG가 남아 있는 동안 육체적 피로 증가도 줄어듭니다."'''),
+              ('\tCASE 179 ;addition custom code', 0, r'''RETURNF "방중술은 도가에서 수행하는 성적 수련법을 가리킵니다.\n기운을 합치거나 정수를 결합한다는 표현으로도 알려져 있으며, 이를 통해 건강과 장수, 영적 수련에 도움이 된다고 여겨집니다.\n\n게임에서는 사정 시 자신과 파트너가 ENE를 조금 회복하고 최대 ENE가 증가합니다."'''),
+              ('\tCASE 183', 0, r'''RETURNF "즐거움도 두 배! 이중 삽입 행동을 사용할 수 있게 됩니다."'''),
+              ('\tCASE 184', 0, r'''RETURNF "연모와 비슷하지만 욕정에 기반한 상태입니다. 그리움보다 효과가 조금 강하며 친밀도를 충분히 쌓으면 연모로 발전할 수 있습니다."'''),
+              ('\tCASE 184', 1, r'''RETURNF "연모와 비슷하지만 욕정에 기반한 상태입니다. 그리움보다 효과가 조금 강하며 설정에서 변경하지 않는 한 그리움과 연모 획득을 막습니다."'''),
+              ('\tCASE 185', 0, r'''RETURNF "욕정 기반 함락 조건 가운데 하나입니다. 그리움 상태도 함께 있으면 효과가 더 강해지며 친밀도를 충분히 쌓으면 연모로 발전할 수 있습니다."'''),
+              ('\tCASE 185', 1, r'''RETURNF "욕정 기반 함락 조건 가운데 하나입니다. 설정에서 변경하지 않는 한 그리움과 연모 획득을 막습니다."'''),
+              ('\tCASE 185', 2, r'''RETURNF "이 캐릭터는 당신을 그리워하는 성적 파트너 상태입니다. 친밀도를 충분히 쌓으면 연모로 발전할 수 있습니다."'''),
+              ('\tCASE 296', 0, r'''RETURNF "이 캐릭터의 모든 성감대가 민감한 상태입니다.\nC/V/A/B/M/U의 모든 민감 특성을 가진 것처럼 적용되며 같은 부위의 둔감 특성을 덮어씁니다.\n하루가 끝나면 사라집니다."'''),
+          ]
+
+          race_rules = [
+              ('\tCASE "Yazata"', r'''LOCALS '= "조로아스터교의 신성한 존재입니다.\n천사와 신의 중간에 가까우며 정의 같은 추상적 개념이나 불과 물 같은 자연의 힘을 의인화합니다.\n본질적으로 성스러운 존재라 번식이 어렵습니다."'''),
+              ('\tCASE "Sarugami"', r'''LOCALS '= "야생 원숭이를 다스릴 수 있는 전설 속 원숭이의 왕입니다.\n다른 요괴와 마찬가지로 번식이 어렵습니다."'''),
+              ('\tCASE "Tenkajin"', r'''LOCALS '= "오늘날 다마무라 일대의 민간전승에 등장하는 피를 빠는 도깨비불입니다.\n미국 전승의 흡혈 괴물 추파카브라와 비슷한 면이 있습니다.\n다른 요괴와 마찬가지로 번식이 어렵습니다."'''),
+              ('\tCASE "Yomotsu-shikome"', r'''LOCALS '= "죽은 자의 나라 요미에 사는 여성 오니입니다. 원래는 흉측한 모습으로 묘사되며,\n죽은 이자나미가 남편 이자나기를 뒤쫓게 보낸 마귀 노파 이야기에서 유래했습니다.\n희생자를 지옥 깊은 곳으로 끌고 가 절대 놓아주지 않습니다.\n다른 요괴와 마찬가지로 번식이 어렵습니다."'''),
+              ('\tCASE "Human oni"', r'''LOCALS '= "스스로 지옥 깊은 곳으로 떨어진 뒤 오니가 된 전직 인간 승려입니다.\n강한 자신감만으로도 지옥의 주민들에게 존경과 경외를 얻으며 그 영향력으로 수많은 오니를 지휘한다고 합니다.\n다른 요괴와 마찬가지로 번식이 어렵습니다."'''),
+              ('\tCASE "Immortal Yamainu"', r'''LOCALS '= "야마이누는 문자 그대로 「산개」를 뜻하며 일본늑대를 가리키는 이름으로 더 잘 알려져 있습니다.\n한 번 인간의 살맛을 알게 된 야마이누는 평생 저주받아 예전의 느긋한 짐승으로 돌아갈 수 없다고 합니다.\n하지만 꾸준히 수행하면 스스로를 속죄해 시간이 흐르며 사악함보다 성스러움에 가까운 존재가 될 수 있습니다.\n다른 요괴와 마찬가지로 번식이 어렵습니다."'''),
+              ('\tCASE "Sagacious Spirit"', r'''LOCALS '= "정화가 극에 달해 신성의 일부를 지니게 된 영혼입니다.\n신령과 비슷하지만 정확히 분류하기는 어렵습니다.\n다만 신앙을 필요로 하지 않고 선인처럼 스스로 존재를 유지합니다.\n사물에 이름이 붙기 전과 같은 상태로 존재하며 본질은 오직 자기 자신에 의해 정의됩니다.\n삶과 죽음을 초월해 거부하는 순수한 존재이므로 번식이 어렵습니다."'''),
+              ('\tCASE "Human (Living God)"', r'''LOCALS '= "살아 있는 동안 신성을 얻은 인간입니다.\n스스로 신앙을 모을 수 있으며 기적을 일으킬 수 있습니다.\n아직 인간성을 버리지 않았으므로 임신 가능성은 일반 인간과 크게 다르지 않습니다."'''),
+          ]
+
+          changed = 0
+          for case_header, return_index, new_stmt in talent_rules:
+              changed += replace_case_return(lines, case_header, return_index, new_stmt, 'talent')
+          for case_header, new_stmt in race_rules:
+              changed += replace_case_locals(lines, case_header, new_stmt, 'race')
+
+          if changed != 23:
+              raise SystemExit(f'expected 23 replacements, got {changed}')
+
+          write_lines(TARGET, bom, lines)
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          target='ERB/TRANSLATION/HTML_TALENTS/HTML_MOUSEOVER.ERB'
+          git diff --check
+          mapfile -t changed < <(git diff --name-only)
+          if [[ ${#changed[@]} -ne 1 || "${changed[0]}" != "$target" ]]; then
+            printf 'Unexpected changed files:\n%s\n' "${changed[*]}"
+            exit 1
+          fi
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('ERB/TRANSLATION/HTML_TALENTS/HTML_MOUSEOVER.ERB')
+          raw = p.read_bytes()
+          if not raw.startswith(b'\xef\xbb\xbf'):
+              raise SystemExit('BOM was not preserved')
+          text = raw.decode('utf-8-sig')
+          required = [
+              '이 캐릭터는 처녀성을 잃었지만 본인은 아직 그 사실을 모릅니다.',
+              '펠라치오와 핸드잡 행동의 효과가 증가하며',
+              '방중술은 도가에서 수행하는 성적 수련법을 가리킵니다.',
+              '욕정 기반 함락 조건 가운데 하나입니다.',
+              '이 캐릭터의 모든 성감대가 민감한 상태입니다.',
+              '조로아스터교의 신성한 존재입니다.',
+              '정화가 극에 달해 신성의 일부를 지니게 된 영혼입니다.',
+              '살아 있는 동안 신성을 얻은 인간입니다.',
+          ]
+          for s in required:
+              if s not in text:
+                  raise SystemExit(f'missing validation anchor: {s}')
+          excluded = [
+              'Breast-related commands are highly effective.',
+              'Private room gets dirty faster. Loses Sexual Frustration 4 times faster',
+              'Can become pregnant even if child.',
+          ]
+          for s in excluded:
+              if s not in text:
+                  raise SystemExit(f'excluded unsafe string unexpectedly changed: {s}')
+          print('validation: ok')
+          PY
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'ERB/TRANSLATION/HTML_TALENTS/HTML_MOUSEOVER.ERB'
+          git diff --cached --quiet && { echo 'No staged changes'; exit 1; }
+          git commit -m 'HTML 마우스오버 안전 잔여 한글화 41차'
+          git push origin HEAD:korean
