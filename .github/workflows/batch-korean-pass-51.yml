@@ -1,0 +1,48 @@
+name: Batch Korean pass 51
+
+on:
+  push:
+    paths:
+      - '.github/workflows/batch-korean-pass-51.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 1
+
+      - name: List next barrel display names
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Barrels.ERB')
+          text = p.read_bytes().decode('utf-8-sig')
+          func_re = re.compile(r'^@WeaponBarrelBody(\d+)\(ARG, O_DATA, V_NAME\)\s*$', re.M)
+          starts = list(func_re.finditer(text))
+          eng = re.compile(r'[A-Za-z]{2,}')
+          found = []
+          for idx, m in enumerate(starts):
+              barrel_id = int(m.group(1))
+              end = starts[idx + 1].start() if idx + 1 < len(starts) else len(text)
+              block = text[m.start():end]
+              km = re.search(r'CASE "名前"\s*\n\s*CALLF MAKE_STR\(V_NAME,\s*(.+?)\)\s*$', block, re.M)
+              if not km:
+                  continue
+              name = km.group(1).strip()
+              if eng.search(name):
+                  found.append((barrel_id, name))
+          print(f'REMAINING_ENGLISH_NAMES={len(found)}')
+          for barrel_id, name in found[:60]:
+              print(f'NAME\tID={barrel_id}\t{name}')
+          PY
