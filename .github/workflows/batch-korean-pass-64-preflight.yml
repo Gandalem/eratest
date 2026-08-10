@@ -1,0 +1,63 @@
+name: Batch Korean pass 64 preflight
+
+on:
+  push:
+    paths:
+      - '.github/scripts/batch_korean_pass64.py'
+      - '.github/workflows/batch-korean-pass-64-preflight.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main tools
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: tools
+          fetch-depth: 1
+      - name: Checkout Korean target
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          path: target
+          fetch-depth: 1
+          lfs: false
+      - name: Compile pass 64 script
+        shell: bash
+        run: python3 -m py_compile tools/.github/scripts/batch_korean_pass64.py
+      - name: Apply pass 64 in working tree
+        shell: bash
+        working-directory: target
+        run: python3 ../tools/.github/scripts/batch_korean_pass64.py
+      - name: Validate static diff
+        shell: bash
+        working-directory: target
+        run: |
+          git diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          expected = {
+              'ERB/TRANSLATION/LIST.ERB',
+              'ERB/TRANSLATION/_TR Lib.ERB',
+              'ERB/TRANSLATION/OMOGATARI/TALENTNAME_NAS.ERB',
+              'ERB/TRANSLATION/OMOGATARI/ITEM/Omogatari_SpellCards.ERB',
+          }
+          raw = subprocess.check_output(['git', 'diff', '--name-only', '-z'])
+          got = {p.decode('utf-8') for p in raw.split(b'\0') if p}
+          print('CHANGED_FILES', sorted(got))
+          assert got == expected, (got, expected)
+          out = subprocess.check_output(['git', 'diff', '--numstat'], text=True)
+          print('NUMSTAT\n' + out)
+          for rel in expected:
+              raw_file = Path(rel).read_bytes()
+              assert raw_file.startswith(b'\xef\xbb\xbf'), f'BOM lost: {rel}'
+          untracked = subprocess.check_output(['git', 'ls-files', '--others', '--exclude-standard', '-z'])
+          assert not untracked, untracked
+          print('PASS64_STATIC_PREFLIGHT_OK')
+          PY
