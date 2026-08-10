@@ -1,0 +1,49 @@
+name: Batch Korean pass 49
+
+on:
+  push:
+    paths:
+      - '.github/workflows/batch-korean-pass-49.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 1
+
+      - name: List remaining magazine UI strings
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Magazines.ERB')
+          text = p.read_bytes().decode('utf-8-sig')
+          func_re = re.compile(r'^@WeaponMag(\d+)\(ARG, O_DATA, V_NAME\)\s*$', re.M)
+          starts = list(func_re.finditer(text))
+          eng = re.compile(r'[A-Za-z]{2,}')
+          for idx, m in enumerate(starts):
+              mag_id = int(m.group(1))
+              if mag_id < 41:
+                  continue
+              end = starts[idx + 1].start() if idx + 1 < len(starts) else len(text)
+              block = text[m.start():end]
+              vals = {}
+              for key in ('名前', '描写'):
+                  km = re.search(rf'CASE "{key}"\s*\n\s*CALLF MAKE_STR\(V_NAME,\s*(.+?)\)\s*$', block, re.M)
+                  if km:
+                      vals[key] = km.group(1).strip()
+              name = vals.get('名前', '')
+              desc = vals.get('描写', '')
+              if eng.search(name) or eng.search(desc):
+                  print(f'ID={mag_id}\tNAME={name}\tDESC={desc}')
+          PY
