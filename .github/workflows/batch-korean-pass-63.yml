@@ -19,106 +19,34 @@ jobs:
           ref: korean
           fetch-depth: 0
 
-      - name: Diagnose high-volume visible strings
+      - name: Diagnose safe utility literals
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
           import re
-
+          p = Path('ERB/TRANSLATION/_TR Lib.ERB')
+          raw = p.read_bytes(); assert raw.startswith(b'\xef\xbb\xbf')
+          lines = raw.decode('utf-8-sig').splitlines()
+          fn_re = re.compile(r'^@(\w+)\(')
+          q_re = re.compile(r'"((?:\\.|[^"\\])*)"')
           eng = re.compile(r'[A-Za-z]{2,}')
           hangul = re.compile(r'[가-힣]')
-          lit = re.compile(r'CALLF MAKE_STR\(V_NAME,\s*(?:@)?"((?:\\.|[^"\\])*)"\)')
-          case_re = re.compile(r'^\s*CASE "([^"]+)"\s*$')
-          fn_re = re.compile(r'^@(\w+)\(')
-
-          def structured_visible(path, fields):
-              p = Path(path)
-              raw = p.read_bytes(); assert raw.startswith(b'\xef\xbb\xbf')
-              field = None; rows = []
-              for lineno, line in enumerate(raw.decode('utf-8-sig').splitlines(), 1):
-                  if line.lstrip().startswith(';'):
-                      continue
-                  m = case_re.match(line)
-                  if m:
-                      field = m.group(1) if m.group(1) in fields else None
-                      continue
-                  if field:
-                      m = lit.search(line)
-                      if m:
-                          value = m.group(1)
-                          if eng.search(value) and not hangul.search(value):
-                              rows.append((lineno, field, value))
-              print('===', path, '===')
-              print('COUNT', len(rows))
-              for f in fields:
-                  print(f, sum(x[1] == f for x in rows))
-              for r in rows:
-                  print('%s\t%s\t%s' % r)
-              return len(rows)
-
-          grand = 0
-          grand += structured_visible('ERB/TRANSLATION/OMOGATARI/Body Parts/Bionic List.ERB', {'名前','FullName','描写'})
-          grand += structured_visible('ERB/TRANSLATION/OMOGATARI/Ideology.ERB', {'Name','Unit','Deity','Desc'})
-
-          lp = Path('ERB/TRANSLATION/LIST.ERB')
-          lraw = lp.read_bytes(); assert lraw.startswith(b'\xef\xbb\xbf')
-          text = lraw.decode('utf-8-sig')
-          print('=== LIST display arrays English-only ===')
-          total = 0
-          for var in ('DISP_NAME','DISP_MEMO','DISP_FACTION'):
-              m = re.search(r'#DIMS CONST '+var+r'\s*=\s*(.*)', text)
-              if not m:
-                  print(var, 'MISSING'); continue
-              vals = re.findall(r'"((?:\\.|[^"\\])*)"', m.group(1))
-              eo = [v for v in vals if eng.search(v) and not hangul.search(v)]
-              total += len(eo)
-              print(var, len(vals), 'ENGLISH_ONLY', len(eo))
-              for v in eo: print(var+'\t'+v)
-          print('LIST_ARRAY_ENGLISH_ONLY_TOTAL', total)
-          grand += total
-
-          sp = Path('ERB/TRANSLATION/OMOGATARI/Omogatari_STR.ERB')
-          sraw = sp.read_bytes(); assert sraw.startswith(b'\xef\xbb\xbf')
-          lines = sraw.decode('utf-8-sig').splitlines()
-          active = None; rows = []
-          ret_re = re.compile(r'^\s*RETURNF\s+(?:@)?"((?:\\.|[^"\\])*)"')
+          safe = {'FISH_NAME_TR','CROP_NAME_PLURAL','BAIT_TR','ALCOHOL_FACE_TR','MUSHI_TRIBE_TR','MUSHI_STATUS_TR','MUSHI_SKL_TR','VAR_FERMENT_TR','FESTIVAL_MENU_TR','VAR_WATER_TR','REQUEST_NAMES_TR','OPTIONS_TR'}
+          active = None
+          counts = {k:0 for k in safe}
           for lineno, line in enumerate(lines, 1):
               fm = fn_re.match(line)
               if fm:
-                  active = fm.group(1) if fm.group(1) in {'ItemName_Full','ItemName_NAS'} else None
+                  active = fm.group(1)
                   continue
-              if not active or line.lstrip().startswith(';'):
-                  continue
-              rm = ret_re.match(line)
-              if rm:
-                  value = rm.group(1)
-                  if eng.search(value) and not hangul.search(value):
-                      rows.append((lineno, active, value))
-          print('=== Omogatari_STR item display returns ===')
-          print('COUNT', len(rows))
-          print('FULL', sum(r[1]=='ItemName_Full' for r in rows), 'NAS', sum(r[1]=='ItemName_NAS' for r in rows))
-          for r in rows: print('%s\t%s\t%s' % r)
-          grand += len(rows)
-
-          # _TR Lib: report counts by function only. Selection is done manually from safe, non-sexual utilities.
-          tp = Path('ERB/TRANSLATION/_TR Lib.ERB')
-          traw = tp.read_bytes(); assert traw.startswith(b'\xef\xbb\xbf')
-          funcs = {}; active = None
-          q_re = re.compile(r'"((?:\\.|[^"\\])*)"')
-          for lineno, line in enumerate(traw.decode('utf-8-sig').splitlines(), 1):
-              fm = fn_re.match(line)
-              if fm:
-                  active = fm.group(1); funcs.setdefault(active, [])
-                  continue
-              if not active or line.lstrip().startswith(';'):
+              if active not in safe or line.lstrip().startswith(';'):
                   continue
               for value in q_re.findall(line):
                   if eng.search(value) and not hangul.search(value):
-                      funcs[active].append((lineno, value))
-          print('=== _TR Lib English-only literals by function ===')
-          for fn, vals in sorted(funcs.items(), key=lambda kv: (-len(kv[1]), kv[0])):
-              if vals:
-                  print(fn, len(vals))
-          print('GRAND_VISIBLE_ENGLISH_ONLY_BEFORE_TRLIB', grand)
+                      counts[active] += 1
+                      print(f'{active}\t{lineno}\t{value}')
+          print('COUNTS')
+          for k in sorted(counts): print(k, counts[k])
+          print('TOTAL', sum(counts.values()))
           PY
