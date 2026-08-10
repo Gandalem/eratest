@@ -1,0 +1,193 @@
+name: Batch Korean pass 39
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/batch-korean-pass-39.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 1
+          lfs: false
+
+      - name: Translate remaining HTML and NAS help strings
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          TOKEN_RE = re.compile(r'%[^%\n]+%|\{[^{}\n]+\}|\\%')
+          WORD_RE = re.compile(r'[A-Za-z]{3,}')
+          ALLOW = {'RETURNF', 'LOCALS', 'STA', 'ENE', 'EXP', 'VIG', 'CVAB', 'CVABM', 'TSP', 'UI'}
+
+          def read_lines(path):
+              raw = path.read_bytes()
+              bom = raw.startswith(b'\xef\xbb\xbf')
+              return bom, raw.decode('utf-8-sig').splitlines(keepends=True)
+
+          def write_lines(path, bom, lines):
+              data = ''.join(lines).encode('utf-8')
+              if bom:
+                  data = b'\xef\xbb\xbf' + data
+              path.write_bytes(data)
+
+          def tokens(s):
+              return sorted(TOKEN_RE.findall(s))
+
+          def meaningful_words(s):
+              return [w for w in WORD_RE.findall(s) if w.upper() not in ALLOW]
+
+          def replace_case_return(lines, case_header, return_index, new_stmt, label):
+              hits = [i for i, line in enumerate(lines) if line.rstrip('\r\n') == case_header]
+              if len(hits) != 1:
+                  raise SystemExit(f'{label}: case anchor count={len(hits)}: {case_header}')
+              start = hits[0]
+              end = len(lines)
+              for j in range(start + 1, len(lines)):
+                  raw = lines[j].rstrip('\r\n')
+                  if raw == 'ENDSELECT' or raw.startswith('\tCASE '):
+                      end = j
+                      break
+              returns = [j for j in range(start + 1, end) if lines[j].lstrip().startswith('RETURNF ')]
+              if return_index >= len(returns):
+                  raise SystemExit(f'{label}: return index {return_index} out of range for {case_header}; found {len(returns)}')
+              idx = returns[return_index]
+              old = lines[idx]
+              if not meaningful_words(old):
+                  raise SystemExit(f'{label}: selected line no longer has meaningful English: {case_header} #{return_index}')
+              indent = old[:len(old) - len(old.lstrip())]
+              newline = '\r\n' if old.endswith('\r\n') else '\n' if old.endswith('\n') else ''
+              new_line = indent + new_stmt + newline
+              if tokens(old) != tokens(new_line):
+                  raise SystemExit(f'{label}: protected token mismatch: {case_header} #{return_index}\nOLD={tokens(old)}\nNEW={tokens(new_line)}')
+              leftover = meaningful_words(new_line)
+              if leftover:
+                  raise SystemExit(f'{label}: unexpected English left in replacement {case_header} #{return_index}: {leftover}')
+              lines[idx] = new_line
+              print(f'{label}: {case_header} return#{return_index + 1}')
+              return 1
+
+          html = Path('ERB/TRANSLATION/HTML_TALENTS/HTML_MOUSEOVER.ERB')
+          nas = Path('ERB/TRANSLATION/OMOGATARI/NAS_TIPS_TR.ERB')
+          html_bom, html_lines = read_lines(html)
+          nas_bom, nas_lines = read_lines(nas)
+
+          html_rules = [
+              ('\tCASE 41', 0, r'''RETURNF "이 캐릭터는 쉽게 젖지 않습니다.\n보석: 윤활↓"'''),
+              ('\tCASE 41', 1, r'''RETURNF "이 캐릭터는 쉽게 젖습니다.\n보석: 윤활↑"'''),
+              ('\tCASE 60', 0, r'''RETURNF "자위 관련 행동을 실행하기 쉬워지고 자위 중독도 더 빠르게 상승합니다."'''),
+              ('\tCASE 70', 0, r'''RETURNF "쾌감을 받아들이기 어려워 여러 행동의 실행 난도가 올라갑니다. 행동에 따라 연모 또는 음란 상태가 되면 이 효과가 사라집니다. 음란 상태가 아니면 쾌감으로 우울해질 수 있고 사정이나 수유를 유도하기도 어려워집니다.\n욕구 수치는 더 느리게 오르며 무피임 삽입 협상과 성적 행동으로 얻는 호감 상승에도 큰 페널티가 적용됩니다."'''),
+              ('\tCASE 70', 1, r'''RETURNF "쾌감을 즐기기 때문에 여러 행동을 실행하기 쉬워지고 사정이나 수유도 유도하기 쉬워집니다. 욕구 수치는 더 빠르게 상승합니다.\n무피임 삽입 협상이 훨씬 쉬워지고 성적 행동으로 얻는 호감도 더 빠르게 상승합니다."'''),
+              ('\tCASE 73', 0, r'''RETURNF "자위 및 C계열 행동의 효과가 증가하고 욕구 수치가 더 빠르게 상승합니다."'''),
+              ('\tCASE 74', 0, r'''RETURNF "V계열 행동의 효과가 증가하고 충성 수치가 더 빠르게 상승합니다."'''),
+              ('\tCASE 75', 0, r'''RETURNF "A계열 행동의 효과가 증가하고 복종 수치가 더 빠르게 상승합니다."'''),
+              ('\tCASE 76', 0, r'''RETURNF "B계열 행동의 효과가 증가하고 수치심 수치가 더 빠르게 상승합니다."'''),
+              ('\tCASE 77', 0, r'''RETURNF "M계열 행동과 키스의 효과가 증가하고 호감 수치가 더 빠르게 상승합니다."'''),
+              ('\tCASE 100', 0, r'''RETURNF "체격을 나타냅니다. 금단의 지식이 없으면 몸집이 지나치게 크거나 작은 대상에게 일부 행동을 사용할 수 없으며 체격 차이가 클수록 삽입도 어려워집니다.\n소인은 대부분의 행동에서 통증은 더 많이 받고 욕구는 덜 오르며 감각 쾌감과 윤활 수치의 변화도 달라집니다. 소인을 자위용 도구처럼 사용하는 행동도 가능합니다."'''),
+              ('\tCASE 105', 0, r'''RETURNF "가슴 크기를 나타냅니다. 크기에 따라 설명이 달라지며 너무 작으면 일부 가슴 관련 행동을 실행할 수 없습니다.\n가슴이 크면 가슴 관련 기술을 올리기 쉬워지고 수유가 발생하기 쉬우며 관련 행동에도 보너스가 적용됩니다."'''),
+          ]
+
+          nas_rules = [
+              ('\tCASE "ATW.sex.badGrope"', 0, r'''RETURNF "상대가 최소한 연모 상태가 아니라면 함부로 더듬지 않는 편이 좋습니다. 호감도가 수백 정도 있다면 가벼운 스킨십은 괜찮습니다."'''),
+              ('\tCASE "ATW.char.27.springHeat"', 0, r'''RETURNF "리글은 매년 봄 발정기에 들어갑니다. 충분히 친해지면 욕구를 해소하는 일을 도와 달라고 할지도 모릅니다."'''),
+              ('\tCASE "ATW.char.60.tip2"', 0, r'''RETURNF "파르시는 가끔 피임약 복용을 잊습니다. 특히 발정기라면 더 그렇습니다."'''),
+              ('\tCASE "ATW.char.60.tip3"', 0, r'''RETURNF "당신이 파르시를 덮칠 수 없더라도 파르시가 먼저 당신을 덮칠 수는 있습니다."'''),
+              ('\tCASE "ATW.char.71.miracleMallet"', 0, r'''RETURNF "신묘마루의 요술망치는 색다른 성적 경험을 위한 선택지를 제공하지만 지나치게 사용하지 않도록 주의하세요."'''),
+              ('\tCASE "ATW.char.30.funnyTitle"', 0, r'''RETURNF "에이키는 처음에는 지나치게 딱딱하지만, 다른 의미로도 조금은 부드러워질지 모릅니다."'''),
+              ('\tCASE "ATW.char.160.funnyTitle"', 0, r'''RETURNF "린노스케가 당신의 연인을 빼앗을 일은 없습니다. 그는 믿을 만한 형님입니다."'''),
+              ('\tCASE "hypnoFreeUse"', 0, r'''RETURNF "캐릭터의 상식을 충분히 개변하면 자유 사용 모드가 활성화됩니다. 다른 사람에게 들키지만 않는다면 시간과 장소에 관계없이 성관계를 가질 수 있습니다."'''),
+              ('\tCASE "hypnoHOD"', 0, r'''RETURNF "최면 절정 금지는 직접 해제할 때까지 사라지지 않습니다."'''),
+              ('\tCASE "hypnoNudismEffect"', 0, r'''RETURNF "캐릭터에게 나체주의나 노출 성향을 최면으로 심으면 하루가 시작될 때 옷을 입는 것을 잊을 확률이 증가합니다."'''),
+              ('\tCASE "NAS.char.102.diaperLover"', 0, r'''RETURNF "신키는 동방 캐릭터들이 평범하지 않은 속옷을 입은 모습을 좋아합니다. 이유는 묻지 마세요."'''),
+              ('\tCASE "eirinCantSaveYouNow"', 0, r'''RETURNF "영구 사망 설정이 켜져 있으면 에이린조차 죽은 캐릭터를 되살릴 수 없습니다."'''),
+              ('\tCASE "factionAssociation"', 0, r'''RETURNF "일부 파벌에 소속되면 다른 파벌과 적대 관계가 될 수 있습니다. 필요하다면 파벌에서 탈퇴하세요."'''),
+              ('\tCASE "factionResigning"', 0, r'''RETURNF "파벌에서 탈퇴해도 그동안 쌓은 진행도는 사라지지 않습니다. 다시 가입하면 기존 계급도 유지됩니다."'''),
+              ('\tCASE "factionInfamyTimeLoss"', 0, r'''RETURNF "파벌에 대한 악명은 시간이 지나면 서서히 감소합니다."'''),
+              ('\tCASE "factionDatingTruce"', 0, r'''RETURNF "데이트 휴전은 다른 파벌이 해당 캐릭터를 공격하지 못하게 하지만 그 캐릭터 역시 다른 파벌과 싸울 수 없게 만듭니다."'''),
+              ('\tCASE "factionAllianceVSTruce"', 0, r'''RETURNF "휴전은 두 파벌이 서로 싸우지 않게 하고, 동맹은 두 파벌이 전투에서 서로 돕도록 만듭니다."'''),
+              ('\tCASE "factionDestroying"', 0, r'''RETURNF "모든 간부를 잃고 지배 중인 영토도 하나도 남지 않으면 해당 파벌은 소멸합니다."'''),
+              ('\tCASE "factionRecruiter"', 0, r'''RETURNF "대부분의 파벌에는 가입을 담당하는 모집책이 있습니다. 모집책이 없는 파벌은 거주 지역 입구의 모집 게시판을 이용하면 됩니다."'''),
+              ('\tCASE "factionWorkRewards"', 0, r'''RETURNF "파벌 모집책은 때때로 임무를 제공합니다. 완료하면 해당 파벌의 명성, 승급 점수와 돈을 얻습니다."'''),
+              ('\tCASE "factionWars"', 0, r'''RETURNF "서로의 관계가 나쁘거나 한 파벌이 특정 영토를 지나치게 강하게 지배하면 파벌 전쟁이 발생할 수 있습니다."'''),
+              ('\tCASE "factionResearch"', 0, r'''RETURNF "해당 단계의 연구를 절반 이상 완료하면 파벌의 기술 수준이 그 단계로 상승합니다."'''),
+              ('\tCASE "badName"', 0, r'''RETURNF "배드 이름은 플레이어의 전투 방식을 반영하는 별명입니다. 전투에서 사용하는 거의 모든 능력치가 별명 결정에 반영됩니다."'''),
+              ('\tCASE "badNameThreshold"', 0, r'''RETURNF "배드 이름을 얻으려면 최소 20번의 전투를 치러야 합니다. 그전까지는 단순히 「신참」으로 불립니다."'''),
+              ('\tCASE "tetrakarn"', 0, r'''RETURNF "【테트라칸】은 모든 아군에게 한 턴 동안 유지되는 장벽을 생성합니다. 물리 공격을 막고 그 공격을 가해자에게 반사합니다."'''),
+          ]
+
+          html_count = 0
+          for case_header, return_index, new_stmt in html_rules:
+              html_count += replace_case_return(html_lines, case_header, return_index, new_stmt, 'HTML39')
+
+          nas_count = 0
+          for case_header, return_index, new_stmt in nas_rules:
+              nas_count += replace_case_return(nas_lines, case_header, return_index, new_stmt, 'NAS39')
+
+          if html_count != 12:
+              raise SystemExit(f'HTML replacement total mismatch: {html_count} != 12')
+          if nas_count != 25:
+              raise SystemExit(f'NAS replacement total mismatch: {nas_count} != 25')
+
+          write_lines(html, html_bom, html_lines)
+          write_lines(nas, nas_bom, nas_lines)
+          print(f'HTML39_REPLACEMENTS {html_count}')
+          print(f'NAS39_REPLACEMENTS {nas_count}')
+          print(f'PASS39_REPLACEMENTS {html_count + nas_count}')
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          paths = [
+              Path('ERB/TRANSLATION/HTML_TALENTS/HTML_MOUSEOVER.ERB'),
+              Path('ERB/TRANSLATION/OMOGATARI/NAS_TIPS_TR.ERB'),
+          ]
+          for path in paths:
+              raw = path.read_bytes()
+              if not raw.startswith(b'\xef\xbb\xbf'):
+                  raise SystemExit(f'BOM missing: {path}')
+              text = raw.decode('utf-8-sig')
+              if any(line.rstrip('\r\n').endswith((' ', '\t')) for line in text.splitlines(keepends=True)):
+                  raise SystemExit(f'trailing whitespace: {path}')
+          PY
+          git diff --check
+          mapfile -t changed < <(git diff --name-only)
+          expected=(
+            'ERB/TRANSLATION/HTML_TALENTS/HTML_MOUSEOVER.ERB'
+            'ERB/TRANSLATION/OMOGATARI/NAS_TIPS_TR.ERB'
+          )
+          if [ "${#changed[@]}" -ne 2 ]; then
+            printf 'Unexpected changed files:\n%s\n' "${changed[*]}"
+            exit 1
+          fi
+          for file in "${expected[@]}"; do
+            printf '%s\n' "${changed[@]}" | grep -Fxq "$file"
+          done
+          git diff --stat
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ERB/TRANSLATION/HTML_TALENTS/HTML_MOUSEOVER.ERB ERB/TRANSLATION/OMOGATARI/NAS_TIPS_TR.ERB
+          git commit -m 'HTML 및 NAS 잔여 도움말 한글화 39차'
+          git push origin korean
