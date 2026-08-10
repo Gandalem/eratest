@@ -7,10 +7,10 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  diagnose:
+  translate:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Korean branch
@@ -19,7 +19,7 @@ jobs:
           ref: korean
           fetch-depth: 1
 
-      - name: List next untranslated barrel display names
+      - name: Translate barrel display names
         shell: bash
         run: |
           python3 - <<'PY'
@@ -27,23 +27,133 @@ jobs:
           import re
 
           p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Barrels.ERB')
-          text = p.read_bytes().decode('utf-8-sig')
+          raw = p.read_bytes()
+          if not raw.startswith(b'\xef\xbb\xbf'):
+              raise SystemExit('UTF-8 BOM missing before edit')
+          text = raw.decode('utf-8-sig')
+          before = text
+
+          rules = [
+              (54, 'SVG-76 Gryzov 16.3in (415mm) Barrel', 'SVG-76 그리즈보프 16.3인치 (415mm) 총열'),
+              (55, 'SVG-76U Gryzov 8.1in (206mm) Barrel', 'SVG-76U 그리즈보프 8.1인치 (206mm) 총열'),
+              (56, 'RNN-20 Nizhny Novgorod 25in (635mm) Barrel', 'RNN-20 니즈니 노브고로드 25인치 (635mm) 총열'),
+              (57, 'RGKO-2 Gryzov 20in (508mm) Barrel', 'RGKO-2 그리즈보프 20인치 (508mm) 총열'),
+              (58, 'RGKO-2 Gryzov 24in (610mm) Barrel', 'RGKO-2 그리즈보프 24인치 (610mm) 총열'),
+              (59, 'SLR High Ground 21in (533mm) Barrel', 'SLR 하이그라운드 21인치 (533mm) 총열'),
+              (60, 'SLR-SW High Ground 21in (533mm) Barrel', 'SLR-SW 하이그라운드 21인치 (533mm) 총열'),
+              (61, 'SLR High Ground 18in (458mm) Barrel', 'SLR 하이그라운드 18인치 (458mm) 총열'),
+              (62, 'SLR High Ground 17.2in (436mm) Barrel', 'SLR 하이그라운드 17.2인치 (436mm) 총열'),
+              (63, 'ALA-58 Averdeen 16.3in (413mm) Barrel', 'ALA-58 애버딘 16.3인치 (413mm) 총열'),
+              (64, 'ALA-58 Averdeen 19n (483mm) Fluted Barrel', 'ALA-58 애버딘 19인치 (483mm) 플루티드 총열'),
+              (65, 'ALA-58 Averdeen 11in (279mm) Barrel', 'ALA-58 애버딘 11인치 (279mm) 총열'),
+              (66, 'SVB Gryzov 24.4 in (620 mm) Barrel', 'SVB 그리즈보프 24.4인치 (620mm) 총열'),
+              (67, 'Rasp TB Maestro 26in (660mm) Smoothbore Side-By-Side Double-Shot Barrel', '라스프 TB 마에스트로 26인치 (660mm) 수평쌍대 활강 2연발 총열'),
+              (68, 'LAC1 LUNINCO 25.9 in (657 mm) Flash Tube', 'LAC1 루닌코 25.9인치 (657mm) 플래시 튜브'),
+              (69, 'LAC17 LUNINCO 25.9 in (657 mm) Barrel', 'LAC17 루닌코 25.9인치 (657mm) 총열'),
+              (70, 'Harlot BLC 1.5in (38 mm) Barrel', '할롯 BLC 1.5인치 (38mm) 총열'),
+              (71, 'S2000 Broughton 7.62x51mm 26 in (660 mm) Barrel', 'S2000 브라우턴 7.62x51mm 26인치 (660mm) 총열'),
+              (72, 'M2000 Broughton 7.62x51mm 26 in (660 mm) HBAR Barrel', 'M2000 브라우턴 7.62x51mm 26인치 (660mm) HBAR 총열'),
+              (73, 'M2010 Broughton 7.62x67mmRB 26 in (660 mm) HBAR Barrel', 'M2010 브라우턴 7.62x67mmRB 26인치 (660mm) HBAR 총열'),
+              (74, 'Minisa High-Ground 18.3in (465mm) Barrel', '미니사 하이그라운드 18.3인치 (465mm) 총열'),
+              (75, 'GPM High-Ground 24.8in (630mm) Barrel', 'GPM 하이그라운드 24.8인치 (630mm) 총열'),
+              (76, 'ALM 48 Averdeen 22in (560mm) Barrel', 'ALM 48 애버딘 22인치 (560mm) 총열'),
+              (77, 'S324 Windurger 6.5in (170mm) Barrel', 'S324 윈더거 6.5인치 (170mm) 총열'),
+              (78, 'S333 Windurger 6.5in (170mm) Barrel', 'S333 윈더거 6.5인치 (170mm) 총열'),
+              (79, 'RRS Super Point 1.87in (48mm) Barrel', 'RRS 슈퍼 포인트 1.87인치 (48mm) 총열'),
+              (80, 'M692 Broughton 6.5in (165mm) Barrel', 'M692 브라우턴 6.5인치 (165mm) 총열'),
+              (81, 'RTFM Tricorne 6in (152mm) Barrel', 'RTFM 트라이코르네 6인치 (152mm) 총열'),
+              (82, 'RTFM Tricorne 16in (406mm) Barrel', 'RTFM 트라이코르네 16인치 (406mm) 총열'),
+              (83, 'VASE Gensou-chan Devil-Match 16in (406mm) Barrel', 'VASE 겐소우짱 데빌 매치 16인치 (406mm) 총열'),
+              (84, 'OSP-81 Nizhny Novgorod 9.8in (249mm) Smoothbore Single-Shot 23x75mmR Barrel', 'OSP-81 니즈니 노브고로드 9.8인치 (249mm) 23x75mmR 활강 단발 총열'),
+              (85, 'Broughton Automatic Rifle 24in (610mm) Barrel', '브라우턴 자동소총 24인치 (610mm) 총열'),
+              (86, 'Youjyuu-P Keiga 6 in (152 mm) Youjutsu energy amplifier', '요주-P 케이가 6인치 (152mm) 요술 에너지 증폭기'),
+              (87, 'LAC2 LUNINCO 6 in (152 mm) Flash Tube', 'LAC2 루닌코 6인치 (152mm) 플래시 튜브'),
+              (88, 'Summers AImthropic 4in (102mm) Barrel', '서머스 에임스로픽 4인치 (102mm) 총열'),
+              (89, 'LAC666 LUNINCO 4in (102mm) Youjutsu energy amplifier', 'LAC666 루닌코 4인치 (102mm) 요술 에너지 증폭기'),
+              (90, 'LAC666 LUNINCO 10.5in (266mm) Youjutsu energy amplifier', 'LAC666 루닌코 10.5인치 (266mm) 요술 에너지 증폭기'),
+              (91, 'Tanhiken Akatsuki 8in (203mm) barrel', '탄히켄 아카츠키 8인치 (203mm) 총열'),
+              (92, 'Ansatsu Akatsuki 4.8in (121mm) barrel', '안사츠 아카츠키 4.8인치 (121mm) 총열'),
+              (93, 'S.Pistol Windurger 4in (102mm) barrel', 'S.피스톨 윈더거 4인치 (102mm) 총열'),
+              (94, 'Lolife 4in (102mm) barrel', '로라이프 4인치 (102mm) 총열'),
+              (95, 'Lolife 10.5in (265mm) barrel', '로라이프 10.5인치 (265mm) 총열'),
+              (96, 'GH31 Gabe Hubert 17.7in (450mm) Barrel', 'GH31 게이브 휴버트 17.7인치 (450mm) 총열'),
+              (97, 'GH21 Gabe Hubert Heavy 17.7in (450mm) Barrel', 'GH21 게이브 휴버트 헤비 17.7인치 (450mm) 총열'),
+              (98, 'GH91/SG1 Gabe Hubert precision 25.6in (650mm) Barrel', 'GH91/SG1 게이브 휴버트 정밀형 25.6인치 (650mm) 총열'),
+              (99, 'Vandal Kappa Armory 14.5in (368mm) Barrel', '밴달 캇파 아머리 14.5인치 (368mm) 총열'),
+              (100, 'Youjyuu-R Keiga 14.5in (368mm) Youjutsu energy amplifier', '요주-R 케이가 14.5인치 (368mm) 요술 에너지 증폭기'),
+              (101, 'Stinger KappaArmory 8.5in (216mm) Barrel', '스팅어 캇파 아머리 8.5인치 (216mm) 총열'),
+              (102, 'Shaman AImthropic 8in (204mm) Barrel', '샤먼 에임스로픽 8인치 (204mm) 총열'),
+              (103, 'Xavier AImthropic 12in (305mm) Barrel', '자비에르 에임스로픽 12인치 (305mm) 총열'),
+          ]
+          if len(rules) != 50:
+              raise SystemExit(f'expected 50 rules, got {len(rules)}')
+
+          protected = ['名前', '描写', 'ShortName', '装備部位', 'Barrel', 'Damage', 'Accuracy', 'Burst', 'Length', 'Platform', 'Price']
+          before_counts = {k: before.count(f'CASE "{k}"') for k in protected}
+
           func_re = re.compile(r'^@WeaponBarrelBody(\d+)\(ARG, O_DATA, V_NAME\)\s*$', re.M)
-          starts = list(func_re.finditer(text))
-          eng = re.compile(r'[A-Za-z]{2,}')
-          hangul = re.compile(r'[가-힣]')
-          found = []
-          for idx, m in enumerate(starts):
-              barrel_id = int(m.group(1))
-              end = starts[idx + 1].start() if idx + 1 < len(starts) else len(text)
-              block = text[m.start():end]
-              km = re.search(r'CASE "名前"\s*\n\s*CALLF MAKE_STR\(V_NAME,\s*(.+?)\)\s*$', block, re.M)
-              if not km:
-                  continue
-              name = km.group(1).strip()
-              if eng.search(name) and not hangul.search(name):
-                  found.append((barrel_id, name))
-          print(f'REMAINING_UNTRANSLATED_NAMES={len(found)}')
-          for barrel_id, name in found[:60]:
-              print(f'NAME\tID={barrel_id}\t{name}')
+
+          for barrel_id, old, new in rules:
+              matches = list(func_re.finditer(text))
+              target = None
+              for i, m in enumerate(matches):
+                  if int(m.group(1)) == barrel_id:
+                      end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+                      target = (m.start(), end)
+                      break
+              if target is None:
+                  raise SystemExit(f'WeaponBarrelBody{barrel_id} not found')
+              start, end = target
+              block = text[start:end]
+              old_line = f'CALLF MAKE_STR(V_NAME, "{old}")'
+              new_line = f'CALLF MAKE_STR(V_NAME, "{new}")'
+              count = block.count(old_line)
+              if count != 1:
+                  raise SystemExit(f'ID {barrel_id}: expected old name once, got {count}: {old}')
+              block = block.replace(old_line, new_line, 1)
+              if old_line in block or block.count(new_line) != 1:
+                  raise SystemExit(f'ID {barrel_id}: replacement verification failed')
+              text = text[:start] + block + text[end:]
+
+          after_counts = {k: text.count(f'CASE "{k}"') for k in protected}
+          if before_counts != after_counts:
+              raise SystemExit(f'protected CASE counts changed: {before_counts} -> {after_counts}')
+
+          p.write_bytes(b'\xef\xbb\xbf' + text.encode('utf-8'))
+          print(f'[barrels] translated {len(rules)} display names')
           PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET='ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Barrels.ERB'
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Barrels.ERB')
+          raw = p.read_bytes()
+          if not raw.startswith(b'\xef\xbb\xbf'):
+              raise SystemExit('UTF-8 BOM missing after edit')
+          PY
+          git diff --check
+          mapfile -t changed < <(git diff --name-only)
+          if [ "${#changed[@]}" -ne 1 ] || [ "${changed[0]}" != "$TARGET" ]; then
+            printf 'unexpected changed files:\n%s\n' "${changed[*]}"
+            exit 1
+          fi
+          read -r add del file < <(git diff --numstat -- "$TARGET")
+          if [ "$add" != '50' ] || [ "$del" != '50' ] || [ "$file" != "$TARGET" ]; then
+            echo "unexpected numstat: $add $del $file"
+            exit 1
+          fi
+          echo '[validate] single file +50/-50, BOM and diff-check OK'
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Barrels.ERB'
+          git commit -m '총열 UI 표시명 2차 한글화 51차'
+          git push origin HEAD:korean
