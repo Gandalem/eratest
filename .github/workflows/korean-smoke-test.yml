@@ -30,20 +30,27 @@ jobs:
 
       - name: Install headless Wine runtime
         shell: bash
+        env:
+          WINEARCH: win64
+          WINEPREFIX: ${{ runner.temp }}/wineprefix
+          WINEDEBUG: -all
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y xvfb wine wine64
+          sudo apt-get install -y xvfb wine wine64 winetricks cabextract
           wine --version
+          xvfb-run -a wineboot -u
+          xvfb-run -a winetricks -q dotnetdesktop8
 
       - name: Boot engine headlessly
         shell: bash
         env:
+          WINEARCH: win64
           WINEDEBUG: -all
           WINEPREFIX: ${{ runner.temp }}/wineprefix
         run: |
-          rm -f emuera.log emuera.log.prev smoke.stdout
+          rm -f emuera.log emuera.log.prev smoke.stdout smoke.combined
           set +e
-          xvfb-run -a timeout 30s wine ./Emuera.exe -debug > smoke.stdout 2>&1
+          xvfb-run -a timeout 35s wine ./Emuera.exe -debug > smoke.stdout 2>&1
           rc=$?
           set -e
           echo "SMOKE_RC=$rc"
@@ -59,7 +66,7 @@ jobs:
             echo 'Fatal/parse error detected during smoke boot'
             exit 1
           fi
-          if grep -Eiq 'could not find wine mono|mono package.*not found|install.*\.NET|requires.*\.NET|missing.*runtime' smoke.combined; then
+          if grep -Eiq 'could not find wine mono|mono package.*not found|You must install \.NET|\.NET location: Not found|requires.*\.NET|missing.*runtime' smoke.combined; then
             echo 'Windows runtime dependency missing'
             exit 2
           fi
