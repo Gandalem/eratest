@@ -7,10 +7,10 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  diagnose:
+  translate:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Korean branch
@@ -19,7 +19,7 @@ jobs:
           ref: korean
           fetch-depth: 1
 
-      - name: List remaining untranslated barrel display names
+      - name: Translate remaining barrel display names
         shell: bash
         run: |
           python3 - <<'PY'
@@ -27,14 +27,103 @@ jobs:
           import re
 
           p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Barrels.ERB')
-          text = p.read_bytes().decode('utf-8-sig')
+          raw = p.read_bytes()
+          if not raw.startswith(b'\xef\xbb\xbf'):
+              raise SystemExit('UTF-8 BOM missing before edit')
+          text = raw.decode('utf-8-sig')
+          before = text
+
+          rules = [
+              (104, r'''LILAC Cactus 14in (355mm) Barrel''', r'''LILAC 캑터스 14인치 (355mm) 총열'''),
+              (105, r'''LAC13 LUNINCO 33.1 in (840 mm) Barrel''', r'''LAC13 LUNINCO 33.1인치 (840mm) 총열'''),
+              (106, r'''Operator Kappa Armory 27 in (686 mm) Barrel''', r'''오퍼레이터 카파 아머리 27인치 (686mm) 총열'''),
+              (107, r'''LAC33 LUNINCO 22.8 in (580 mm) Barrel''', r'''LAC33 LUNINCO 22.8인치 (580mm) 총열'''),
+              (108, r'''Banhiken Akatsuki 16in (406mm) barrel''', r'''반히켄 아카츠키 16인치 (406mm) 총열'''),
+              (109, r'''Eihei Akatsuki 25in (635mm) barrel''', r'''에이헤이 아카츠키 25인치 (635mm) 총열'''),
+              (110, r'''Youjyuu-C Keiga 20in (508mm) Youjutsu energy amplifier''', r'''Youjyuu-C 케이가 20인치 (508mm) 요술 에너지 증폭기'''),
+              (111, r'''LAC141 LUNINCO 25.9 in (657 mm) Flash Tube''', r'''LAC141 LUNINCO 25.9인치 (657mm) 플래시 튜브'''),
+              (112, r'''M210 Broughton 10.57in (267mm) Barrel''', r'''M210 브라우턴 10.57인치 (267mm) 총열'''),
+              (113, r'''RAIL-IT Cactus 31.49in (800mm) barrel''', r'''RAIL-IT 캑터스 31.49인치 (800mm) 총열'''),
+              (114, r'''Ender Gensou-chan Devil-Match 31.49in (800mm) barrel''', r'''엔더 겐소우짱 데빌 매치 31.49인치 (800mm) 총열'''),
+              (115, r'''Sweet Sixteen Rika's Arms 10.3in (262mm) 13-Barrel''', r'''스위트 식스틴 리카스 암즈 10.3인치 (262mm) 13연장 총열'''),
+              (116, r'''VS-23 KPM 20in (510mm) Rifled AA Gun Barrel''', r'''VS-23 KPM 20인치 (510mm) 강선 대공포 총열'''),
+              (117, r'''Raiken Akatsuki 16in (406mm) barrel''', r'''라이켄 아카츠키 16인치 (406mm) 총열'''),
+              (118, r'''Lawyer Kappa Armory 16.5in (430mm) Barrel''', r'''로이어 카파 아머리 16.5인치 (430mm) 총열'''),
+              (119, r'''Youjyuu-S Keiga 14.5in (368mm) Youjutsu energy amplifier''', r'''Youjyuu-S 케이가 14.5인치 (368mm) 요술 에너지 증폭기'''),
+              (120, r'''Defender Kappa Armory 30in (762mm) Smoothbore Single-Shot Barrel''', r'''디펜더 카파 아머리 30인치 (762mm) 활강 단발 총열'''),
+              (121, r'''Defender-Duo Kappa Armory 30in (762mm) Smoothbore Double-Shot Barrel''', r'''디펜더-듀오 카파 아머리 30인치 (762mm) 활강 2연장 총열'''),
+              (122, r'''Defender-Trio Kappa Armory 30in (762mm) Smoothbore Triple-Shot Barrel''', r'''디펜더-트리오 카파 아머리 30인치 (762mm) 활강 3연장 총열'''),
+              (123, r'''B714 Windurger 30in (762mm) Smoothbore Barrel with 4-Round Tube Magazine''', r'''B714 윈더거 30인치 (762mm) 4발 튜브 탄창 포함 활강 총열'''),
+              (124, r'''B718 Windurger 30in (762mm) Smoothbore Barrel with 8-Round Tube Magazine''', r'''B718 윈더거 30인치 (762mm) 8발 튜브 탄창 포함 활강 총열'''),
+              (125, r'''Grey AImthropic 13.5in (343mm) Barrel''', r'''그레이 AImthropic 13.5인치 (343mm) 총열'''),
+              (126, r'''LAC9 LUNINCO 16.5in (420mm) 8-Splitter Flash Tube''', r'''LAC9 LUNINCO 16.5인치 (420mm) 8분할 플래시 튜브'''),
+              (127, r'''RAMSET Cactus 14in (355mm) Barrel''', r'''RAMSET 캑터스 14인치 (355mm) 총열'''),
+              (128, r'''Ares Rika's Arms 23.8in (605mm) Barrel''', r'''아레스 리카스 암즈 23.8인치 (605mm) 총열'''),
+              (129, r'''VMM-7RB ArmTeck 22in (559mm) 6-barrel system''', r'''VMM-7RB 암텍 22인치 (559mm) 6연장 총열 시스템'''),
+              (130, r'''Youjyuu-A Keiga 22in (560mm) Youjutsu energy amplifier''', r'''Youjyuu-A 케이가 22인치 (560mm) 요술 에너지 증폭기'''),
+              (131, r'''Odin Rika's Arms 42.1in (1,070mm) barrel''', r'''오딘 리카스 암즈 42.1인치 (1,070mm) 총열'''),
+              (132, r'''Gensokuken Akatsuki 39.4in (1,000mm) barrel''', r'''겐소쿠켄 아카츠키 39.4인치 (1,000mm) 총열'''),
+              (133, r'''CO/LZ-87 CONIG 12in (300mm) Barrel''', r'''CO/LZ-87 CONIG 12인치 (300mm) 총열'''),
+              (134, r'''Jericho AImthropic 37in (950mm) Barrel''', r'''제리코 AImthropic 37인치 (950mm) 총열'''),
+              (135, r'''Youjyuu-L AImthropic 37in (950mm) Barrel''', r'''Youjyuu-L AImthropic 37인치 (950mm) 총열'''),
+              (136, r'''MBL-4 ArmTeck 37in (950mm) 4-Barrel Cluster''', r'''MBL-4 암텍 37인치 (950mm) 4연장 총열 클러스터'''),
+              (137, r'''TanSAM Gensou-chan 37in (950mm) 4-Barrel Cluster''', r'''TanSAM 겐소우짱 37인치 (950mm) 4연장 총열 클러스터'''),
+              (138, r'''S500 Windurger 8.38in (213mm) Barrel''', r'''S500 윈더거 8.38인치 (213mm) 총열'''),
+              (139, r'''Liberator Deterrence Dispensed 4.5in (114mm) 9x19mm Barrel''', r'''리버레이터 디터런스 디스펜스드 4.5인치 (114mm) 9x19mm 총열'''),
+              (140, r'''Liberator-22 Deterrence Dispensed 4.5in (114mm) 5.56x45mm Barrel''', r'''리버레이터-22 디터런스 디스펜스드 4.5인치 (114mm) 5.56x45mm 총열'''),
+              (141, r'''Liberator-30 Deterrence Dispensed 4.5in (114mm) .308 WU Barrel''', r'''리버레이터-30 디터런스 디스펜스드 4.5인치 (114mm) .308 WU 총열'''),
+              (142, r'''Liberator-12 Deterrence Dispensed 4.5in (114mm) 12 Gauge Barrel''', r'''리버레이터-12 디터런스 디스펜스드 4.5인치 (114mm) 12게이지 총열'''),
+              (143, r'''Sumireko's \"Machinma\" Quad 4.5in (114mm) 9x19mm Barrel''', r'''스미레코의 \"마친마\" 쿼드 4.5인치 (114mm) 9x19mm 총열'''),
+              (144, r'''EX-Machinma Gensou-chan Devil-Match 4.5in (114mm) Barrel''', r'''EX-마친마 겐소우짱 데빌 매치 4.5인치 (114mm) 총열'''),
+              (145, r'''Ender+ Gensou-chan Devil-Match 16in (406mm) barrel''', r'''엔더+ 겐소우짱 데빌 매치 16인치 (406mm) 총열'''),
+          ]
+
+          if len(rules) != 42:
+              raise SystemExit(f'expected 42 rules, got {len(rules)}')
+
+          protected = [
+              'CASE "名前"', 'CASE "描写"', 'CASE "ShortName"', 'CASE "装備部位"',
+              'CASE "Price"', 'CASE "Platform"', 'CASE "Barrel"', 'CASE "Length"',
+              'CASE "Damage"', 'CASE "Accuracy"', 'CASE "Burst"'
+          ]
+          protected_counts = {key: text.count(key) for key in protected}
+
+          def get_block(src, barrel_id):
+              m = re.search(rf'^@WeaponBarrelBody{barrel_id}\(ARG, O_DATA, V_NAME\)\s*$', src, re.M)
+              if not m:
+                  raise SystemExit(f'function missing: {barrel_id}')
+              n = re.search(r'^@', src[m.end():], re.M)
+              end = m.end() + n.start() if n else len(src)
+              return m.start(), end, src[m.start():end]
+
+          for barrel_id, old, new in rules:
+              start, end, block = get_block(text, barrel_id)
+              old_call = f'CALLF MAKE_STR(V_NAME, "{old}")'
+              new_call = f'CALLF MAKE_STR(V_NAME, "{new}")'
+              count = block.count(old_call)
+              if count != 1:
+                  raise SystemExit(f'ID {barrel_id}: expected old name once, got {count}: {old}')
+              block2 = block.replace(old_call, new_call, 1)
+              text = text[:start] + block2 + text[end:]
+
+          for key, expected in protected_counts.items():
+              got = text.count(key)
+              if got != expected:
+                  raise SystemExit(f'protected key count changed: {key}: {expected} -> {got}')
+
+          for barrel_id, old, new in rules:
+              _, _, block = get_block(text, barrel_id)
+              if f'CALLF MAKE_STR(V_NAME, "{old}")' in block:
+                  raise SystemExit(f'ID {barrel_id}: old display name remains')
+              if block.count(f'CALLF MAKE_STR(V_NAME, "{new}")') != 1:
+                  raise SystemExit(f'ID {barrel_id}: translated display name missing/duplicated')
+
           func_re = re.compile(r'^@WeaponBarrelBody(\d+)\(ARG, O_DATA, V_NAME\)\s*$', re.M)
           starts = list(func_re.finditer(text))
           eng = re.compile(r'[A-Za-z]{2,}')
           hangul = re.compile(r'[가-힣]')
-          found = []
+          remaining = []
           for idx, m in enumerate(starts):
-              barrel_id = int(m.group(1))
               end = starts[idx + 1].start() if idx + 1 < len(starts) else len(text)
               block = text[m.start():end]
               km = re.search(r'CASE "名前"\s*\n\s*CALLF MAKE_STR\(V_NAME,\s*(.+?)\)\s*$', block, re.M)
@@ -42,8 +131,45 @@ jobs:
                   continue
               name = km.group(1).strip()
               if eng.search(name) and not hangul.search(name):
-                  found.append((barrel_id, name))
-          print(f'REMAINING_UNTRANSLATED_NAMES={len(found)}')
-          for barrel_id, name in found:
-              print(f'NAME\tID={barrel_id}\t{name}')
+                  remaining.append((int(m.group(1)), name))
+          if remaining:
+              raise SystemExit(f'untranslated active display names remain: {remaining}')
+
+          p.write_bytes(b'\xef\xbb\xbf' + text.encode('utf-8'))
+          print(f'[barrels] translated {len(rules)} remaining display names')
           PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET='ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Barrels.ERB'
+          git diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Barrels.ERB')
+          raw = p.read_bytes()
+          if not raw.startswith(b'\xef\xbb\xbf'):
+              raise SystemExit('UTF-8 BOM lost')
+          PY
+          mapfile -t CHANGED < <(git diff --name-only)
+          if [ "${#CHANGED[@]}" -ne 1 ] || [ "${CHANGED[0]}" != "$TARGET" ]; then
+            printf 'unexpected changed files:\n%s\n' "${CHANGED[*]}"
+            exit 1
+          fi
+          read -r ADD DEL FILE < <(git diff --numstat -- "$TARGET")
+          if [ "$ADD" != "42" ] || [ "$DEL" != "42" ] || [ "$FILE" != "$TARGET" ]; then
+            echo "unexpected numstat: $ADD $DEL $FILE"
+            exit 1
+          fi
+          echo "validated: $TARGET +$ADD/-$DEL"
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Barrels.ERB'
+          git commit -m '총열 UI 잔여 표시명 마무리 한글화 52차'
+          git push origin HEAD:korean
