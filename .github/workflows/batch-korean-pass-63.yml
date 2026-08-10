@@ -1,0 +1,73 @@
+name: Batch Korean pass 63 bulk + smoke
+
+on:
+  push:
+    paths:
+      - '.github/workflows/batch-korean-pass-63.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 0
+
+      - name: Diagnose high-volume visible strings
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          eng = re.compile(r'[A-Za-z]{2,}')
+          hangul = re.compile(r'[가-힣]')
+          lit = re.compile(r'CALLF MAKE_STR\(V_NAME,\s*(?:@)?"((?:\\.|[^"\\])*)"\)')
+          case_re = re.compile(r'^\s*CASE "([^"]+)"\s*$')
+
+          # Bionic List: only active user-visible name/full-name/description fields.
+          path = Path('ERB/TRANSLATION/OMOGATARI/Body Parts/Bionic List.ERB')
+          raw = path.read_bytes(); assert raw.startswith(b'\xef\xbb\xbf')
+          field = None; rows = []
+          for lineno, line in enumerate(raw.decode('utf-8-sig').splitlines(), 1):
+              if line.lstrip().startswith(';'):
+                  continue
+              m = case_re.match(line)
+              if m:
+                  field = m.group(1) if m.group(1) in {'名前','FullName','描写'} else None
+                  continue
+              if field:
+                  m = lit.search(line)
+                  if m:
+                      value = m.group(1)
+                      if eng.search(value) and not hangul.search(value):
+                          rows.append((lineno, field, value))
+          print('=== Bionic List visible English-only ===')
+          print('COUNT', len(rows))
+          print('NAMES', sum(f=='名前' for _,f,_ in rows), 'FULL', sum(f=='FullName' for _,f,_ in rows), 'DESC', sum(f=='描写' for _,f,_ in rows))
+          for r in rows:
+              print('%s\t%s\t%s' % r)
+
+          # LIST: display constant arrays only. These are rendered headers/sort labels.
+          lp = Path('ERB/TRANSLATION/LIST.ERB')
+          lraw = lp.read_bytes(); assert lraw.startswith(b'\xef\xbb\xbf')
+          text = lraw.decode('utf-8-sig')
+          print('=== LIST display arrays English-only ===')
+          total = 0
+          for var in ('DISP_NAME','DISP_MEMO','DISP_FACTION'):
+              m = re.search(r'#DIMS CONST '+var+r'\s*=\s*(.*)', text)
+              if not m:
+                  print(var, 'MISSING'); continue
+              vals = re.findall(r'"((?:\\.|[^"\\])*)"', m.group(1))
+              eo = [v for v in vals if eng.search(v) and not hangul.search(v)]
+              total += len(eo)
+              print(var, len(vals), 'ENGLISH_ONLY', len(eo))
+              for v in eo: print(var+'\t'+v)
+          print('LIST_ARRAY_ENGLISH_ONLY_TOTAL', total)
+          PY
