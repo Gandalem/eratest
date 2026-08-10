@@ -1,0 +1,162 @@
+name: Batch Korean pass 34
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/batch-korean-pass-34.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 1
+          lfs: false
+
+      - name: Translate race tooltips second batch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          TOKEN_RE = re.compile(r'%[^%\n]+%|\{[^{}\n]+\}|\\%')
+
+          def read_text(path):
+              raw = path.read_bytes()
+              return raw.startswith(b'\xef\xbb\xbf'), raw.decode('utf-8-sig')
+
+          def write_text(path, bom, text):
+              data = text.encode('utf-8')
+              if bom:
+                  data = b'\xef\xbb\xbf' + data
+              path.write_bytes(data)
+
+          def tokens(s):
+              return sorted(TOKEN_RE.findall(s))
+
+          ui = Path('ERB/TRANSLATION/HTML_TALENTS/HTML_MOUSEOVER.ERB')
+          bom, text = read_text(ui)
+
+          marker = '@RACE_INFO(ARG)'
+          if text.count(marker) != 1:
+              raise SystemExit(f'unexpected RACE_INFO count: {text.count(marker)}')
+          head, race = text.split(marker, 1)
+          lines = race.splitlines()
+
+          rules = [
+              (r'''CASE "Human", "Village Girl", "Married Woman"''', r'''넓고 납작한 손톱을 가진 털 없는 이족보행 생물입니다.\n환상향 출신도 있고 바깥세계 출신도 있습니다.\n요괴보다 약하지만 짧은 수명 동안 기술을 갈고닦을 잠재력을 지니고 있습니다.'''),
+              (r'''CASE "Youkai"''', r'''환영, 유령, 괴이, 짐승 등 수많은 이름으로 불립니다.\n본질적으로 사실의 전통적인 오해와 왜곡에서 태어난 존재에 가깝습니다.\n형이상학적 개념에 가까워 번식이 어렵습니다.'''),
+              (r'''CASE "Half-human half-phantom"''', r'''육체가 인간 부분과 반령 부분, 두 부분으로 이루어진 존재입니다.\n보통 인간처럼 살고 죽지만 몸이 둘입니다.\n인간보다 수명이 길고 체온도 조금 낮습니다.\n번식도 일반 인간보다 어렵습니다.'''),
+              (r'''CASE "Shikigami (Bakeneko)"''', r'''고양이가 10년을 살면 꼬리가 둘로 갈라지고 바케네코가 되는 길에 들어선다고 합니다.\n인간 모습으로 변할 수 있으며 강령술이나 샤머니즘 계열의 힘을 다루기도 합니다.\n변신이 완벽하지 않으면 꼬리, 귀, 거친 혀가 남기도 합니다.\n이 변화 때문에 번식이 어렵습니다.\n식신은 주인에게 묶인 종복으로, 명령에 따르는 동안 힘을 공급받습니다.'''),
+              (r'''CASE "Bakeneko"''', r'''고양이가 10년을 살면 꼬리가 둘로 갈라지고 바케네코가 되는 길에 들어선다고 합니다.\n인간 모습으로 변할 수 있으며 강령술이나 샤머니즘 계열의 힘을 다루기도 합니다.\n변신이 완벽하지 않으면 꼬리, 귀, 거친 혀가 남기도 합니다.\n이 변화 때문에 번식이 어렵습니다.'''),
+              (r'''CASE "Shikigami (Kitsune)"''', r'''키츠네는 인간 모습으로 변할 수 있는 여우 요괴입니다.\n본성이 장난꾸러기라 속임수에 능합니다.\n마음은 여우답게 유부를 좋아하며 인간과의 번식은 어렵습니다.\n식신은 주인에게 묶인 종복으로, 명령에 따르는 동안 힘을 공급받습니다.\n키츠네를 식신으로 묶는 일은 쉽지 않습니다.'''),
+              (r'''CASE "Bakegitsune"''', r'''키츠네는 인간 모습으로 변할 수 있는 여우 요괴입니다.\n본성이 장난꾸러기라 속임수에 능합니다.\n마음은 여우답게 유부를 좋아하며 인간과의 번식은 어렵습니다.'''),
+              (r'''CASE "Firefly Youkai"''', r'''밤에 빛나던 반딧불이가 요괴가 된 존재입니다.\n다른 벌레들을 조종하는 힘을 지닙니다.\n다른 요괴와 마찬가지로 번식이 어렵습니다.'''),
+              (r'''CASE "Night Sparrow"''', r'''밤길을 걷는 이를 뒤쫓아 노래로 눈을 멀게 하는 야스즈메 요괴입니다.\n다른 요괴와 마찬가지로 번식이 어렵습니다.'''),
+              (r'''CASE "Goddess", "God"''', r'''강대한 힘을 지닌 존재지만 절대적인 존재는 아닙니다.\n제대로 숭배받으면 만족해 신도에게 풍성한 은혜와 보호를 내립니다.\n반대로 노여움을 사면 재앙과 저주가 따릅니다.\n신이기는 하지만 팔백만 신과 같은 계통은 아닙니다.\n스스로 정화되는 여신의 몸에 새 생명이 깃들려면 기적에 가까운 일이 필요합니다.\n일부는 과거 인간이었으므로 완전히 불가능한 것은 아닙니다.'''),
+              (r'''CASE "Yama"''', r'''산스크리트어에서 유래한 염마의 다른 이름입니다.'''),
+              (r'''CASE "Youkai (Oarfish)"''', r'''용궁에서 온 사자입니다.\n용신의 힘을 빌려 번개와 천둥, 비를 일으킬 수 있습니다.\n다른 요괴와 마찬가지로 번식이 어렵습니다.'''),
+              (r'''CASE "Kasha"''', r'''지옥에서 온 요괴로 수레를 타고 악인의 시체를 빼앗아 갑니다.\n시체는 거대한 화로에 던져져 지옥의 불길을 키우는 연료가 됩니다.\n그렇게 화장된 자는 영원히 원령으로 남는 저주를 받습니다.\n다른 요괴와 마찬가지로 번식이 어렵습니다.'''),
+              (r'''CASE "Hell Raven"''', r'''지옥의 어둠에서 태어난 까마귀 요괴입니다.\n작열지옥이 불타기 시작한 때부터 그곳에 존재해 왔습니다.\n다른 요괴와 마찬가지로 번식이 어렵습니다.'''),
+              (r'''CASE "Wolf-woman"''', r'''여성 늑대인간입니다.\n웨어울프와 비슷하지만 보름달이 떠도 늑대로 변하지는 않습니다.\n대신 털이 매우 무성해집니다.\n그 시기에는 발정기가 찾아오는 경향도 있습니다.\n다른 요괴와 마찬가지로 번식이 어렵습니다.'''),
+              (r'''CASE "Inchling"''', r'''대개 10~15cm 정도의 작은 요괴입니다.\n가장 유명한 소인은 순무밭의 그릇에서 발견되었다는 잇슨보시입니다.\n잇슨보시는 「요술망치」라 불리는 방망이를 지녔으며 물건의 크기를 바꾸고 소원을 이루는 힘이 있습니다.\n이 방망이는 잇슨보시의 후손만 사용할 수 있습니다.\n몸집이 너무 작아 다른 종족과 연애 상대를 찾기 어렵습니다.\n대신 몸은 놀라울 정도로 유연합니다.\n다른 요괴처럼 번식도 어렵지만, 이 경우에는 무엇보다 체격 차이가 더 큰 문제입니다.'''),
+              (r'''CASE "Rokurokubi"''', r'''여러 개의 머리를 가진 몸 없는 요괴입니다.\n원할 때 머리를 떼어 내거나 새로 만들어도 별다른 부작용이 없습니다.\n가끔 몸을 잃어버리는 경향이 있습니다.\n다른 요괴와 마찬가지로 번식이 어렵습니다.'''),
+              (r'''CASE "Tsurube-otoshi"''', r'''높은 곳에 숨어 있다가 방심한 희생자 위로 떨어져 목숨을 앗아가는 요괴입니다.\n다른 요괴와 마찬가지로 번식이 어렵습니다.'''),
+              (r'''CASE "Tsuchigumo"''', r'''츠치구모, 즉 「흙거미」로 불리는 거미줄을 발사할 수 있는 요괴입니다.\n이름의 「흙」은 질병에 찌들고 죽음을 옮긴다는 이미지에서 왔습니다.\n질병을 조종할 수 있지만 때로는 통제에 실패해 끔찍한 역병을 퍼뜨리기도 합니다.\n다른 요괴와 마찬가지로 번식이 어렵습니다.'''),
+              (r'''CASE "Youkai (Formerly Human)"''', r'''모두를 위해 환상향을 지금과 같은 모습으로 유지하려고 철칙이 세워졌습니다.\n인간이 요괴로 변하는 것은 저지를 수 있는 가장 큰 죄입니다.\n하지만 가끔 그 규칙은 깨집니다.\n그리고 때로는 편의상 잊히기도 합니다.'''),
+              (r'''CASE "Ship Phantom"''', r'''바다에서 익사한 이들의 유령입니다.\n배에 들러붙어 국자로 물을 퍼 넣어 침몰시킵니다.\n다른 요괴와 마찬가지로 번식이 어렵습니다.'''),
+              (r'''CASE "Yamabiko"''', r'''메아리 요괴입니다.\n주로 산에 살며 들은 소리를 그대로 되돌려 줍니다.\n어떤 소리든 흉내 낼 만큼 능숙합니다.\n때로는 가늠하기 어려울 정도로 멀리 퍼지는 끔찍하고 긴 비명을 지르기도 합니다.\n다른 요괴와 마찬가지로 번식이 어렵습니다.'''),
+              (r'''CASE "Mermaid"''', r'''하반신은 물고기, 상반신은 인간인 요괴입니다.\n인간형 부분에도 물고기에서 비롯된 흔적이 남아 있습니다.\n육지에서는 이동하기 매우 어렵습니다.\n다른 요괴와 마찬가지로 번식이 어렵습니다.'''),
+              (r'''CASE "Makai Resident"''', r'''마계 주민이므로 분명 인간은 아닙니다.\n뚜렷한 분류는 없지만 마계 출신이라는 이유로 악마 계열로 분류됩니다.\n다른 요괴와 마찬가지로 번식이 어렵습니다.'''),
+              (r'''CASE "Witch (Makai Resident)"''', r'''마계에 사는 마녀입니다.\n인간도 악마도 아니며 요괴로 분류됩니다.\n다른 요괴와 마찬가지로 번식이 어렵습니다.'''),
+              (r'''CASE "Yamanba"''', r'''본래 인간이었으나 변질되어 지금의 모습이 된 여성 요괴입니다.\n산속에서 홀로 지내는 것을 선호하며 필요한 일이 있을 때만 다른 요괴와 교류합니다.\n다른 요괴와 마찬가지로 번식이 어렵습니다.'''),
+              (r'''CASE "Komainu"''', r'''수호견입니다.\n석상처럼 굳건한 경계심으로 신앙의 장소를 지킵니다.\n다른 요괴와 마찬가지로 번식이 어렵습니다.'''),
+              (r'''CASE "Human?", "Human (?)"''', r'''숨 쉬고, 생각하고, 행동하고, 살아가며, 생김새와 말투까지 인간과 같습니다.\n하지만 이 변칙적인 존재는 요괴로 분류되었습니다.\n다른 요괴와 마찬가지로 번식이 어렵습니다.'''),
+              (r'''CASE "Secret God"''', r'''때로 「궁극의 비신」이라 불립니다.\n정작 무엇이 비밀인지는 아무도 확실히 모릅니다.\n팔백만 신도 여신도 아닌데 왜 신이라 불리는지조차 수수께끼입니다.\n그래서 요괴로 분류되었습니다.\n다른 요괴와 마찬가지로 번식이 어렵습니다.'''),
+              (r'''CASE "Pestilence God"''', r'''역병을 관장하며 가까이 오는 모든 것을 파멸시키는 존재입니다.\n실제로는 신이 아닙니다.\n다른 요괴와 마찬가지로 번식이 어렵습니다.'''),
+              (r'''CASE "Poverty God"''', r'''가까이 오는 모든 것, 심지어 자신에게까지 불운을 가져오는 빈곤의 신입니다.\n실제로는 신이 아닙니다.\n다른 요괴와 마찬가지로 번식이 어렵습니다.'''),
+              (r'''CASE "Divine Spirit"''', r'''살아 있을 때나 죽은 뒤 신격을 얻은 인간의 영혼입니다.\n신이지만 팔백만 신과는 관계가 없습니다.\n여신은 어느 정도 인간의 성질을 남기지만 신령은 그것마저 버린 존재입니다.\n번식하려면 기적이 필요할 정도로 어렵습니다.'''),
+              (r'''CASE "Shinigami"''', r'''삼도천을 건너는 영혼을 실어 나르는 요괴입니다.\n염마에게 고용되어 길 안내, 재판 기록, 인간의 삶 기록 등 다양한 일을 맡습니다.\n삼도천을 건너는 데 걸리는 시간도 사신에게 달려 있습니다.\n그래서 거리를 조종하는 능력을 지닙니다.\n다른 요괴와 마찬가지로 번식이 어렵습니다.'''),
+              (r'''CASE "Goddess of Autumn Leaves"''', r'''가을이 오면 나뭇잎의 빛깔을 바꾸는 일을 맡은 여신입니다.\n팔백만 신 가운데 하나입니다.\n다른 요괴와 마찬가지로 번식이 어렵습니다.'''),
+              (r'''CASE "Harvest Goddess"''', r'''인간에게 풍년의 은혜를 내리는 여신입니다.\n다만 가을 작물에만 해당합니다.\n팔백만 신 가운데 하나입니다.\n다른 요괴와 마찬가지로 번식이 어렵습니다.'''),
+          ]
+
+          changed = 0
+          for case_stmt, new_desc in rules:
+              matches = [i for i, line in enumerate(lines) if line.strip() == case_stmt]
+              if len(matches) != 1:
+                  raise SystemExit(f'{case_stmt}: expected 1 case, got {len(matches)}')
+              i = matches[0]
+              if i + 1 >= len(lines):
+                  raise SystemExit(f'{case_stmt}: missing description line')
+              old_line = lines[i + 1]
+              prefix = "\t\tLOCALS '= \""
+              if not old_line.startswith(prefix) or not old_line.endswith('"'):
+                  raise SystemExit(f'{case_stmt}: unexpected description line: {old_line}')
+              new_line = prefix + new_desc + '"'
+              if tokens(old_line) != tokens(new_line):
+                  raise SystemExit(f'{case_stmt}: protected token mismatch')
+              if not re.search(r'[A-Za-z]{3,}', old_line):
+                  raise SystemExit(f'{case_stmt}: old description no longer looks English')
+              lines[i + 1] = new_line
+              changed += 1
+              print('RACE_TOOLTIP_34', case_stmt)
+
+          if changed != 35:
+              raise SystemExit(f'unexpected replacement total: {changed}')
+
+          text = head + marker + '\n'.join(lines)
+          if race.endswith('\n'):
+              text += '\n'
+          write_text(ui, bom, text)
+          print('RACE_TOOLTIP_34_REPLACEMENTS', changed)
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          UI='ERB/TRANSLATION/HTML_TALENTS/HTML_MOUSEOVER.ERB'
+          git diff --check
+
+          grep -Fq '@RACE_INFO(ARG)' "$UI"
+          grep -Fq 'CASE "Shikigami (Bakeneko)"' "$UI"
+          grep -Fq 'CASE "Shinigami"' "$UI"
+          grep -Fq 'CASE "Harvest Goddess"' "$UI"
+          grep -Fq '환영, 유령, 괴이, 짐승 등 수많은 이름으로 불립니다.' "$UI"
+          grep -Fq '삼도천을 건너는 영혼을 실어 나르는 요괴입니다.' "$UI"
+
+          ! grep -Fq 'Phantoms, ghosts, apparitions, beasts, they are known by many names.' "$UI"
+          ! grep -Fq 'Tiny Youkai, often around 10-15 centimeters.' "$UI"
+          ! grep -Fq 'Youkai in charge of ferrying souls across the Sanzu river.' "$UI"
+          ! grep -Fq 'A Goddess bringing the boon of great harvest to mortals.' "$UI"
+
+          expected='ERB/TRANSLATION/HTML_TALENTS/HTML_MOUSEOVER.ERB'
+          actual=$(git diff --name-only)
+          [ "$actual" = "$expected" ] || {
+            echo 'Unexpected changed files:'
+            printf '%s\n' "$actual"
+            exit 1
+          }
+
+          git diff --stat
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Gandalem'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'ERB/TRANSLATION/HTML_TALENTS/HTML_MOUSEOVER.ERB'
+          git commit -m '종족 툴팁 2차 대량 한글화 34차'
+          git push origin HEAD:korean
