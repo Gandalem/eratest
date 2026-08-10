@@ -1,0 +1,195 @@
+name: Batch Korean pass 36
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/batch-korean-pass-36.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 1
+          lfs: false
+
+      - name: Translate core talent and NAS tips
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          TOKEN_RE = re.compile(r'%[^%\n]+%|\{[^{}\n]+\}|\\%')
+          WORD_RE = re.compile(r'[A-Za-z]{3,}')
+          ALLOW = {'STA', 'ENE', 'EXP', 'VIG', 'CVAB', 'CVABM', 'TSP', 'UI'}
+
+          def read_lines(path):
+              raw = path.read_bytes()
+              bom = raw.startswith(b'\xef\xbb\xbf')
+              return bom, raw.decode('utf-8-sig').splitlines(keepends=True)
+
+          def write_lines(path, bom, lines):
+              data = ''.join(lines).encode('utf-8')
+              if bom:
+                  data = b'\xef\xbb\xbf' + data
+              path.write_bytes(data)
+
+          def tokens(s):
+              return sorted(TOKEN_RE.findall(s))
+
+          def meaningful_words(s):
+              return [w for w in WORD_RE.findall(s) if w.upper() not in ALLOW]
+
+          def replace_case_return(lines, case_header, return_index, new_stmt, label):
+              hits = [i for i, line in enumerate(lines) if line.rstrip('\r\n') == case_header]
+              if len(hits) != 1:
+                  raise SystemExit(f'{label}: case anchor count={len(hits)}: {case_header}')
+              start = hits[0]
+              end = len(lines)
+              for j in range(start + 1, len(lines)):
+                  raw = lines[j].rstrip('\r\n')
+                  if raw == 'ENDSELECT' or raw.startswith('\tCASE '):
+                      end = j
+                      break
+              returns = [j for j in range(start + 1, end) if lines[j].lstrip().startswith('RETURNF ')]
+              if return_index >= len(returns):
+                  raise SystemExit(f'{label}: return index {return_index} out of range for {case_header}; found {len(returns)}')
+              idx = returns[return_index]
+              old = lines[idx]
+              if not meaningful_words(old):
+                  raise SystemExit(f'{label}: selected line no longer has meaningful English: {case_header} #{return_index}')
+              indent = old[:len(old) - len(old.lstrip())]
+              newline = '\r\n' if old.endswith('\r\n') else '\n' if old.endswith('\n') else ''
+              new_line = indent + new_stmt + newline
+              if tokens(old) != tokens(new_line):
+                  raise SystemExit(f'{label}: protected token mismatch: {case_header} #{return_index}\nOLD={tokens(old)}\nNEW={tokens(new_line)}')
+              leftover = meaningful_words(new_line)
+              if leftover:
+                  raise SystemExit(f'{label}: unexpected English left in replacement {case_header} #{return_index}: {leftover}')
+              lines[idx] = new_line
+              print(f'{label}: {case_header} return#{return_index + 1}')
+              return 1
+
+          html = Path('ERB/TRANSLATION/HTML_TALENTS/HTML_MOUSEOVER.ERB')
+          nas = Path('ERB/TRANSLATION/OMOGATARI/NAS_TIPS_TR.ERB')
+          html_bom, html_lines = read_lines(html)
+          nas_bom, nas_lines = read_lines(nas)
+
+          html_rules = [
+              ('\tCASE 10', 0, r'''RETURNF "이 캐릭터는 겁이 많습니다.\n플레이어일 때: 좋은 데이트 결과를 얻기 어렵고 상대를 제압하기도 어렵습니다.\n대상일 때: 전반적으로 당신에게 더 잘 따르며 제압하기 쉽고, 반대로 당신을 제압하려는 경우는 줄어듭니다. 피임 없는 삽입 협상도 쉬워집니다.\n보석: 공포↑ 적대↑"'''),
+              ('\tCASE 10', 1, r'''RETURNF "이 캐릭터는 용감합니다.\n플레이어일 때: 상대를 제압하기 쉽고 좋은 데이트 결과를 얻기 쉽습니다.\n대상일 때: 명령을 실행하기 어렵고 피임 없는 삽입 협상도 어려워집니다. 주도권을 잡을 가능성이 높고 전반적으로 덜 복종하며 제압하기도 어렵습니다.\n보석: 충성↓ 욕정↓ 복종↓ 공포↓ 호의↓ 적대↑ 우울↑"'''),
+              ('\tCASE 11', 0, r'''RETURNF "이 캐릭터는 순종적이고 온순하며 시키는 일을 잘 따릅니다.\n플레이어일 때: 상대에게 제압당하기 쉬워집니다.\n대상일 때: 명령을 실행하기 쉽고 피임 없는 삽입 협상도 쉬워집니다. 전반적으로 더 잘 복종하며 당신을 제압하려는 경우는 줄어듭니다.\n보석: 충성↑ 호의↑ 적대↓"'''),
+              ('\tCASE 11', 1, r'''RETURNF "이 캐릭터는 반항적이고 고집이 셉니다.\n플레이어일 때: 별도 효과가 없습니다.\n대상일 때: 연인이 되면 이 특성이 사라집니다. 명령을 실행하기 어려워지고 혼자 돌아다닐 가능성이 높아지며 피임 없는 삽입 협상도 훨씬 어려워집니다. 전반적으로 덜 복종합니다.\n보석: 충성↓ 복종↓ 호의↓ 적대↑"'''),
+              ('\tCASE 12', 0, r'''RETURNF "이 캐릭터는 차분하고 자기주장을 잘 드러내지 않습니다.\n플레이어일 때: 별도 효과가 없습니다.\n대상일 때: 전반적으로 더 잘 복종하며 제압하기 쉽습니다.\n보석: 충성↓ 적대↓"'''),
+              ('\tCASE 12', 1, r'''RETURNF "이 캐릭터는 건방지고 대담한 편입니다.\n플레이어일 때: 상대를 제압하기 쉬워집니다.\n대상일 때: 주도권을 잡을 가능성이 높고 전반적으로 덜 복종합니다.\n보석: 충성↓ 복종↓ 적대↑"'''),
+              ('\tCASE 13', 0, r'''RETURNF "이 캐릭터는 겸손하며 자신을 과시하는 것을 좋아하지 않습니다.\n플레이어일 때: 별도 효과가 없습니다.\n대상일 때: 명령을 실행하기 쉽고 피임 없는 삽입 협상도 쉬워지며 전반적으로 더 잘 복종합니다.\n보석: 복종↑ 공포↑ 적대↓"'''),
+              ('\tCASE 13', 1, r'''RETURNF "이 캐릭터는 자존심이 강하고 오만한 편입니다.\n플레이어일 때: 별도 효과가 없습니다.\n대상일 때: 명령을 실행하기 훨씬 어려워지고 주도권을 잡을 가능성이 높아집니다. 피임 없는 삽입 협상도 어려우며 전반적으로 덜 복종합니다.\n보석: 복종↓ 공포↓ 적대↑"'''),
+              ('\tCASE 14', 0, r'''RETURNF "이 캐릭터는 츤데레 성향입니다.\n플레이어일 때: 별도 효과가 없습니다.\n대상일 때: 피임 없는 삽입 협상이 어려워집니다. 연인이 되면 모든 효과가 반전되고, 음란 또는 복종 상태에서는 보석 효과만 반전됩니다.\n보석: 충성↓ 복종↓ 적대↑"'''),
+              ('\tCASE 20', 0, r'''RETURNF "이 캐릭터는 절제력과 자제력이 매우 뛰어납니다.\n플레이어일 때: 성적 행동과 퍼포먼스 상승량이 줄어듭니다.\n대상일 때: 사정이나 수유가 어려워지고 절정으로 오르는 욕정이 감소합니다. 성적 불만은 2배 빠르게 줄고 더 느리게 쌓입니다. 좋은 데이트 결과를 얻기 훨씬 어려워지며 성적 명령에 더 저항적이고 덜 적극적이며 주도권을 잡을 가능성도 낮아집니다.\n보석: 복종↓ 공포↓ 적대↑ C↓ V↓ B↓ M↑"'''),
+              ('\tCASE 23', 0, r'''RETURNF "이 캐릭터는 보수적이며 새로운 경험을 좋아하지 않습니다.\n플레이어일 때: 별도 효과가 없습니다.\n대상일 때: 성적 명령에 더 저항적이고 주도권을 잡거나 당신을 제압할 가능성이 낮아집니다. 좋은 데이트 결과를 얻기 어렵고 일탈 계열 수치가 더 느리게 상승합니다.\n보석: 학습↓"'''),
+              ('\tCASE 23', 1, r'''RETURNF "이 캐릭터는 호기심이 많고 새로운 경험을 즐깁니다.\n플레이어일 때: 별도 효과가 없습니다.\n대상일 때: 성적 명령에 덜 저항하며 일탈 계열 수치가 훨씬 빠르게 상승합니다. 주도권을 잡거나 당신을 제압할 가능성이 높고 좋은 데이트 결과도 얻기 쉬워집니다.\n보석: 학습↑"'''),
+              ('\tCASE 25', 0, r'''RETURNF "이 캐릭터는 신중하며 순간적인 분위기에 쉽게 휩쓸리지 않습니다.\n플레이어일 때: 상대에게 제압당하기 어려워집니다.\n대상일 때: 모든 능력 상승이 어려워지지만 연인이 되면 반전됩니다. 데이트 뒤 첫 키스나 고백 이벤트가 발생하기 어렵고 고백 성공률도 낮아집니다. 피임 없는 삽입 협상도 어려워지며 연인이 아닐 때 호의가 2배 느리게 상승합니다.\n보석: 별도 변화 없음"'''),
+              ('\tCASE 50', 0, r'''RETURNF "이 캐릭터는 배우는 속도가 느립니다.\n플레이어일 때: 성적 기술과 일반 기술을 올리기 어렵습니다.\n대상일 때: 성적 기술과 일반 기술을 올리기 어렵습니다.\n보석: 학습↓"'''),
+              ('\tCASE 50', 1, r'''RETURNF "이 캐릭터는 배우는 속도가 빠릅니다.\n플레이어일 때: 성적 기술과 일반 기술을 올리기 쉽습니다.\n대상일 때: 성적 기술과 일반 기술을 올리기 쉽습니다.\n보석: 학습↑"'''),
+              ('\tCASE 54', 0, r'''RETURNF "살을 긁어낼 만큼 거친 고양잇과의 혀를 지니고 있습니다. 혀를 사용하는 행동에는 일부 페널티가 적용되고 효과도 달라집니다."'''),
+              ('\tCASE 55', 0, r'''RETURNF "특수 아이템을 구매할 수 있습니다. 최음제 사용 시 STA와 ENE 소모가 줄고 에이린의 일을 도울 수 있습니다. 약을 탄 차의 성공률도 높아집니다.\n수면제를 차에 섞을 수 있으며, 대상이 해당 약을 가지고 있다면 관계가 시작될 때 스스로 복용합니다."'''),
+              ('\tCASE 56', 0, r'''RETURNF "이 캐릭터에게는 최음제나 이뇨제를 사용할 수 없습니다."'''),
+              ('\tCASE 61', 0, r'''RETURNF "이 캐릭터는 오염에 매우 민감합니다.\n플레이어일 때: 별도 효과가 없습니다.\n대상일 때: 대부분의 성적 명령을 실행하기 훨씬 어려워지고 주변이 더러우면 호의와 신뢰 상승에 큰 페널티를 받습니다. 개인실이 훨씬 깨끗해지며 오염 때문에 일부 명령을 실행할 수 없을 수도 있습니다. 목욕도 훨씬 자주 합니다.\n보석: 별도 변화 없음"'''),
+              ('\tCASE 61', 1, r'''RETURNF "이 캐릭터는 오염에 민감합니다.\n플레이어일 때: 별도 효과가 없습니다.\n대상일 때: 대부분의 성적 명령을 실행하기 어려워지고 주변이 더러우면 호의와 신뢰 상승에 더 큰 페널티를 받습니다. 개인실이 더 깨끗해지며 오염 때문에 일부 명령을 실행할 수 없을 수도 있습니다. 목욕도 자주 합니다.\n보석: 별도 변화 없음"'''),
+              ('\tCASE 61', 2, r'''RETURNF "이 캐릭터는 오염을 크게 신경 쓰지 않습니다.\n플레이어일 때: 별도 효과가 없습니다.\n대상일 때: 대부분의 성적 명령을 실행하기 쉬워지고 주변이 더러워도 호의와 신뢰 상승 페널티가 줄어듭니다. 개인실은 더 쉽게 더러워지며 목욕 빈도도 낮아집니다.\n보석: 별도 변화 없음"'''),
+              ('\tCASE 61', 3, r'''RETURNF "이 캐릭터는 오염을 거의 무시합니다.\n플레이어일 때: 주변이 매우 더럽지 않으면 청소할 수 없습니다.\n대상일 때: 대부분의 성적 명령을 실행하기 쉬워지고 주변이 더러워도 호의와 신뢰 상승 페널티가 크게 줄어듭니다. 개인실은 훨씬 더 쉽게 더러워지며 목욕 빈도도 낮아집니다.\n보석: 별도 변화 없음"'''),
+              ('\tCASE 62', 0, r'''RETURNF "봉사 계열 명령을 실행하기 쉬워지고 복종 수치가 더 빠르게 상승합니다.\n호의와 신뢰에 별도 페널티가 없다면 두 수치도 더 빠르게 상승합니다."'''),
+              ('\tCASE 71', 0, r'''RETURNF "중독 계열 능력이 더 쉽게 상승합니다."'''),
+              ('\tCASE 72', 0, r'''RETURNF "명령을 실행하기 훨씬 쉬워집니다. 적대, 불쾌, 우울은 2배 느리게 오르고 그 외 모든 수치는 2배 빠르게 상승합니다. 명령 실행 후 능력이 상승할 수도 있습니다."'''),
+              ('\tCASE 78', 0, r'''RETURNF "아직 구현되지 않았습니다."'''),
+              ('\tCASE 101 TO 104, 106', 0, r'''RETURNF "플레이어에게 해당 둔감 무시 특성이 없다면 이 감각 수치를 올리기 더 어렵다는 뜻입니다.\n해당 능력도 올리기 어려워집니다."'''),
+              ('\tCASE 101 TO 104, 106', 1, r'''RETURNF "이 감각 수치가 더 쉽게 오른다는 뜻입니다. 해당 능력도 올리기 쉬워집니다."'''),
+              ('\tCASE 108', 0, r'''RETURNF "엉덩이 크기를 나타냅니다. 크기에 따라 설명이 달라집니다."'''),
+              ('\tCASE 121', 0, r'''RETURNF "술의 효과에 대한 내성과 얼마나 빨리 취하는지를 나타냅니다.\n내성이 낮은 캐릭터는 의식을 잃었을 때 위험해질 수 있어 음주를 피하려 하며, 취기 게이지가 회복되는 속도도 훨씬 느립니다."'''),
+              ('\tCASE 132', 0, r'''RETURNF "오니와 가까운 계통의 밤의 불사 존재입니다.\n참수 같은 치명상에서도 재생할 수 있고 인간보다 훨씬 빠르게 움직여 텐구에 가까운 속도를 냅니다.\n늑대나 안개 등으로 모습을 바꿀 수도 있습니다.\n대신 정어리 머리, 꺾인 호랑가시나무 가지, 흐르는 물, 햇빛, 십자가, 나무 말뚝, 불, 마늘, 은제 무기 등 약점이 매우 많습니다.\n오니와 가까워 볶은 콩에도 약합니다.\n엄밀히 말하면 죽은 존재이므로 번식이 매우 어렵습니다."'''),
+              ('\tCASE 166', 0, r'''RETURNF "인간 형태일 때는 역사를 먹어 인과에서 지워 버릴 수 있습니다.\n보름달이 뜨면 완전한 백택으로 변해 역사를 만들어낼 수 있습니다.\n오니처럼 뿔이 난 모습으로 묘사되는 경우가 많으며 보름달에는 성격도 사나워집니다.\n다른 요괴와 마찬가지로 번식이 어렵습니다."'''),
+          ]
+
+          nas_rules = [
+              ('\tCASE "ATW.gamePlay.drugUnlocks"', 0, r'''RETURNF "캐릭터와 친밀도가 충분히 높아지면 새로운 약물 조합법을 가르쳐 줄 수도 있습니다."'''),
+              ('\tCASE "ATW.gamePlay.charEXPBonuses"', 0, r'''RETURNF "동료를 데리고 다니며 기술을 훈련하면 반복적인 성장 부담을 줄일 수 있습니다."'''),
+              ('\tCASE "ATW.gamePlay.strongMusclesRequirement"', 0, r'''RETURNF "자기보다 체격이 큰 캐릭터를 들어 올리려면 먼저 몸을 충분히 단련해야 합니다."'''),
+              ('\tCASE "ATW.GUI.modOptions"', 0, r'''RETURNF "모드 옵션도 잊지 말고 확인하세요."'''),
+              ('\tCASE "ATW.gamePlay.farming.gettingMorePlots"', 0, r'''RETURNF "인간 마을의 식료품점에서 추가 텃밭을 구입할 수 있습니다."'''),
+              ('\tCASE "ATW.gamePlay.getStrongMuscles"', 0, r'''RETURNF "벌목은 근력을 키우기 좋은 방법입니다."'''),
+              ('\tCASE "ATW.gamePlay.manualDateFunStuff"', 0, r'''RETURNF "데이트를 직접 끝냈을 때만 상대가 첫 키스를 해 주거나 고백하는 이벤트가 발생할 수 있습니다."'''),
+              ('\tCASE "ATW.gamePlay.stoneSageMode"', 0, r'''RETURNF "돌 쌓기가 어렵다면 마음과 몸에서 욕망을 비워 보세요."'''),
+              ('\tCASE "char.143.tip1"', 0, r'''RETURNF "유마는 자신의 능력 때문에 임신이 잘 되지 않습니다."'''),
+              ('\tCASE "char.143.tip3"', 0, r'''RETURNF "유마가 싫어하는 음식은 거의 없습니다."'''),
+              ('\tCASE "char.143.tip4"', 0, r'''RETURNF "유마는 혼돈이나 피와 관련된 사악한 분위기의 것, 그리고 양을 모티프로 한 것을 좋아합니다."'''),
+              ('\tCASE "char.143.tip5"', 0, r'''RETURNF "유마는 구지옥의 석유를 관리합니다."'''),
+              ('\tCASE "char.143.tip6"', 0, r'''RETURNF "유마는 사람이 많은 곳을 싫어하는 것이 아니라 혼자 일하는 편을 선호합니다."'''),
+              ('\tCASE "ATW.char.51.toolUpgrades"', 0, r'''RETURNF "니토리는 도구의 업그레이드를 판매합니다."'''),
+              ('\tCASE "ATW.char.60.tip1"', 0, r'''RETURNF "파르시는 쉽게 화를 내지만 충분히 오래 피하면 스스로 진정합니다. 아니면 탄막전에서 일부러 져 주는 방법도 있습니다."'''),
+              ('\tCASE "ATW.char.68.danmakuFun"', 0, r'''RETURNF "탄막전에서 유카를 이기면 특별한 보상을 받을 수 있습니다."'''),
+              ('\tCASE "ATW.char.93.fishWillLetYouFish"', 0, r'''RETURNF "와카사기히메가 안쓰럽다면 호감을 쌓아 보세요. 충분히 가까워지면 안개 호수에서 같은 종족을 낚는 일도 눈감아 줄지 모릅니다."'''),
+              ('\tCASE "hypnoCriticalSuccess"', 0, r'''RETURNF "누군가를 최면할 때 크리티컬 성공이 발생하면 최면은 반드시 성공합니다."'''),
+              ('\tCASE "hypnoSeija"', 0, r'''RETURNF "세이자는 무엇이든 뒤집는 힘을 지니고 있습니다. 당신의 최면도 예외가 아닙니다."'''),
+              ('\tCASE "ATW.char.120.funnyTitle"', 0, r'''RETURNF "아운은 착한 아이입니다. 만날 때마다 머리를 쓰다듬어 주세요."'''),
+          ]
+
+          html_count = 0
+          for case_header, idx, new_stmt in html_rules:
+              html_count += replace_case_return(html_lines, case_header, idx, new_stmt, 'HTML')
+          nas_count = 0
+          for case_header, idx, new_stmt in nas_rules:
+              nas_count += replace_case_return(nas_lines, case_header, idx, new_stmt, 'NAS')
+
+          if html_count != 32:
+              raise SystemExit(f'expected 32 HTML replacements, got {html_count}')
+          if nas_count != 20:
+              raise SystemExit(f'expected 20 NAS replacements, got {nas_count}')
+
+          write_lines(html, html_bom, html_lines)
+          write_lines(nas, nas_bom, nas_lines)
+          print(f'HTML replacements: {html_count}')
+          print(f'NAS replacements: {nas_count}')
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          mapfile -t changed < <(git diff --name-only | sort)
+          expected=(
+            'ERB/TRANSLATION/HTML_TALENTS/HTML_MOUSEOVER.ERB'
+            'ERB/TRANSLATION/OMOGATARI/NAS_TIPS_TR.ERB'
+          )
+          if [ "${#changed[@]}" -ne "${#expected[@]}" ]; then
+            printf 'Unexpected changed files:\n%s\n' "${changed[*]}"
+            exit 1
+          fi
+          for i in "${!expected[@]}"; do
+            if [ "${changed[$i]}" != "${expected[$i]}" ]; then
+              printf 'Changed file mismatch: expected=%s actual=%s\n' "${expected[$i]}" "${changed[$i]}"
+              exit 1
+            fi
+          done
+          git diff --stat
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ERB/TRANSLATION/HTML_TALENTS/HTML_MOUSEOVER.ERB
+          git add ERB/TRANSLATION/OMOGATARI/NAS_TIPS_TR.ERB
+          git commit -m '핵심 특성 및 NAS 팁 한글화 36차'
+          git push origin HEAD:korean
