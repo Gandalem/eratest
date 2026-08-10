@@ -1,0 +1,189 @@
+name: Batch Korean pass 38
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/batch-korean-pass-38.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 1
+          lfs: false
+
+      - name: Translate remaining HTML and NAS help strings
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          TOKEN_RE = re.compile(r'%[^%\n]+%|\{[^{}\n]+\}|\\%')
+          WORD_RE = re.compile(r'[A-Za-z]{3,}')
+          ALLOW = {'RETURNF', 'LOCALS', 'STA', 'ENE', 'EXP', 'VIG', 'MP', 'QU', 'UI'}
+
+          def read_lines(path):
+              raw = path.read_bytes()
+              bom = raw.startswith(b'\xef\xbb\xbf')
+              return bom, raw.decode('utf-8-sig').splitlines(keepends=True)
+
+          def write_lines(path, bom, lines):
+              data = ''.join(lines).encode('utf-8')
+              if bom:
+                  data = b'\xef\xbb\xbf' + data
+              path.write_bytes(data)
+
+          def tokens(s):
+              return sorted(TOKEN_RE.findall(s))
+
+          def meaningful_words(s):
+              return [w for w in WORD_RE.findall(s) if w.upper() not in ALLOW]
+
+          def replace_exact_statement(lines, old_stmt, new_stmt, expected, label):
+              hits = [i for i, line in enumerate(lines) if line.rstrip('\r\n').lstrip() == old_stmt]
+              if len(hits) != expected:
+                  raise SystemExit(f'{label}: statement count={len(hits)}, expected={expected}: {old_stmt}')
+              for idx in hits:
+                  old = lines[idx]
+                  indent = old[:len(old) - len(old.lstrip())]
+                  newline = '\r\n' if old.endswith('\r\n') else '\n' if old.endswith('\n') else ''
+                  new_line = indent + new_stmt + newline
+                  if tokens(old) != tokens(new_line):
+                      raise SystemExit(f'{label}: protected token mismatch\nOLD={tokens(old)}\nNEW={tokens(new_line)}')
+                  leftover = meaningful_words(new_line)
+                  if leftover:
+                      raise SystemExit(f'{label}: unexpected English left in replacement: {leftover}')
+                  lines[idx] = new_line
+              print(f'{label}: exact statement x{expected}')
+              return expected
+
+          html = Path('ERB/TRANSLATION/HTML_TALENTS/HTML_MOUSEOVER.ERB')
+          nas = Path('ERB/TRANSLATION/OMOGATARI/NAS_TIPS_TR.ERB')
+          html_bom, html_lines = read_lines(html)
+          nas_bom, nas_lines = read_lines(nas)
+
+          html_rules = [
+              (r'''RETURNF "Can become a futanari if can be assistant. Doesn’t do anything."''', r'''RETURNF "보조자가 될 수 있는 캐릭터라면 후타나리 상태가 될 수 있습니다. 현재는 별도의 추가 효과가 없습니다."''', 2),
+              (r'''RETURNF "Breasts can lactate with milk."''', r'''RETURNF "모유가 나오는 상태입니다."''', 1),
+              (r'''RETURNF "There’s a growing child in that big belly of hers. Many restrictions to the commands (depends on settings).\nLikes belly caress. Loses Sexual Frustration 4 times faster."''', r'''RETURNF "임신 중이며 배 속에서 아이가 자라고 있습니다. 설정에 따라 여러 행동에 제한이 적용됩니다.\n배를 쓰다듬는 행동을 좋아하며 성적 불만이 4배 빠르게 감소합니다."''', 1),
+              (r'''RETURNF "Indicates that this character is raising a child. Loses Sexual Frustration 2 times faster."''', r'''RETURNF "아이를 양육 중인 상태입니다. 성적 불만이 2배 빠르게 감소합니다."''', 1),
+              (r'''RETURNF "A maternal love of a mother who gave birth to a child."''', r'''RETURNF "아이를 출산한 어머니의 모성애를 나타냅니다."''', 1),
+              (r'''RETURNF "Can figure out who has a large Sexual Desire or Frustration. Special command becomes available."''', r'''RETURNF "성적 욕구나 불만이 높은 캐릭터를 파악할 수 있으며 전용 행동이 해금됩니다."''', 1),
+              (r'''RETURNF "Makes it possible to impregnate Hourai Persons or non-living races. Applies standard chances to impregnation for all races."''', r'''RETURNF "봉래인이나 무생물 종족도 임신시킬 수 있게 됩니다. 모든 종족의 임신 판정에 일반적인 확률을 적용합니다."''', 1),
+              (r'''RETURNF "This character will have several children at once if impregnated."''', r'''RETURNF "임신하면 한 번에 여러 아이를 출산하는 특성을 지녔습니다."''', 1),
+              (r'''RETURNF "This character lays eggs, and if impregnated, will lay a fertilized egg."''', r'''RETURNF "알을 낳는 종족이며 임신하면 수정란을 낳습니다."''', 1),
+              (r'''RETURNF "This character will lay multiple fertilized eggs when impregnated."''', r'''RETURNF "임신하면 여러 개의 수정란을 한 번에 낳습니다."''', 1),
+              (r'''RETURNF "This character is incubating one or more fertilized eggs at home."''', r'''RETURNF "집에서 하나 이상의 수정란을 품어 부화시키고 있습니다."''', 1),
+              (r'''RETURNF "This character can be impregnated even if already pregnant. Higher chance of a second conception."''', r'''RETURNF "이미 임신 중이어도 추가로 임신할 수 있으며 두 번째 수정이 일어날 확률도 더 높습니다."''', 1),
+          ]
+
+          nas_rules = [
+              (r'''RETURNF "A day in eratohoTW is just a really big training session."''', r'''RETURNF "에라토호TW의 하루는 거대한 훈련 세션 하나와도 같습니다."''', 1),
+              (r'''RETURNF "Shinki will occasionally meet you once you start her questline."''', r'''RETURNF "신키의 퀘스트를 시작하면 가끔 신키가 직접 만나러 옵니다."''', 1),
+              (r'''RETURNF "You can pay your way through Shinki's questline if you aren't into what she's into"''', r'''RETURNF "신키의 취향에 맞추고 싶지 않다면 돈을 써서 퀘스트를 진행하는 방법도 있습니다."''', 1),
+              (r'''RETURNF "Hourai Doll can't get hate marks... Mostly because she always acts like she has 3"''', r'''RETURNF "봉래 인형은 증오의 표식을 얻지 않습니다... 애초에 항상 3단계인 것처럼 행동하기 때문입니다."''', 1),
+              (r'''RETURNF "The best way to relieve yourself is to find a body of water or a room with toilets - doing this also gradually recovers lost continence."''', r'''RETURNF "용변은 물가나 화장실이 있는 방에서 해결하는 것이 가장 좋습니다. 이렇게 하면 잃어버린 배변 조절 능력도 서서히 회복됩니다."''', 1),
+              (r'''RETURNF "Loud sounds and a full bladder don't mix."''', r'''RETURNF "큰 소리와 가득 찬 방광은 좋은 조합이 아닙니다."''', 1),
+              (r'''RETURNF "Diapers, be it pull-ons or tabbed, can handle varying capacities of messy accidents, due to their structure and leak guards."''', r'''RETURNF "풀업형이든 테이프형이든 기저귀는 구조와 샘 방지 가드에 따라 고형 오염을 받아낼 수 있는 용량이 달라집니다."''', 1),
+              (r'''RETURNF "Bulkier diapers have more room for liquid and solid messes, as there's more priority on containment than discretion. This does mean well, people will be staring at your diapered crotch."''', r'''RETURNF "두꺼운 기저귀일수록 눈에 덜 띄는 것보다 수용량을 우선해 액체와 고형 오염을 더 많이 담을 수 있습니다. 대신 기저귀를 찬 모습이 더 쉽게 눈에 띕니다."''', 2),
+              (r'''RETURNF "Tall leak guards are better than normal leak guards, and any leak guards is better than no leak guards."''', r'''RETURNF "높은 샘 방지 가드는 일반 가드보다 효과적이며, 어떤 가드라도 없는 것보다는 낫습니다."''', 1),
+              (r'''RETURNF "A common misconception is that leak guards are just for pee, but they also help against messy accidents as well."''', r'''RETURNF "샘 방지 가드는 소변에만 효과가 있다고 생각하기 쉽지만 고형 오염이 새는 것도 막아 줍니다."''', 1),
+              (r'''RETURNF "Having a bedwetting mat on your bed can help save your sheets when you pee or poop during your sleep."''', r'''RETURNF "침대에 방수 매트를 깔아 두면 수면 중 사고가 나도 시트가 더러워지는 것을 막는 데 도움이 됩니다."''', 1),
+              (r'''RETURNF "Bedwetting mats are only used when they are soiled. This means that you can save mats if you keep yourself dry by diapering up or reducing urine production."''', r'''RETURNF "방수 매트는 실제로 오염되었을 때만 소모됩니다. 기저귀를 사용하거나 소변 생성을 줄여 몸을 마른 상태로 유지하면 매트를 아낄 수 있습니다."''', 1),
+              (r'''RETURNF "You can attune underwear to magic, which will cast spells when they are soiled. "''', r'''RETURNF "속옷을 마법에 조율하면 오염되었을 때 주문이 발동하도록 만들 수 있습니다. "''', 1),
+              (r'''RETURNF "To attune underwear to magic, you will need to have Excretion or Basic Summoning Youjutsu learned as well as the respective Youjutsu the attunement uses."''', r'''RETURNF "속옷을 마법에 조율하려면 배설 또는 기본 소환 요술과 함께 해당 조율이 사용하는 요술도 배워야 합니다."''', 1),
+              (r'''RETURNF "To cast magical underwear, you need to pee or poop in them. The stronger the accident, the stronger the spell casted. Leaking underwear cannot cast spells."''', r'''RETURNF "마법 속옷의 주문을 발동하려면 속옷이 오염되어야 합니다. 사고가 클수록 주문도 강해지며, 새고 있는 속옷은 주문을 발동할 수 없습니다."''', 1),
+              (r'''RETURNF "The Lock attunement blocks underwear from being changed or removed. It cam however be removed with the 「Agero!」spell in the Basic Summoning Youjutsu tree."''', r'''RETURNF "잠금 조율은 속옷을 갈아입거나 벗는 것을 막습니다. 다만 기본 소환 요술 계통의 「아게로!」 주문으로 해제할 수 있습니다."''', 1),
+              (r'''RETURNF "An aggressive Touhou is more inclined on attacking over a Passive touhou"''', r'''RETURNF "공격적인 캐릭터는 소극적인 캐릭터보다 공격 행동을 선택할 가능성이 높습니다."''', 1),
+              (r'''RETURNF "Bravery affects the character's willingness to attack and do otherwise risky actions."''', r'''RETURNF "용기는 캐릭터가 공격하거나 위험한 행동을 선택하려는 정도에 영향을 줍니다."''', 1),
+              (r'''RETURNF "Danmaku and Youjutsu weapons use MP. Run out of MP and you'll instantly lose the battle."''', r'''RETURNF "탄막 및 요술 무기는 MP를 사용합니다. MP가 바닥나면 전투에서 즉시 패배합니다."''', 1),
+              (r'''RETURNF "Magic is indiscriminate! Be careful where you set up your buffs, or else your enemies might take advantage of them."''', r'''RETURNF "마법은 아군과 적군을 가리지 않습니다. 버프를 설치할 위치를 잘못 고르면 적이 효과를 이용할 수도 있습니다."''', 1),
+              (r'''RETURNF "Beware of friendly fire! Weapons that deal damage within an area of effect will affect allies as well as your enemies. Be sure they aren't in the blast radius!"''', r'''RETURNF "아군 오사를 조심하세요. 범위 피해 무기는 적뿐 아니라 아군에게도 영향을 주므로 폭발 범위 안에 동료가 없는지 확인해야 합니다."''', 1),
+              (r'''RETURNF "Injury causes Agony. Agony affects the character's consciousness, and if they get too much they will faint."''', r'''RETURNF "부상은 고통 수치를 높입니다. 고통은 의식 상태에 영향을 주며 너무 높아지면 캐릭터가 기절합니다."''', 1),
+              (r'''RETURNF "To reduce Agony during combat, drugs such as Ibuprofen, Morphine, or KyuuKyuu-Un can be used."''', r'''RETURNF "전투 중 고통을 낮추려면 이부프로펜, 모르핀, 큐큐운 같은 약물을 사용할 수 있습니다."''', 1),
+              (r'''RETURNF "Hits to bionic parts do not cause Agony. They however still cause STA damage."''', r'''RETURNF "생체공학 부위가 공격받아도 고통은 증가하지 않지만 STA 피해는 그대로 받습니다."''', 1),
+              (r'''RETURNF "Hitting 8000 or higher Agony will result in the character falling into a pain shock. This will put the character out of the battle."''', r'''RETURNF "고통이 8000 이상이 되면 통증성 쇼크에 빠져 전투에서 이탈합니다."''', 1),
+              (r'''RETURNF "Having certain attachments on may rename your gun to a different model."''', r'''RETURNF "특정 부착물 조합을 장착하면 총기의 모델명이 다른 이름으로 바뀔 수 있습니다."''', 1),
+              (r'''RETURNF "Damage and Loudness is determined by ammo, barrel, and barrel extension."''', r'''RETURNF "피해량과 소음은 탄약, 총열, 총열 연장 부품에 따라 결정됩니다."''', 1),
+              (r'''RETURNF "Penetration is determined by ammo and barrel."''', r'''RETURNF "관통력은 탄약과 총열에 따라 결정됩니다."''', 1),
+              (r'''RETURNF "Accuracy is determined by all attachments except for magazine."''', r'''RETURNF "명중률은 탄창을 제외한 모든 부착물의 영향을 받습니다."''', 1),
+              (r'''RETURNF "After picking up a character's weapon, you will gain all attachments that they had on their gun."''', r'''RETURNF "다른 캐릭터의 무기를 주우면 그 총기에 장착되어 있던 부착물도 모두 획득합니다."''', 1),
+              (r'''RETURNF "Attachments affect your weapon's rank, which determine raid strength and intimidation power! The highest level a weapon can be is QU 99."''', r'''RETURNF "부착물은 무기 등급에 영향을 주며, 무기 등급은 습격 전력과 위협 능력을 결정합니다. 무기의 최고 등급은 QU 99입니다."''', 1),
+              (r'''RETURNF "Every weapon is a platform for different attachments."''', r'''RETURNF "각 무기는 서로 다른 부착물을 사용할 수 있는 하나의 플랫폼입니다."''', 1),
+              (r'''RETURNF "Most ballistic firearms will shoot the same ammo with the same damage. The only ways that damage can be changed is with a different ammunition type and barrel length."''', r'''RETURNF "대부분의 실탄 화기는 같은 탄약을 쓰면 같은 피해를 줍니다. 피해량을 바꾸는 방법은 탄종이나 총열 길이를 변경하는 것입니다."''', 1),
+              (r'''RETURNF "Danmaku and Youjutsu weapons use MP. Run out of MP in Danmaku and you'll instantly lose the battle."''', r'''RETURNF "탄막 및 요술 무기는 MP를 사용합니다. 탄막전에서 MP가 바닥나면 즉시 패배합니다."''', 1),
+          ]
+
+          total_html = 0
+          for old, new, expected in html_rules:
+              total_html += replace_exact_statement(html_lines, old, new, expected, 'HTML38')
+          total_nas = 0
+          for old, new, expected in nas_rules:
+              total_nas += replace_exact_statement(nas_lines, old, new, expected, 'NAS38')
+
+          if total_html != 13:
+              raise SystemExit(f'HTML38 total={total_html}, expected=13')
+          if total_nas != 35:
+              raise SystemExit(f'NAS38 total={total_nas}, expected=35')
+
+          write_lines(html, html_bom, html_lines)
+          write_lines(nas, nas_bom, nas_lines)
+          print('PASS38_REPLACEMENTS', total_html + total_nas)
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          mapfile -t changed < <(git diff --name-only)
+          printf 'changed: %s\n' "${changed[@]}"
+          if [ "${#changed[@]}" -ne 2 ]; then
+            echo "Expected exactly 2 changed files" >&2
+            exit 1
+          fi
+          test "${changed[0]}" = "ERB/TRANSLATION/HTML_TALENTS/HTML_MOUSEOVER.ERB"
+          test "${changed[1]}" = "ERB/TRANSLATION/OMOGATARI/NAS_TIPS_TR.ERB"
+          python3 - <<'PY'
+          from pathlib import Path
+          html = Path('ERB/TRANSLATION/HTML_TALENTS/HTML_MOUSEOVER.ERB').read_text(encoding='utf-8-sig')
+          nas = Path('ERB/TRANSLATION/OMOGATARI/NAS_TIPS_TR.ERB').read_text(encoding='utf-8-sig')
+          for anchor in ('@TALENT_INFO(ARG,ARG:1,nChara)', 'CASE 297', 'CASE 310', '@RACE_INFO(ARG)'):
+              if anchor not in html:
+                  raise SystemExit(f'missing HTML anchor: {anchor}')
+          for anchor in ('@TIPS_TR(ARGS)', '@TIPS_TYPES_TR_NAS(ARGS)', 'CASE "combatAggression"', 'CASE "NAS.excretion.magic"'):
+              if anchor not in nas:
+                  raise SystemExit(f'missing NAS anchor: {anchor}')
+          old_samples = [
+              'Can become a futanari if can be assistant. Doesn’t do anything.',
+              'This character will have several children at once if impregnated.',
+              'An aggressive Touhou is more inclined on attacking over a Passive touhou',
+              'Every weapon is a platform for different attachments.',
+              'The best way to relieve yourself is to find a body of water or a room with toilets',
+          ]
+          combined = html + '\n' + nas
+          for s in old_samples:
+              if s in combined:
+                  raise SystemExit(f'old sample still present: {s}')
+          PY
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ERB/TRANSLATION/HTML_TALENTS/HTML_MOUSEOVER.ERB ERB/TRANSLATION/OMOGATARI/NAS_TIPS_TR.ERB
+          git commit -m "HTML 및 NAS 도움말 3차 한글화 38차"
+          git push origin korean
