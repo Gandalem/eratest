@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  diagnose:
+  translate:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Korean branch
@@ -19,7 +19,7 @@ jobs:
           ref: korean
           fetch-depth: 0
 
-      - name: Diagnose melee UI strings
+      - name: Translate melee UI strings
         shell: bash
         run: |
           python3 - <<'PY'
@@ -28,25 +28,131 @@ jobs:
 
           p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Armory/000 Melee/000 Melee.ERB')
           raw = p.read_bytes()
-          assert raw.startswith(b'\xef\xbb\xbf'), 'UTF-8 BOM missing'
+          assert raw.startswith(b'\xef\xbb\xbf'), 'UTF-8 BOM missing before edit'
           text = raw.decode('utf-8-sig')
+          before = text
 
+          rules = [
+              (2, '名前', 'club', '몽둥이'),
+              (2, 'FullName', 'wooden club', '나무 몽둥이'),
+              (3, '名前', 'hunting knife', '사냥용 칼'),
+              (3, 'FullName', 'Cunnyco Fixed-Bladed Knife「Free Spirit」', '커니코 고정날 칼「Free Spirit」'),
+              (3, 'FullName', 'hunting knife', '사냥용 칼'),
+              (4, '名前', 'energy blade', '에너지 칼날'),
+              (4, 'FullName', 'LUNINCO Energy Blade「LAC358」', '루닌코 에너지 칼날「LAC358」'),
+              (4, 'FullName', 'energy blade', '에너지 칼날'),
+              (5, '名前', 'arming sword', '아밍 소드'),
+              (5, 'FullName', "Vatican's Society Type X Arming Sword「Typus-MIKAEL」", '바티칸 협회 타입 X 아밍 소드「Typus-MIKAEL」'),
+              (5, 'FullName', 'type X Norman knightly arming sword', '타입 X 노르만 기사 아밍 소드'),
+              (6, '名前', 'sanctuary cleaver', '성역 클리버'),
+              (6, 'FullName', "Yamanba's 「Sanctuary Cleaver」", '야만바의 「성역 클리버」'),
+              (7, '名前', 'purification rod', '정화봉'),
+              (7, 'FullName', 'purification rod', '정화봉'),
+              (8, '名前', 'wolf claws', '늑대 발톱'),
+              (8, 'FullName', 'wolf claws', '늑대 발톱'),
+              (9, 'FullName', 'YMKA Katana「Shouwatou」', 'YMKA 카타나「Shouwatou」'),
+              (10, '名前', 'felling axe', '벌목 도끼'),
+              (10, 'FullName', 'Kappa Armory \\"Farmhand\\" felling axe', '캇파 아머리 「Farmhand」 벌목 도끼'),
+              (10, 'FullName', 'felling axe', '벌목 도끼'),
+              (11, '名前', 'dagger', '단검'),
+              (11, 'FullName', "Vatican's Society Ross-Hilt Dagger「Typus-AZARIAH」", '바티칸 협회 로스힐트 단검「Typus-AZARIAH」'),
+              (11, 'FullName', 'ross-hilt dagger', '로스힐트 단검'),
+              (12, '名前', 'pike', '파이크'),
+              (12, 'FullName', "Vatican's Society Pike「Typus-MARIA」", '바티칸 협회 파이크「Typus-MARIA」'),
+              (12, 'FullName', 'pike', '파이크'),
+              (13, '名前', 'machete', '마체테'),
+              (13, 'FullName', 'YMKA Survival Machete「SP8」', 'YMKA 서바이벌 마체테「SP8」'),
+              (13, 'FullName', 'machete', '마체테'),
+              (14, '名前', 'wooden spear', '나무 창'),
+              (14, 'FullName', 'wooden spear', '나무 창'),
+              (15, '名前', 'electric massager', '전동 마사지기'),
+              (15, 'FullName', 'EFun Wand Vibrator「Strykr」', 'EFun 완드 진동기「Strykr」'),
+              (15, 'FullName', 'electric massager', '전동 마사지기'),
+              (16, '名前', 'dowsing rod', '다우징 로드'),
+              (16, 'FullName', 'dowsing rod', '다우징 로드'),
+              (17, '名前', 'Chainsaw', '체인톱'),
+              (17, 'FullName', 'Chevalier Gas Chainsaw「Chapman」', '슈발리에 가솔린 체인톱「Chapman」'),
+              (17, 'FullName', 'chainsaw', '체인톱'),
+              (18, '名前', 'shovel', '삽'),
+              (18, 'FullName', 'KappaArmoury Shovel', '캇파 아머리 삽'),
+              (19, '名前', 'Youkai katana', '요괴 카타나'),
+              (19, 'FullName', 'Tatara Youkai Katana「Cut-Brush」', '타타라 요괴 카타나「Cut-Brush」'),
+              (19, 'FullName', 'Youkai-enhanced katana', '요괴 강화 카타나'),
+              (20, '名前', 'Youkai trident', '요괴 삼지창'),
+              (20, 'FullName', 'Tatara Youkai Trident「Trishula」', '타타라 요괴 삼지창「Trishula」'),
+              (20, 'FullName', 'Youkai-enhanced trident', '요괴 강화 삼지창'),
+              (21, '名前', 'ceremonial sword', '의식용 검'),
+              (21, 'FullName', 'Tatara Youkai Sword「Ceremonial」', '타타라 요괴 검「Ceremonial」'),
+              (21, 'FullName', 'ceremonial sword', '의식용 검'),
+          ]
+          assert len(rules) == 51, len(rules)
+
+          literal_re = re.compile(r'CALLF MAKE_STR\(V_NAME,\s*(?:@)?"((?:\\.|[^"\\])*)"\)')
+
+          def function_span(src, wid):
+              fm = re.search(rf'^@Weapon{wid}\(ARG, O_DATA, V_NAME\)\s*$', src, re.M)
+              assert fm, f'function Weapon{wid} not found'
+              nm = re.search(r'^@Weapon\d+\(ARG, O_DATA, V_NAME\)\s*$', src[fm.end():], re.M)
+              end = fm.end() + nm.start() if nm else len(src)
+              return fm.start(), end
+
+          def encode_value(value):
+              return value.replace('\\', '\\\\').replace('"', '\\"')
+
+          for wid, field, old, new in rules:
+              fs, fe = function_span(text, wid)
+              block = text[fs:fe]
+              cases = list(re.finditer(r'^\s*CASE "([^"]+)"\s*$', block, re.M))
+              target = [(i, cm) for i, cm in enumerate(cases) if cm.group(1) == field]
+              assert len(target) == 1, f'Weapon{wid} {field}: CASE count {len(target)}'
+              ci, cm = target[0]
+              cend = cases[ci + 1].start() if ci + 1 < len(cases) else len(block)
+              cblock = block[cm.end():cend]
+              matches = [m for m in literal_re.finditer(cblock) if m.group(1) == old]
+              assert len(matches) == 1, f'Weapon{wid} {field} {old!r}: match count {len(matches)}'
+              sm = matches[0]
+              abs_s = fs + cm.end() + sm.start(1)
+              abs_e = fs + cm.end() + sm.end(1)
+              text = text[:abs_s] + encode_value(new) + text[abs_e:]
+
+          protected = [
+              '名前', 'FullName', '描写', '装備部位', 'Damage', 'Accuracy', 'Burst',
+              'Pellets', 'Loudness', 'Range', 'Grade', 'Tech Level', 'Price',
+              'Two-Handed', 'Type', 'Class', 'Tags', 'Grip Slot', 'Blade Slot',
+              'WeaponBlade/Default', 'WeaponGrip/Default', 'Platform', 'Receiver Slot',
+              'Magazine Slot', 'WeaponReceiver/Default', 'WeaponMag/Default', 'Quest Only'
+          ]
+          for key in protected:
+              assert before.count(f'CASE "{key}"') == text.count(f'CASE "{key}"'), key
+
+          p.write_bytes(b'\xef\xbb\xbf' + text.encode('utf-8'))
+          print(f'REPLACEMENTS={len(rules)}')
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Armory/000 Melee/000 Melee.ERB')
+          raw = p.read_bytes()
+          assert raw.startswith(b'\xef\xbb\xbf'), 'UTF-8 BOM missing after edit'
+          text = raw.decode('utf-8-sig')
           func_re = re.compile(r'^@Weapon(\d+)\(ARG, O_DATA, V_NAME\)\s*$', re.M)
           fields = {'名前', 'FullName', '描写'}
           eng = re.compile(r'[A-Za-z]{2,}')
           hangul = re.compile(r'[가-힣]')
           literal_re = re.compile(r'CALLF MAKE_STR\(V_NAME,\s*(?:@)?"((?:\\.|[^"\\])*)"\)')
-
           rows = []
           funcs = list(func_re.finditer(text))
           for i, fm in enumerate(funcs):
-              wid = int(fm.group(1))
               fend = funcs[i + 1].start() if i + 1 < len(funcs) else len(text)
               block = text[fm.start():fend]
               cases = list(re.finditer(r'^\s*CASE "([^"]+)"\s*$', block, re.M))
               for ci, cm in enumerate(cases):
-                  field = cm.group(1)
-                  if field not in fields:
+                  if cm.group(1) not in fields:
                       continue
                   cend = cases[ci + 1].start() if ci + 1 < len(cases) else len(block)
                   cblock = block[cm.end():cend]
@@ -57,10 +163,21 @@ jobs:
                           continue
                       value = sm.group(1)
                       if eng.search(value) and not hangul.search(value):
-                          rows.append((wid, field, value))
-
-          print(f'ACTIVE_FUNCTIONS={len(funcs)}')
+                          rows.append(value)
+          assert len(rows) == 55, f'English-only active UI expected 55, got {len(rows)}'
           print(f'ENGLISH_ONLY_ACTIVE_UI={len(rows)}')
-          for wid, field, value in rows:
-              print(f'{wid}\t{field}\t{value}')
           PY
+          git diff --check
+          test "$(git diff --name-only | wc -l)" -eq 1
+          test "$(git diff --name-only)" = "ERB/TRANSLATION/OMOGATARI/ITEM/Armory/000 Melee/000 Melee.ERB"
+          test "$(git diff --numstat | awk '{print $1}')" -eq 51
+          test "$(git diff --numstat | awk '{print $2}')" -eq 51
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "ERB/TRANSLATION/OMOGATARI/ITEM/Armory/000 Melee/000 Melee.ERB"
+          git commit -m "근접무기 UI 이름 1차 한글화 59차"
+          git push origin korean
