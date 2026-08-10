@@ -1,0 +1,54 @@
+name: Batch Korean pass 53
+
+on:
+  push:
+    paths:
+      - '.github/workflows/batch-korean-pass-53.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 1
+
+      - name: List untranslated barrel-extension UI strings
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Barrel Extensions.ERB')
+          text = p.read_bytes().decode('utf-8-sig')
+          func_re = re.compile(r'^@WeaponBarrel(\d+)\(ARG, O_DATA, V_NAME\)\s*$', re.M)
+          starts = list(func_re.finditer(text))
+          eng = re.compile(r'[A-Za-z]{2,}')
+          hangul = re.compile(r'[가-힣]')
+          names = []
+          descs = []
+          for idx, m in enumerate(starts):
+              item_id = int(m.group(1))
+              end = starts[idx + 1].start() if idx + 1 < len(starts) else len(text)
+              block = text[m.start():end]
+              for case, bucket in [('名前', names), ('描写', descs)]:
+                  km = re.search(rf'CASE "{case}"\s*\n(?:\s*IF[\s\S]*?ENDIF\s*\n)?\s*CALLF MAKE_STR\(V_NAME,\s*(.+?)\)\s*$', block, re.M)
+                  if not km:
+                      continue
+                  value = km.group(1).strip()
+                  if eng.search(value) and not hangul.search(value):
+                      bucket.append((item_id, value))
+          print(f'UNTRANSLATED_NAMES={len(names)}')
+          for item_id, value in names:
+              print(f'NAME\tID={item_id}\t{value}')
+          print(f'UNTRANSLATED_DESCS={len(descs)}')
+          for item_id, value in descs:
+              print(f'DESC\tID={item_id}\t{value}')
+          PY
