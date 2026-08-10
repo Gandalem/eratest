@@ -1,0 +1,58 @@
+name: Translation progress scanner v2
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Every day at 00:00 KST (15:00 UTC)
+    - cron: '0 15 * * *'
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/translation-progress-v2.yml'
+      - '.github/scripts/translation_progress_v2.py'
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout original branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: source
+          fetch-depth: 1
+          lfs: false
+
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          path: target
+          fetch-depth: 1
+          lfs: false
+
+      - name: Self-test scanner
+        run: python3 source/.github/scripts/translation_progress_v2.py --self-test
+
+      - name: Scan translation progress
+        run: |
+          SOURCE_SHA="$(git -C source rev-parse --short=12 HEAD)"
+          TARGET_SHA="$(git -C target rev-parse --short=12 HEAD)"
+          python3 source/.github/scripts/translation_progress_v2.py \
+            --source source \
+            --target target \
+            --source-ref "main@${SOURCE_SHA}" \
+            --target-ref "korean@${TARGET_SHA}" \
+            --output-dir translation-progress-v2
+
+      - name: Upload progress report
+        uses: actions/upload-artifact@v4
+        with:
+          name: translation-progress-v2
+          path: translation-progress-v2/
+          if-no-files-found: error
+          retention-days: 30
