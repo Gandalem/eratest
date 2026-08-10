@@ -1,0 +1,57 @@
+name: Batch Korean pass 50
+
+on:
+  push:
+    paths:
+      - '.github/workflows/batch-korean-pass-50.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 1
+
+      - name: List barrel UI strings
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Barrels.ERB')
+          text = p.read_bytes().decode('utf-8-sig')
+          func_re = re.compile(r'^@WeaponBarrelBody(\d+)\(ARG, O_DATA, V_NAME\)\s*$', re.M)
+          starts = list(func_re.finditer(text))
+          eng = re.compile(r'[A-Za-z]{2,}')
+          hangul = re.compile(r'[가-힣]')
+          shown = 0
+          english_desc = []
+          for idx, m in enumerate(starts):
+              barrel_id = int(m.group(1))
+              end = starts[idx + 1].start() if idx + 1 < len(starts) else len(text)
+              block = text[m.start():end]
+              vals = {}
+              for key in ('名前', '描写'):
+                  km = re.search(rf'CASE "{key}"\s*\n\s*CALLF MAKE_STR\(V_NAME,\s*(.+?)\)\s*$', block, re.M)
+                  if km:
+                      vals[key] = km.group(1).strip()
+              name = vals.get('名前', '')
+              desc = vals.get('描写', '')
+              if shown < 70 and eng.search(name):
+                  print(f'NAME\tID={barrel_id}\t{name}')
+                  shown += 1
+              if eng.search(desc) and not hangul.search(desc):
+                  english_desc.append((barrel_id, desc))
+          print(f'ENGLISH_NAME_SHOWN={shown}')
+          print(f'ENGLISH_DESC_COUNT={len(english_desc)}')
+          for barrel_id, desc in english_desc:
+              print(f'DESC\tID={barrel_id}\t{desc}')
+          PY
