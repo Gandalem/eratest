@@ -1,0 +1,55 @@
+name: Batch Korean pass 55
+
+on:
+  push:
+    paths:
+      - '.github/workflows/batch-korean-pass-55.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 1
+
+      - name: List untranslated weapon preset UI strings
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Omogatari_WeaponPresets.ERB')
+          text = p.read_bytes().decode('utf-8-sig')
+          func_re = re.compile(r'^@WeaponPreset(\d+)\(ARG, O_DATA, V_NAME\)\s*$', re.M)
+          starts = list(func_re.finditer(text))
+          eng = re.compile(r'[A-Za-z]{2,}')
+          hangul = re.compile(r'[가-힣]')
+          wanted = {'Name', 'FullName', 'Description'}
+          rows = []
+          for idx, m in enumerate(starts):
+              item_id = int(m.group(1))
+              end = starts[idx + 1].start() if idx + 1 < len(starts) else len(text)
+              block = text[m.start():end]
+              case_matches = list(re.finditer(r'^\s*CASE "([^"]+)"\s*$', block, re.M))
+              for ci, cm in enumerate(case_matches):
+                  field = cm.group(1)
+                  if field not in wanted:
+                      continue
+                  cend = case_matches[ci + 1].start() if ci + 1 < len(case_matches) else len(block)
+                  cblock = block[cm.end():cend]
+                  for sm in re.finditer(r'CALLF MAKE_STR\(V_NAME,\s*(?:@)?"((?:\\.|[^"\\])*)"\)', cblock):
+                      value = sm.group(1)
+                      if eng.search(value) and not hangul.search(value):
+                          rows.append((item_id, field, value))
+          print(f'UNTRANSLATED_UI={len(rows)}')
+          for item_id, field, value in rows:
+              print(f'UI\tID={item_id}\tFIELD={field}\t{value}')
+          PY
