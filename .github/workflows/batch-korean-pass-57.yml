@@ -1,0 +1,64 @@
+name: Batch Korean pass 57
+
+on:
+  push:
+    paths:
+      - '.github/workflows/batch-korean-pass-57.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 0
+
+      - name: Diagnose rifle UI strings
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Armory/300 Firearms/400 Rifles.ERB')
+          raw = p.read_bytes()
+          assert raw.startswith(b'\xef\xbb\xbf'), 'UTF-8 BOM missing'
+          text = raw.decode('utf-8-sig')
+
+          func_re = re.compile(r'^@Weapon(\d+)\(ARG, O_DATA, V_NAME\)\s*$', re.M)
+          field_names = {'名前', 'FullName', '描写'}
+          eng = re.compile(r'[A-Za-z]{2,}')
+          hangul = re.compile(r'[가-힣]')
+          literal_re = re.compile(r'CALLF MAKE_STR\(V_NAME,\s*(?:@)?"((?:\\.|[^"\\])*)"\)')
+
+          rows = []
+          funcs = list(func_re.finditer(text))
+          for i, fm in enumerate(funcs):
+              wid = int(fm.group(1))
+              fend = funcs[i + 1].start() if i + 1 < len(funcs) else len(text)
+              block = text[fm.start():fend]
+              cases = list(re.finditer(r'^\s*CASE "([^"]+)"\s*$', block, re.M))
+              for ci, cm in enumerate(cases):
+                  field = cm.group(1)
+                  if field not in field_names:
+                      continue
+                  cend = cases[ci + 1].start() if ci + 1 < len(cases) else len(block)
+                  cblock = block[cm.end():cend]
+                  for sm in literal_re.finditer(cblock):
+                      value = sm.group(1)
+                      if eng.search(value) and not hangul.search(value):
+                          rows.append((wid, field, value))
+
+          print(f'ACTIVE_FUNCTIONS={len(funcs)}')
+          print(f'ENGLISH_ONLY_UI={len(rows)}')
+          for row in rows[:140]:
+              print(f'{row[0]}\t{row[1]}\t{row[2]}')
+          if len(rows) > 140:
+              print(f'... {len(rows)-140} more')
+          PY
