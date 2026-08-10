@@ -30,7 +30,6 @@ jobs:
           raw = p.read_bytes()
           assert raw.startswith(b'\xef\xbb\xbf'), 'UTF-8 BOM missing'
           text = raw.decode('utf-8-sig')
-          original = text
 
           protected = ['名前','描写','ShortName','Inspect','Platform','Base Weapon','Ammo','Accuracy','Burst/Set','Price']
           before_counts = {k: text.count(f'CASE "{k}"') for k in protected}
@@ -90,26 +89,22 @@ jobs:
           assert len(rules) == 50
 
           func_re = re.compile(r'^@WeaponReceiver(\d+)\(ARG, O_DATA, V_NAME\)\s*$', re.M)
-          funcs = list(func_re.finditer(text))
-          by_id = {int(m.group(1)): (m.start(), funcs[i+1].start() if i+1 < len(funcs) else len(text)) for i, m in enumerate(funcs)}
+
+          def get_block(src, rid):
+              funcs = list(func_re.finditer(src))
+              for i, fm in enumerate(funcs):
+                  if int(fm.group(1)) == rid:
+                      end = funcs[i+1].start() if i+1 < len(funcs) else len(src)
+                      return fm.start(), end, src[fm.start():end]
+              raise AssertionError(f'missing receiver {rid}')
 
           changed = 0
           for rid, old, new in rules:
-              assert rid in by_id, f'missing receiver {rid}'
-              start, end = by_id[rid]
-              block = text[start:end]
-              needle = f'CALLF MAKE_STR(V_NAME, "{old}")'
-              replacement = f'CALLF MAKE_STR(V_NAME, "{new}")'
-              count = block.count(needle)
-              assert count == 1, f'{rid}: expected 1 old match, got {count}: {old}'
-              block = block.replace(needle, replacement, 1)
-              text = text[:start] + block + text[end:]
-              delta = len(block) - (end - start)
-              if delta:
-                  for k, (s, e) in list(by_id.items()):
-                      if s > start:
-                          by_id[k] = (s + delta, e + delta)
-                  by_id[rid] = (start, end + delta)
+              start, end, block = get_block(text, rid)
+              pat = re.compile(r'(CALLF MAKE_STR\(V_NAME,\s*@?")' + re.escape(old) + r'("\))')
+              block2, n = pat.subn(lambda m: m.group(1) + new + m.group(2), block, count=1)
+              assert n == 1, f'{rid}: expected 1 old match, got {n}: {old}'
+              text = text[:start] + block2 + text[end:]
               changed += 1
 
           assert changed == 50
@@ -117,19 +112,20 @@ jobs:
           assert before_counts == after_counts, (before_counts, after_counts)
 
           for rid, old, new in rules:
-              start, end = by_id[rid]
-              block = text[start:end]
-              assert f'CALLF MAKE_STR(V_NAME, "{old}")' not in block, f'old remains: {rid} {old}'
-              assert f'CALLF MAKE_STR(V_NAME, "{new}")' in block, f'new missing: {rid} {new}'
+              _, _, block = get_block(text, rid)
+              old_pat = re.compile(r'CALLF MAKE_STR\(V_NAME,\s*@?"' + re.escape(old) + r'"\)')
+              new_pat = re.compile(r'CALLF MAKE_STR\(V_NAME,\s*@?"' + re.escape(new) + r'"\)')
+              assert not old_pat.search(block), f'old remains: {rid} {old}'
+              assert new_pat.search(block), f'new missing: {rid} {new}'
 
           eng = re.compile(r'[A-Za-z]{2,}')
           hangul = re.compile(r'[가-힣]')
           literal_re = re.compile(r'CALLF MAKE_STR\(V_NAME,\s*(?:@)?"((?:\\.|[^"\\])*)"\)')
           remaining = []
-          funcs2 = list(func_re.finditer(text))
-          for i, fm in enumerate(funcs2):
+          funcs = list(func_re.finditer(text))
+          for i, fm in enumerate(funcs):
               rid = int(fm.group(1))
-              fend = funcs2[i+1].start() if i+1 < len(funcs2) else len(text)
+              fend = funcs[i+1].start() if i+1 < len(funcs) else len(text)
               block = text[fm.start():fend]
               cases = list(re.finditer(r'^\s*CASE "([^"]+)"\s*$', block, re.M))
               for ci, cm in enumerate(cases):
