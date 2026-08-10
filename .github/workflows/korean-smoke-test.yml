@@ -1,0 +1,75 @@
+name: Korean unattended smoke test
+
+on:
+  push:
+    paths:
+      - '.github/workflows/korean-smoke-test.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 1
+          lfs: false
+
+      - name: Materialize Emuera engine
+        shell: bash
+        run: |
+          git lfs pull --include="Emuera.exe" --exclude=""
+          bytes=$(stat -c%s Emuera.exe)
+          echo "Emuera.exe bytes=$bytes"
+          test "$bytes" -gt 100000
+
+      - name: Install headless runtime
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y xvfb libgdiplus mono-runtime libmono-system-windows-forms4.0-cil
+          mono --version | head -n 2
+
+      - name: Boot engine headlessly
+        shell: bash
+        run: |
+          rm -f emuera.log emuera.log.prev smoke.stdout
+          set +e
+          xvfb-run -a timeout 30s mono ./Emuera.exe -debug > smoke.stdout 2>&1
+          rc=$?
+          set -e
+          echo "SMOKE_RC=$rc"
+          tail -n 120 smoke.stdout || true
+          for f in emuera.log emuera.log.prev; do
+            if [ -f "$f" ]; then
+              echo "===== $f ====="
+              tail -n 160 "$f" || true
+            fi
+          done
+          cat smoke.stdout emuera.log emuera.log.prev 2>/dev/null > smoke.combined || true
+          if grep -Eiq 'Unhandled Exception|SyntaxError|Script.*Error|Parser.*Error|Compile.*Error|System\.[A-Za-z]+Exception|致命的|構文エラー' smoke.combined; then
+            echo 'Fatal/parse error detected during smoke boot'
+            exit 1
+          fi
+          if [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ]; then
+            echo "Unexpected engine exit code: $rc"
+            exit 1
+          fi
+          echo 'Headless engine smoke passed'
+
+      - name: Upload smoke logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: korean-smoke-logs
+          path: |
+            smoke.stdout
+            emuera.log
+            emuera.log.prev
+          if-no-files-found: ignore
+          retention-days: 14
