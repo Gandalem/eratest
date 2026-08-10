@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  diagnose:
+  translate:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Korean branch
@@ -19,7 +19,111 @@ jobs:
           ref: korean
           fetch-depth: 0
 
-      - name: Diagnose remaining melee names
+      - name: Translate remaining natural-language melee names
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          from collections import defaultdict
+
+          p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Armory/000 Melee/000 Melee.ERB')
+          raw = p.read_bytes()
+          assert raw.startswith(b'\xef\xbb\xbf'), 'UTF-8 BOM missing'
+          text = raw.decode('utf-8-sig')
+          before = text
+
+          rules = [
+              (22, 'FullName', 'Compliant Golden-Hooped Rod「Ruyi Jingu Bang」', '여의금고봉「Ruyi Jingu Bang」'),
+              (23, '名前', 'sword', '검'),
+              (23, 'FullName', 'sword', '검'),
+              (24, '名前', 'iron spear', '철제 창'),
+              (24, 'FullName', 'iron spear', '철제 창'),
+              (25, '名前', 'javelin', '투창'),
+              (25, 'FullName', 'javelin', '투창'),
+              (26, '名前', 'pilum', '필룸'),
+              (26, 'FullName', 'pilum', '필룸'),
+              (27, '名前', 'long mace', '긴 메이스'),
+              (27, 'FullName', 'long mace', '긴 메이스'),
+              (28, '名前', 'mace', '메이스'),
+              (28, 'FullName', 'mace', '메이스'),
+              (59, '名前', 'ultratech athame', '초첨단 아테임'),
+              (59, 'FullName', 'Gensou-chan Cloning Athame「SLICER」', '겐소우짱 복제용 아테임「SLICER」'),
+              (59, 'FullName', 'ultratech athame', '초첨단 아테임'),
+              (100, 'FullName', 'Flaming Jian「Sword of Hisou」', '화염 지안「Sword of Hisou」'),
+              (102, '名前', 'comically large spoon', '코믹하게 큰 스푼'),
+              (102, 'FullName', 'comically large spoon', '코믹하게 큰 스푼'),
+              (104, '名前', 'needle', '바늘'),
+              (104, 'FullName', 'Needle', '바늘'),
+              (105, 'FullName', 'Watchtower Sword「Roukanken」', '망루의 검「Roukanken」'),
+              (106, '名前', 'wooden hammer', '나무 망치'),
+              (106, 'FullName', 'Wooden Hammer', '나무 망치'),
+              (107, '名前', 'luna shooter cast', '루나 슈터 캐스트'),
+              (107, 'FullName', 'luna shooter cast', '루나 슈터 캐스트'),
+              (108, '名前', 'shock wand', '전기 충격봉'),
+              (108, 'FullName', 'EFun Shock Wand「Negotiator」', 'EFun 전기 충격봉「Negotiator」'),
+              (163, '名前', 'Stop Sign', '정지 표지판'),
+              (163, 'FullName', '「Stop Sign」', '「정지 표지판」'),
+              (164, 'FullName', 'Clock Needle「Lævateinn」', '시계 바늘「Lævateinn」'),
+              (165, 'FullName', 'Danmaku Spear「Gungnir」', '탄막 창「Gungnir」'),
+          ]
+          assert len(rules) == 32
+
+          protected_cases = [
+              '名前', 'FullName', '描写', '装備部位', 'Damage', 'Accuracy', 'Burst',
+              'Grade', 'Tech Level', 'Price', 'Type', 'Class', 'Platform', 'Tags'
+          ]
+          before_case_counts = {k: before.count(f'CASE "{k}"') for k in protected_cases}
+          token_re = re.compile(r'%[^%\n]+%|\{[^{}\n]+\}|\\n|\\@')
+          before_tokens = token_re.findall(before)
+
+          func_re = re.compile(r'^@Weapon(\d+)\(ARG, O_DATA, V_NAME\)\s*$', re.M)
+          funcs = list(func_re.finditer(text))
+          by_id = {int(m.group(1)): (m.start(), funcs[i + 1].start() if i + 1 < len(funcs) else len(text)) for i, m in enumerate(funcs)}
+          grouped = defaultdict(list)
+          for rule in rules:
+              grouped[rule[0]].append(rule)
+
+          pieces = []
+          cursor = 0
+          for wid in sorted(grouped, key=lambda x: by_id[x][0]):
+              start, end = by_id[wid]
+              pieces.append(text[cursor:start])
+              block = text[start:end]
+              for _, field, old, new in grouped[wid]:
+                  cases = list(re.finditer(r'^\s*CASE "([^"]+)"\s*$', block, re.M))
+                  target = None
+                  for ci, cm in enumerate(cases):
+                      if cm.group(1) != field:
+                          continue
+                      cend = cases[ci + 1].start() if ci + 1 < len(cases) else len(block)
+                      cblock = block[cm.end():cend]
+                      needle = f'CALLF MAKE_STR(V_NAME, "{old}")'
+                      count = cblock.count(needle)
+                      if count == 1:
+                          target = (cm.end(), cend, cblock, needle)
+                          break
+                  assert target is not None, f'missing/ambiguous rule: {wid} {field} {old!r}'
+                  cs, ce, cblock, needle = target
+                  repl = f'CALLF MAKE_STR(V_NAME, "{new}")'
+                  new_cblock = cblock.replace(needle, repl, 1)
+                  block = block[:cs] + new_cblock + block[ce:]
+              pieces.append(block)
+              cursor = end
+          pieces.append(text[cursor:])
+          text = ''.join(pieces)
+
+          for wid, field, old, new in rules:
+              assert new in text, f'new value missing: {wid} {new!r}'
+
+          after_case_counts = {k: text.count(f'CASE "{k}"') for k in protected_cases}
+          assert before_case_counts == after_case_counts, (before_case_counts, after_case_counts)
+          assert before_tokens == token_re.findall(text), 'protected token sequence changed'
+          p.write_bytes(b'\xef\xbb\xbf' + text.encode('utf-8'))
+          print(f'TRANSLATED={len(rules)}')
+          PY
+
+      - name: Validate
         shell: bash
         run: |
           python3 - <<'PY'
@@ -30,14 +134,37 @@ jobs:
           raw = p.read_bytes()
           assert raw.startswith(b'\xef\xbb\xbf'), 'UTF-8 BOM missing'
           text = raw.decode('utf-8-sig')
-
           func_re = re.compile(r'^@Weapon(\d+)\(ARG, O_DATA, V_NAME\)\s*$', re.M)
-          fields = {'名前', 'FullName'}
           eng = re.compile(r'[A-Za-z]{2,}')
           hangul = re.compile(r'[가-힣]')
           literal_re = re.compile(r'CALLF MAKE_STR\(V_NAME,\s*(?:@)?"((?:\\.|[^"\\])*)"\)')
+          expected = {
+              (3, '名前', 'Free Spirit'),
+              (4, '名前', 'LAC358'),
+              (5, '名前', 'Typus-MIKAEL'),
+              (9, '名前', 'shouwatou'),
+              (9, 'FullName', 'shouwatou'),
+              (10, '名前', 'Farmhand'),
+              (11, '名前', 'Typus-AZARIAH'),
+              (12, '名前', 'Typus-MARIA'),
+              (13, '名前', 'SP8'),
+              (15, '名前', 'Strykr'),
+              (17, '名前', 'Chapman'),
+              (19, '名前', 'Cut-Brush'),
+              (20, '名前', 'Trishula'),
+              (21, '名前', 'Ceremonial'),
+              (22, '名前', 'Ruyi Jingu Bang'),
+              (59, '名前', 'SLICER'),
+              (100, '名前', 'Sword of Hisou'),
+              (105, '名前', 'Roukanken'),
+              (108, '名前', 'Negotiator'),
+              (162, '名前', 'Rod of Remorse'),
+              (162, 'FullName', '「Rod of Remorse」'),
+              (164, '名前', 'Lævateinn'),
+              (165, '名前', 'Gungnir'),
+          }
 
-          rows = []
+          rows = set()
           funcs = list(func_re.finditer(text))
           for i, fm in enumerate(funcs):
               wid = int(fm.group(1))
@@ -46,7 +173,7 @@ jobs:
               cases = list(re.finditer(r'^\s*CASE "([^"]+)"\s*$', block, re.M))
               for ci, cm in enumerate(cases):
                   field = cm.group(1)
-                  if field not in fields:
+                  if field not in {'名前', 'FullName'}:
                       continue
                   cend = cases[ci + 1].start() if ci + 1 < len(cases) else len(block)
                   cblock = block[cm.end():cend]
@@ -57,10 +184,23 @@ jobs:
                           continue
                       value = sm.group(1)
                       if eng.search(value) and not hangul.search(value):
-                          rows.append((wid, field, value))
+                          rows.add((wid, field, value))
 
-          print(f'ACTIVE_FUNCTIONS={len(funcs)}')
+          assert rows == expected, f'unexpected English-only names: extra={sorted(rows-expected)} missing={sorted(expected-rows)}'
           print(f'ENGLISH_ONLY_ACTIVE_NAMES={len(rows)}')
-          for wid, field, value in rows:
-              print(f'{wid}\t{field}\t{value}')
+          print('REMAINING_ALL_PROPER_NAMES=1')
           PY
+          git diff --check
+          test "$(git diff --name-only | wc -l)" -eq 1
+          test "$(git diff --name-only)" = "ERB/TRANSLATION/OMOGATARI/ITEM/Armory/000 Melee/000 Melee.ERB"
+          test "$(git diff --numstat | awk '{print $1}')" -eq 32
+          test "$(git diff --numstat | awk '{print $2}')" -eq 32
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "ERB/TRANSLATION/OMOGATARI/ITEM/Armory/000 Melee/000 Melee.ERB"
+          git commit -m "근접무기 UI 잔여 자연어 이름 마무리 60차"
+          git push origin korean
