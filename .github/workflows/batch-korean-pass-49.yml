@@ -7,43 +7,171 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  diagnose:
+  translate:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Korean branch
         uses: actions/checkout@v4
         with:
           ref: korean
-          fetch-depth: 1
+          fetch-depth: 0
 
-      - name: List remaining magazine UI strings
+      - name: Translate magazine UI strings
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import re
 
-          p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Magazines.ERB')
-          text = p.read_bytes().decode('utf-8-sig')
-          func_re = re.compile(r'^@WeaponMag(\d+)\(ARG, O_DATA, V_NAME\)\s*$', re.M)
-          starts = list(func_re.finditer(text))
-          eng = re.compile(r'[A-Za-z]{2,}')
-          for idx, m in enumerate(starts):
-              mag_id = int(m.group(1))
-              if mag_id < 41:
-                  continue
-              end = starts[idx + 1].start() if idx + 1 < len(starts) else len(text)
-              block = text[m.start():end]
-              vals = {}
-              for key in ('名前', '描写'):
-                  km = re.search(rf'CASE "{key}"\s*\n\s*CALLF MAKE_STR\(V_NAME,\s*(.+?)\)\s*$', block, re.M)
-                  if km:
-                      vals[key] = km.group(1).strip()
-              name = vals.get('名前', '')
-              desc = vals.get('描写', '')
-              if eng.search(name) or eng.search(desc):
-                  print(f'ID={mag_id}\tNAME={name}\tDESC={desc}')
+          path = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Magazines.ERB')
+          raw = path.read_bytes()
+          if not raw.startswith(b'\xef\xbb\xbf'):
+              raise SystemExit('UTF-8 BOM missing before edit')
+          text = raw.decode('utf-8-sig')
+          lines = text.splitlines(keepends=True)
+
+          protected = ['ShortName', '装備部位', 'Platform', 'Mag Size/Set', 'Ammo', 'Price']
+          protected_before = {k: text.count(f'CASE "{k}"') for k in protected}
+
+          name_rules = [
+              (41, '"SVG-76 Gryzov 6L26 5.45x39mm 45-round magazine"', '"SVG-76 그리즈보프 6L26 5.45x39mm 45발 탄창"'),
+              (42, '"GH54 Gabe Hubert 9x19mm 30-round magazine"', '"GH54 게이브 휴버트 9x19mm 30발 탄창"'),
+              (43, '"GH54 X Products X-5 9x19mm 50-round magazine"', '"GH54 X 프로덕츠 X-5 9x19mm 50발 탄창"'),
+              (44, '"SVG-76 Gryzov 6L31 5.45x39mm 60-round magazine"', '"SVG-76 그리즈보프 6L31 5.45x39mm 60발 탄창"'),
+              (46, '"MR-63 ArmTeck 7.62x51mm 20-round magazine"', '"MR-63 암텍 7.62x51mm 20발 탄창"'),
+              (49, '"Stormer 5.56x45mm 15-round magazine"', '"스토머 5.56x45mm 15발 탄창"'),
+              (50, '"Bastard 5.56x45mm 15-round feeding strip"', '"바스타드 5.56x45mm 15발 급탄 스트립"'),
+              (51, '"Bastard 5.56x45mm 30-round feeding strip"', '"바스타드 5.56x45mm 30발 급탄 스트립"'),
+              (52, '"Bastard 5.56x45mm 50-round drum magazine"', '"바스타드 5.56x45mm 50발 드럼 탄창"'),
+              (53, '"RPL-20 5.45x39mm 100-round belt"', '"RPL-20 5.45x39mm 100발 탄띠"'),
+              (54, '"FT-70 Phantom Dynamics .43 14-round magazine"', '"FT-70 팬텀 다이내믹스 .43 14발 탄창"'),
+              (55, '"FD-17 Phantom Dynamics .43 8-round magazine"', '"FD-17 팬텀 다이내믹스 .43 8발 탄창"'),
+              (56, '"DD17 Deterrence Dispensed Menendez 9x19mm 17-round magazine"', '"DD17 디터런스 디스펜스드 메넨데즈 9x19mm 17발 탄창"'),
+              (57, '"AG-1 Gryzov 6L29 5.56x45mm 30-round magazine"', '"AG-1 그리즈보프 6L29 5.56x45mm 30발 탄창"'),
+              (58, '"AG-3 Gryzov 7.62x39mm 30-round magazine"', '"AG-3 그리즈보프 7.62x39mm 30발 탄창"'),
+              (59, '"HP Tertiary Arms 9x19mm 16-round magazine"', '"HP 터셔리 암즈 9x19mm 16발 탄창"'),
+              (60, '"BENCHY Gensou-chan 7.62x20mm 20-round magazine"', '"BENCHY 겐소우짱 7.62x20mm 20발 탄창"'),
+              (62, '"BENCHY Gensou-chan Extended 7.62x20mm 50-round magazine"', '"BENCHY 겐소우짱 확장형 7.62x20mm 50발 탄창"'),
+              (63, '"Burkov GKO622 9x18mm 8-round magazine"', '"버코프 GKO622 9x18mm 8발 탄창"'),
+              (64, '"MCM GKO622 5.6x15mmR 10-round magazine"', '"MCM GKO622 5.6x15mmR 10발 탄창"'),
+              (65, '"MP-102 ArmTeck 9x19mm 15-round magazine"', '"MP-102 암텍 9x19mm 15발 탄창"'),
+              (66, '"TMP-35 Tricorne 9x19mm 32-round magazine"', '"TMP-35 트라이코르네 9x19mm 32발 탄창"'),
+              (67, '"TMP-35 Tricorne 9x19mm 20-round magazine"', '"TMP-35 트라이코르네 9x19mm 20발 탄창"'),
+              (68, '"APD-57 High-Ground 5.7x28mm 20-round magazine"', '"APD-57 하이그라운드 5.7x28mm 20발 탄창"'),
+              (69, '"APD-57 High-Ground 5.7x28mm 30-round magazine"', '"APD-57 하이그라운드 5.7x28mm 30발 탄창"'),
+              (70, '"APT-57 High-Ground 5.7x28mm 50-round magazine"', '"APT-57 하이그라운드 5.7x28mm 50발 탄창"'),
+              (71, '"GH56 Gabe Hubert 4.6x30mm 40-round magazine"', '"GH56 게이브 휴버트 4.6x30mm 40발 탄창"'),
+              (72, '"GH56 Gabe Hubert 4.6x30mm 20-round magazine"', '"GH56 게이브 휴버트 4.6x30mm 20발 탄창"'),
+              (73, '"GH46 Gabe Hubert 4.6x30mm 20-round magazine"', '"GH46 게이브 휴버트 4.6x30mm 20발 탄창"'),
+              (74, '"ATPSA Cactus 19x99mm 15-round magazine"', '"ATPSA 캑터스 19x99mm 15발 탄창"'),
+              (75, '"PSB Tricorne 9x19mm 36-round magazine"', '"PSB 트라이코르네 9x19mm 36발 탄창"'),
+              (76, '"PPP-177 .173 30-round magazine"', '"PPP-177 .173 30발 탄창"'),
+              (77, '"PPP-177 .173 400-round hopper magazine"', '"PPP-177 .173 400발 호퍼 탄창"'),
+              (78, '"PPB .173 13-round magazine"', '"PPB .173 13발 탄창"'),
+              (79, '"PPB .173 13-round magazine"', '"PPB .173 13발 탄창"'),
+              (80, '"Dutyman FoamSoft 12.7x72mm 6-round cylinder"', '"듀티맨 폼소프트 12.7x72mm 6발 실린더"'),
+              (81, '"Dutyman FoamSoft 12.7x72mm 8-round cylinder"', '"듀티맨 폼소프트 12.7x72mm 8발 실린더"'),
+              (82, '"LAC358 LUNINCO 3000mAh Battery"', '"LAC358 LUNINCO 3000mAh 배터리"'),
+              (83, '"BS10 CONIG 10x50mmR 10-round magazine"', '"BS10 CONIG 10x50mmR 10발 탄창"'),
+              (84, '"BS10 CONIG 10x50mmR 30-round magazine"', '"BS10 CONIG 10x50mmR 30발 탄창"'),
+              (85, '"CAWS Gabe Hubert 12ga 10-shell Magazine"', '"CAWS 게이브 휴버트 12게이지 10발 탄창"'),
+              (87, '@"Volitional Windurger %CaliberTR(".41 Volcanic")% 8-round Tube Magazine"', '@"볼리셔널 윈더거 %CaliberTR(".41 Volcanic")% 8발 튜브 탄창"'),
+              (88, '@"Volitional Windurger %CaliberTR(".41 Volcanic")% 10-round Tube Magazine"', '@"볼리셔널 윈더거 %CaliberTR(".41 Volcanic")% 10발 튜브 탄창"'),
+              (89, '@"Volitional Windurger %CaliberTR(".41 Volcanic")% 20-round Tube Magazine"', '@"볼리셔널 윈더거 %CaliberTR(".41 Volcanic")% 20발 튜브 탄창"'),
+              (90, '@"Volitional Windurger %CaliberTR(".41 Volcanic")% 25-round Tube Magazine"', '@"볼리셔널 윈더거 %CaliberTR(".41 Volcanic")% 25발 튜브 탄창"'),
+              (91, '@"Volitional Windurger %CaliberTR(".41 Volcanic")% 30-round Tube Magazine"', '@"볼리셔널 윈더거 %CaliberTR(".41 Volcanic")% 30발 튜브 탄창"'),
+              (92, '@".45 Automatic Broughton Pistol 7-round Magazine"', '@".45 오토매틱 브라운드 피스톨 7발 탄창"'),
+          ]
+
+          desc_rules = [
+              (165, '"An \\"infinite capacity\\" 9x19mm magazine for the Tricorne CCW15 pistol. Uses Youjutsu essence to create bullets. Manufactured by Keiga Enterprises."', '"트라이코르네 CCW15 권총용 \\"무한 용량\\" 9x19mm 탄창이다. 요술 정수를 사용해 탄환을 생성한다. 케이가 엔터프라이즈에서 제조했다."'),
+              (166, '"An \\"infinite capacity\\" 5.56x45mm magazine for rifles using the STANAG 4179 standard. Uses Youjutsu essence to create bullets. Manufactured by Keiga Enterprises."', '"STANAG 4179 규격을 사용하는 소총용 \\"무한 용량\\" 5.56x45mm 탄창이다. 요술 정수를 사용해 탄환을 생성한다. 케이가 엔터프라이즈에서 제조했다."'),
+              (167, '"An \\"infinite capacity\\" 7.62x51mm magazine for rifles using the CETME magazine standard. Uses Youjutsu essence to create bullets. Manufactured by Keiga Enterprises."', '"CETME 탄창 규격을 사용하는 소총용 \\"무한 용량\\" 7.62x51mm 탄창이다. 요술 정수를 사용해 탄환을 생성한다. 케이가 엔터프라이즈에서 제조했다."'),
+              (168, '"An \\"infinite capacity\\" 12ga magazine for Renov Kabarga-83 and compatibles. Uses Youjutsu essence to create bullets. Manufactured by Keiga Enterprises."', '"레노브 카바르가-83 및 호환 무기용 \\"무한 용량\\" 12게이지 탄창이다. 요술 정수를 사용해 탄환을 생성한다. 케이가 엔터프라이즈에서 제조했다."'),
+              (169, '"An \\"infinite capacity\\" 12.7x99mm magazine for Brennan LRS and compatibles. Uses Youjutsu essence to create bullets. Manufactured by Keiga Enterprises."', '"브레넌 LRS 및 호환 무기용 \\"무한 용량\\" 12.7x99mm 탄창이다. 요술 정수를 사용해 탄환을 생성한다. 케이가 엔터프라이즈에서 제조했다."'),
+              (170, '"An \\"infinite capacity\\" magazine for LUNINCO LAC1 and compatibles. Uses Youjutsu essence to power the weapon instead of a battery. Manufactured by Keiga Enterprises."', '"LUNINCO LAC1 및 호환 무기용 \\"무한 용량\\" 탄창이다. 배터리 대신 요술 정수를 사용해 무기에 동력을 공급한다. 케이가 엔터프라이즈에서 제조했다."'),
+              (171, '"An \\"infinite capacity\\" belt for High Ground Minisa and compatibles. Uses Youjutsu essence to create bullets. Manufactured by Keiga Enterprises."', '"하이그라운드 미니사 및 호환 무기용 \\"무한 용량\\" 탄띠다. 요술 정수를 사용해 탄환을 생성한다. 케이가 엔터프라이즈에서 제조했다."'),
+              (172, '"An \\"infinite capacity\\" belt for ArmTeck VMM-7RB and compatibles. Uses Youjutsu essence to create bullets. Manufactured by Keiga Enterprises."', '"암텍 VMM-7RB 및 호환 무기용 \\"무한 용량\\" 탄띠다. 요술 정수를 사용해 탄환을 생성한다. 케이가 엔터프라이즈에서 제조했다."'),
+              (173, '"An \\"infinite capacity\\" belt for Phandom Dynamics Adder. Uses Youjutsu essence to create arrows. Manufactured by Keiga Enterprises."', '"팬텀 다이내믹스 애더용 \\"무한 용량\\" 탄띠다. 요술 정수를 사용해 화살을 생성한다. 케이가 엔터프라이즈에서 제조했다."'),
+          ]
+
+          if len(name_rules) != 47 or len(desc_rules) != 9:
+              raise SystemExit(f'rule count mismatch: names={len(name_rules)} desc={len(desc_rules)}')
+
+          def replace_field(mag_id, field, old_rhs, new_rhs):
+              marker = f'@WeaponMag{mag_id}(ARG, O_DATA, V_NAME)'
+              starts = [i for i, line in enumerate(lines) if line.rstrip('\r\n') == marker]
+              if len(starts) != 1:
+                  raise SystemExit(f'function marker mismatch {mag_id}: {len(starts)}')
+              start = starts[0]
+              next_funcs = [i for i in range(start + 1, len(lines)) if lines[i].startswith('@')]
+              end = next_funcs[0] if next_funcs else len(lines)
+              case_hits = [i for i in range(start, end) if lines[i].rstrip('\r\n').lstrip() == f'CASE "{field}"']
+              if len(case_hits) != 1:
+                  raise SystemExit(f'{field} CASE mismatch {mag_id}: {len(case_hits)}')
+              ci = case_hits[0]
+              old_stmt = f'CALLF MAKE_STR(V_NAME, {old_rhs})'
+              new_stmt = f'CALLF MAKE_STR(V_NAME, {new_rhs})'
+              hits = []
+              for j in range(ci + 1, end):
+                  stripped = lines[j].rstrip('\r\n').lstrip()
+                  if stripped.startswith('CASE "') or stripped == 'ENDSELECT':
+                      break
+                  if stripped == old_stmt:
+                      hits.append(j)
+              if len(hits) != 1:
+                  raise SystemExit(f'{field} value mismatch {mag_id}: {len(hits)} old={old_rhs!r}')
+              j = hits[0]
+              body = lines[j].rstrip('\r\n')
+              indent = body[:len(body) - len(body.lstrip())]
+              newline = lines[j][len(body):]
+              lines[j] = indent + new_stmt + newline
+
+          for mag_id, old, new in name_rules:
+              replace_field(mag_id, '名前', old, new)
+          for mag_id, old, new in desc_rules:
+              replace_field(mag_id, '描写', old, new)
+
+          out = ''.join(lines)
+          protected_after = {k: out.count(f'CASE "{k}"') for k in protected}
+          if protected_before != protected_after:
+              raise SystemExit(f'protected schema key count changed: {protected_before} -> {protected_after}')
+
+          path.write_bytes(b'\xef\xbb\xbf' + out.encode('utf-8'))
+          print(f'[magazines] translated names={len(name_rules)} descriptions={len(desc_rules)} total={len(name_rules)+len(desc_rules)}')
           PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          target='ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Magazines.ERB'
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Magazines.ERB')
+          b = p.read_bytes()
+          if not b.startswith(b'\xef\xbb\xbf'):
+              raise SystemExit('UTF-8 BOM missing after edit')
+          print('[validate] BOM ok')
+          PY
+          git diff --check
+          changed="$(git diff --name-only)"
+          test "$changed" = "$target"
+          stats="$(git diff --numstat -- "$target")"
+          echo "[validate] $stats"
+          add="$(printf '%s\n' "$stats" | awk '{print $1}')"
+          del="$(printf '%s\n' "$stats" | awk '{print $2}')"
+          test "$add" = "56"
+          test "$del" = "56"
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Magazines.ERB'
+          git commit -m '탄창 UI 표시명 및 영어 설명 2차 한글화 49차'
+          git push origin korean
