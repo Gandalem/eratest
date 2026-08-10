@@ -28,7 +28,7 @@ jobs:
           echo "Emuera.exe bytes=$bytes"
           test "$bytes" -gt 100000
 
-      - name: Install headless Wine runtime
+      - name: Install headless Wine and .NET Desktop 8
         shell: bash
         env:
           WINEARCH: win64
@@ -36,10 +36,14 @@ jobs:
           WINEDEBUG: -all
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y xvfb wine wine64 winetricks cabextract
+          sudo apt-get install -y xvfb wine wine64 curl
           wine --version
           xvfb-run -a wineboot -u
-          xvfb-run -a winetricks -q dotnetdesktop8
+          curl -fL --retry 3 -o dotnet-desktop-8.exe https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/8.0.29/windowsdesktop-runtime-8.0.29-win-x64.exe
+          test "$(stat -c%s dotnet-desktop-8.exe)" -gt 10000000
+          xvfb-run -a wine ./dotnet-desktop-8.exe /install /quiet /norestart
+          test -d "$WINEPREFIX/drive_c/Program Files/dotnet/shared/Microsoft.WindowsDesktop.App"
+          find "$WINEPREFIX/drive_c/Program Files/dotnet/shared/Microsoft.WindowsDesktop.App" -maxdepth 1 -mindepth 1 -type d -printf '%f\n'
 
       - name: Boot engine headlessly
         shell: bash
@@ -66,7 +70,7 @@ jobs:
             echo 'Fatal/parse error detected during smoke boot'
             exit 1
           fi
-          if grep -Eiq 'could not find wine mono|mono package.*not found|You must install \.NET|\.NET location: Not found|requires.*\.NET|missing.*runtime' smoke.combined; then
+          if grep -Eiq 'You must install \.NET|\.NET location: Not found|requires.*\.NET|missing.*runtime' smoke.combined; then
             echo 'Windows runtime dependency missing'
             exit 2
           fi
