@@ -7,10 +7,10 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  diagnose:
+  translate:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Korean branch
@@ -19,7 +19,7 @@ jobs:
           ref: korean
           fetch-depth: 1
 
-      - name: List untranslated barrel-extension UI strings
+      - name: Translate barrel-extension display names
         shell: bash
         run: |
           python3 - <<'PY'
@@ -27,28 +27,163 @@ jobs:
           import re
 
           p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Barrel Extensions.ERB')
-          text = p.read_bytes().decode('utf-8-sig')
-          func_re = re.compile(r'^@WeaponBarrel(\d+)\(ARG, O_DATA, V_NAME\)\s*$', re.M)
-          starts = list(func_re.finditer(text))
+          raw = p.read_bytes()
+          if not raw.startswith(b'\xef\xbb\xbf'):
+              raise SystemExit('UTF-8 BOM missing before edit')
+          text = raw.decode('utf-8-sig')
+          before = text
+
+          rules = {
+              0: ('Threaded barrel', '나사산 총열'),
+              1: ('MR-70 Final Extensions Phantom 5.56x45 flash hider', 'MR-70 파이널 익스텐션즈 팬텀 5.56x45 소염기'),
+              2: ('Phantom Dynamics MMS 5.56x45 3-Prong Flash Eliminator', '팬텀 다이나믹스 MMS 5.56x45 3갈래 소염기'),
+              3: ('NovelTooling Solitary 5.56x45 blast regulator', '노벨툴링 솔리터리 5.56x45 폭압 조절기'),
+              4: ('MR-107 Final Extensions Key 7.62x51 muzzle brake', 'MR-107 파이널 익스텐션즈 키 7.62x51 총구 제동기'),
+              5: ('MR-107 HGA SF-38 7.62x51 muzzle brake', 'MR-107 HGA SF-38 7.62x51 총구 제동기'),
+              6: ('MR-70 HGA SF-23 5.56x45 muzzle brake', 'MR-70 HGA SF-23 5.56x45 총구 제동기'),
+              7: ('Phantom Dynamics MMS 7.62x51 Muzzle Brake Kit', '팬텀 다이나믹스 MMS 7.62x51 총구 제동기 키트'),
+              8: ('HGA QD 9x19 muzzle brake', 'HGA QD 9x19 총구 제동기'),
+              9: ('MR-70 BLITZ 5.56x45 flash hider', 'MR-70 BLITZ 5.56x45 소염기'),
+              10: ('NovelTooling Solitary 7.62x51 blast regulator', '노벨툴링 솔리터리 7.62x51 폭압 조절기'),
+              11: ('SVG Hexagon Reactor 5.45x39 muzzle brake', 'SVG 헥사곤 리액터 5.45x39 총구 제동기'),
+              12: ('Final Extensions Scar 7.62x51 flash hider', '파이널 익스텐션즈 스카 7.62x51 소염기'),
+              13: ('NovelTooling ProComp 7.62x51 muzzle brake', '노벨툴링 프로컴프 7.62x51 총구 제동기'),
+              14: ('SVG Final Extensions Drakon 7.62x39 muzzle brake', 'SVG 파이널 익스텐션즈 드라콘 7.62x39 총구 제동기'),
+              15: ('HGA Outage 5.56x45 flash hider', 'HGA 아웃티지 5.56x45 소염기'),
+              16: ('Bambetov 7.62x54R sound suppressor', '밤베토프 7.62x54R 소음기'),
+              17: ('MR-70 NovelTooling WarComp 5.56x45 flash hider', 'MR-70 노벨툴링 워컴프 5.56x45 소염기'),
+              18: ('MR-107 Final Extensions Drakon 7.62x51 muzzle brake', 'MR-107 파이널 익스텐션즈 드라콘 7.62x51 총구 제동기'),
+              19: ('SVB SRVV Mk.2.0 7.62x54R muzzle brake-compensator', 'SVB SRVV Mk.2.0 7.62x54R 총구 제동 보정기'),
+              20: ('SVG Final Extensions Antidote 7.62x39 muzzle brake-compensator', 'SVG 파이널 익스텐션즈 앤티도트 7.62x39 총구 제동 보정기'),
+              21: ('MR-70 NovelTooling NT3 5.56x45 Flash hider', 'MR-70 노벨툴링 NT3 5.56x45 소염기'),
+              22: ('MP-102 HGA TJ 9x19 compensator', 'MP-102 HGA TJ 9x19 보정기'),
+              23: ('Phantom Dynamics 5.56x45 flash hider', '팬텀 다이나믹스 5.56x45 소염기'),
+              24: ('Noveske-style 9x19 muzzle brake-compensator', '노베스키 스타일 9x19 총구 제동 보정기'),
+              25: ('MP-102 9x19 Averdeen Custom 4 Port compensator', 'MP-102 9x19 애버딘 커스텀 4포트 보정기'),
+              26: ('MP-102 9x19 Double Diamond flash hider', 'MP-102 9x19 더블 다이아몬드 소염기'),
+              28: ('PG-16 5.45x39 muzzle brake-compensator', 'PG-16 5.45x39 총구 제동 보정기'),
+              29: ('Renov Tacfire Tanker Style muzzle brake', '리노브 택파이어 탱커 스타일 총구 제동기'),
+              30: ('Renov Witt Machine 7.62x54R muzzle brake', '리노브 위트 머신 7.62x54R 총구 제동기'),
+              31: ('Austrian Style 7.62x51 muzzle brake', '오스트리아식 7.62x51 총구 제동기'),
+              32: ('7.62x51 Tactical Compensator', '7.62x51 전술 보정기'),
+              33: ('SVG-76 5.45x39 muzzle brake-compensator (6P20 0-20)', 'SVG-76 5.45x39 총구 제동 보정기 (6P20 0-20)'),
+              35: ('PPG-9 9x19 muzzle brake-compensator', 'PPG-9 9x19 총구 제동 보정기'),
+              36: ('SVG-76 PWS CQB 76 5.45x39 muzzle brake', 'SVG-76 PWS CQB 76 5.45x39 총구 제동기'),
+              37: ('Final Extensions Monster Claw 12ga muzzle brake', '파이널 익스텐션즈 몬스터 클로 12ga 총구 제동기'),
+              38: ('GK-02 12ga muzzle brake', 'GK-02 12ga 총구 제동기'),
+              39: ('AG-1 5.56x45 muzzle brake-compensator', 'AG-1 5.56x45 총구 제동 보정기'),
+              40: ('Broughton Tactical Choke 12ga', '브라우턴 전술 초크 12ga'),
+              41: ('Renov HGA 7.62x54R muzzle brake', '리노브 HGA 7.62x54R 총구 제동기'),
+              42: ('MR-107 Fortis RED Brake 7.62x51 muzzle brake', 'MR-107 포티스 RED 브레이크 7.62x51 총구 제동기'),
+              43: ('GH PWN 5.7x28 flash hider', 'GH PWN 5.7x28 소염기'),
+              44: ('SVG-76 SRVV 5.45x39 muzzle brake-compensator', 'SVG-76 SRVV 5.45x39 총구 제동 보정기'),
+              45: ('SVG-67 SRVV 7.62x39 muzzle brake-compensator', 'SVG-67 SRVV 7.62x39 총구 제동 보정기'),
+              46: ('MR-70 HGA ST-6012 5.56x45 muzzle brake', 'MR-70 HGA ST-6012 5.56x45 총구 제동기'),
+              47: ('Brennan 12.7x99mm Tactical Muzzle Brake', '브레넌 12.7x99mm 전술 총구 제동기'),
+              48: ('Brennan 12.7x99mm Tactical Sound Moderator', '브레넌 12.7x99mm 전술 소음 완화기'),
+              49: ('NovelTooling SOURCES 556-MONSTER 5.56x45 sound suppressor', '노벨툴링 SOURCES 556-MONSTER 5.56x45 소음기'),
+              50: ('R-11 GH QD 7.62x51 sound suppressor', 'R-11 GH QD 7.62x51 소음기'),
+              51: ('SVG-76 Hexagon Wafflemaker 5.45x39 sound suppressor', 'SVG-76 헥사곤 와플메이커 5.45x39 소음기'),
+          }
+          if len(rules) != 50:
+              raise SystemExit(f'rule count mismatch: {len(rules)}')
+
+          protected = ['CASE "名前"', 'CASE "描写"', 'CASE "ShortName"', 'CASE "装備部位"', 'CASE "Accuracy"', 'CASE "Ammo"', 'CASE "Price"']
+          protected_counts = {s: before.count(s) for s in protected}
+
+          func_re = re.compile(r'(?ms)^@WeaponBarrel(\d+)\(ARG, O_DATA, V_NAME\)\s*$.*?(?=^@WeaponBarrel\d+\(ARG, O_DATA, V_NAME\)\s*$|\Z)')
+          seen = set()
+          changed = 0
+
+          def repl(m):
+              nonlocal_holder = None
+              global changed
+              item_id = int(m.group(1))
+              block = m.group(0)
+              if item_id not in rules:
+                  return block
+              old, new = rules[item_id]
+              needle = f'CALLF MAKE_STR(V_NAME, "{old}")'
+              replacement = f'CALLF MAKE_STR(V_NAME, "{new}")'
+              count = block.count(needle)
+              if count != 1:
+                  raise SystemExit(f'ID {item_id}: expected one name anchor, got {count}: {old}')
+              if 'CASE "名前"' not in block:
+                  raise SystemExit(f'ID {item_id}: name CASE missing')
+              block = block.replace(needle, replacement, 1)
+              seen.add(item_id)
+              changed += 1
+              return block
+
+          text = func_re.sub(repl, text)
+          missing = sorted(set(rules) - seen)
+          if missing:
+              raise SystemExit(f'missing IDs: {missing}')
+          if changed != 50:
+              raise SystemExit(f'changed count mismatch: {changed}')
+
+          for item_id, (old, new) in rules.items():
+              if f'CALLF MAKE_STR(V_NAME, "{old}")' in text:
+                  raise SystemExit(f'old name remains for ID {item_id}: {old}')
+              if f'CALLF MAKE_STR(V_NAME, "{new}")' not in text:
+                  raise SystemExit(f'new name missing for ID {item_id}: {new}')
+
+          for s, count in protected_counts.items():
+              if text.count(s) != count:
+                  raise SystemExit(f'protected schema count changed for {s}: {count} -> {text.count(s)}')
+
           eng = re.compile(r'[A-Za-z]{2,}')
           hangul = re.compile(r'[가-힣]')
-          names = []
-          descs = []
+          starts = list(re.finditer(r'^@WeaponBarrel(\d+)\(ARG, O_DATA, V_NAME\)\s*$', text, re.M))
+          remaining = []
           for idx, m in enumerate(starts):
-              item_id = int(m.group(1))
               end = starts[idx + 1].start() if idx + 1 < len(starts) else len(text)
               block = text[m.start():end]
-              for case, bucket in [('名前', names), ('描写', descs)]:
-                  km = re.search(rf'CASE "{case}"\s*\n(?:\s*IF[\s\S]*?ENDIF\s*\n)?\s*CALLF MAKE_STR\(V_NAME,\s*(.+?)\)\s*$', block, re.M)
-                  if not km:
-                      continue
-                  value = km.group(1).strip()
-                  if eng.search(value) and not hangul.search(value):
-                      bucket.append((item_id, value))
-          print(f'UNTRANSLATED_NAMES={len(names)}')
-          for item_id, value in names:
-              print(f'NAME\tID={item_id}\t{value}')
-          print(f'UNTRANSLATED_DESCS={len(descs)}')
-          for item_id, value in descs:
-              print(f'DESC\tID={item_id}\t{value}')
+              km = re.search(r'CASE "名前"\s*\n(?:\s*IF[\s\S]*?ENDIF\s*\n)?\s*CALLF MAKE_STR\(V_NAME,\s*(.+?)\)\s*$', block, re.M)
+              if not km:
+                  continue
+              value = km.group(1).strip()
+              if eng.search(value) and not hangul.search(value):
+                  remaining.append((int(m.group(1)), value))
+          print(f'[barrel-extensions] translated={changed}')
+          print(f'[barrel-extensions] remaining_untranslated_names={len(remaining)}')
+          if len(remaining) != 30:
+              raise SystemExit(f'expected 30 untranslated names after pass, got {len(remaining)}')
+
+          p.write_bytes(b'\xef\xbb\xbf' + text.encode('utf-8'))
           PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE='ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Barrel Extensions.ERB'
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Barrel Extensions.ERB')
+          if not p.read_bytes().startswith(b'\xef\xbb\xbf'):
+              raise SystemExit('UTF-8 BOM was not preserved')
+          print('[validate] BOM ok')
+          PY
+          git diff --check
+          mapfile -t changed_files < <(git diff --name-only)
+          if [[ ${#changed_files[@]} -ne 1 || "${changed_files[0]}" != "$FILE" ]]; then
+            printf 'unexpected changed files:\n%s\n' "${changed_files[*]}"
+            exit 1
+          fi
+          read -r added deleted path < <(git diff --numstat -- "$FILE")
+          if [[ "$added" != "50" || "$deleted" != "50" || "$path" != "$FILE" ]]; then
+            echo "unexpected numstat: +$added -$deleted $path"
+            exit 1
+          fi
+          echo "[validate] single file +50/-50 ok"
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Barrel Extensions.ERB'
+          git commit -m '총구장치 UI 표시명 1차 한글화 53차'
+          git push origin korean
