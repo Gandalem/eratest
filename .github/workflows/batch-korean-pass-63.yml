@@ -31,28 +31,34 @@ jobs:
           lit = re.compile(r'CALLF MAKE_STR\(V_NAME,\s*(?:@)?"((?:\\.|[^"\\])*)"\)')
           case_re = re.compile(r'^\s*CASE "([^"]+)"\s*$')
 
-          # Bionic List: only active user-visible name/full-name/description fields.
-          path = Path('ERB/TRANSLATION/OMOGATARI/Body Parts/Bionic List.ERB')
-          raw = path.read_bytes(); assert raw.startswith(b'\xef\xbb\xbf')
-          field = None; rows = []
-          for lineno, line in enumerate(raw.decode('utf-8-sig').splitlines(), 1):
-              if line.lstrip().startswith(';'):
-                  continue
-              m = case_re.match(line)
-              if m:
-                  field = m.group(1) if m.group(1) in {'名前','FullName','描写'} else None
-                  continue
-              if field:
-                  m = lit.search(line)
+          def structured_visible(path, fields):
+              p = Path(path)
+              raw = p.read_bytes(); assert raw.startswith(b'\xef\xbb\xbf')
+              field = None; rows = []
+              for lineno, line in enumerate(raw.decode('utf-8-sig').splitlines(), 1):
+                  if line.lstrip().startswith(';'):
+                      continue
+                  m = case_re.match(line)
                   if m:
-                      value = m.group(1)
-                      if eng.search(value) and not hangul.search(value):
-                          rows.append((lineno, field, value))
-          print('=== Bionic List visible English-only ===')
-          print('COUNT', len(rows))
-          print('NAMES', sum(f=='名前' for _,f,_ in rows), 'FULL', sum(f=='FullName' for _,f,_ in rows), 'DESC', sum(f=='描写' for _,f,_ in rows))
-          for r in rows:
-              print('%s\t%s\t%s' % r)
+                      field = m.group(1) if m.group(1) in fields else None
+                      continue
+                  if field:
+                      m = lit.search(line)
+                      if m:
+                          value = m.group(1)
+                          if eng.search(value) and not hangul.search(value):
+                              rows.append((lineno, field, value))
+              print('===', path, '===')
+              print('COUNT', len(rows))
+              for f in fields:
+                  print(f, sum(x[1] == f for x in rows))
+              for r in rows:
+                  print('%s\t%s\t%s' % r)
+              return len(rows)
+
+          grand = 0
+          grand += structured_visible('ERB/TRANSLATION/OMOGATARI/Body Parts/Bionic List.ERB', {'名前','FullName','描写'})
+          grand += structured_visible('ERB/TRANSLATION/OMOGATARI/Ideology.ERB', {'Name','Unit','Deity','Desc'})
 
           # LIST: display constant arrays only. These are rendered headers/sort labels.
           lp = Path('ERB/TRANSLATION/LIST.ERB')
@@ -70,4 +76,31 @@ jobs:
               print(var, len(vals), 'ENGLISH_ONLY', len(eo))
               for v in eo: print(var+'\t'+v)
           print('LIST_ARRAY_ENGLISH_ONLY_TOTAL', total)
+          grand += total
+
+          # Omogatari_STR: only actual returned display strings in ItemName_Full and ItemName_NAS.
+          sp = Path('ERB/TRANSLATION/OMOGATARI/Omogatari_STR.ERB')
+          sraw = sp.read_bytes(); assert sraw.startswith(b'\xef\xbb\xbf')
+          lines = sraw.decode('utf-8-sig').splitlines()
+          active = None; rows = []
+          fn_re = re.compile(r'^@(\w+)\(')
+          ret_re = re.compile(r'^\s*RETURNF\s+(?:@)?"((?:\\.|[^"\\])*)"')
+          for lineno, line in enumerate(lines, 1):
+              fm = fn_re.match(line)
+              if fm:
+                  active = fm.group(1) if fm.group(1) in {'ItemName_Full','ItemName_NAS'} else None
+                  continue
+              if not active or line.lstrip().startswith(';'):
+                  continue
+              rm = ret_re.match(line)
+              if rm:
+                  value = rm.group(1)
+                  if eng.search(value) and not hangul.search(value):
+                      rows.append((lineno, active, value))
+          print('=== Omogatari_STR item display returns ===')
+          print('COUNT', len(rows))
+          print('FULL', sum(r[1]=='ItemName_Full' for r in rows), 'NAS', sum(r[1]=='ItemName_NAS' for r in rows))
+          for r in rows: print('%s\t%s\t%s' % r)
+          grand += len(rows)
+          print('GRAND_VISIBLE_ENGLISH_ONLY', grand)
           PY
