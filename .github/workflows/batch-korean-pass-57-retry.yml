@@ -1,0 +1,168 @@
+name: Batch Korean pass 57 retry
+
+on:
+  push:
+    paths:
+      - '.github/workflows/batch-korean-pass-57-retry.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main rules
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: source
+          fetch-depth: 1
+
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          path: target
+          fetch-depth: 0
+
+      - name: Apply pass 57 with tolerant matcher
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import ast, re
+
+          wf = Path('source/.github/workflows/batch-korean-pass-57.yml').read_text(encoding='utf-8')
+
+          def literal_list(name):
+              lines = wf.splitlines()
+              start = next(i for i, line in enumerate(lines) if line.strip() == f'{name} = [')
+              end = next(i for i in range(start + 1, len(lines)) if lines[i].strip() == ']')
+              expr = '[\n' + '\n'.join(lines[start + 1:end]) + '\n]'
+              return ast.literal_eval(expr)
+
+          rules = literal_list('rules')
+          expected_remaining = literal_list('expected_remaining')
+          assert len(rules) == 62
+          assert len(expected_remaining) == 26
+
+          p = Path('target/ERB/TRANSLATION/OMOGATARI/ITEM/Armory/300 Firearms/400 Rifles.ERB')
+          raw = p.read_bytes()
+          assert raw.startswith(b'\xef\xbb\xbf'), 'UTF-8 BOM missing before edit'
+          text = raw.decode('utf-8-sig')
+          original = text
+
+          func_re = re.compile(r'^@Weapon(\d+)\(ARG, O_DATA, V_NAME\)\s*$', re.M)
+
+          def function_span(src, weapon_id):
+              matches = list(func_re.finditer(src))
+              found = [(i, m) for i, m in enumerate(matches) if int(m.group(1)) == weapon_id]
+              assert len(found) == 1, f'Weapon{weapon_id}: expected one active function, got {len(found)}'
+              i, m = found[0]
+              end = matches[i + 1].start() if i + 1 < len(matches) else len(src)
+              return m.start(), end
+
+          protected_keys = [
+              '名前', 'FullName', '描写', '装備部位', 'Grade', 'Tech Level',
+              'Research Required', 'Grip Slot', 'Foregrip Slot', 'Receiver Slot',
+              'Barrel Slot', 'Barrel Body Slot', 'Tactical Slot', 'Sight Slot',
+              'Stock Slot', 'Magazine Slot', 'Quest Only', 'Price',
+              'WeaponReceiver/Default', 'WeaponBarrelBody/Default', 'WeaponSight/Default',
+              'WeaponStock/Default', 'WeaponMag/Default', 'WeaponGrip/Default',
+              'Two-Handed', 'Platform', 'Type', 'Class', 'Tags'
+          ]
+          before_counts = {k: original.count(f'CASE "{k}"') for k in protected_keys}
+          protected_token_re = re.compile(r'%[^%\n]+%|\{[^{}\n]+\}|\\n|\\@')
+          before_tokens = protected_token_re.findall(original)
+
+          for weapon_id, field, old, new in rules:
+              fstart, fend = function_span(text, weapon_id)
+              block = text[fstart:fend]
+              cases = list(re.finditer(r'^\s*CASE "([^"]+)"\s*$', block, re.M))
+              target = None
+              for ci, cm in enumerate(cases):
+                  if cm.group(1) == field:
+                      cend = cases[ci + 1].start() if ci + 1 < len(cases) else len(block)
+                      target = (cm.end(), cend)
+                      break
+              assert target is not None, f'Weapon{weapon_id}: CASE {field} missing'
+              cstart, cend = target
+              cblock = block[cstart:cend]
+              pat = re.compile(r'(CALLF MAKE_STR\(V_NAME,\s*@?")' + re.escape(old) + r'("\))')
+              matches = []
+              for mm in pat.finditer(cblock):
+                  ls = cblock.rfind('\n', 0, mm.start()) + 1
+                  line = cblock[ls:mm.end()]
+                  if not line.lstrip().startswith(';'):
+                      matches.append(mm)
+              assert len(matches) == 1, f'Weapon{weapon_id} {field}: expected one active old value, got {len(matches)}: {old!r}'
+              mm = matches[0]
+              repl = mm.group(1) + new + mm.group(2)
+              cblock = cblock[:mm.start()] + repl + cblock[mm.end():]
+              block = block[:cstart] + cblock + block[cend:]
+              text = text[:fstart] + block + text[fend:]
+
+          after_counts = {k: text.count(f'CASE "{k}"') for k in protected_keys}
+          assert before_counts == after_counts, (before_counts, after_counts)
+          assert before_tokens == protected_token_re.findall(text), 'protected interpolation/token sequence changed'
+
+          eng = re.compile(r'[A-Za-z]{2,}')
+          hangul = re.compile(r'[가-힣]')
+          literal_re = re.compile(r'CALLF MAKE_STR\(V_NAME,\s*(?:@)?"((?:\\.|[^"\\])*)"\)')
+          wanted = {'名前', 'FullName', '描写'}
+          remaining = []
+          funcs = list(func_re.finditer(text))
+          for i, fm in enumerate(funcs):
+              weapon_id = int(fm.group(1))
+              fend = funcs[i + 1].start() if i + 1 < len(funcs) else len(text)
+              block = text[fm.start():fend]
+              cases = list(re.finditer(r'^\s*CASE "([^"]+)"\s*$', block, re.M))
+              for ci, cm in enumerate(cases):
+                  field = cm.group(1)
+                  if field not in wanted:
+                      continue
+                  cend = cases[ci + 1].start() if ci + 1 < len(cases) else len(block)
+                  cblock = block[cm.end():cend]
+                  for sm in literal_re.finditer(cblock):
+                      ls = cblock.rfind('\n', 0, sm.start()) + 1
+                      line = cblock[ls:sm.end()]
+                      if line.lstrip().startswith(';'):
+                          continue
+                      value = sm.group(1)
+                      if eng.search(value) and not hangul.search(value):
+                          remaining.append((weapon_id, field, value))
+
+          assert remaining == expected_remaining, f'unexpected English-only active UI remains: {remaining}'
+          p.write_bytes(b'\xef\xbb\xbf' + text.encode('utf-8'))
+          assert p.read_bytes().startswith(b'\xef\xbb\xbf')
+          print(f'replacements={len(rules)}')
+          print(f'english_only_active_ui_remaining={len(remaining)} (model names only)')
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C target diff --check
+          test "$(git -C target diff --name-only | wc -l)" -eq 1
+          test "$(git -C target diff --name-only)" = 'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/300 Firearms/400 Rifles.ERB'
+          test "$(git -C target diff --numstat | awk '{print $1}')" -eq 62
+          test "$(git -C target diff --numstat | awk '{print $2}')" -eq 62
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('target/ERB/TRANSLATION/OMOGATARI/ITEM/Armory/300 Firearms/400 Rifles.ERB')
+          assert p.read_bytes().startswith(b'\xef\xbb\xbf')
+          PY
+
+      - name: Commit and push
+        working-directory: target
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/300 Firearms/400 Rifles.ERB'
+          git commit -m '소총 UI 이름 및 설명 1차 한글화 57차'
+          git push origin HEAD:korean
