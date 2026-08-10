@@ -10,43 +10,53 @@ permissions:
   contents: write
 
 jobs:
-  diagnose:
+  preflight:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Korean branch
+      - name: Checkout main tools
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: tools
+          fetch-depth: 1
+
+      - name: Checkout Korean target
         uses: actions/checkout@v4
         with:
           ref: korean
+          path: target
           fetch-depth: 0
 
-      - name: Diagnose safe utility literals
+      - name: Apply pass 63 in working tree
         shell: bash
         run: |
+          python3 tools/.github/scripts/batch_korean_pass63.py --root target
+
+      - name: Validate exact static diff
+        shell: bash
+        working-directory: target
+        run: |
+          git diff --check
           python3 - <<'PY'
-          from pathlib import Path
-          import re
-          p = Path('ERB/TRANSLATION/_TR Lib.ERB')
-          raw = p.read_bytes(); assert raw.startswith(b'\xef\xbb\xbf')
-          lines = raw.decode('utf-8-sig').splitlines()
-          fn_re = re.compile(r'^@(\w+)\(')
-          q_re = re.compile(r'"((?:\\.|[^"\\])*)"')
-          eng = re.compile(r'[A-Za-z]{2,}')
-          hangul = re.compile(r'[가-힣]')
-          safe = {'FISH_NAME_TR','CROP_NAME_PLURAL','BAIT_TR','ALCOHOL_FACE_TR','MUSHI_TRIBE_TR','MUSHI_STATUS_TR','MUSHI_SKL_TR','VAR_FERMENT_TR','FESTIVAL_MENU_TR','VAR_WATER_TR','REQUEST_NAMES_TR','OPTIONS_TR'}
-          active = None
-          counts = {k:0 for k in safe}
-          for lineno, line in enumerate(lines, 1):
-              fm = fn_re.match(line)
-              if fm:
-                  active = fm.group(1)
-                  continue
-              if active not in safe or line.lstrip().startswith(';'):
-                  continue
-              for value in q_re.findall(line):
-                  if eng.search(value) and not hangul.search(value):
-                      counts[active] += 1
-                      print(f'{active}\t{lineno}\t{value}')
-          print('COUNTS')
-          for k in sorted(counts): print(k, counts[k])
-          print('TOTAL', sum(counts.values()))
+          import subprocess
+          expected = {
+              'ERB/TRANSLATION/LIST.ERB': (3, 3),
+              'ERB/TRANSLATION/_TR Lib.ERB': (177, 177),
+              'ERB/TRANSLATION/OMOGATARI/Body Parts/Bionic List.ERB': (260, 260),
+              'ERB/TRANSLATION/OMOGATARI/Ideology.ERB': (31, 31),
+              'ERB/TRANSLATION/OMOGATARI/Omogatari_STR.ERB': (43, 43),
+          }
+          out = subprocess.check_output(['git','diff','--numstat'], text=True)
+          got = {}
+          for line in out.splitlines():
+              a, d, p = line.split('\t', 2)
+              got[p] = (int(a), int(d))
+          print('NUMSTAT', got)
+          assert got == expected, (got, expected)
+          assert sum(a for a,_ in got.values()) == 514
+          assert sum(d for _,d in got.values()) == 514
+          status = subprocess.check_output(['git','status','--porcelain'], text=True).splitlines()
+          paths = {line[3:] for line in status}
+          assert paths == set(expected), paths
+          print('PASS63_STATIC_PREFLIGHT_OK')
           PY
