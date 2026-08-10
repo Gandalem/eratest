@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  diagnose:
+  bulk-translate:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Korean branch
@@ -19,48 +19,321 @@ jobs:
           ref: korean
           fetch-depth: 0
 
-      - name: Diagnose multiple structured UI files
+      - name: Bulk translate structured weapon UI
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          from collections import Counter
           import re
 
-          files = [
-              'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Receivers.ERB',
-              'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Magazines.ERB',
-              'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Ammunition.ERB',
-          ]
+          RECEIVERS = 'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Receivers.ERB'
+          MAGAZINES = 'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Magazines.ERB'
+          AMMO = 'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Ammunition.ERB'
+          EXPECTED = {RECEIVERS: 100, MAGAZINES: 83, AMMO: 123}
+
           eng = re.compile(r'[A-Za-z]{2,}')
           hangul = re.compile(r'[가-힣]')
-          literal = re.compile(r'CALLF MAKE_STR\(V_NAME,\s*(?:@)?"((?:\\.|[^"\\])*)"\)')
           case_re = re.compile(r'^\s*CASE "([^"]+)"\s*$')
+          literal = re.compile(r'CALLF MAKE_STR\(V_NAME,\s*(?:@)?"((?:\\.|[^"\\])*)"\)')
+          token_re = re.compile(r'%[^%\n]+%|\{[^{}\n]+\}|\\n|\\@')
+          case_all_re = re.compile(r'^\s*CASE "([^"]+)"\s*$', re.M)
 
-          for path in files:
-              p = Path(path)
-              raw = p.read_bytes()
-              assert raw.startswith(b'\xef\xbb\xbf'), f'BOM missing: {path}'
-              lines = raw.decode('utf-8-sig').splitlines()
-              field = None
+          brand_pairs = [
+              ('Nizhny Novgorod', '니즈니 노브고로드'),
+              ('Phantom Dynamics', '팬텀 다이내믹스'),
+              ('Deterrence Dispensed', '디터런스 디스펜스드'),
+              ("Rika's Arms", '리카 암즈'),
+              ('Cactus Company', '캑터스 컴퍼니'),
+              ('Kappa Armory', '캇파 아머리'),
+              ('KappaArmory', '캇파 아머리'),
+              ('Gabe Hubert', '게이브 휴버트'),
+              ('High-Ground', '하이그라운드'),
+              ('High Ground', '하이그라운드'),
+              ('Gensou-chan', '겐소우짱'),
+              ('Fairy Tactical', '페어리 택티컬'),
+              ('Super Point', '슈퍼 포인트'),
+              ('Rasp Maestro', '라스프 마에스트로'),
+              ('Broughton', '브라우턴'),
+              ('Windurger', '윈더거'),
+              ('Tricorne', '트라이코르네'),
+              ('Falkenberg', '팔켄베르크'),
+              ('Averdeen', '애버딘'),
+              ('ArmTeck', '암텍'),
+              ('AImthropic', '에임스로픽'),
+              ('Akatsuki', '아카츠키'),
+              ('Gryzov', '그리즈보프'),
+              ('LUNINCO', '루닌코'),
+              ('Klimovsk', '클리모프스크'),
+              ('Brennan', '브레넌'),
+              ('Cactus', '캑터스'),
+              ('Keiga', '케이가'),
+              ('Renov', '레노프'),
+              ('Haru', '하루'),
+              ('Yagokoro', '야고코로'),
+              ("Vatican's Society", '바티칸 협회'),
+              ("Sumireko's", '스미레코의'),
+          ]
+
+          def brands(s):
+              for a, b in sorted(brand_pairs, key=lambda x: len(x[0]), reverse=True):
+                  s = s.replace(a, b)
+              return s
+
+          def ci(s, pairs):
+              for a, b in sorted(pairs, key=lambda x: len(x[0]), reverse=True):
+                  s = re.sub(re.escape(a), b, s, flags=re.I)
+              return s
+
+          def translate_receiver(s):
+              s = brands(s)
+              s = ci(s, [
+                  ('Semi/Full Lower and Upper', '반자동/완전자동 하부·상부'),
+                  ('Semi-Auto Lower and Upper', '반자동 하부·상부'),
+                  ('Full-Auto Lower and Upper', '완전자동 하부·상부'),
+                  ('Full-Auto Belt-Fed', '완전자동 벨트급탄'),
+                  ('Semi/3-Round Burst', '반자동/3발 점사'),
+                  ('6-Round Burst', '6발 점사'),
+                  ('Delimited Full-Auto', '제한 완전자동'),
+                  ('Laser Continuous Fire', '레이저 연속사격'),
+                  ('compound riser and limbs', '컴파운드 라이저와 림'),
+                  ('composite recurve arc', '복합 리커브 활'),
+                  ('tall asymmetrical arc', '장신 비대칭 활'),
+                  ('long yari arc', '장창형 활'),
+                  ('long yew arc', '긴 주목 활'),
+                  ('stick arc', '막대형 활'),
+                  ('Automatic Rifle', '자동소총'),
+                  ('Charged Laser', '충전식 레이저'),
+                  ('Straight-Pull', '직동식'),
+                  ('Pump-Action', '펌프액션'),
+                  ('Bolt-Action', '볼트액션'),
+                  ('Semi/Full', '반자동/완전자동'),
+                  ('Semi-Auto', '반자동'),
+                  ('Full-Auto', '완전자동'),
+                  ('Single Shot', '단발'),
+                  ('Energy Blade', '에너지 블레이드'),
+                  ('Recharging', '재충전식'),
+                  ('Assembly', '어셈블리'),
+                  ('wooden', '목제'),
+                  ('Crossbow', '석궁'),
+                  ('handgonne', '핸드곤'),
+                  ('Sabot', '사보'),
+                  ('Magic', '마법'),
+                  ('Laser', '레이저'),
+                  ('reciever', '리시버'),
+                  ('Receiver', '리시버'),
+                  ('arc', '활'),
+              ])
+              return s
+
+          def translate_magazine(s):
+              s = brands(s)
+              s = re.sub(r'(\d+)-round', r'\1발', s, flags=re.I)
+              s = re.sub(r'(\d+)-shell', r'\1발', s, flags=re.I)
+              s = re.sub(r'(\d+)-gallon', r'\1갤런', s, flags=re.I)
+              s = ci(s, [
+                  ('Youjutsu-powered', '요술 동력'),
+                  ('Liquid Nitrogen tank', '액체질소 탱크'),
+                  ('Gasoline tank', '가솔린 탱크'),
+                  ('drum magazine', '드럼 탄창'),
+                  ('extended magazine', '연장 탄창'),
+                  ('Tube-Magazine', '관형 탄창'),
+                  ('magazine cap', '탄창 캡'),
+                  ('MP Amplifier', 'MP 증폭기'),
+                  ('ammo belt', '탄띠'),
+                  ('belt-fed', '벨트급탄'),
+                  ('Automatic', '오토매틱'),
+                  ('Pistol', '권총'),
+                  ('cartridge', '카트리지'),
+                  ('cylinder', '실린더'),
+                  ('battery', '배터리'),
+                  ('magazine', '탄창'),
+                  ('belt', '탄띠'),
+                  ('Ball', '보통탄'),
+              ])
+              return s
+
+          def translate_ammo_name(s):
+              s = brands(s)
+              s = re.sub(r'(\d+)-Shot', r'\1발', s, flags=re.I)
+              s = ci(s, [
+                  ('Psychosis Youjutsu-accellerated arrow', '정신이상 요술 가속 화살'),
+                  ('Guided Multi-Role Munition', '유도 다목적 탄약'),
+                  ('Tandem HEAT rocket', '탠덤 HEAT 로켓'),
+                  ('anti-tank rocket', '대전차 로켓'),
+                  ('armor-piercing slug', '철갑 슬러그'),
+                  ('expanding slug shell', '확장형 슬러그 탄'),
+                  ('FMJ slug shell', 'FMJ 슬러그 탄'),
+                  ('non-lethal cartridge', '비살상 카트리지'),
+                  ('Psychosis cartridge', '정신이상 카트리지'),
+                  ('reduced ricochet bullet', '저도탄성 탄두'),
+                  ('ordinary cartridge', '보통탄'),
+                  ('heavy cartridge', '중량 카트리지'),
+                  ('Bodkin-point arrow', '보드킨 촉 화살'),
+                  ('holy broadhead arrow', '성스러운 브로드헤드 화살'),
+                  ('high-explosive arrow', '고폭 화살'),
+                  ('broadhead arrow', '브로드헤드 화살'),
+                  ('arousing arrow', '흥분 유발 화살'),
+                  ('tranqualizing arrow', '마취 화살'),
+                  ('tranquilizing arrow', '마취 화살'),
+                  ('pee-soaked arrow', '소변에 적신 화살'),
+                  ('poison arrow', '독화살'),
+                  ('guided APFSDS round', '유도 APFSDS 탄'),
+                  ('guided HEAT round', '유도 HEAT 탄'),
+                  ('Round Nose Diabolo', '라운드 노즈 디아볼로'),
+                  ('steel bullet', '강철 탄두'),
+                  ('lead bullet', '납 탄두'),
+                  ('Soft Point', '소프트 포인트'),
+                  ('High Grain', '고그레인'),
+                  ('Armor Penetrating', '철갑탄'),
+                  ('Pee-soaked', '소변에 적신'),
+                  ('tranqlizing', '마취탄'),
+                  ('Tranquilizing', '마취탄'),
+                  ('guided rocket', '유도 로켓'),
+                  ('HEAP Jet', 'HEAP 제트'),
+                  ('rubber ball', '고무탄'),
+                  ('slug shell', '슬러그 탄'),
+                  ('flechette', '플레셰트'),
+                  ('makeshift', '급조형'),
+                  ('buckshot', '벅샷'),
+                  ('cartridge', '카트리지'),
+                  ('Reserve', '예비탄'),
+                  ('Rubber', '고무탄'),
+                  ('Steel', '강철탄'),
+                  ('dart', '다트'),
+                  ('rocket', '로켓'),
+                  ('arrow', '화살'),
+                  ('slug', '슬러그'),
+                  ('iron', '철제'),
+                  ('Used', '사용한'),
+                  ('diaper', '기저귀'),
+                  ('Ball', '보통탄'),
+              ])
+              if s == '7.62x41mm SP-4':
+                  s = '7.62x41mm SP-4 탄'
+              abbrev = [
+                  (r'\bFMJ\b', 'FMJ 완전피갑탄'),
+                  (r'\bBT\b', 'BT 철갑예광탄'),
+                  (r'\bHP\b', 'HP 할로포인트'),
+                  (r'\bAP\b', 'AP 철갑탄'),
+                  (r'\bHE\b', 'HE 고폭탄'),
+              ]
+              for pat, repl in abbrev:
+                  s = re.sub(pat, repl, s)
+              return s
+
+          desc_prefixes = [
+              (r'A \"combined effects\" cartridge', '"복합 효과" 탄약인 Raufoss Mk 211 Mod 0 HEIAP 탄은 .30 구경 텅스텐 관통자, 지르코늄 분말, Composition A 폭약을 포함한다. M85 기관총을 제외한 미군 보유 .50 구경 무기에서 사용할 수 있다. 탄두 끝이 녹색이고 회색 띠가 둘러져 있어 식별할 수 있다.'),
+              ('A 9x19mm Parabellum Pst gzh', '9x19mm 파라벨룸 Pst gzh(RG057, GRAU 지수 7N21) 탄약. 5.4g 열강화 강철 코어 탄두에 폴리에틸렌 내층과 바이메탈 외층의 2중 반피갑을 사용하며, 바이메탈 탄피에 장전된다. 개량형 PS 탄(Púlya Stal\'náya, "강철 탄두")으로, 클리모프스크 정밀가공이 1990년대 초 9x21mm PS gzh "SP10"을 기반으로 개발했다. 더 높은 총구 속도와 함께 러시아제 9x19mm 무기의 기본 방탄재 관통 성능을 최대 50m 거리에서 높이는 것이 목적이었다.'),
+              (r'12/70 \"Poleva-3\"', '12게이지 산탄총용 12/70 "Poleva-3" 확장형 슬러그 탄.'),
+              (r'12/70 \"Poleva-6u\"', '12게이지 산탄총용 12/70 "Poleva-6u" FMJ 슬러그 탄.'),
+              ('The bean bag round consists', '빈백 탄은 약 40g의 #9 납 산탄을 채운 작은 천 주머니로 구성된다. 일반 12게이지 산탄총에서 발사하며, 약 90m/s로 날아가 비행 중 펼쳐져 표적 약 6cm²에 충격을 분산시킨다. 관통 없이 장기 손상을 최소화하면서 근육 경련 등의 반응으로 대상을 잠시 움직이지 못하게 하는 용도지만, 여전히 중상이나 사망을 일으킬 수 있다. 약 6m를 넘으면 정확도가 낮아지고 최대 사거리는 약 20m다.'),
+              ('Dipped in the urine of various animals', '인간과 요괴를 포함한 여러 동물의 소변에 담근 화살이다. 브로드헤드가 피부를 관통해 상처를 만든 뒤 그 상처를 매개로 세균을 퍼뜨려 감염을 시도한다. 이 과정은 부패 피해를 주며 월인처럼 "순수한" 존재에게 특히 효과적이다. 소변은 기본적인 방탄 보호를 뚫는 데도 도움을 준다.'),
+              ('A .223 Broughton', '.223 브라우턴(5.56x45mm) 완전피갑탄을 인간과 요괴를 포함한 여러 동물의 소변에 담갔다. 탄두가 방호재와 피부를 관통해 상처를 만들면 그 상처를 매개로 세균을 퍼뜨려 감염을 시도한다. 이 과정은 부패 피해를 주며 월인처럼 "순수한" 존재에게 특히 효과적이다. 소변은 중간 수준의 방탄 보호를 뚫는 데도 도움을 준다.'),
+              ('A .308 Windurger', '.308 윈더거 완전피갑탄을 인간과 요괴를 포함한 여러 동물의 소변에 담갔다. 탄두가 방호재와 피부를 관통해 상처를 만들면 그 상처를 매개로 세균을 퍼뜨려 감염을 시도한다. 이 과정은 부패 피해를 주며 월인처럼 "순수한" 존재에게 특히 효과적이다. 소변은 중간 수준의 방탄 보호를 뚫는 데도 도움을 준다.'),
+              ('A 12/70 buckshot shell', '12/70 벅샷 탄의 산탄알을 인간과 요괴를 포함한 여러 동물의 소변에 담갔다. 산탄알이 방호재와 피부를 뚫어 상처를 만들면 그 상처를 매개로 세균을 퍼뜨려 감염을 시도한다. 이 과정은 부패 피해를 주며 월인처럼 "순수한" 존재에게 특히 효과적이다. 소변은 기본적인 방탄 보호를 뚫는 데도 도움을 준다.'),
+          ]
+
+          def translate_desc(s):
+              for prefix, new in desc_prefixes:
+                  if s.startswith(prefix):
+                      return new
+              raise AssertionError(f'unmapped English description: {s[:120]}')
+
+          def scan_rows(text):
               rows = []
-              for lineno, line in enumerate(lines, 1):
-                  stripped = line.lstrip()
-                  if stripped.startswith(';'):
+              field = None
+              lines = text.splitlines(keepends=True)
+              for idx, rawline in enumerate(lines):
+                  line = rawline.rstrip('\r\n')
+                  if line.lstrip().startswith(';'):
                       continue
                   cm = case_re.match(line)
                   if cm:
-                      v = cm.group(1)
-                      field = v if v in {'名前','描写'} else None
+                      val = cm.group(1)
+                      field = val if val in {'名前','描写'} else None
                       continue
                   if field:
                       sm = literal.search(line)
                       if sm:
                           value = sm.group(1)
                           if eng.search(value) and not hangul.search(value):
-                              rows.append((lineno, field, value))
-              print(f'=== {path} ===')
-              print(f'ENGLISH_ONLY_ACTIVE_VISIBLE={len(rows)}')
-              print(f'NAMES={sum(1 for _,f,_ in rows if f == "名前")} DESCS={sum(1 for _,f,_ in rows if f == "描写")}')
-              for lineno, field, value in rows:
-                  print(f'{lineno}\t{field}\t{value}')
+                              rows.append((idx, field, value, sm.start(1), sm.end(1)))
+              return rows
+
+          for path, expected in EXPECTED.items():
+              p = Path(path)
+              raw = p.read_bytes()
+              assert raw.startswith(b'\xef\xbb\xbf'), f'BOM missing: {path}'
+              text = raw.decode('utf-8-sig')
+              before_case = Counter(case_all_re.findall(text))
+              before_tokens = Counter(token_re.findall(text))
+              rows = scan_rows(text)
+              assert len(rows) == expected, f'{path}: expected {expected} targets, got {len(rows)}'
+              lines = text.splitlines(keepends=True)
+              changed = 0
+              for idx, field, old, start, end in rows:
+                  rawline = lines[idx]
+                  ending = '\r\n' if rawline.endswith('\r\n') else ('\n' if rawline.endswith('\n') else '')
+                  line = rawline[:-len(ending)] if ending else rawline
+                  sm = literal.search(line)
+                  assert sm and sm.group(1) == old
+                  if field == '描写':
+                      assert path == AMMO
+                      new = translate_desc(old)
+                  elif path == RECEIVERS:
+                      new = translate_receiver(old)
+                  elif path == MAGAZINES:
+                      new = translate_magazine(old)
+                  else:
+                      new = translate_ammo_name(old)
+                  assert new != old, f'unchanged target: {path}: {old}'
+                  assert hangul.search(new), f'no Hangul after translation: {path}: {new}'
+                  assert token_re.findall(old) == token_re.findall(new), f'token drift: {old} -> {new}'
+                  lines[idx] = line[:sm.start(1)] + new + line[sm.end(1):] + ending
+                  changed += 1
+              new_text = ''.join(lines)
+              after_case = Counter(case_all_re.findall(new_text))
+              after_tokens = Counter(token_re.findall(new_text))
+              assert before_case == after_case, f'CASE keys changed: {path}'
+              assert before_tokens == after_tokens, f'protected tokens changed: {path}'
+              remaining = scan_rows(new_text)
+              assert not remaining, f'{path}: English-only active visible remains: {remaining[:5]}'
+              p.write_bytes(b'\xef\xbb\xbf' + new_text.encode('utf-8'))
+              print(f'{path}: CHANGED={changed}, REMAINING=0')
           PY
+
+      - name: Validate bulk diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          mapfile -t FILES < <(git diff --name-only)
+          test "${#FILES[@]}" -eq 3
+          printf '%s\n' "${FILES[@]}"
+          test "$(git diff --numstat -- 'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Receivers.ERB')" = $'100\t100\tERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Receivers.ERB'
+          test "$(git diff --numstat -- 'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Magazines.ERB')" = $'83\t83\tERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Magazines.ERB'
+          test "$(git diff --numstat -- 'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Ammunition.ERB')" = $'123\t123\tERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Ammunition.ERB'
+          python3 - <<'PY'
+          from pathlib import Path
+          paths = [
+              'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Receivers.ERB',
+              'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Magazines.ERB',
+              'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Ammunition.ERB',
+          ]
+          for path in paths:
+              assert Path(path).read_bytes().startswith(b'\xef\xbb\xbf')
+          PY
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- \
+            'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Receivers.ERB' \
+            'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Magazines.ERB' \
+            'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Ammunition.ERB'
+          git commit -m "구조화 무기 UI 306개 대량 한글화 62차"
+          git push origin HEAD:korean
