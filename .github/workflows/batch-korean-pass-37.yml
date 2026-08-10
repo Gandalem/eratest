@@ -1,0 +1,213 @@
+name: Batch Korean pass 37
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/batch-korean-pass-37.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 1
+          lfs: false
+
+      - name: Translate remaining talent and NAS tips
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          TOKEN_RE = re.compile(r'%[^%\n]+%|\{[^{}\n]+\}|\\%')
+          WORD_RE = re.compile(r'[A-Za-z]{3,}')
+          ALLOW = {'RETURNF', 'LOCALS', 'STA', 'ENE', 'EXP', 'VIG', 'CVAB', 'CVABM', 'TSP', 'UI'}
+
+          def read_lines(path):
+              raw = path.read_bytes()
+              bom = raw.startswith(b'\xef\xbb\xbf')
+              return bom, raw.decode('utf-8-sig').splitlines(keepends=True)
+
+          def write_lines(path, bom, lines):
+              data = ''.join(lines).encode('utf-8')
+              if bom:
+                  data = b'\xef\xbb\xbf' + data
+              path.write_bytes(data)
+
+          def tokens(s):
+              return sorted(TOKEN_RE.findall(s))
+
+          def meaningful_words(s):
+              return [w for w in WORD_RE.findall(s) if w.upper() not in ALLOW]
+
+          def replace_case_return(lines, case_header, return_index, new_stmt, label):
+              hits = [i for i, line in enumerate(lines) if line.rstrip('\r\n') == case_header]
+              if len(hits) != 1:
+                  raise SystemExit(f'{label}: case anchor count={len(hits)}: {case_header}')
+              start = hits[0]
+              end = len(lines)
+              for j in range(start + 1, len(lines)):
+                  raw = lines[j].rstrip('\r\n')
+                  if raw == 'ENDSELECT' or raw.startswith('\tCASE '):
+                      end = j
+                      break
+              returns = [j for j in range(start + 1, end) if lines[j].lstrip().startswith('RETURNF ')]
+              if return_index >= len(returns):
+                  raise SystemExit(f'{label}: return index {return_index} out of range for {case_header}; found {len(returns)}')
+              idx = returns[return_index]
+              old = lines[idx]
+              if not meaningful_words(old):
+                  raise SystemExit(f'{label}: selected line no longer has meaningful English: {case_header} #{return_index}')
+              indent = old[:len(old) - len(old.lstrip())]
+              newline = '\r\n' if old.endswith('\r\n') else '\n' if old.endswith('\n') else ''
+              new_line = indent + new_stmt + newline
+              if tokens(old) != tokens(new_line):
+                  raise SystemExit(f'{label}: protected token mismatch: {case_header} #{return_index}\nOLD={tokens(old)}\nNEW={tokens(new_line)}')
+              leftover = meaningful_words(new_line)
+              if leftover:
+                  raise SystemExit(f'{label}: unexpected English left in replacement {case_header} #{return_index}: {leftover}')
+              lines[idx] = new_line
+              print(f'{label}: {case_header} return#{return_index + 1}')
+              return 1
+
+          def replace_exact_statement(lines, old_stmt, new_stmt, expected, label):
+              hits = []
+              for i, line in enumerate(lines):
+                  if line.rstrip('\r\n').lstrip() == old_stmt:
+                      hits.append(i)
+              if len(hits) != expected:
+                  raise SystemExit(f'{label}: statement count={len(hits)}, expected={expected}: {old_stmt}')
+              for idx in hits:
+                  old = lines[idx]
+                  indent = old[:len(old) - len(old.lstrip())]
+                  newline = '\r\n' if old.endswith('\r\n') else '\n' if old.endswith('\n') else ''
+                  new_line = indent + new_stmt + newline
+                  if tokens(old) != tokens(new_line):
+                      raise SystemExit(f'{label}: protected token mismatch\nOLD={tokens(old)}\nNEW={tokens(new_line)}')
+                  leftover = meaningful_words(new_line)
+                  if leftover:
+                      raise SystemExit(f'{label}: unexpected English left in replacement: {leftover}')
+                  lines[idx] = new_line
+              print(f'{label}: exact statement x{expected}')
+              return expected
+
+          html = Path('ERB/TRANSLATION/HTML_TALENTS/HTML_MOUSEOVER.ERB')
+          nas = Path('ERB/TRANSLATION/OMOGATARI/NAS_TIPS_TR.ERB')
+          html_bom, html_lines = read_lines(html)
+          nas_bom, nas_lines = read_lines(nas)
+
+          html_rules = [
+              ('\tCASE 51', 0, r'''RETURNF "손가락을 사용하는 행동의 효과가 크게 증가하고 손가락 계열 성적 기술도 더 쉽게 상승합니다."'''),
+              ('\tCASE 52', 0, r'''RETURNF "혀를 사용하는 행동의 효과가 크게 증가하고 혀 계열 성적 기술도 더 쉽게 상승합니다."'''),
+              ('\tCASE 57', 0, r'''RETURNF "배뇨 행동을 언제든 사용할 수 있습니다. 절정 시 주변에 소변을 흘릴 수 있습니다."'''),
+              ('\tCASE 191', 6, r'''RETURNF "새와 관련된 요괴를 가리키는 비교적 좁은 분류입니다.\n삼족오 계열부터 야스즈메까지 다양한 전승이 있습니다.\n요수처럼 동물과 관련되어 보이지만 기원은 신화에 있으며 본래 평범한 동물이었던 것은 아닙니다.\n그 때문에 번식이 어렵습니다."'''),
+              ('\tCASE 191', 7, r'''RETURNF "곤충과 거미에 관련된 요괴를 묶는 분류입니다.\n거미와 곤충의 학문적 분류가 갈라진 것은 비교적 최근이라 전승에서는 같은 계통으로 다뤄집니다.\n인간이 꺼리는 것에서 태어난 경우가 많아 불길하거나 피하고 싶은 대상과 자주 연관됩니다.\n포유류와 곤충은 본래 번식 방식이 크게 달라 번식도 어렵습니다."'''),
+              ('\tCASE 191', 9, r'''RETURNF "그릇을 타고 오니와 싸웠다는 잇슨보시의 후손입니다.\n몸집은 작지만 놀라울 정도로 강해 밟힌다고 쉽게 죽지 않습니다.\n오랫동안 물건의 크기를 바꿀 수 있는 요술망치를 보유해 왔습니다.\n인간이 아닌 데다 몸집 차이도 매우 커서 번식은 어렵습니다."'''),
+              ('\tCASE 193', 0, r'''RETURNF "살아 있을 때나 죽은 뒤 신격에 오른 인간의 영혼입니다.\n신이지만 팔백만 신과는 다른 계통입니다.\n인간보다 번식이 훨씬 어렵습니다."'''),
+              ('\tCASE 193', 1, r'''RETURNF "죽은 자의 영혼을 거두어 삼도천 건너편으로 인도하는 죽음의 신입니다.\n지나치게 오래 산 존재에게는 언젠가 반드시 찾아온다고 합니다.\n신격을 지닌 존재라 번식이 어렵습니다."'''),
+              ('\tCASE 193', 2, r'''RETURNF "사후 세계에서 망자의 죄를 심판하는 재판관입니다.\n수정 거울로 사람의 과거를 들여다보고 회한의 봉으로 벌을 내립니다.\n누구의 행동이 선인지 악인지 절대적인 확신으로 판정할 수 있습니다.\n번식은 거의 불가능에 가깝습니다."'''),
+              ('\tCASE 194', 0, r'''RETURNF "유령과 매우 비슷한 또 다른 종류의 영체입니다.\n둘의 정확한 차이는 분명하지 않지만, 유령 쪽이 더 수동적이고 의지나 자율성이 약한 경향이 있습니다.\n인간과 반령이 절반씩 섞인 반인반령도 존재합니다.\n인간과 비인간의 성질이 섞여 있어 번식이 까다롭습니다."'''),
+              ('\tCASE 194', 1, r'''RETURNF "물건을 쉽게 움직일 수 있는 소령입니다.\n폭력적이고 분위기에 휩쓸리기 쉬운 경향이 있지만 힘을 다른 활동에 쏟으면 위험성은 크게 줄어듭니다.\n그래도 행동에 휘말리지 않도록 주의해야 합니다.\n유령 계통이라 번식이 어렵습니다."'''),
+              ('\tCASE 194', 2, r'''RETURNF "죽은 사람의 영혼입니다. 악의적인 경우도 있고 그렇지 않은 경우도 있습니다.\n이미 죽은 존재라 새 생명을 품을 수 없어 번식이 사실상 불가능합니다.\n그래서 스스로 임신할 일이 없다고 생각하며 피임도 신경 쓰지 않습니다.\n분홍 바람의 영향도 받지 않습니다."'''),
+              ('\tCASE 196', 0, r'''RETURNF "스스로 살아 움직이는 인형입니다.\n처음에는 직접 명령을 받아야 움직였지만 시간이 지나며 독자적인 지성을 갖게 되었습니다.\n신체는 인간을 정교하게 본떠 만들어졌지만 생명을 품도록 설계된 것은 아니므로 번식은 사실상 불가능합니다."'''),
+              ('\tCASE 196', 1, r'''RETURNF "엄밀히 말하면 살아 있지 않은 인공 구조물입니다.\n필요한 기관이 없음에도 어떤 변화로 인해 번식이 가능해진 상태입니다.\n본인은 임신할 일이 없다고 확신해 피임을 신경 쓰지 않으며 분홍 바람의 영향도 받지 않습니다."'''),
+              ('\tCASE 196', 2, r'''RETURNF "엄밀히 말하면 살아 있지 않은 인공 구조물입니다.\n생명을 품는 데 필요한 기관이 없어 번식은 불가능합니다.\n본인은 임신할 일이 없다고 확신해 피임을 신경 쓰지 않으며 분홍 바람의 영향도 받지 않습니다."'''),
+              ('\tCASE 197', 0, r'''RETURNF "신을 섬기는 일에 삶을 바친 인간입니다.\n정화, 봉인, 요괴 퇴치가 주요 임무이며 요괴와 맞서기 위해 신성한 힘을 끌어낼 수 있습니다.\n환상향에서 가장 강한 존재 가운데 하나로 꼽히지만 생물학적으로는 인간과 크게 다르지 않습니다."'''),
+              ('\tCASE 197', 3, r'''RETURNF "봉래의 약을 세 번 마셔 불사의 저주를 받은 존재입니다.\n육체가 끊임없이 원래 상태로 재생되기 때문에 번식은 사실상 불가능합니다.\n그 때문에 피임도 거의 신경 쓰지 않습니다."'''),
+              ('\tCASE 198', 0, r'''RETURNF "현재 혼인 상태인지, 결혼 생활이 원만한지는 알 수 없지만 기혼 경험이 있는 여성입니다.\n이미 배우자가 있는 사람에게 접근하는 일이 좋은 선택인지는 생각해 볼 문제입니다."'''),
+              ('\tCASE 198', 1, r'''RETURNF "과거에 다른 사람과 혼인했던 여성입니다.\n세상을 떠난 배우자를 아직 그리워하는지는 알 수 없지만 그 경험 자체는 남아 있습니다.\n새로운 위로가 필요할 수도 있습니다."'''),
+              ('\tCASE 270', 0, r'''RETURNF "그레이즈에 능숙합니다.\n회피 효과가 증가합니다."'''),
+              ('\tCASE 271', 0, r'''RETURNF "추가 목숨을 얻을 만큼 충분한 점수를 획득했습니다.\n전투를 추가 목숨 하나와 함께 시작합니다."'''),
+              ('\tCASE 272', 0, r'''RETURNF "영력이 완전히 충전된 상태입니다.\n회피할 때 주는 피해가 증가합니다."'''),
+              ('\tCASE 273', 0, r'''RETURNF "극단적인 루나틱 슈터입니다.\n추가 폭탄 하나를 가지고 시작하며 폭탄의 성능도 향상됩니다."'''),
+              ('\tCASE 274', 0, r'''RETURNF "돌 쌓기 실력이 얼마나 좋은지를 나타냅니다. 관심이 있다면 말이죠."'''),
+              ('\tCASE 297', 0, r'''RETURNF "의지가 매우 약합니다.\n최면 효과가 2배가 됩니다."'''),
+              ('\tCASE 297', 1, r'''RETURNF "의지가 약합니다.\n최면 효과가 1.5배가 됩니다."'''),
+              ('\tCASE 297', 2, r'''RETURNF "의지가 강합니다.\n최면 효과가 75%로 감소합니다."'''),
+              ('\tCASE 297', 3, r'''RETURNF "의지가 매우 강합니다.\n최면 효과가 50%로 감소합니다."'''),
+              ('\tCASE 297', 4, r'''RETURNF "의지가 극도로 강합니다.\n최면 효과가 33%로 감소합니다."'''),
+              ('\tCASE 297', 5, r'''RETURNF "다른 사람을 최면하는 방법을 알고 있습니다.\n최면 효과가 10%로 감소합니다."'''),
+          ]
+
+          nas_rules = [
+              (r'''RETURNF "You can learn a girl's special dish by cooking it with her enough times. Collect them all!"''', r'''RETURNF "같은 캐릭터와 그 인물의 특제 요리를 충분히 여러 번 함께 만들면 조리법을 배울 수 있습니다. 모두 모아 보세요!"''', 2),
+              (r'''RETURNF "Right click to skip all lines that can be skipped."''', r'''RETURNF "우클릭하면 건너뛸 수 있는 문장을 한꺼번에 넘길 수 있습니다."''', 1),
+              (r'''RETURNF "Use your technical and general knowledge to contribute to researching."''', r'''RETURNF "기술 지식과 일반 지식을 활용해 연구에 기여할 수 있습니다."''', 1),
+              (r'''RETURNF "Research allows you to make better units and armor. Keep in mind that you can only research in areas you can study in."''', r'''RETURNF "연구를 진행하면 더 좋은 장비와 방어구를 만들 수 있습니다. 연구는 공부할 수 있는 장소에서만 진행할 수 있다는 점을 기억하세요."''', 1),
+              (r'''RETURNF "New features mean new bugs. Report bugs to the bug tracker, or making an issue in the Git page."''', r'''RETURNF "새 기능에는 새 버그가 따라올 수 있습니다. 버그 추적기나 저장소 이슈를 통해 문제를 제보해 주세요."''', 1),
+              (r'''RETURNF "Increase your Youjutsu levels to get more powerful spells."''', r'''RETURNF "요술 레벨을 올리면 더 강력한 주문을 사용할 수 있습니다."''', 1),
+              (r'''RETURNF "Legends say that if you were to give Yumemi a strawberry, she will become your wife."''', r'''RETURNF "전설에 따르면 유메미에게 딸기를 주면 아내가 된다고 합니다."''', 1),
+              (r'''RETURNF "Don't ask me why Cirno's ID isn't 9."''', r'''RETURNF "치르노의 번호가 왜 9가 아닌지는 묻지 마세요."''', 1),
+              (r'''RETURNF "Byakuren? Who's that? You mean Boob Lady, right?"''', r'''RETURNF "뱌쿠렌이 누구냐고요? 가슴 큰 그 사람 말하는 거죠?"''', 1),
+              (r'''RETURNF "Kaguya gets jealous when she sees you with other women. Very jealous..."''', r'''RETURNF "카구야는 당신이 다른 여성과 함께 있는 모습을 보면 질투합니다. 아주 심하게요..."''', 1),
+              (r'''RETURNF "Wakasagihime always had dialogue. Anyone who tells you otherwise is lying. Lying!"''', r'''RETURNF "와카사기히메에게는 원래부터 대사가 있었습니다. 아니라고 하는 사람은 거짓말쟁이예요. 정말로요!"''', 1),
+              (r'''RETURNF "Try making Seija angry. She might even throw a slur!"''', r'''RETURNF "세이자를 화나게 해 보세요. 심한 말을 내뱉을지도 모릅니다!"''', 1),
+              (r'''RETURNF "Shinki here is at least restrained... unlike herself in a parallel universe."''', r'''RETURNF "여기의 신키는 그나마 자제력이 있습니다... 평행세계의 자신과는 다르게요."''', 1),
+              (r'''RETURNF "Junko is always calm... Until you say you like the moon people"''', r'''RETURNF "준코는 언제나 침착합니다... 달의 백성이 좋다고 말하기 전까지는요."''', 1),
+              (r'''RETURNF "The power of Targeted Common Sense Alteration depends on your hypnosis power vs. the target's resistance. The more powerful it is, the more things you can get away with."''', r'''RETURNF "대상 지정 상식 개변의 효과는 자신의 최면력과 대상의 저항력 차이에 따라 결정됩니다. 효과가 강할수록 더 큰 행동까지 자연스럽게 받아들이게 만들 수 있습니다."''', 1),
+          ]
+
+          html_count = 0
+          for case_header, idx, new_stmt in html_rules:
+              html_count += replace_case_return(html_lines, case_header, idx, new_stmt, 'HTML')
+
+          nas_count = 0
+          for old_stmt, new_stmt, expected in nas_rules:
+              nas_count += replace_exact_statement(nas_lines, old_stmt, new_stmt, expected, 'NAS')
+
+          if html_count != 30:
+              raise SystemExit(f'expected 30 HTML replacements, got {html_count}')
+          if nas_count != 16:
+              raise SystemExit(f'expected 16 NAS replacements, got {nas_count}')
+
+          write_lines(html, html_bom, html_lines)
+          write_lines(nas, nas_bom, nas_lines)
+          print(f'HTML replacements: {html_count}')
+          print(f'NAS replacements: {nas_count}')
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+
+          html = Path('ERB/TRANSLATION/HTML_TALENTS/HTML_MOUSEOVER.ERB').read_bytes()
+          nas = Path('ERB/TRANSLATION/OMOGATARI/NAS_TIPS_TR.ERB').read_bytes()
+          if not html.startswith(b'\xef\xbb\xbf'):
+              raise SystemExit('HTML BOM was not preserved')
+          if not nas.startswith(b'\xef\xbb\xbf'):
+              raise SystemExit('NAS BOM was not preserved')
+          PY
+          mapfile -t changed < <(git diff --name-only)
+          if [[ ${#changed[@]} -ne 2 ]]; then
+            printf 'Unexpected changed files:\n%s\n' "${changed[*]}"
+            exit 1
+          fi
+          printf '%s\n' "${changed[@]}" | sort > /tmp/actual.txt
+          printf '%s\n' \
+            'ERB/TRANSLATION/HTML_TALENTS/HTML_MOUSEOVER.ERB' \
+            'ERB/TRANSLATION/OMOGATARI/NAS_TIPS_TR.ERB' | sort > /tmp/expected.txt
+          diff -u /tmp/expected.txt /tmp/actual.txt
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ERB/TRANSLATION/HTML_TALENTS/HTML_MOUSEOVER.ERB ERB/TRANSLATION/OMOGATARI/NAS_TIPS_TR.ERB
+          git commit -m 'HTML 및 NAS 팁 2차 한글화 37차'
+          git push origin HEAD:korean
