@@ -7,10 +7,10 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  diagnose:
+  translate:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Korean branch
@@ -19,7 +19,7 @@ jobs:
           ref: korean
           fetch-depth: 1
 
-      - name: List barrel UI strings
+      - name: Translate barrel display names
         shell: bash
         run: |
           python3 - <<'PY'
@@ -27,31 +27,139 @@ jobs:
           import re
 
           p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Barrels.ERB')
-          text = p.read_bytes().decode('utf-8-sig')
-          func_re = re.compile(r'^@WeaponBarrelBody(\d+)\(ARG, O_DATA, V_NAME\)\s*$', re.M)
-          starts = list(func_re.finditer(text))
-          eng = re.compile(r'[A-Za-z]{2,}')
-          hangul = re.compile(r'[가-힣]')
-          shown = 0
-          english_desc = []
-          for idx, m in enumerate(starts):
-              barrel_id = int(m.group(1))
-              end = starts[idx + 1].start() if idx + 1 < len(starts) else len(text)
-              block = text[m.start():end]
-              vals = {}
-              for key in ('名前', '描写'):
-                  km = re.search(rf'CASE "{key}"\s*\n\s*CALLF MAKE_STR\(V_NAME,\s*(.+?)\)\s*$', block, re.M)
-                  if km:
-                      vals[key] = km.group(1).strip()
-              name = vals.get('名前', '')
-              desc = vals.get('描写', '')
-              if shown < 70 and eng.search(name):
-                  print(f'NAME\tID={barrel_id}\t{name}')
-                  shown += 1
-              if eng.search(desc) and not hangul.search(desc):
-                  english_desc.append((barrel_id, desc))
-          print(f'ENGLISH_NAME_SHOWN={shown}')
-          print(f'ENGLISH_DESC_COUNT={len(english_desc)}')
-          for barrel_id, desc in english_desc:
-              print(f'DESC\tID={barrel_id}\t{desc}')
+          raw = p.read_bytes()
+          if not raw.startswith(b'\xef\xbb\xbf'):
+              raise SystemExit('UTF-8 BOM missing before edit')
+          text = raw.decode('utf-8-sig')
+          original = text
+
+          rules = [
+              (1, 'M602 Broughton 20in (508mm) Barrel', 'M602 브라우턴 20인치 (508mm) 총열'),
+              (2, 'M920 Broughton 14.5in (368mm) Barrel', 'M920 브라우턴 14.5인치 (368mm) 총열'),
+              (3, 'M933 Broughton 10.3in (262mm) Barrel', 'M933 브라우턴 10.3인치 (262mm) 총열'),
+              (5, 'GH54 Gabe Hubert 8.9in (225mm) Barrel', 'GH54 게이브 휴버트 8.9인치 (225mm) 총열'),
+              (6, 'GH94/SG Gabe Hubert 16.5in (420mm) Barrel', 'GH94/SG 게이브 휴버트 16.5인치 (420mm) 총열'),
+              (7, 'AG-1 Gryzov 16.3in (415mm) Barrel', 'AG-1 그리즈보프 16.3인치 (415mm) 총열'),
+              (8, 'AG-2 Gryzov 12.4in (314mm) Barrel', 'AG-2 그리즈보프 12.4인치 (314mm) 총열'),
+              (9, 'AG-3 Gryzov 16.3in (415mm) Barrel', 'AG-3 그리즈보프 16.3인치 (415mm) 총열'),
+              (10, 'AG-4 Gryzov 12.4in (314mm) Barrel', 'AG-4 그리즈보프 12.4인치 (314mm) 총열'),
+              (11, 'AG-6 Gryzov 16.3in (415mm) Barrel', 'AG-6 그리즈보프 16.3인치 (415mm) 총열'),
+              (12, 'AG-5 Gryzov 12.4in (314mm) Barrel', 'AG-5 그리즈보프 12.4인치 (314mm) 총열'),
+              (14, 'MARlin Gensou-chan Devil-Match 16in (406mm) Barrel', 'MARlin 겐소우짱 데빌 매치 16인치 (406mm) 총열'),
+              (15, 'QBZ-HB CONIG 20in (508mm) Barrel', 'QBZ-HB CONIG 20인치 (508mm) 총열'),
+              (17, 'Bastard 10.5in (265mm) Smoothbore Barrel', '바스타드 10.5인치 (265mm) 활강 총열'),
+              (18, 'B7 Windurger 30in (762mm) Smoothbore Single-Shot Barrel', 'B7 윈더거 30인치 (762mm) 활강 단발 총열'),
+              (19, 'FT-70 Phantom Dynamics 14.5in (368mm) Barrel', 'FT-70 팬텀 다이내믹스 14.5인치 (368mm) 총열'),
+              (20, 'DD17 Deterrence Dispensed 4.5in (114mm) Barrel', 'DD17 디터런스 디스펜스드 4.5인치 (114mm) 총열'),
+              (21, 'FD-17 Phantom Dynamics 4.5in (114mm) Barrel', 'FD-17 팬텀 다이내믹스 4.5인치 (114mm) 총열'),
+              (22, 'HS Tertiary Arms 4.5in (114mm) Barrel', 'HS 터셔리 암즈 4.5인치 (114mm) 총열'),
+              (23, 'HS Tertiary Arms 5in (127mm) Barrel', 'HS 터셔리 암즈 5인치 (127mm) 총열'),
+              (24, 'BENCHY Gensou-chan Devil-Match 4.5in (114mm) Barrel', 'BENCHY 겐소우짱 데빌 매치 4.5인치 (114mm) 총열'),
+              (25, 'Burkov GKO622 3.68in (93.5 mm) Barrel', '버코프 GKO622 3.68인치 (93.5mm) 총열'),
+              (26, 'MCM GKO622 6in (150 mm) Barrel', 'MCM GKO622 6인치 (150mm) 총열'),
+              (27, 'MP-102 ArmTeck 3.9in (98 mm) Barrel', 'MP-102 암텍 3.9인치 (98mm) 총열'),
+              (28, 'TMP-35 Tricorne 4.49in (146 mm) Barrel', 'TMP-35 트라이코르네 4.49인치 (146mm) 총열'),
+              (29, 'McFudd N Cheese DetDisp 16in (406mm) Barrel', '맥퍼드 앤 치즈 DetDisp 16인치 (406mm) 총열'),
+              (30, 'M635 Broughton 10.7in (273mm) Barrel', 'M635 브라우턴 10.7인치 (273mm) 총열'),
+              (31, 'MR-63 ArmTeck 20in (508mm) Barrel', 'MR-63 암텍 20인치 (508mm) 총열'),
+              (32, 'APD-57 High-Ground 4.8in (122mm) Barrel', 'APD-57 하이그라운드 4.8인치 (122mm) 총열'),
+              (33, 'GH46 Gabe Hubert 5.1in (130mm) Barrel', 'GH46 게이브 휴버트 5.1인치 (130mm) 총열'),
+              (34, 'GH56 Gabe Hubert 7.4in (180mm) Barrel', 'GH56 게이브 휴버트 7.4인치 (180mm) 총열'),
+              (35, 'APT-57 High-Ground 7.4in (180mm) Barrel', 'APT-57 하이그라운드 7.4인치 (180mm) 총열'),
+              (36, 'SPA ArmTeck 18.3in (464mm) Barrel', 'SPA 암텍 18.3인치 (464mm) 총열'),
+              (37, 'Type 89 Haru 16.5in (420mm) Barrel', 'Type 89 하루 16.5인치 (420mm) 총열'),
+              (38, 'ATPSA Cactus 7.4in (180mm) Barrel', 'ATPSA 캑터스 7.4인치 (180mm) 총열'),
+              (39, 'MR R-Launcher Falkenberg 37in (950mm) Barrel', 'MR R-런처 팔켄베르크 37인치 (950mm) 총열'),
+              (40, 'GH512 Gabe Hubert 18in (463mm) Smoothbore Barrel', 'GH512 게이브 휴버트 18인치 (463mm) 활강 총열'),
+              (41, 'PSB Tricorne 6.8in (173 mm) Barrel', 'PSB 트라이코르네 6.8인치 (173mm) 총열'),
+              (42, '⑨ FairyTAC 6.8in (173 mm) Barrel', '⑨ 페어리택 6.8인치 (173mm) 총열'),
+              (43, 'PPP-177 GKO622 7.3in (185 mm) Barrel', 'PPP-177 GKO622 7.3인치 (185mm) 총열'),
+              (44, 'PPB GKO622 3.8in (96 mm) Barrel', 'PPB GKO622 3.8인치 (96mm) 총열'),
+              (45, 'SPP GKO622 8.5in (215 mm) Barrel', 'SPP GKO622 8.5인치 (215mm) 총열'),
+              (46, 'BS10 CONIG 10.5in (266 mm) Barrel', 'BS10 CONIG 10.5인치 (266mm) 총열'),
+              (47, 'BS97 CONIG 14.5in (368mm) Barrel', 'BS97 CONIG 14.5인치 (368mm) 총열'),
+              (48, 'K-366 Gryzov 16.3in (415mm) Paradox Barrel', 'K-366 그리즈보프 16.3인치 (415mm) 패러독스 총열'),
+              (49, 'Volitional Windurger 6in (152mm) Barrel', '볼리셔널 윈더거 6인치 (152mm) 총열'),
+              (50, 'Volitional Windurger 8in (203mm) Barrel', '볼리셔널 윈더거 8인치 (203mm) 총열'),
+              (51, 'Volitional Windurger 16in (406mm) Barrel', '볼리셔널 윈더거 16인치 (406mm) 총열'),
+              (52, 'Volitional Windurger 25in (635mm) Barrel', '볼리셔널 윈더거 25인치 (635mm) 총열'),
+              (53, '.45 Automatic Broughton Pistol 5in (152mm) Barrel', '.45 브라우턴 자동 권총 5인치 (152mm) 총열'),
+          ]
+
+          if len(rules) != 50:
+              raise SystemExit(f'rule count mismatch: {len(rules)}')
+
+          protected = [
+              '"名前"', '"描写"', '"ShortName"', '"装備部位"', '"Barrel"',
+              '"Accuracy"', '"Damage"', '"Burst"', '"Length"', '"Platform"',
+              '"Price"', '"WeaponBarrelBody"'
+          ]
+          before_counts = {token: original.count(token) for token in protected}
+
+          func_re_template = r'^@WeaponBarrelBody{}\(ARG, O_DATA, V_NAME\)\s*$'
+          next_func_re = re.compile(r'^@WeaponBarrelBody\d+\(ARG, O_DATA, V_NAME\)\s*$', re.M)
+
+          for barrel_id, old, new in rules:
+              fm = re.search(func_re_template.format(barrel_id), text, re.M)
+              if not fm:
+                  raise SystemExit(f'missing function WeaponBarrelBody{barrel_id}')
+              nm = next_func_re.search(text, fm.end())
+              end = nm.start() if nm else len(text)
+              block = text[fm.start():end]
+              old_line = f'CALLF MAKE_STR(V_NAME, "{old}")'
+              new_line = f'CALLF MAKE_STR(V_NAME, "{new}")'
+              count = block.count(old_line)
+              if count != 1:
+                  raise SystemExit(f'ID {barrel_id}: expected one name match, got {count}: {old}')
+              block = block.replace(old_line, new_line, 1)
+              text = text[:fm.start()] + block + text[end:]
+
+          after_counts = {token: text.count(token) for token in protected}
+          if before_counts != after_counts:
+              raise SystemExit(f'protected token count changed: before={before_counts}, after={after_counts}')
+
+          for barrel_id, old, new in rules:
+              if f'CALLF MAKE_STR(V_NAME, "{old}")' in text:
+                  raise SystemExit(f'old display name remains for ID {barrel_id}')
+              if f'CALLF MAKE_STR(V_NAME, "{new}")' not in text:
+                  raise SystemExit(f'new display name missing for ID {barrel_id}')
+
+          p.write_bytes(b'\xef\xbb\xbf' + text.encode('utf-8'))
+          print(f'[barrels] translated {len(rules)} display names')
           PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE='ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Barrels.ERB'
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Barrels.ERB')
+          raw = p.read_bytes()
+          if not raw.startswith(b'\xef\xbb\xbf'):
+              raise SystemExit('UTF-8 BOM lost')
+          print('[validate] BOM ok')
+          PY
+          git diff --check
+          mapfile -t files < <(git diff --name-only)
+          if [[ ${#files[@]} -ne 1 || "${files[0]}" != "$FILE" ]]; then
+            printf 'unexpected changed files:\n%s\n' "${files[*]}"
+            exit 1
+          fi
+          read -r add del path < <(git diff --numstat -- "$FILE")
+          if [[ "$add" != '50' || "$del" != '50' || "$path" != "$FILE" ]]; then
+            echo "unexpected numstat: add=$add del=$del path=$path"
+            exit 1
+          fi
+          echo '[validate] single file +50/-50 ok'
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Barrels.ERB'
+          git commit -m '총열 UI 표시명 1차 한글화 50차'
+          git push origin HEAD:korean
