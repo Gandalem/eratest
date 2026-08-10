@@ -1,0 +1,165 @@
+name: Batch Korean pass 47
+
+on:
+  push:
+    paths:
+      - '.github/workflows/batch-korean-pass-47.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Korean branch
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          fetch-depth: 0
+
+      - name: Translate safe clothing descriptions
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Clothing/Omogatari_Clothing.ERB')
+          raw = path.read_bytes()
+          if not raw.startswith(b'\xef\xbb\xbf'):
+              raise SystemExit('UTF-8 BOM missing before edit')
+          text = raw.decode('utf-8-sig')
+          lines = text.splitlines(keepends=True)
+
+          marker = '@Clothes_FullDescription(ARGS, ARG, nChara, hideItemName=0)'
+          marker_hits = [i for i, line in enumerate(lines) if line.rstrip('\r\n') == marker]
+          if len(marker_hits) != 1:
+              raise SystemExit(f'function marker count mismatch: {len(marker_hits)}')
+          func_start = marker_hits[0]
+
+          rules = [
+              ('革グローブ', r'''LOCALS '= "Allows for better grip as well as a better fit compared to bare hands. Also provides basic protection."''', r'''LOCALS '= "맨손보다 그립감과 착용감이 좋으며 기본적인 보호 성능도 제공하는 가죽 장갑이다."'''),
+              ('ガントレット', r'''LOCALS '= "Protective gloves made for combat. These are typically made out of plate steel or chain mail."''', r'''LOCALS '= "전투용 보호 장갑이다. 보통 판금이나 체인메일로 만든다."'''),
+              ('ゆがけ', r'''LOCALS '= "Plated gloves which provide free movement for your fingers. The preferred choice of knights or martial arts fighters."''', r'''LOCALS '= "손가락을 자유롭게 움직일 수 있는 판금 장갑이다. 기사나 무술가가 선호한다."'''),
+              ('靴', r'''LOCALS '= "Leather shoes made for formal occasions."''', r'''LOCALS '= "격식 있는 자리에 신는 가죽 구두다."'''),
+              ('下駄', r'''LOCALS '= "A kind of sandal, geta have a flat wooden base elevated with up to three (though commonly two) \"teeth\", held on the foot with a fabric thong, which keeps the foot raised above the ground."''', r'''LOCALS '= "게타는 평평한 나무 밑창 아래에 보통 두 개의 굽이 달린 일본식 샌들로, 천 끈으로 발에 고정해 지면에서 발을 띄운다."'''),
+              ('ブーツ', r'''LOCALS '= "Throwing one of those on someone face symbols flame peak of the conversation. Common gear used by most adventureres."''', r'''LOCALS '= "모험가들이 흔히 사용하는 튼튼한 부츠다."'''),
+              ('スニーカー', r'''LOCALS '= "Lightweight sneakers meant for light travel."''', r'''LOCALS '= "가벼운 이동에 적합한 경량 스니커즈다."'''),
+              ('パンプス', r'''LOCALS '= "A court shoe or pump is a shoe with a low-cut front, or vamp, with either a shoe buckle or a black bow as ostensible fastening."''', r'''LOCALS '= "앞부분이 낮게 파인 펌프스형 구두로, 버클이나 리본 장식이 달리기도 한다."'''),
+              ('革靴', r'''LOCALS '= "More rugged style of leather shoes, these focus more on protection than style. "''', r'''LOCALS '= "멋보다 보호 성능에 중점을 둔 튼튼한 가죽 구두다."'''),
+              ('地下足袋', r'''LOCALS '= "Traditional Japanese socks worn with thonged footwear such as zori or geta. Made with rubber for a more form-fitting fit."''', r'''LOCALS '= "조리나 게타 같은 끈 달린 신발과 함께 신는 일본 전통 양말을 고무 밑창으로 개량한 신발이다."'''),
+              ('靴下', r'''LOCALS '= "Fabric gloves for your feet."''', r'''LOCALS '= "발에 끼우는 천 소재 양말이다."'''),
+              ('ニーソックス', r'''LOCALS '= "Knee-high fabric socks to keep the legs warm."''', r'''LOCALS '= "다리를 따뜻하게 해 주는 무릎 높이 양말이다."'''),
+              ('足袋', r'''LOCALS '= "Traditional Japanese socks worn with thonged footwear such as zori or geta."''', r'''LOCALS '= "조리나 게타 같은 끈 달린 신발과 함께 신는 일본 전통 양말이다."'''),
+              ('帽子', r'''LOCALS '= "A good-looking hat which projects a slightly urban, money-loving style. Improves social impact."''', r'''LOCALS '= "도회적이고 세련된 인상을 주는 멋진 모자다. 사회적 인상을 높여 준다."'''),
+              ('リボン', r'''LOCALS '= "A nice looking hair ribbon."''', r'''LOCALS '= "보기 좋은 머리 리본이다."'''),
+              ('ホワイトブリム', r'''LOCALS '= "A frilly headpiece to keep a maid's hair in place."''', r'''LOCALS '= "메이드의 머리카락을 단정하게 고정하는 프릴 머리장식이다."'''),
+              ('兎耳ヘアーバンド', r'''LOCALS '= "Headband with rabbit ears on top."''', r'''LOCALS '= "위에 토끼 귀가 달린 헤어밴드다."'''),
+              ('お椀', r'''LOCALS '= "A ceramic bowl, usually used for holding soup or a small snack."''', r'''LOCALS '= "국이나 간단한 간식을 담는 데 쓰는 도자기 그릇이다."'''),
+              ('ナイトキャップ', r'''LOCALS '= "A cap to prevent your hair from becoming bed hair."''', r'''LOCALS '= "잠자는 동안 머리가 헝클어지는 것을 막는 모자다."'''),
+              ('兜巾', r'''LOCALS '= "A smart looking and tiny hat typically worn by Tengu."''', r'''LOCALS '= "텐구가 흔히 쓰는 작고 단정한 모자다."'''),
+              ('ヘッドセット・インカム', r'''LOCALS '= "Headphones with a microphone attached to them."''', r'''LOCALS '= "마이크가 달린 헤드폰이다."'''),
+              ('ヘッドホン', r'''LOCALS '= "Speakers in a can made to fit on a head."''', r'''LOCALS '= "머리에 착용하도록 만든 한 쌍의 스피커다."'''),
+              ('ナースキャップ', r'''LOCALS '= "The cap of a trained medical professional. Has a red cross at the front."''', r'''LOCALS '= "숙련된 의료인이 쓰는 모자로 앞면에 빨간 십자가가 있다."'''),
+              ('サンタ帽', r'''LOCALS '= "Keep the festive spirit alive with this commemorative christmas cap."''', r'''LOCALS '= "기념용 산타 모자로 축제 분위기를 살려 준다."'''),
+              ('サンバイザー', r'''LOCALS '= "Keeps the sun away from where you're looking at while also keeping your head cool."''', r'''LOCALS '= "머리는 시원하게 유지하면서 시야에 들어오는 햇빛을 가려 준다."'''),
+              ('フード', r'''LOCALS '= "Lightweight jacket with a hood on top to keep the head warm."''', r'''LOCALS '= "머리를 따뜻하게 덮는 후드가 달린 가벼운 재킷이다."'''),
+              ('タンクトップ', r'''LOCALS '= "Very simple sleeveless top. When T-shirts are still too hot."''', r'''LOCALS '= "아주 단순한 민소매 상의다. 티셔츠조차 더운 날에 적합하다."'''),
+              ('ワイシャツ', r'''LOCALS '= "A formal dress shirt with the essence of a money-loving member of a corporation's C-suite. Classy."''', r'''LOCALS '= "기업 임원 같은 격식과 세련된 분위기를 풍기는 정장 셔츠다."'''),
+              ('Ｔシャツ', r'''LOCALS '= "A simple T-shirt. Four holes, thin cotton fibers, and a cool easy to wear style make T-shirts summer hits"''', r'''LOCALS '= "얇은 면 소재로 만든 단순한 티셔츠다. 가볍고 입기 편해 여름에 잘 어울린다."'''),
+              ('地獄Ｔシャツ', r'''LOCALS '= "Blood splattered T-shirt with the text 『Welcome Hell』"''', r'''LOCALS '= "피가 튄 무늬와 『지옥에 어서 오세요』 문구가 적힌 티셔츠다."'''),
+              ('三色スカート', r'''LOCALS '= "A plaid skirt with green, red, and purple sections."''', r'''LOCALS '= "초록색, 빨간색, 보라색 구역이 있는 체크무늬 스커트다."'''),
+              ('ケープマント', r'''LOCALS '= "Bigger brother of muffler, with more defense and use."''', r'''LOCALS '= "머플러보다 크고 방어력과 활용성이 높은 케이프 망토다."'''),
+
+              ('御札', r'''LOCALS = talisman''', r'''LOCALS = "부적"'''),
+              ('行灯袴', r'''LOCALS = lantern Hakama''', r'''LOCALS = "안돈바카마"'''),
+              ('ハーフパンツ', r'''LOCALS = half-pants''', r'''LOCALS = "반바지"'''),
+              ('作務衣（下）', r'''LOCALS = Samue (bottom)''', r'''LOCALS = "사무에(하의)"'''),
+              ('首輪', r'''LOCALS = collar''', r'''LOCALS = "목줄"'''),
+              ('チョーカー', r'''LOCALS = choker''', r'''LOCALS = "초커"'''),
+              ('ネクタイ', r'''LOCALS = necktie''', r'''LOCALS = "넥타이"'''),
+              ('マフラー', r'''LOCALS = scarf''', r'''LOCALS = "머플러"'''),
+              ('帯', r'''LOCALS = Obi''', r'''LOCALS = "오비"'''),
+              ('リュックサック', r'''LOCALS = rucksack''', r'''LOCALS = "배낭"'''),
+              ('注連縄', r'''LOCALS = Shimenawa''', r'''LOCALS = "시메나와"'''),
+              ('羽衣', r'''LOCALS = angel's raiment''', r'''LOCALS = "천녀의 날개옷"'''),
+              ('包帯', r'''LOCALS = bandage''', r'''LOCALS = "붕대"'''),
+              ('ブレスレット', r'''LOCALS = bracelet''', r'''LOCALS = "팔찌"'''),
+              ('サッシュベルト', r'''LOCALS = sash belt''', r'''LOCALS = "새시 벨트"'''),
+              ('リボンチョーカー', r'''LOCALS = rosette choker''', r'''LOCALS = "리본 초커"'''),
+              ('スカーフタイ', r'''LOCALS = ascot tie''', r'''LOCALS = "애스콧 타이"'''),
+              ('サスペンダー', r'''LOCALS = suspenders''', r'''LOCALS = "멜빵"'''),
+          ]
+
+          def tokens(s):
+              return re.findall(r'%[^%\n]+%|\{[^{}\n]+\}|\\n|\\@', s)
+
+          def replace_case_locals(case_name, old_stmt, new_stmt):
+              case_line = f'CASE "{case_name}"'
+              hits = [i for i in range(func_start + 1, len(lines)) if lines[i].rstrip('\r\n').lstrip() == case_line]
+              if len(hits) != 1:
+                  raise SystemExit(f'CASE count mismatch {case_name!r}: {len(hits)}')
+              ci = hits[0]
+              candidates = []
+              for j in range(ci + 1, len(lines)):
+                  stripped = lines[j].rstrip('\r\n').lstrip()
+                  if stripped.startswith('CASE "') or stripped == 'ENDSELECT':
+                      break
+                  if stripped.startswith('LOCALS'):
+                      candidates.append(j)
+              exact = [j for j in candidates if lines[j].rstrip('\r\n').lstrip() == old_stmt]
+              if len(exact) != 1:
+                  raise SystemExit(f'LOCALS mismatch {case_name!r}: {len(exact)}')
+              if tokens(old_stmt) != tokens(new_stmt):
+                  raise SystemExit(f'token mismatch {case_name!r}')
+              j = exact[0]
+              body = lines[j].rstrip('\r\n')
+              indent = body[:len(body) - len(body.lstrip())]
+              newline = lines[j][len(body):]
+              lines[j] = indent + new_stmt + newline
+
+          for case_name, old_stmt, new_stmt in rules:
+              replace_case_locals(case_name, old_stmt, new_stmt)
+
+          out = ''.join(lines)
+          if len(rules) != 50:
+              raise SystemExit(f'rule count mismatch: {len(rules)}')
+          path.write_bytes(b'\xef\xbb\xbf' + out.encode('utf-8'))
+          print(f'[clothing] translated {len(rules)} safe descriptions')
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          target='ERB/TRANSLATION/OMOGATARI/ITEM/Clothing/Omogatari_Clothing.ERB'
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Clothing/Omogatari_Clothing.ERB')
+          data = p.read_bytes()
+          if not data.startswith(b'\xef\xbb\xbf'):
+              raise SystemExit('UTF-8 BOM missing after edit')
+          PY
+          git diff --check
+          mapfile -t changed < <(git diff --name-only)
+          [[ ${#changed[@]} -eq 1 ]]
+          [[ "${changed[0]}" == "$target" ]]
+          numstat="$(git diff --numstat -- "$target")"
+          echo "$numstat"
+          [[ "$numstat" == $'50\t50\t'"$target" ]]
+          if [[ -e .github/workflows/batch-korean-pass-47.yml ]]; then
+            echo 'workflow file unexpectedly exists on korean branch' >&2
+            exit 1
+          fi
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'ERB/TRANSLATION/OMOGATARI/ITEM/Clothing/Omogatari_Clothing.ERB'
+          git commit -m '의류 UI 안전 액세서리 및 일반 설명 5차 한글화 47차'
+          git push origin korean
