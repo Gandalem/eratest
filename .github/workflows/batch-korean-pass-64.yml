@@ -1,0 +1,163 @@
+name: Batch Korean pass 64 bulk + smoke
+
+on:
+  push:
+    paths:
+      - '.github/workflows/batch-korean-pass-64.yml'
+      - '.github/scripts/batch_korean_pass64_v2.py'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-validate-smoke-commit:
+    runs-on: ubuntu-latest
+    env:
+      WINEARCH: win64
+      WINEDEBUG: -all
+    steps:
+      - name: Checkout main tools
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: tools
+          fetch-depth: 1
+
+      - name: Checkout Korean target
+        uses: actions/checkout@v4
+        with:
+          ref: korean
+          path: target
+          fetch-depth: 0
+          lfs: false
+
+      - name: Compile pass 64 script
+        shell: bash
+        run: python3 -m py_compile tools/.github/scripts/batch_korean_pass64_v2.py
+
+      - name: Apply pass 64 in working tree
+        shell: bash
+        working-directory: target
+        run: |
+          python3 ../tools/.github/scripts/batch_korean_pass64_v2.py | tee ../pass64-apply.txt
+          grep -Fx 'PASS64_VISIBLE_REPLACEMENTS 737' ../pass64-apply.txt
+
+      - name: Validate exact static diff
+        shell: bash
+        working-directory: target
+        run: |
+          git diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          expected = {
+              'ERB/TRANSLATION/LIST.ERB': (253, 253),
+              'ERB/TRANSLATION/_TR Lib.ERB': (90, 90),
+              'ERB/TRANSLATION/OMOGATARI/TALENTNAME_NAS.ERB': (268, 268),
+              'ERB/TRANSLATION/OMOGATARI/ITEM/Omogatari_SpellCards.ERB': (79, 79),
+          }
+          out = subprocess.check_output(['git', 'diff', '--numstat'], text=True)
+          got = {}
+          for line in out.splitlines():
+              a, d, p = line.split('\t', 2)
+              got[p] = (int(a), int(d))
+          print('NUMSTAT', got)
+          assert got == expected, (got, expected)
+          assert sum(a for a, _ in got.values()) == 690
+          assert sum(d for _, d in got.values()) == 690
+          raw = subprocess.check_output(['git', 'diff', '--name-only', '-z'])
+          paths = {p.decode('utf-8') for p in raw.split(b'\0') if p}
+          assert paths == set(expected), paths
+          for rel in expected:
+              assert Path(rel).read_bytes().startswith(b'\xef\xbb\xbf'), f'BOM lost: {rel}'
+          untracked = subprocess.check_output(['git', 'ls-files', '--others', '--exclude-standard', '-z'])
+          assert not untracked, untracked
+          print('PASS64_VISIBLE_REPLACEMENTS=737')
+          print('PASS64_STATIC_PREFLIGHT_OK')
+          PY
+
+      - name: Materialize Emuera engine
+        shell: bash
+        working-directory: target
+        run: |
+          git lfs pull --include="Emuera.exe" --exclude=""
+          bytes=$(stat -c%s Emuera.exe)
+          echo "Emuera.exe bytes=$bytes"
+          test "$bytes" -gt 100000
+
+      - name: Install headless Wine and .NET Desktop 8
+        shell: bash
+        run: |
+          export WINEPREFIX="$RUNNER_TEMP/wineprefix"
+          echo "WINEPREFIX=$WINEPREFIX" >> "$GITHUB_ENV"
+          sudo dpkg --add-architecture i386
+          sudo apt-get update -qq
+          sudo apt-get install -y xvfb wine wine64 wine32:i386 curl
+          wine --version
+          xvfb-run -a wineboot -u
+          curl -fL --retry 3 -o "$RUNNER_TEMP/dotnet-desktop-8.exe" https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/8.0.29/windowsdesktop-runtime-8.0.29-win-x64.exe
+          test "$(stat -c%s "$RUNNER_TEMP/dotnet-desktop-8.exe")" -gt 10000000
+          xvfb-run -a wine "$RUNNER_TEMP/dotnet-desktop-8.exe" /install /quiet /norestart
+          test -d "$WINEPREFIX/drive_c/Program Files/dotnet/shared/Microsoft.WindowsDesktop.App"
+          find "$WINEPREFIX/drive_c/Program Files/dotnet/shared/Microsoft.WindowsDesktop.App" -maxdepth 1 -mindepth 1 -type d -printf '%f\n'
+
+      - name: Boot modified tree headlessly
+        shell: bash
+        working-directory: target
+        run: |
+          rm -f emuera.log emuera.log.prev smoke.stdout smoke.combined
+          set +e
+          xvfb-run -a timeout 35s wine ./Emuera.exe -debug > smoke.stdout 2>&1
+          rc=$?
+          set -e
+          echo "SMOKE_RC=$rc"
+          tail -n 160 smoke.stdout || true
+          for f in emuera.log emuera.log.prev; do
+            if [ -f "$f" ]; then
+              echo "===== $f ====="
+              tail -n 200 "$f" || true
+            fi
+          done
+          cat smoke.stdout emuera.log emuera.log.prev 2>/dev/null > smoke.combined || true
+          if grep -Eiq 'Unhandled Exception|SyntaxError|Script.*Error|Parser.*Error|Compile.*Error|System\.[A-Za-z]+Exception|致命的|構文エラー' smoke.combined; then
+            echo 'Fatal/parse error detected during smoke boot'
+            exit 1
+          fi
+          if grep -Eiq 'You must install \.NET|\.NET location: Not found|requires.*\.NET|missing.*runtime' smoke.combined; then
+            echo 'Windows runtime dependency missing'
+            exit 2
+          fi
+          if [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ]; then
+            echo "Unexpected engine exit code: $rc"
+            exit 1
+          fi
+          echo 'Headless modified-tree smoke passed'
+
+      - name: Upload smoke logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pass64-smoke-logs
+          path: |
+            target/smoke.stdout
+            target/emuera.log
+            target/emuera.log.prev
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Commit and push Korean pass 64
+        shell: bash
+        working-directory: target
+        run: |
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- \
+            "ERB/TRANSLATION/LIST.ERB" \
+            "ERB/TRANSLATION/_TR Lib.ERB" \
+            "ERB/TRANSLATION/OMOGATARI/TALENTNAME_NAS.ERB" \
+            "ERB/TRANSLATION/OMOGATARI/ITEM/Omogatari_SpellCards.ERB"
+          git diff --cached --check
+          git commit -m "대규모 특성·스펠카드·공용 UI 한글화 및 부팅 검증 64차"
+          git push origin HEAD:korean
