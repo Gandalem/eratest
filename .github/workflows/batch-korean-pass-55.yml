@@ -7,10 +7,10 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  diagnose:
+  translate:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Korean branch
@@ -19,7 +19,7 @@ jobs:
           ref: korean
           fetch-depth: 1
 
-      - name: List untranslated weapon preset UI strings
+      - name: Translate weapon preset UI strings
         shell: bash
         run: |
           python3 - <<'PY'
@@ -27,11 +27,128 @@ jobs:
           import re
 
           p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Omogatari_WeaponPresets.ERB')
-          text = p.read_bytes().decode('utf-8-sig')
-          func_re = re.compile(r'^@WeaponPreset(\d+)\(ARG, O_DATA, V_NAME\)\s*$', re.M)
-          starts = list(func_re.finditer(text))
+          raw = p.read_bytes()
+          if not raw.startswith(b'\xef\xbb\xbf'):
+              raise SystemExit('UTF-8 BOM missing before edit')
+          text = raw.decode('utf-8-sig')
+          before = text
+
+          rules = [
+              (1, 'Name', r"outsider AR", "외부 세계 돌격소총"),
+              (1, 'FullName', r"Heckler & Koch \"HK33\" assault rifle", "헤클러 앤 코흐 「HK33」 돌격소총"),
+              (1, 'FullName', r"Gabe Hubert \"GH33\" assault rifle", "게이브 허버트 「GH33」 돌격소총"),
+              (1, 'FullName', r"outsider assault rifle", "외부 세계 돌격소총"),
+              (1, 'Description', r"An assault rifle using the GH31 as the base, the GH33 is one of the more common variants, being fed with the intermediate 5.56x45mm cartridge instead of the full power 7.62x51mm. Comes with black plastic furniture and a 40 round magazine.", "GH31을 기반으로 한 돌격소총인 GH33은 비교적 흔한 파생형 중 하나로, 전출력 7.62x51mm 대신 중간위력 5.56x45mm 탄을 사용한다. 검은색 플라스틱 가구와 40발 탄창이 기본 장착된다."),
+
+              (2, 'Name', r"SMG", "기관단총"),
+              (2, 'FullName', r"Heckler & Koch \"HK54\" Sub-Machine Gun", "헤클러 앤 코흐 「HK54」 기관단총"),
+              (2, 'FullName', r"Gabe Hubert \"GH54\" Sub-Machine Gun", "게이브 허버트 「GH54」 기관단총"),
+              (2, 'FullName', r"outsider sub-machine gun", "외부 세계 기관단총"),
+              (2, 'Description', r"The GH54 is a sub-caliber carbine designed for 9x19mm. Using the GH31's roller delayed blowback mechanism, the GH54 is a easy to handle, accurate, and compact carbine suitable for close quarters battle. Most GH54s in Gensokyo are modified GH33s and GH31s, due to the still widespread use of the official GH54, though some A2 models are left forgotten and gapped to the World of Fantasy.", "GH54는 9x19mm용 소구경 카빈이다. GH31의 롤러 지연식 블로백 구조를 사용해 다루기 쉽고 정확하며, 근접전에 적합한 소형 카빈으로 설계되었다. 환상향에 있는 GH54 대부분은 GH33과 GH31을 개조한 것이지만, 일부 A2 모델은 잊힌 채 환상세계로 흘러들어왔다."),
+
+              (3, 'Name', r"precision sniper rifle", "정밀 저격소총"),
+              (3, 'FullName', r"Heckler & Koch \"PSG-1\" precision sniper rifle", "헤클러 앤 코흐 「PSG-1」 정밀 저격소총"),
+              (3, 'FullName', r"Gabe Hubert \"GH91/SG1\" precision sniper rifle", "게이브 허버트 「GH91/SG1」 정밀 저격소총"),
+              (3, 'FullName', r"precision sniper rifle", "정밀 저격소총"),
+              (3, 'Description', r"The GH91/S1 is a heavily modified GH31 rifle with semi-auto only functions. Most claim it to be the most accurate semi-automatic rifle in the world, however it is quite expensive. The current price to law enforcement today is about $10,000 per unit. Since no more rifles are being imported for civilian sales, those original German guns that are currently in the country have risen to about $15,000 per unit for a pristine example. ", "GH91/S1은 GH31 소총을 대폭 개조한 반자동 전용형이다. 세계에서 가장 정확한 반자동 소총이라고 평가되지만 가격도 매우 비싸다. 현재 법집행기관 납품가는 한 정당 약 $10,000이며, 민수용 수입이 중단된 뒤 현재 유통 중인 독일제 원형은 상태가 좋은 경우 한 정당 약 $15,000까지 올랐다. "),
+
+              (4, 'Name', r"battle rifle", "전투소총"),
+              (4, 'FullName', r"LUNINCO \"LAC36\" battle rifle", "루닌코 「LAC36」 전투소총"),
+              (4, 'FullName', r"battle rifle", "전투소총"),
+              (4, 'Description', r"A modified machine gun variant of the LAC33, the LAC36 fires 7.62x51mm NATO rounds at a steady 600 rounds per minute from its 30-round magazine. ", "LAC33의 개조 기관총형인 LAC36은 30발 탄창에서 7.62x51mm NATO탄을 분당 600발의 안정적인 발사속도로 쏜다. "),
+
+              (5, 'Name', r"Sumireko's single shot", "스미레코의 단발총"),
+              (5, 'FullName', r"Single Shot「Machinma-G」", "단발총「Machinma-G」"),
+              (5, 'FullName', r"Sumireko's single shot", "스미레코의 단발총"),
+              (5, 'Description', r"Sumireko's personal firearm. Basic as it gets, but maybe it'll get better once she knows how to shoot more.", "스미레코의 개인 화기다. 가장 기본적인 형태지만, 사격에 익숙해지면 더 나아질지도 모른다."),
+
+              (6, 'Name', r"Sumireko's single shot+", "스미레코의 단발총+"),
+              (6, 'FullName', r"Sumireko's \"Machinma-D\" single shot pistol", "스미레코의 「Machinma-D」 단발 권총"),
+              (6, 'FullName', r"Sumireko's single shot+", "스미레코의 단발총+"),
+              (6, 'Description', r"Sumireko's personal firearm. Added optic and laser makes it easier to aim.", "스미레코의 개인 화기다. 조준경과 레이저를 추가해 조준하기 쉬워졌다."),
+
+              (7, 'Name', r"Sumireko's pepperbox", "스미레코의 페퍼박스"),
+              (7, 'FullName', r"Pepperbox 「Machinma-C」", "페퍼박스「Machinma-C」"),
+              (7, 'FullName', r"Sumireko's pepperbox", "스미레코의 페퍼박스"),
+              (7, 'Description', r"Sumireko's personal firearm. Converted to a four-shot pepperbox. Requires manual rotation.", "스미레코의 개인 화기다. 4연발 페퍼박스로 개조되었으며, 수동으로 회전시켜야 한다."),
+
+              (8, 'Name', r"Sumireko's pistol", "스미레코의 권총"),
+              (8, 'FullName', r"Autoloading Pistol「Machinma-B」", "자동장전 권총「Machinma-B」"),
+              (8, 'FullName', r"Sumireko's pistol", "스미레코의 권총"),
+              (8, 'Description', r"Sumireko's personal firearm. Converted to semi-automatic. Compatible with Tricorne TMP-35 and PSB parts including barrels and magazines.", "스미레코의 개인 화기다. 반자동으로 개조되었다. 총열과 탄창을 포함해 트라이코르네 TMP-35 및 PSB 부품과 호환된다."),
+
+              (9, 'Name', r"Sumireko's machine pistol", "스미레코의 기관권총"),
+              (9, 'FullName', r"Machine Pistol 「Machinma-A」", "기관권총「Machinma-A」"),
+              (9, 'FullName', r"Sumireko's machine pistol", "스미레코의 기관권총"),
+              (9, 'Description', r"Sumireko's personal firearm. Converted to full-automatic. Compatible with Tricorne TMP-35 and PSB parts including barrels and magazines.", "스미레코의 개인 화기다. 완전자동으로 개조되었다. 총열과 탄창을 포함해 트라이코르네 TMP-35 및 PSB 부품과 호환된다."),
+
+              (10, 'Name', r"Sumireko's recharger pistol", "스미레코의 재충전 권총"),
+              (10, 'FullName', r"Recharger pistol 「Machinma-S」", "재충전 권총「Machinma-S」"),
+              (10, 'FullName', r"Sumireko's recharger pistol", "스미레코의 재충전 권총"),
+              (10, 'Description', r"Sumireko's personal firearm. Fully automatic, magical. Requires MP to fire.", "스미레코의 개인 화기다. 완전자동식 마법 화기로, 발사에 MP가 필요하다."),
+
+              (11, 'Name', r"Sumireko's smart pistol", "스미레코의 스마트 권총"),
+              (11, 'FullName', r"Gensou-chan Smart Pistol 「EX-Machinma」", "겐소우짱 스마트 권총「EX-Machinma」"),
+              (11, 'FullName', r"Sumireko's smart pistol", "스미레코의 스마트 권총"),
+              (11, 'Description', r"Sumireko's personal firearm, enhanced by Gensou-chan. Fully automatic, magical. Requires MP to fire. Kitted out to the max with Gensou-chan parts such as the HUG grips, Devil-Match barrel, and ALSA and NAIVE targeting computers.", "스미레코의 개인 화기로, 겐소우짱이 강화했다. 완전자동식 마법 화기이며 발사에 MP가 필요하다. HUG 그립, 데빌-매치 총열, ALSA·NAIVE 표적 컴퓨터 등 겐소우짱 부품을 최대한 장착했다."),
+          ]
+          if len(rules) != 47:
+              raise SystemExit(f'rule count mismatch: {len(rules)}')
+
+          protected = [
+              'CASE "Name"', 'CASE "FullName"', 'CASE "Description"',
+              'CASE "Tags"', 'CASE "Platform"', 'CASE "Manufacturer"',
+              'CASE "Base Weapon"', 'CASE "WeaponReceiver/Required"',
+              'CASE "WeaponBarrelBody/Default"', 'CASE "WeaponMag/Default"',
+              'CASE "WeaponGrip/Default"', 'CASE "WeaponStock/Default"',
+              'CASE "WeaponSight/Default"'
+          ]
+          protected_counts = {s: before.count(s) for s in protected}
+
+          def field_bounds(block, field):
+              cases = list(re.finditer(r'^\s*CASE "([^"]+)"\s*$', block, re.M))
+              hits = [(i, cm) for i, cm in enumerate(cases) if cm.group(1) == field]
+              if len(hits) != 1:
+                  raise SystemExit(f'field {field}: expected one CASE, got {len(hits)}')
+              i, cm = hits[0]
+              end = cases[i + 1].start() if i + 1 < len(cases) else len(block)
+              return cm.end(), end
+
+          def replace_rule(text, item_id, field, old, new):
+              marker = re.search(rf'^@WeaponPreset{item_id}\(ARG, O_DATA, V_NAME\)\s*$', text, re.M)
+              if not marker:
+                  raise SystemExit(f'ID {item_id}: function missing')
+              nxt = re.search(r'^@WeaponPreset\d+\(ARG, O_DATA, V_NAME\)\s*$', text[marker.end():], re.M)
+              block_end = marker.end() + nxt.start() if nxt else len(text)
+              block = text[marker.start():block_end]
+              cs, ce = field_bounds(block, field)
+              cblock = block[cs:ce]
+              needle = f'CALLF MAKE_STR(V_NAME, "{old}")'
+              replacement = f'CALLF MAKE_STR(V_NAME, "{new}")'
+              count = cblock.count(needle)
+              if count != 1:
+                  raise SystemExit(f'ID {item_id} {field}: expected one anchor, got {count}: {old}')
+              new_cblock = cblock.replace(needle, replacement, 1)
+              new_block = block[:cs] + new_cblock + block[ce:]
+              return text[:marker.start()] + new_block + text[block_end:]
+
+          for item_id, field, old, new in rules:
+              text = replace_rule(text, item_id, field, old, new)
+
+          for item_id, field, old, new in rules:
+              if f'CALLF MAKE_STR(V_NAME, "{old}")' in text:
+                  raise SystemExit(f'old UI string remains: ID {item_id} {field}: {old}')
+              if f'CALLF MAKE_STR(V_NAME, "{new}")' not in text:
+                  raise SystemExit(f'new UI string missing: ID {item_id} {field}: {new}')
+
+          for s, count in protected_counts.items():
+              if text.count(s) != count:
+                  raise SystemExit(f'protected schema count changed for {s}: {count} -> {text.count(s)}')
+
           eng = re.compile(r'[A-Za-z]{2,}')
           hangul = re.compile(r'[가-힣]')
+          func_re = re.compile(r'^@WeaponPreset(\d+)\(ARG, O_DATA, V_NAME\)\s*$', re.M)
+          starts = list(func_re.finditer(text))
           wanted = {'Name', 'FullName', 'Description'}
           rows = []
           for idx, m in enumerate(starts):
@@ -49,7 +166,45 @@ jobs:
                       value = sm.group(1)
                       if eng.search(value) and not hangul.search(value):
                           rows.append((item_id, field, value))
-          print(f'UNTRANSLATED_UI={len(rows)}')
-          for item_id, field, value in rows:
-              print(f'UI\tID={item_id}\tFIELD={field}\t{value}')
+          print(f'[weapon-presets] translated={len(rules)}')
+          print(f'[weapon-presets] remaining_untranslated_ui={len(rows)}')
+          if len(rows) != 58:
+              raise SystemExit(f'expected 58 untranslated UI strings after pass, got {len(rows)}')
+
+          p.write_bytes(b'\xef\xbb\xbf' + text.encode('utf-8'))
           PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE='ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Omogatari_WeaponPresets.ERB'
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Omogatari_WeaponPresets.ERB')
+          if not p.read_bytes().startswith(b'\xef\xbb\xbf'):
+              raise SystemExit('UTF-8 BOM was not preserved')
+          print('[validate] BOM ok')
+          PY
+          git diff --check
+          mapfile -t changed_files < <(git diff --name-only)
+          if [[ ${#changed_files[@]} -ne 1 || "${changed_files[0]}" != "$FILE" ]]; then
+            printf 'unexpected changed files:\n%s\n' "${changed_files[*]}"
+            exit 1
+          fi
+          read -r added deleted path < <(git diff --numstat -- "$FILE")
+          if [[ "$added" != "47" || "$deleted" != "47" || "$path" != "$FILE" ]]; then
+            echo "unexpected numstat: +$added -$deleted $path"
+            exit 1
+          fi
+          echo "[validate] single file +47/-47 ok"
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'ERB/TRANSLATION/OMOGATARI/ITEM/Armory/Attatchments/Omogatari_WeaponPresets.ERB'
+          git commit -m '무기 프리셋 UI 이름 및 설명 1차 한글화 55차'
+          git push origin HEAD:korean
